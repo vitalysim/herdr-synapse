@@ -34,11 +34,15 @@ docs/cli.md              command contract
 tests/                   unittest suite; tests/support.py has TempState, FakeHerdrServer, FakeApi
 ```
 
-## Try it in your own session
+## Try it
 
-Read `docs/human-testing.md` first (the guided first run) and
-`docs/capabilities.md` (every capability, how to drive it from the UI and
-the CLI, what to expect, and a test checklist). Short form: `herdr plugin link <this dir>`,
+The plugin runs on the installed Herdr 0.8.2; no fork build is needed. The
+zero-interference way is the sandbox launcher, a named session with its own
+config, registry, and state: from a terminal outside Herdr run
+`bin/herdr-team-sandbox start`, then `prefix+t` inside it. Read
+`docs/human-testing.md` (the guided first run) and `docs/capabilities.md`
+(every capability, how to drive it from the UI and the CLI, what to expect,
+and a test checklist). Short form: `herdr plugin link <this dir>`,
 `herdr plugin action invoke herdr-team.daemon-start`, `herdr-team kinds trust
 claude` (and `codex`), paste `herdr-team keys print` and `herdr-team setup
 --print-config` into your config, reload, then `prefix+t` to pick two fresh

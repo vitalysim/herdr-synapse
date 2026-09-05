@@ -1,0 +1,159 @@
+#!/bin/sh
+# herdr-team-sandbox: run herdr-team in a fully isolated Herdr session.
+#
+# The sandbox is a named Herdr session with its OWN config directory, plugin
+# registry, and state directory (XDG_CONFIG_HOME / XDG_STATE_HOME), so nothing
+# it does is visible to your default Herdr session. It uses the installed
+# `herdr` binary; no fork build is involved.
+#
+#   herdr-team-sandbox prepare          create the sandbox, copy your config, link the plugin, trust claude/codex
+#   herdr-team-sandbox start            prepare, then launch the sandbox session (run from a terminal outside Herdr)
+#   herdr-team-sandbox attach           attach another terminal to the running sandbox
+#   herdr-team-sandbox status           session state, daemon state, sandbox paths
+#   herdr-team-sandbox herdr <args...>  run `herdr` against the sandbox (e.g. `herdr agent list`)
+#   herdr-team-sandbox team <args...>   run `herdr-team` against the sandbox (e.g. `team who`)
+#   herdr-team-sandbox stop             stop the sandbox session (agents inside it exit)
+#   herdr-team-sandbox delete           stop and delete the session (config and boards are kept)
+#   herdr-team-sandbox reset            delete everything under the sandbox directory (asks first)
+#
+# Locations (override with HERDR_TEAM_SANDBOX and HERDR_TEAM_SANDBOX_SESSION):
+#   $HOME/herdr-teamtest/config/herdr/config.toml   the sandbox config (a copy of yours plus the plugin snippets)
+#   $HOME/herdr-teamtest/config/herdr/plugins.json  the sandbox plugin registry
+#   $HOME/herdr-teamtest/state/herdr/plugins/herdr-team/sessions/<session>/   teams, boards, daemon log
+
+set -u
+
+PLUGIN=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+SANDBOX=${HERDR_TEAM_SANDBOX:-$HOME/herdr-teamtest}
+SESSION=${HERDR_TEAM_SANDBOX_SESSION:-teamtest}
+CFG=$SANDBOX/config
+ST=$SANDBOX/state
+CONFIG_TOML=$CFG/herdr/config.toml
+SOCK=$CFG/herdr/sessions/$SESSION/herdr.sock
+KINDS=$ST/herdr/plugins/herdr-team/sessions/$SESSION/kinds.json
+MARKER='# --- herdr-team sandbox snippets ---'
+
+say() { printf '%s\n' "$*"; }
+die() { printf 'herdr-team-sandbox: %s\n' "$*" >&2; exit 1; }
+
+# Every command runs with the inherited Herdr variables cleared (so nothing
+# can address the default session) and the sandbox XDG directories set. The
+# plugin's bin dir is prepended to PATH so `herdr-team` works in every pane
+# of the sandbox session (panes inherit the server's environment).
+clean_env() {
+  env -u HERDR_SOCKET_PATH -u HERDR_CLIENT_SOCKET_PATH -u HERDR_SESSION \
+      -u HERDR_WORKSPACE_ID -u HERDR_TAB_ID -u HERDR_PANE_ID -u HERDR_ENV -u HERDR_BIN_PATH \
+      XDG_CONFIG_HOME="$CFG" XDG_STATE_HOME="$ST" PATH="$PLUGIN/bin:$PATH" "$@"
+}
+# For CLI calls from outside the sandbox panes: select the sandbox session.
+in_session() { clean_env env HERDR_SESSION="$SESSION" "$@"; }
+
+running() {
+  in_session herdr session list --json 2>/dev/null | python3 -c '
+import json,sys
+try:
+    d=json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+sys.exit(0 if any(s.get("name")==sys.argv[1] and s.get("running") for s in d.get("sessions",[])) else 1)' "$SESSION"
+}
+
+prepare() {
+  command -v herdr >/dev/null 2>&1 || die "herdr is not on PATH"
+  command -v python3 >/dev/null 2>&1 || die "python3 is not on PATH"
+  mkdir -p "$CFG/herdr" "$ST" || die "cannot create $SANDBOX"
+  chmod 700 "$SANDBOX" 2>/dev/null || :
+
+  if [ ! -f "$CONFIG_TOML" ]; then
+    if [ -f "$HOME/.config/herdr/config.toml" ]; then
+      cp "$HOME/.config/herdr/config.toml" "$CONFIG_TOML"
+      say "copied your config.toml into the sandbox"
+    else
+      : > "$CONFIG_TOML"
+      say "created an empty sandbox config.toml"
+    fi
+  fi
+
+  # Sidebar rows and key bindings, appended once. Skipped when the copied
+  # config already defines them (a duplicate table would make the whole
+  # config invalid).
+  if ! grep -q "$MARKER" "$CONFIG_TOML"; then
+    if grep -q -E '^\[ui\.sidebar\.agents\]|plugin_action' "$CONFIG_TOML"; then
+      say "note: config already has sidebar rows or plugin key bindings; not appending the plugin snippets"
+      say "      run: $0 team setup --print-config --no-probe   and merge by hand"
+    else
+      snippet=$(clean_env "$PLUGIN/bin/herdr-team" --json setup --print-config --no-probe 2>/dev/null \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin)["required"])') || snippet=""
+      if [ -n "$snippet" ]; then
+        cp "$CONFIG_TOML" "$CONFIG_TOML.bak"
+        { printf '\n%s\n' "$MARKER"; printf '%s\n' "$snippet"; } >> "$CONFIG_TOML"
+        if clean_env herdr config check >/dev/null 2>&1; then
+          say "appended sidebar rows and key bindings (prefix+t team-up, prefix+m compose, prefix+u console, prefix+y view)"
+        else
+          mv "$CONFIG_TOML.bak" "$CONFIG_TOML"
+          say "warning: the config did not validate with the snippets appended; left your copy unchanged"
+        fi
+      else
+        say "warning: could not render the config snippets; run: $0 team setup --print-config --no-probe"
+      fi
+    fi
+  fi
+
+  # Trust the two kinds verified in the rigs so deliveries are not held
+  # `kind_unverified` on first use. Owner override, recorded as such.
+  if [ ! -f "$KINDS" ]; then
+    mkdir -p "$(dirname "$KINDS")"
+    now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    printf '{"claude": {"trusted": true, "trusted_by": "owner", "reason": "sandbox default", "trusted_at": "%s"}, "codex": {"trusted": true, "trusted_by": "owner", "reason": "sandbox default", "trusted_at": "%s"}}\n' "$now" "$now" > "$KINDS"
+    chmod 600 "$KINDS"
+    say "trusted claude and codex for delivery in the sandbox (herdr-team kinds list to review)"
+  fi
+
+  # Link the plugin into the sandbox registry only. Works offline.
+  if clean_env herdr plugin list --json 2>/dev/null | grep -q '"herdr-team"'; then
+    say "plugin already linked in the sandbox registry"
+  else
+    if clean_env herdr plugin link "$PLUGIN" >/dev/null 2>&1; then
+      say "linked $PLUGIN into the sandbox registry"
+    else
+      die "herdr plugin link failed; run: $0 herdr plugin link $PLUGIN"
+    fi
+  fi
+  say "sandbox ready at $SANDBOX (session: $SESSION)"
+}
+
+start() {
+  prepare
+  if [ "${HERDR_ENV:-}" = 1 ]; then
+    say "note: you are inside a Herdr pane; the sandbox will run nested in this pane. A separate terminal window is nicer."
+  fi
+  say "starting the sandbox session; the plugin's startup hook starts the notifier daemon"
+  say "inside it: open two panes, start agents, then prefix+t to make a team (see docs/human-testing.md)"
+  exec clean_env herdr --session "$SESSION"
+}
+
+status() {
+  say "sandbox:  $SANDBOX"
+  say "session:  $SESSION"
+  say "socket:   $SOCK"
+  if running; then say "state:    running"; else say "state:    not running"; fi
+  say "--- daemon ---"
+  in_session "$PLUGIN/bin/herdr-team" daemon status 2>&1 || :
+}
+
+case "${1:-}" in
+  prepare) prepare ;;
+  start) start ;;
+  attach) exec clean_env herdr session attach "$SESSION" ;;
+  status) status ;;
+  herdr) shift; in_session herdr "$@" ;;
+  team) shift; in_session "$PLUGIN/bin/herdr-team" "$@" ;;
+  stop) in_session herdr session stop "$SESSION" ;;
+  delete) in_session herdr session stop "$SESSION" >/dev/null 2>&1 || :; in_session herdr session delete "$SESSION" ;;
+  reset)
+    if running; then die "the session is running; run: $0 stop"; fi
+    printf 'delete everything under %s? [y/N] ' "$SANDBOX"; read -r ans
+    case "$ans" in y|Y) rm -rf "$SANDBOX"; say "removed $SANDBOX" ;; *) say "kept" ;; esac ;;
+  ""|-h|--help|help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) die "unknown command: $1 (try: $0 help)" ;;
+esac

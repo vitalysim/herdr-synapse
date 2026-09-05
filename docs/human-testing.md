@@ -6,6 +6,38 @@ a test checklist, is `capabilities.md` in this directory. Written
 2026-09-05 after four rig runs against Herdr 0.8.2. Everything here has run
 in a throwaway session; this is the first time it meets your real one.
 
+## The easiest way: the sandbox launcher
+
+The plugin runs on the Herdr you already have installed (0.8.2); the fork
+only holds its source. To try it without touching your real session at all,
+use the sandbox: a named Herdr session with its own config directory, its own
+plugin registry, and its own state, so nothing it does is visible to your
+default session.
+
+```bash
+# from a terminal window that is NOT inside Herdr:
+~/MyPlace/projects/herdr-fork/plugins/herdr-team/bin/herdr-team-sandbox start
+```
+
+`start` creates `~/herdr-teamtest/`, copies your `config.toml` into it and
+appends the plugin's key bindings and sidebar rows, trusts `claude` and
+`codex` for delivery, links the plugin into the sandbox registry, and
+launches the session; the plugin's startup hook starts the notifier. Inside
+it, skip to step 4 below: open two panes, start agents, `prefix+t`.
+
+Other subcommands: `status`, `attach`, `herdr <args>` and `team <args>` to
+run commands against the sandbox from outside it, `stop`, `delete`,
+`reset` (removes the sandbox directory, asks first). `HERDR_TEAM_SANDBOX` and
+`HERDR_TEAM_SANDBOX_SESSION` change the directory and session name.
+
+What the sandbox still shares with your real setup: the agents themselves
+and their dotfiles (`~/.claude`, `~/.codex`). Step 8 below edits
+`~/.claude/settings.json`; skip it in the sandbox or point it at rig-local
+files with `--settings`, `--hooks-dir`, and `--claude-dir`.
+
+Steps 1 to 3 below are what `start` does for you; they remain here for a
+manual setup in your real session later.
+
 ## Before you start
 
 - Use **fresh panes** for the first team. Do not add an existing agent that
