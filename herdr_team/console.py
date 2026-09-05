@@ -572,14 +572,77 @@ def _read_escape(stdscr: Any) -> Optional[str]:
     return "ESC"
 
 
-def draw_lines(stdscr: Any, lines: List[str], cursor: Optional[Tuple[int, int]] = None) -> None:
+#: Member colors in roster order (curses color numbers); red is kept for warnings.
+MEMBER_PALETTE = ("cyan", "green", "magenta", "yellow", "blue", "white")
+_COLOR_PAIRS: Dict[str, int] = {}
+
+
+def init_colors() -> bool:
+    """Start curses colors once; returns False when the terminal has none (styles fall back to bold/dim)."""
+    import curses
+
+    if _COLOR_PAIRS:
+        return True
+    try:
+        if not curses.has_colors():
+            return False
+        curses.start_color()
+        try:
+            curses.use_default_colors()
+            background = -1
+        except curses.error:
+            background = curses.COLOR_BLACK
+        names = {
+            "cyan": curses.COLOR_CYAN, "green": curses.COLOR_GREEN, "magenta": curses.COLOR_MAGENTA,
+            "yellow": curses.COLOR_YELLOW, "blue": curses.COLOR_BLUE, "white": curses.COLOR_WHITE, "red": curses.COLOR_RED,
+        }
+        for i, name in enumerate(MEMBER_PALETTE + ("red",), start=1):
+            curses.init_pair(i, names[name], background)
+            _COLOR_PAIRS[name] = i
+        return True
+    except curses.error:
+        _COLOR_PAIRS.clear()
+        return False
+
+
+def style_attr(style: str, members: List[Dict[str, Any]], has_colors: bool) -> int:
+    """curses attribute for a ``tui_model`` style key; a member gets a stable palette color by roster slot."""
+    import curses
+
+    def pair(name: str) -> int:
+        return curses.color_pair(_COLOR_PAIRS[name]) if has_colors and name in _COLOR_PAIRS else 0
+
+    if style.startswith("member:"):
+        slot = tui_model.member_color_slot(style[len("member:"):], members)
+        if slot is None:
+            return 0
+        return pair(MEMBER_PALETTE[slot % len(MEMBER_PALETTE)])
+    if style == tui_model.STYLE_HUMAN:
+        return curses.A_BOLD
+    if style == tui_model.STYLE_SYSTEM or style == tui_model.STYLE_DIM:
+        return curses.A_DIM
+    if style == tui_model.STYLE_WARNING:
+        return pair("red") | curses.A_BOLD
+    if style == tui_model.STYLE_MENU_SELECTED:
+        return curses.A_REVERSE
+    if style == tui_model.STYLE_MENU:
+        return curses.A_DIM
+    if style == tui_model.STYLE_HEADER:
+        return curses.A_BOLD
+    if style == tui_model.STYLE_STATUS:
+        return pair("yellow")
+    return 0
+
+
+def draw_lines(stdscr: Any, lines: List[str], cursor: Optional[Tuple[int, int]] = None, attrs: Optional[List[int]] = None) -> None:
     import curses
 
     stdscr.erase()
     height, width = stdscr.getmaxyx()
     for row, line in enumerate(lines[:height]):
+        attr = attrs[row] if attrs is not None and row < len(attrs) else 0
         try:
-            stdscr.addnstr(row, 0, line, max(1, width - 1))
+            stdscr.addnstr(row, 0, line, max(1, width - 1), attr)
         except curses.error:
             pass
     if cursor is not None:
@@ -617,6 +680,7 @@ def _loop(stdscr: Any, state: ConsoleState, api: Any) -> int:
         pass
     stdscr.timeout(int(REFRESH_S * 1000))
     enable_bracketed_paste()
+    has_colors = init_colors()
     state.height, state.width = stdscr.getmaxyx()
     model = build_model(state.layout, state.team, state, env=state.env)
     if state.env.get(START_VIEW_ENV) == "who":
@@ -627,10 +691,12 @@ def _loop(stdscr: Any, state: ConsoleState, api: Any) -> int:
         while True:
             state.height, state.width = stdscr.getmaxyx()
             model.width, model.height = state.width, state.height
-            lines = tui_model.render_console(model, state.width, state.height)
+            styled = tui_model.render_console_styled(model, state.width, state.height)
+            lines = [line for line, _ in styled]
+            attrs = [style_attr(style, model.members, has_colors) for _, style in styled]
             input_count = len(tui_model.input_lines(model, state.width))
             y, x = input_cursor_position(model, len(lines) - input_count, state.width)
-            draw_lines(stdscr, lines, (y, x))
+            draw_lines(stdscr, lines, (y, x), attrs)
             key = read_key(stdscr)
             if key is None or key == "RESIZE":
                 if time.monotonic() - last_refresh >= REFRESH_S:

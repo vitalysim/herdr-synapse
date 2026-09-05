@@ -105,7 +105,7 @@ def build_model(layout: Layout, team: str, context: Dict[str, Any]) -> ComposeMo
 
     members = roster_members(layout, team)
     names = [str(m.get("name")) for m in members if m.get("name") and m.get("status", "active") != "left"]
-    return ComposeModel(default_to=default_recipient(context, members), team=team, roster_names=names)
+    return ComposeModel(default_to=default_recipient(context, members), team=team, roster_names=names, roster_members=list(members))
 
 
 def post_argv(intent: Intent, team: str) -> List[str]:

@@ -229,6 +229,9 @@ class ConsoleModel:
     peek: Optional[List[str]] = None
     human_label: Optional[str] = None
     members: List[Dict[str, Any]] = field(default_factory=list)
+    #: ``@`` mention menu: highlighted row, and the input snapshot Esc hid it for.
+    mention_index: int = 0
+    mention_hidden_for: Optional[str] = None
 
 
 @dataclass
@@ -395,7 +398,7 @@ def roster_line(
             fields.append("gone {}".format(age))
         else:
             fields.append(roster_status.replace("_", " "))
-    if member.get("briefed") is False:
+    if member.get("briefed") is False and member.get("kind") != "human":
         fields.append("unbriefed")
     if member.get("charter_stale"):
         fields.append("charter: stale")
@@ -796,6 +799,148 @@ def edit_key(model: Any, key: str) -> bool:
     return False
 
 
+# -- @ mention menu -------------------------------------------------------------
+
+#: Rows shown at once in the ``@`` menu; the highlight scrolls inside the window.
+MENTION_MENU_ROWS = 6
+MENTION_MARKER = "▸"
+MENTION_MARKER_ASCII = ">"
+
+
+def mention_context(text: str, cursor: int) -> Optional[Tuple[int, int, str]]:
+    """The ``@token`` under the cursor as ``(start, end, prefix)``, or None.
+
+    The token must begin with ``@`` at the start of the line or after
+    whitespace and contain no whitespace up to the cursor, so an e-mail
+    address or ``foo@bar`` typed mid-word never opens the menu.
+    """
+    cursor = max(0, min(cursor, len(text)))
+    start = cursor
+    while start > 0 and not text[start - 1].isspace():
+        start -= 1
+    if start >= cursor or text[start] != "@":
+        return None
+    if start > 0 and not text[start - 1].isspace():
+        return None
+    return start, cursor, text[start + 1 : cursor]
+
+
+def mention_candidates(members: Iterable[Dict[str, Any]], prefix: str = "") -> List[Dict[str, str]]:
+    """Menu rows for ``@<prefix>``: members, then ``role:<r>`` groups, then ``all`` and ``human``.
+
+    Matching is case-insensitive; a prefix match on the inserted text sorts
+    before a substring match on the name or role, so ``@rev`` finds
+    ``red-dev-codex-reviewer`` through its role even though the name does not
+    start with it.
+    """
+    needle = prefix.lower()
+    rows: List[Tuple[int, int, Dict[str, str]]] = []
+    roles: Dict[str, int] = {}
+    order = 0
+    for member in members:
+        name = str(member.get("name") or "")
+        if not name or member.get("kind") == "human" or member.get("status") in ("left",):
+            continue
+        role = str(member.get("role") or "")
+        if role:
+            roles[role] = roles.get(role, 0) + 1
+        status = str(member.get("agent_status") or member.get("status") or "")
+        label = "  ".join(part for part in (name, " · ".join(p for p in (role, str(member.get("kind") or ""), status) if p)) if part)
+        rank = _mention_rank(needle, name, role)
+        if rank is not None:
+            rows.append((rank, order, {"insert": name, "label": label}))
+        order += 1
+    for role, count in roles.items():
+        insert = "role:" + role
+        rank = _mention_rank(needle, insert, role)
+        if rank is not None:
+            rows.append((rank, order, {"insert": insert, "label": "{}  everyone with role {} ({})".format(insert, role, count)}))
+        order += 1
+    for insert, label in (("all", "all  everyone on the team"), ("human", "human  the operator (you)")):
+        rank = _mention_rank(needle, insert, "")
+        if rank is not None:
+            rows.append((rank, order, {"insert": insert, "label": label}))
+        order += 1
+    rows.sort(key=lambda item: (item[0], item[1]))
+    return [row for _, _, row in rows]
+
+
+def _mention_rank(needle: str, insert: str, role: str) -> Optional[int]:
+    if not needle:
+        return 1
+    if insert.lower().startswith(needle):
+        return 0
+    if needle in insert.lower() or (role and needle in role.lower()):
+        return 1
+    return None
+
+
+def mention_menu(model: Any) -> List[Dict[str, str]]:
+    """The open ``@`` menu rows for any model with ``input``/``cursor``/``members``; [] when closed."""
+    if getattr(model, "paste_mode", False):
+        return []
+    if getattr(model, "mention_hidden_for", None) == model.input:
+        return []
+    ctx = mention_context(model.input, model.cursor)
+    if ctx is None:
+        return []
+    return mention_candidates(model.members, ctx[2])
+
+
+def mention_lines(model: Any, width: int, ascii_only: bool = False) -> List[str]:
+    """Screen rows for the open ``@`` menu (at most MENTION_MENU_ROWS), highlight on ``mention_index``."""
+    rows = mention_menu(model)
+    if not rows:
+        return []
+    index = max(0, min(getattr(model, "mention_index", 0), len(rows) - 1))
+    first = 0
+    if len(rows) > MENTION_MENU_ROWS:
+        first = max(0, min(index - MENTION_MENU_ROWS + 1, len(rows) - MENTION_MENU_ROWS))
+    marker = MENTION_MARKER_ASCII if ascii_only else MENTION_MARKER
+    out: List[str] = []
+    for i, row in enumerate(rows[first : first + MENTION_MENU_ROWS], start=first):
+        lead = (marker if i == index else " ") + " @"
+        out.append(truncate_columns(lead + row["label"], width))
+    if len(rows) > MENTION_MENU_ROWS:
+        out.append(truncate_columns("  {} of {}  (↑/↓ move, Tab or Enter picks, Esc hides)".format(index + 1, len(rows)) if not ascii_only else "  {} of {}  (up/down move, Tab or Enter picks, Esc hides)".format(index + 1, len(rows)), width))
+    return out
+
+
+def accept_mention(model: Any, row: Dict[str, str]) -> None:
+    """Replace the ``@token`` under the cursor with ``@<insert> `` and move the cursor after it."""
+    ctx = mention_context(model.input, model.cursor)
+    if ctx is None:
+        return
+    start, end, _ = ctx
+    replacement = "@" + row["insert"] + " "
+    model.input = model.input[:start] + replacement + model.input[end:]
+    model.cursor = start + len(replacement)
+    model.mention_index = 0
+    model.mention_hidden_for = None
+
+
+def mention_key(model: Any, key: str) -> bool:
+    """Handle a key while the ``@`` menu is open; True when the key was consumed."""
+    rows = mention_menu(model)
+    if not rows:
+        return False
+    index = max(0, min(getattr(model, "mention_index", 0), len(rows) - 1))
+    if key == "UP":
+        model.mention_index = (index - 1) % len(rows)
+        return True
+    if key == "DOWN":
+        model.mention_index = (index + 1) % len(rows)
+        return True
+    if key in ("TAB", "ENTER"):
+        accept_mention(model, rows[index])
+        return True
+    if key == "ESC":
+        model.mention_hidden_for = model.input
+        model.mention_index = 0
+        return True
+    return False
+
+
 # -- command parsing -----------------------------------------------------------
 
 
@@ -946,6 +1091,7 @@ def _parse_slash(head: str, rest: str, default_team: str) -> Intent:
 
 
 HELP_TEXT = (
+    "@ opens the name list (↑/↓ move, Tab or Enter picks, Esc hides) | "
     "@name text | @role:r text | /all text | /human text | /kind k | /reply N | /urgent | /ref path | "
     "/retract N | /mute [name] [10m] | /unmute [name] | /pause | /nudge name [--force] | /focus name | "
     "/peek name | /who | /filter [name] | /as label | /use team | /charter [set [--urgent] text] | /remove name | /quit"
@@ -971,6 +1117,8 @@ def apply_key(model: ConsoleModel, key: str) -> Optional[Intent]:
         model.status = None
         return None
     if key == "RESIZE":
+        return None
+    if mention_key(model, key):
         return None
     if key == "TAB" and not model.paste_mode:
         model.filter_index = (model.filter_index + 1) % len(FILTERS)
@@ -1005,6 +1153,7 @@ def apply_key(model: ConsoleModel, key: str) -> Optional[Intent]:
         intent = parse_input_line(line, model.team)
         return _after_parse(model, intent)
     if edit_key(model, key):
+        model.mention_index = 0
         return None
     return None
 
@@ -1081,42 +1230,125 @@ def input_lines(model: ConsoleModel, width: int) -> List[str]:
     return lines
 
 
-def render_console(model: ConsoleModel, width: Optional[int] = None, height: Optional[int] = None) -> List[str]:
-    """Every screen line, top to bottom, exactly ``height`` entries, each at most ``width`` columns."""
+#: Style keys the runtime maps to colors. ``member:<name>`` gets a stable
+#: color per roster slot; ``human`` is the operator; ``system`` records are
+#: dim; ``warning`` is for audit warnings; ``menu-selected`` is the ``@``
+#: menu highlight; ``input`` is the prompt line.
+STYLE_HEADER = "header"
+STYLE_DIM = "dim"
+STYLE_HUMAN = "human"
+STYLE_SYSTEM = "system"
+STYLE_WARNING = "warning"
+STYLE_MENU = "menu"
+STYLE_MENU_SELECTED = "menu-selected"
+STYLE_INPUT = "input"
+STYLE_STATUS = "status"
+STYLE_PEEK = "peek"
+STYLE_PLAIN = ""
+
+
+def member_style(name: Optional[str]) -> str:
+    return "member:" + str(name) if name else STYLE_PLAIN
+
+
+def member_color_slot(name: str, members: Iterable[Dict[str, Any]]) -> Optional[int]:
+    """Stable palette slot for a member: its position among non-human roster rows, or None."""
+    slot = 0
+    for member in members:
+        if member.get("kind") == "human" or not member.get("name"):
+            continue
+        if str(member.get("name")) == name:
+            return slot
+        slot += 1
+    return None
+
+
+def entry_style(entry: Dict[str, Any]) -> str:
+    """Style key for one feed entry: warning, system, human, or the author's member color."""
+    if entry.get("warning"):
+        return STYLE_WARNING
+    kind = str(entry.get("kind") or "")
+    author = str(entry.get("from") or "")
+    if kind == "system" or author == "system":
+        return STYLE_SYSTEM
+    if author == "human" or author.startswith("human@"):
+        return STYLE_HUMAN
+    return member_style(author) if author else STYLE_PLAIN
+
+
+def mention_rows_styled(model: Any, width: int, ascii_only: bool = False) -> List[Tuple[str, str]]:
+    """``mention_lines`` with a style per row: the member's color, ``menu-selected`` on the highlight."""
+    rows = mention_menu(model)
+    plain = mention_lines(model, width, ascii_only)
+    if not rows or not plain:
+        return []
+    index = max(0, min(getattr(model, "mention_index", 0), len(rows) - 1))
+    first = 0
+    if len(rows) > MENTION_MENU_ROWS:
+        first = max(0, min(index - MENTION_MENU_ROWS + 1, len(rows) - MENTION_MENU_ROWS))
+    styled: List[Tuple[str, str]] = []
+    for offset, line in enumerate(plain):
+        i = first + offset
+        if i >= len(rows) or i >= first + MENTION_MENU_ROWS:
+            styled.append((line, STYLE_DIM))  # the "n of m" footer
+            continue
+        insert = rows[i]["insert"]
+        if i == index:
+            style = STYLE_MENU_SELECTED
+        elif insert in ("all", "human") or insert.startswith("role:"):
+            style = STYLE_MENU
+        else:
+            style = member_style(insert)
+        styled.append((line, style))
+    return styled
+
+
+def render_console_styled(model: ConsoleModel, width: Optional[int] = None, height: Optional[int] = None) -> List[Tuple[str, str]]:
+    """``render_console`` with a style key per line (see the STYLE_* constants)."""
     w = width if width is not None else model.width
     h = height if height is not None else model.height
     if h <= 0:
         return []
-    footer: List[str] = [filter_line(model)]
+    footer: List[Tuple[str, str]] = [(filter_line(model), STYLE_DIM)]
     if model.status:
-        footer.append("• " + model.status if not model.ascii_only else "* " + model.status)
-    footer.extend(input_lines(model, w))
+        footer.append(("• " + model.status if not model.ascii_only else "* " + model.status, STYLE_STATUS))
+    footer.extend(mention_rows_styled(model, w, model.ascii_only))
+    footer.extend((line, STYLE_INPUT) for line in input_lines(model, w))
     if len(footer) > h:
         footer = footer[-h:]  # the input line always wins
     budget = h - len(footer)
-    lines: List[str] = header_lines(model.header, w)[:budget]
+    lines: List[Tuple[str, str]] = [(line, STYLE_HEADER) for line in header_lines(model.header, w)[:budget]]
     budget -= len(lines)
     roster_cap = min(len(model.roster_lines), max(3, h // 4), max(0, budget - 1))
-    lines.extend(model.roster_lines[:roster_cap])
+    roster_names = [str(m.get("name") or "") for m in model.members] if len(model.members) == len(model.roster_lines) else []
+    for i, line in enumerate(model.roster_lines[:roster_cap]):
+        name = roster_names[i] if i < len(roster_names) else ""
+        style = STYLE_HUMAN if name == "human" else member_style(name)
+        lines.append((line, style))
     budget -= roster_cap
     if len(model.roster_lines) > roster_cap and budget > 1:
-        lines.append(truncate_columns("  … {} more (/who)".format(len(model.roster_lines) - roster_cap), w))
+        lines.append((truncate_columns("  … {} more (/who)".format(len(model.roster_lines) - roster_cap), w), STYLE_DIM))
         budget -= 1
     if budget > 0:
-        lines.append("─" * w if not model.ascii_only else "-" * w)
+        lines.append(("─" * w if not model.ascii_only else "-" * w, STYLE_DIM))
         budget -= 1
     feed_height = max(0, budget)
     if model.peek is not None:
-        body = fit_peek(model.peek, feed_height)
+        body: List[Tuple[str, str]] = [(line, STYLE_PEEK) for line in fit_peek(model.peek, feed_height)]
     else:
-        body = [e["line"] for e in visible_feed(model, feed_height)]
-    body = body + [""] * (feed_height - len(body))
+        body = [(e["line"], entry_style(e)) for e in visible_feed(model, feed_height)]
+    body = body + [("", STYLE_PLAIN)] * (feed_height - len(body))
     lines.extend(body)
     lines.extend(footer)
-    out = [truncate_columns(line, w) for line in lines]
+    out = [(truncate_columns(line, w), style) for line, style in lines]
     if len(out) > h:
         out = out[:h]
     return out
+
+
+def render_console(model: ConsoleModel, width: Optional[int] = None, height: Optional[int] = None) -> List[str]:
+    """Every screen line, top to bottom, exactly ``height`` entries, each at most ``width`` columns."""
+    return [line for line, _ in render_console_styled(model, width, height)]
 
 
 def fit_peek(box_lines: List[str], height: int) -> List[str]:
@@ -1688,6 +1920,16 @@ class ComposeModel:
     status: Optional[str] = None
     paste_mode: bool = False
     roster_names: List[str] = field(default_factory=list)
+    #: Full roster rows when available (richer ``@`` menu); ``roster_names`` is the fallback.
+    roster_members: List[Dict[str, Any]] = field(default_factory=list)
+    mention_index: int = 0
+    mention_hidden_for: Optional[str] = None
+
+    @property
+    def members(self) -> List[Dict[str, Any]]:
+        if self.roster_members:
+            return self.roster_members
+        return [{"name": n, "kind": "?", "role": "", "agent_status": ""} for n in self.roster_names]
 
 
 def compose_default_recipient(context: Dict[str, Any], roster_members: List[Dict[str, Any]]) -> Optional[str]:
@@ -1703,10 +1945,12 @@ def compose_default_recipient(context: Dict[str, Any], roster_members: List[Dict
 
 
 def compose_apply_key(model: ComposeModel, key: str) -> Optional[Intent]:
-    if key in ("ESC", "CTRL_C"):
-        return Intent("quit")
     if key == "RESIZE":
         return None
+    if mention_key(model, key):
+        return None
+    if key in ("ESC", "CTRL_C"):
+        return Intent("quit")
     if key == "ENTER" and not model.paste_mode:
         spec, err = parse_post_directives(model.input, model.default_to)
         if err:
@@ -1719,14 +1963,16 @@ def compose_apply_key(model: ComposeModel, key: str) -> Optional[Intent]:
         args["spill"] = len(spec.text) > MAX_TEXT_CHARS
         args["team"] = model.team
         return Intent("post", args)
-    edit_key(model, key)
+    if edit_key(model, key):
+        model.mention_index = 0
     return None
 
 
 def compose_lines(model: ComposeModel, width: int = 80) -> List[str]:
     to = model.default_to or "all"
-    lines = ["Post to team {} (default @{}; @name, @role:r, /all, /kind k, /reply N, /urgent; Enter posts, Esc cancels)".format(model.team or "?", to)]
+    lines = ["Post to team {} (default @{}; type @ for names; @role:r, /all, /kind k, /reply N, /urgent; Enter posts, Esc cancels)".format(model.team or "?", to)]
     lines.append(INPUT_PROMPT + model.input)
+    lines.extend(mention_lines(model, width))
     if model.status:
         lines.append(model.status)
     return [truncate_columns(line, width) for line in lines]

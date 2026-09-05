@@ -303,9 +303,18 @@ a popup on the roster box.
   `hooks: silent`, `kind unverified` (no role column here; roles are in the
   CLI `who`). Narrow panes drop the kind, pane, and headline columns.
 - **Feed**: the board tail with receipts, struck retractions, system
-  records, and warnings such as a refused `--as human`.
+  records, and warnings such as a refused `--as human`. Lines are color
+  coded: each member gets a stable color by its position in the roster
+  (cyan, green, magenta, yellow, blue, white, then wrapping), used for its
+  roster row, its posts, and its row in the `@` list; your own posts are
+  bold; system records are dim; warnings are red. Terminals without colors
+  fall back to bold and dim only.
 - **Input**: plain text → whole team; `@name text` → one member; `@role:r
-  text` → a role; prefixes `/all`, `/human`, `/kind k`, `/reply N` (with no
+  text` → a role. Typing `@` (at the start or after a space) opens a name
+  list above the input line: every member with role, kind, and status, then
+  `role:<r>` groups, `all`, and `human`; keep typing to filter (a role or
+  part of a name matches), Up/Down move, Tab or Enter insert the pick, Esc
+  hides the list. The compose popup has the same list. Prefixes `/all`, `/human`, `/kind k`, `/reply N` (with no
   `@`, addressed to the author of #N), `/urgent`, `/ref path`. Commands:
   `/retract N` and `/remove name` (ask `y`/`n`); `/mute [name|all] [30s|10m|2h]`,
   `/unmute [name]`, `/pause [10m]`; `/nudge name [--force]`; `/focus name`;
