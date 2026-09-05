@@ -67,7 +67,7 @@ ASCII_KIND_GLYPHS = {"request": ">", "done": "+", "blocked": "!", "question": "?
 
 MEMBER_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}\Z")
 RESERVED_NAMES = frozenset({"human", "all", "me", "none", "system", "team"})
-RECIPIENT_RE = re.compile(r"^(?:[a-z][a-z0-9_-]{0,31}|role:[a-z][a-z0-9_-]{0,13}|all|human)\Z")
+RECIPIENT_RE = re.compile(r"^(?:[a-z][a-z0-9_-]{0,31}|role:[a-z][a-z0-9_-]{0,31}|all|human)\Z")
 #: ``!name text`` types the line into one member now (docs/cli.md section 7, ``say``). Every input line
 #: that starts with ``!`` is such an attempt and never falls back to a post, so a mistyped name can
 #: never leak a one-member instruction to the whole team.
@@ -1855,12 +1855,18 @@ class PickerModel:
     rows: List[PickerRow]
     cursor: int = 0
     scope_workspace: Optional[str] = None
-    stage: str = "select"  # select | name | charter | members | confirm
+    stage: str = "select"  # select | target | name | charter | members | confirm
     team_name: str = ""
     charter: str = ""
     error: Optional[str] = None
-    #: ``create`` a new team, or ``add`` the selected agents to the existing team named at the name stage.
+    #: ``create`` a new team, or ``add`` the selected agents to an existing team (the target stage).
     mode: str = "create"
+    #: Highlighted row of the target stage: one row per existing team, then "create a new team".
+    target_index: int = 0
+    #: Agent members per existing team, for the target stage labels (filled by the picker runtime).
+    existing_team_sizes: Dict[str, int] = field(default_factory=dict)
+    #: Kinds the daemon may type into (``kinds.json``); None when unknown. The confirm screen warns about the rest.
+    trusted_kinds: Optional[Set[str]] = None
     # -- extra state owned by this module
     focused_workspace: Optional[str] = None
     live_names: Set[str] = field(default_factory=set)
@@ -2044,14 +2050,14 @@ DEFAULT_ROLE_SUFFIX = "-dev"
 def default_role(row: PickerRow) -> str:
     """``<kind>-dev``: the roster refuses a bare kind label as a role (plan 12), so the default carries a suffix."""
     kind = re.sub(r"[^a-z0-9_-]+", "-", (row.kind or "agent").lower()).strip("-")
-    for candidate in (kind + DEFAULT_ROLE_SUFFIX, kind[: 14 - len(DEFAULT_ROLE_SUFFIX)].rstrip("-") + DEFAULT_ROLE_SUFFIX, "dev"):
+    for candidate in (kind + DEFAULT_ROLE_SUFFIX, kind[: 32 - len(DEFAULT_ROLE_SUFFIX)].rstrip("-") + DEFAULT_ROLE_SUFFIX, "dev"):
         if ROLE_NAME_RE.match(candidate) and validate_role_local(candidate) is None:
             return candidate
     return "dev"
 
 
 def default_member_name(model: PickerModel, row: PickerRow) -> Optional[str]:
-    base = "{}-{}".format(model.team_name, row.role) if row.role else model.team_name
+    base = roster.fit_member_name(model.team_name, row.role, MAX_MEMBER_NAME_CHARS) if row.role else model.team_name
     return suggest_name(base, taken_names(model, exclude=row))
 
 
@@ -2113,6 +2119,8 @@ def picker_apply_key(model: PickerModel, key: str) -> Optional[Intent]:
         return None
     if model.stage == "select":
         return _select_key(model, key)
+    if model.stage == "target":
+        return _target_key(model, key)
     if model.stage == "name":
         return _name_key(model, key)
     if model.stage == "charter":
@@ -2176,15 +2184,77 @@ def _select_key(model: PickerModel, key: str) -> Optional[Intent]:
         if not selected_rows(model):
             model.error = "select at least one agent (Space toggles, a selects all)"
             return None
+        if model.existing_teams:
+            model.stage = "target"
+            model.target_index = 0
+            model.status = None
+            return None
+        model.mode = "create"
         model.stage = "name"
         _set_input(model, model.team_name)
         return None
     return None
 
 
+def target_options(model: PickerModel) -> List[Tuple[str, str]]:
+    """Rows of the target stage: ``("add", team)`` per existing team, then ``("create", "")``."""
+    return [("add", team) for team in model.existing_teams] + [("create", "")]
+
+
+def _enter_add_mode(model: PickerModel, team: str) -> None:
+    """The selected agents join ``team``; its charter stays as it is, so the wizard goes straight to the members."""
+    count = len(selected_rows(model))
+    model.team_name = team
+    model.mode = "add"
+    model.charter = ""
+    model.charter_lines = []
+    model.error = None
+    model.status = "adding {} agent{} to team {}; its charter is kept".format(count, "" if count == 1 else "s", team)
+    model.stage = "members"
+    model.member_index = 0
+    model.member_field = "role"
+    _begin_member_field(model)
+
+
+def _target_key(model: PickerModel, key: str) -> Optional[Intent]:
+    options = target_options(model)
+    model.error = None
+    if key in ("ESC", "q"):
+        model.stage = "select"
+        return None
+    if key in ("UP", "k"):
+        model.target_index = max(0, model.target_index - 1)
+        return None
+    if key in ("DOWN", "j"):
+        model.target_index = min(len(options) - 1, model.target_index + 1)
+        return None
+    if len(key) == 1 and key.isdigit():
+        number = int(key)
+        if 1 <= number <= len(options):
+            model.target_index = number - 1
+            return _choose_target(model, options[number - 1])
+        model.error = "type a number between 1 and {}".format(len(options))
+        return None
+    if key == "ENTER":
+        return _choose_target(model, options[min(model.target_index, len(options) - 1)])
+    return None
+
+
+def _choose_target(model: PickerModel, option: Tuple[str, str]) -> Optional[Intent]:
+    action, team = option
+    if action == "add":
+        _enter_add_mode(model, team)
+        return None
+    model.mode = "create"
+    model.stage = "name"
+    model.status = None
+    _set_input(model, model.team_name)
+    return None
+
+
 def _name_key(model: PickerModel, key: str) -> Optional[Intent]:
     if key == "ESC":
-        model.stage = "select"
+        model.stage = "target" if model.existing_teams else "select"
         model.error = None
         return None
     if key == "ENTER":
@@ -2194,17 +2264,8 @@ def _name_key(model: PickerModel, key: str) -> Optional[Intent]:
             model.error = err
             return None
         if name in model.existing_teams:
-            # An existing team: the selected agents join it; its charter stays as it is.
-            model.team_name = name
-            model.mode = "add"
-            model.charter = ""
-            model.charter_lines = []
-            model.error = None
-            model.status = "adding to team {} (its charter is kept; Esc goes back)".format(name)
-            model.stage = "members"
-            model.member_index = 0
-            model.member_field = "role"
-            _begin_member_field(model)
+            # Typed the name of a team that exists: that is the add option of the target stage.
+            _enter_add_mode(model, name)
             return None
         model.mode = "create"
         model.team_name = name
@@ -2274,9 +2335,8 @@ def _members_key(model: PickerModel, key: str) -> Optional[Intent]:
             model.member_index -= 1
             model.member_field = "brief"
         elif model.mode == "add":
-            model.stage = "name"
+            model.stage = "target"
             model.status = None
-            _set_input(model, model.team_name)
             return None
         else:
             model.stage = "charter"
@@ -2322,9 +2382,28 @@ def _members_key(model: PickerModel, key: str) -> Optional[Intent]:
     return None
 
 
+PICKER_TEXT_STAGES = ("name", "charter", "members")
+
+
+def picker_cursor(model: PickerModel, lines: List[str], width: int) -> Optional[Tuple[int, int]]:
+    """Screen (row, col) of the text cursor: on the input line of a typing stage, None (hidden) for the list stages.
+
+    The input line follows its prompt and any error or status comes after
+    it, so the row is found by its prompt marker rather than assumed last.
+    """
+    if model.stage not in PICKER_TEXT_STAGES or not lines:
+        return None
+    rows = [i for i, line in enumerate(lines) if line.startswith(INPUT_PROMPT)]
+    if not rows:
+        return None
+    col = display_width(INPUT_PROMPT) + display_width(model.input[: model.cursor_pos])
+    return rows[-1], min(max(0, width - 1), col)
+
+
 def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[str]:
-    """Screen lines for the picker popup at its current stage."""
+    """Screen lines for the picker popup at its current stage: prompt, then the input line, then any error or status."""
     lines: List[str] = []
+    has_input = False
     if model.stage == "select":
         scope = "Space {}".format(model.scope_workspace) if model.scope_workspace else "all Spaces"
         lines.append("Team up: pick agents  ({}; w scope, a all, Space toggle, Enter next, Esc quit)".format(scope))
@@ -2342,24 +2421,37 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
             lines.append("{} {} {:<8} {:<10} {:<24} {}{}".format(pointer, mark, row.pane_id, row.kind or "?", row.name or "(unnamed)", row.agent_status, note))
         if not rows:
             lines.append("  no agents in scope")
+    elif model.stage == "target":
+        count = len(selected_rows(model))
+        lines.append("{} agent{} selected. What now? (type a number, or ↑/↓ and Enter; Esc back)".format(count, "" if count == 1 else "s"))
+        for i, (action, team) in enumerate(target_options(model)):
+            pointer = ">" if i == model.target_index else " "
+            if action == "add":
+                size = model.existing_team_sizes.get(team)
+                members = "  ({} member{})".format(size, "" if size == 1 else "s") if size is not None else ""
+                lines.append("{} {}  add {} to team {}{}".format(pointer, i + 1, "it" if count == 1 else "them", team, members))
+            else:
+                lines.append("{} {}  create a new team".format(pointer, i + 1))
     elif model.stage == "name":
-        lines.append("Team name ([a-z][a-z0-9_-]{0,14}; normalized on Enter, Esc back)")
-        if model.existing_teams:
-            lines.append("existing: {}  (type one to add the selected agents to it)".format(", ".join(model.existing_teams)))
+        lines.append("New team name ([a-z][a-z0-9_-]{0,14}; normalized on Enter, Esc back)")
         lines.append(INPUT_PROMPT + model.input)
+        has_input = True
     elif model.stage == "charter":
         lines.append("Charter for {} (Enter adds a line, empty line or Alt+Enter finishes, Tab skips, Ctrl-O loads a file)".format(model.team_name))
         for line in model.charter_lines:
             lines.append("  " + line)
         lines.append(INPUT_PROMPT + model.input)
+        has_input = True
     elif model.stage == "members":
         rows = selected_rows(model)
         row = rows[min(model.member_index, len(rows) - 1)]
         joining = " (adding to team {})".format(model.team_name) if model.mode == "add" else ""
         lines.append("Member {}/{}: {} {} {}{}".format(model.member_index + 1, len(rows), row.pane_id, row.kind or "?", row.name or "(unnamed)", joining))
-        prompt = {"role": "role", "name": "name (default {}-<role>)".format(model.team_name), "brief": "brief (optional, Enter to skip)"}[model.member_field]
+        lines.append("Enter accepts the value shown, Ctrl-U clears it, Esc goes back")
+        prompt = {"role": "role", "name": "name", "brief": "brief for {} (optional)".format(row.member_name or "this member")}[model.member_field]
         lines.append(prompt + ":")
         lines.append(INPUT_PROMPT + model.input)
+        has_input = True
     elif model.stage == "confirm":
         if model.mode == "add":
             count = len(selected_rows(model))
@@ -2370,10 +2462,16 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
             lines.append("charter: {}".format(headline(model.charter, 60) if model.charter else "(none, set later with charter set)"))
         for row in selected_rows(model):
             lines.append("  {:<8} {:<10} {:<14} {}{}".format(row.pane_id, row.kind or "?", row.role, row.member_name, "  brief: " + headline(row.brief, 30) if row.brief else ""))
+        if model.trusted_kinds is not None:
+            untrusted = sorted({str(row.kind) for row in selected_rows(model) if row.kind and row.kind not in model.trusted_kinds})
+            for kind in untrusted:
+                lines.append("note: {} is not trusted for delivery yet; nothing is typed into it until you run: herdr-team kinds trust {}".format(kind, kind))
     if model.error:
         lines.append("error: {}".format(model.error))
     elif model.status:
         lines.append(model.status)
+    if has_input and len(lines) > height:
+        lines = lines[-height:]  # the input line and its message must stay on screen
     return [truncate_columns(line, width) for line in lines[:height]]
 
 

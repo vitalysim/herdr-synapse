@@ -62,8 +62,14 @@ class GrammarTests(unittest.TestCase):
 
     def test_role_grammar(self) -> None:
         self.assertEqual(roster.validate_role("reviewer"), "reviewer")
-        self.assertEqual(roster.validate_role("a" * 14), "a" * 14)
-        for bad in ("a" * 15, "Reviewer", "", "human", "codex", "me"):
+        self.assertEqual(roster.validate_role("a" * 32), "a" * 32)
+        self.assertEqual(roster.validate_role("opencode-dev-ideation"), "opencode-dev-ideation")
+        self.assertEqual(roster.derive_name("red-dev", "opencode-dev-ideation-and-more"), "red-dev-ideation-and-more")
+        self.assertEqual(roster.fit_member_name("red-dev", "opencode-dev-brainstormer"), "red-dev-brainstormer")
+        self.assertEqual(roster.fit_member_name("red-dev", "opencode-dev"), "red-dev-opencode-dev")  # fits: untouched
+        self.assertEqual(roster.fit_member_name("red-dev", "a" * 32), "red-dev-" + "a" * 24)  # one oversized segment: clipped
+        self.assertEqual(roster.fit_member_name("alpha", "codex-reviewer-of-everything"), "alpha-reviewer-of-everything")  # 34 chars: the kind label goes first
+        for bad in ("a" * 33, "Reviewer", "", "human", "codex", "me"):
             with self.assertRaises(HerdrTeamError) as ctx:
                 roster.validate_role(bad)
             self.assertEqual(ctx.exception.code, "role_invalid")

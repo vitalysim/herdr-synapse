@@ -1,4 +1,4 @@
-"""The team-up picker adds agents to an existing team when its name is typed at the name stage."""
+"""The team-up picker: after selecting agents, a numbered target stage adds them to an existing team or creates a new one."""
 
 from __future__ import annotations
 
@@ -21,15 +21,24 @@ class PickerAddModeTests(unittest.TestCase):
         picker_apply_key(model, "ENTER")
         return model
 
-    def test_existing_team_name_switches_to_add_mode(self):
+    def test_the_target_stage_offers_existing_teams_by_number(self):
         model = self.model()
-        self.assertEqual(model.stage, "name")
-        self.assertTrue(any("existing: alpha" in line for line in tui_model.picker_lines(model, 100, 24)))
-        type_line(model, "alpha")
-        picker_apply_key(model, "ENTER")
+        model.existing_team_sizes = {"alpha": 2}
+        self.assertEqual(model.stage, "target")
+        lines = tui_model.picker_lines(model, 100, 24)
+        self.assertEqual(lines[0], "1 agent selected. What now? (type a number, or ↑/↓ and Enter; Esc back)")
+        self.assertEqual(lines[1], "> 1  add it to team alpha  (2 members)")
+        self.assertEqual(lines[2], "  2  create a new team")
+        picker_apply_key(model, "7")
+        self.assertIn("between 1 and 2", model.error)
+        self.assertEqual(model.stage, "target")
+        picker_apply_key(model, "DOWN")
+        self.assertTrue(tui_model.picker_lines(model, 100, 24)[2].startswith("> 2"))
+        picker_apply_key(model, "UP")
+        picker_apply_key(model, "1")
         self.assertEqual((model.stage, model.mode, model.team_name), ("members", "add", "alpha"))
         self.assertIsNone(model.error)
-        self.assertIn("adding to team alpha", model.status)
+        self.assertIn("adding 1 agent to team alpha", model.status)
         self.assertIn("(adding to team alpha)", tui_model.picker_lines(model, 100, 24)[0])
         picker_apply_key(model, "ENTER")  # default role
         self.assertTrue(model.input.startswith("alpha-"))  # default name <team>-<role>
@@ -50,16 +59,113 @@ class PickerAddModeTests(unittest.TestCase):
         self.assertEqual(picker.add_args(spec, member), ["add", "alpha", "w1:p3", "--role", member["role"], "--as", member["name"], "--brief", "Review every patch."])
         self.assertEqual(picker.add_args(spec, dict(member, brief=None))[-2:], ["--as", member["name"]])
 
-    def test_escape_from_the_first_member_returns_to_the_name_stage(self):
+    def test_escape_and_the_create_choice_reach_the_name_stage(self):
         model = self.model()
-        type_line(model, "alpha")
-        picker_apply_key(model, "ENTER")
+        picker_apply_key(model, "ENTER")  # the highlighted row is "add to team alpha"
+        self.assertEqual((model.stage, model.mode), ("members", "add"))
         picker_apply_key(model, "ESC")
-        self.assertEqual((model.stage, model.input), ("name", "alpha"))
+        self.assertEqual(model.stage, "target")
+        picker_apply_key(model, "2")
+        self.assertEqual((model.stage, model.mode), ("name", "create"))
+        self.assertTrue(tui_model.picker_lines(model, 100, 24)[0].startswith("New team name"))
+        picker_apply_key(model, "ESC")
+        self.assertEqual(model.stage, "target")
+        picker_apply_key(model, "2")
         type_line(model, "fresh")
         picker_apply_key(model, "ENTER")
         self.assertEqual((model.stage, model.mode, model.team_name), ("charter", "create", "fresh"))
         self.assertEqual(tui_model.create_spec(model)["mode"], "create")
+        # typing an existing team's name at the name stage still adds (the same as choosing its row)
+        picker_apply_key(model, "ESC")
+        type_line(model, "alpha")
+        picker_apply_key(model, "ENTER")
+        self.assertEqual((model.stage, model.mode, model.team_name), ("members", "add", "alpha"))
+        # without any existing team the selection goes straight to the name stage
+        fresh = picker_model(focused=None)
+        fresh.cursor = [r.pane_id for r in tui_model.visible_rows(fresh)].index("w1:p3")
+        picker_apply_key(fresh, " ")
+        picker_apply_key(fresh, "ENTER")
+        self.assertEqual(fresh.stage, "name")
+
+    def test_input_follows_its_prompt_and_the_cursor_sits_on_it(self):
+        model = self.model()
+        self.assertIsNone(tui_model.picker_cursor(model, tui_model.picker_lines(model, 100, 24), 100))  # list stage: no cursor
+        picker_apply_key(model, "1")
+        lines = tui_model.picker_lines(model, 100, 24)
+        self.assertEqual(lines[1], "Enter accepts the value shown, Ctrl-U clears it, Esc goes back")
+        self.assertEqual(lines[2], "role:")
+        self.assertTrue(lines[3].startswith(tui_model.INPUT_PROMPT + "codex-dev"))
+        self.assertTrue(lines[4].startswith("adding 1 agent to team alpha"))
+        width = tui_model.display_width
+        self.assertEqual(tui_model.picker_cursor(model, lines, 100), (3, width(tui_model.INPUT_PROMPT) + width("codex-dev")))
+        picker_apply_key(model, "LEFT")
+        picker_apply_key(model, "LEFT")
+        self.assertEqual(tui_model.picker_cursor(model, tui_model.picker_lines(model, 100, 24), 100), (3, width(tui_model.INPUT_PROMPT) + width("codex-dev") - 2))
+        picker_apply_key(model, "END")
+        type_line(model, "Bad Role")
+        picker_apply_key(model, "ENTER")
+        lines = tui_model.picker_lines(model, 100, 24)
+        self.assertEqual(lines[2], "role:")
+        self.assertTrue(lines[3].startswith(tui_model.INPUT_PROMPT + "Bad Role"))
+        self.assertTrue(lines[4].startswith("error: role"))  # the message comes after what was typed
+        self.assertEqual(tui_model.picker_cursor(model, lines, 100)[0], 3)
+        type_line(model, "tester")
+        picker_apply_key(model, "ENTER")
+        lines = tui_model.picker_lines(model, 100, 24)
+        self.assertEqual(lines[2], "name:")
+        self.assertTrue(lines[3].startswith(tui_model.INPUT_PROMPT + "alpha-tester"))
+        picker_apply_key(model, "ENTER")
+        self.assertEqual(tui_model.picker_lines(model, 100, 24)[2], "brief for alpha-tester (optional):")
+        # a short popup keeps the input line and its message on screen
+        short = tui_model.picker_lines(model, 100, 3)
+        self.assertEqual(len(short), 3)
+        self.assertTrue(any(line.startswith(tui_model.INPUT_PROMPT) for line in short))
+        self.assertIsNotNone(tui_model.picker_cursor(model, short, 100))
+
+    def test_long_roles_are_accepted_and_the_default_name_still_fits(self):
+        model = self.model()
+        picker_apply_key(model, "1")
+        type_line(model, "opencode-dev-ideation-and-review")  # 32 characters
+        picker_apply_key(model, "ENTER")
+        self.assertIsNone(model.error)
+        self.assertEqual(model.member_field, "name")
+        self.assertEqual(model.input, "alpha-ideation-and-review")  # <team>-<role> too long: the generic lead of the role is dropped
+        self.assertLessEqual(len(model.input), 32)
+        picker_apply_key(model, "ESC")
+        type_line(model, "a" * 33)
+        picker_apply_key(model, "ENTER")
+        self.assertIn("up to 32 characters (yours is 33 characters)", model.error)
+        type_line(model, "1st-reviewer")
+        picker_apply_key(model, "ENTER")
+        self.assertIn("start with a lowercase letter", model.error)
+        type_line(model, "ux review")
+        picker_apply_key(model, "ENTER")
+        self.assertIn("no spaces", model.error)
+        type_line(model, "Ideation")  # the picker lowercases what you type
+        picker_apply_key(model, "ENTER")
+        self.assertIsNone(model.error)
+        self.assertEqual(model.member_field, "name")
+
+    def test_confirm_screen_flags_kinds_the_daemon_may_not_type_into(self):
+        def confirm(trusted):
+            model = self.model()
+            model.trusted_kinds = trusted
+            picker_apply_key(model, "1")
+            for _ in range(3):
+                picker_apply_key(model, "ENTER")  # role, name, brief defaults
+            self.assertEqual(model.stage, "confirm")
+            return "\n".join(tui_model.picker_lines(model, 120, 24))
+
+        self.assertIn("note: codex is not trusted for delivery yet; nothing is typed into it until you run: herdr-team kinds trust codex", confirm({"claude"}))
+        self.assertNotIn("note:", confirm({"codex", "claude"}))
+        self.assertNotIn("note:", confirm(None))
+        from support import TempState
+        from herdr_team import store
+        with TempState() as ts:
+            self.assertEqual(picker.trusted_kinds(ts.layout), set())
+            store.write_json(ts.session.kinds_json, {"codex": {"trusted": True}, "pi": {"verified": False}})
+            self.assertEqual(picker.trusted_kinds(ts.layout), {"codex"})
+            self.assertIsNone(picker.trusted_kinds(None))
 
     def test_execute_add_runs_one_add_per_member_and_stops_at_the_first_refusal(self):
         calls = []

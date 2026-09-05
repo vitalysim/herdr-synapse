@@ -5,9 +5,9 @@
 ``a`` selects all; then team name, charter (multi-line, ``Ctrl-O`` loads a
 file), per member role, name, and brief; confirm screen; the popup exits
 and the action performs create, rename, label, tokens, briefing jobs, view.
-Typing the name of an existing team at the name stage switches to ``add``
-mode: the charter stage is skipped and the selected agents join that team
-through one ``herdr-team add`` each.
+When teams exist, a target stage follows the selection: a numbered list of
+"add to team X" rows and "create a new team". Adding skips the charter stage
+and joins the selected agents through one ``herdr-team add`` each.
 Esc and Ctrl-C exit; 10 min idle watchdog; refreshes on ``who.json``.
 
 The state machine lives in ``tui_model`` (``PickerModel``,
@@ -25,7 +25,7 @@ import json
 import os
 import sys
 import time
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Set
 
 from herdr_team import paths as _paths
 from herdr_team import store
@@ -81,8 +81,22 @@ def build_model(api: Any, context: Dict[str, Any], layout: Optional[Layout] = No
     model = PickerModel(rows=rows, focused_workspace=focused)
     model.live_names = {str(a.get("name")) for a in agents if a.get("name")}
     model.existing_teams = sorted(rosters)
+    model.existing_team_sizes = {team: len([m for m in members if m.get("kind") != "human" and m.get("status") != "left"]) for team, members in rosters.items()}
+    model.trusted_kinds = trusted_kinds(layout)
     model.scope_workspace = focused if focused and any(r.workspace_id == focused for r in rows) else None
     return model
+
+
+def trusted_kinds(layout: Optional[Layout]) -> Optional[Set[str]]:
+    """Kinds ``kinds.json`` lets the daemon type into; None without a session (the confirm screen then says nothing)."""
+    if layout is None:
+        return None
+    from herdr_team import roster as _roster
+
+    doc = store.read_json(layout.session.kinds_json, default=None)
+    if not isinstance(doc, dict):
+        return set()
+    return {str(kind) for kind in doc if _roster.kind_trusted(doc, str(kind))}
 
 
 def refresh_rows(model: PickerModel, api: Any, layout: Optional[Layout]) -> None:
@@ -97,6 +111,7 @@ def refresh_rows(model: PickerModel, api: Any, layout: Optional[Layout]) -> None
     model.rows = fresh.rows
     model.live_names = fresh.live_names
     model.existing_teams = fresh.existing_teams
+    model.existing_team_sizes = fresh.existing_team_sizes
     model.cursor = min(model.cursor, max(0, len(tui_model.visible_rows(model)) - 1))
 
 
@@ -169,9 +184,15 @@ def _loop(stdscr: Any, model: PickerModel, api: Any, layout: Optional[Layout]) -
         while True:
             height, width = stdscr.getmaxyx()
             lines = tui_model.picker_lines(model, width, height)
+            cursor = tui_model.picker_cursor(model, lines, width)
             if pending_path is not None:
                 lines = lines[: max(0, height - 1)] + ["file path: " + pending_path]
-            draw_lines(stdscr, lines, (min(len(lines), height) - 1, min(width - 1, tui_model.display_width(lines[-1]) if lines else 0)))
+                cursor = (len(lines) - 1, min(width - 1, tui_model.display_width(lines[-1])))
+            try:
+                curses.curs_set(1 if cursor is not None else 0)  # no stray cursor on the list stages
+            except curses.error:
+                pass
+            draw_lines(stdscr, lines, cursor)
             key = read_key(stdscr)
             if key is None:
                 if time.monotonic() - last_key > IDLE_WATCHDOG_S:

@@ -180,8 +180,8 @@ class NameGrammarTests(unittest.TestCase):
 
     def test_role_grammar(self):
         self.assertEqual(sanitize.sanitize_role("reviewer"), "reviewer")
-        self.assertEqual(sanitize.sanitize_role("a" * 14), "a" * 14)
-        for name in ("a" * 15, "Reviewer", "codex", "human", "qoder"):
+        self.assertEqual(sanitize.sanitize_role("a" * 32), "a" * 32)
+        for name in ("a" * 33, "Reviewer", "codex", "human", "qoder"):
             with self.subTest(name):
                 with self.assertRaises(HerdrTeamError) as ctx:
                     sanitize.sanitize_role(name)

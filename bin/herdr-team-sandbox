@@ -147,7 +147,7 @@ status() {
 
 case "${1:-}" in
   prepare) prepare ;;
-  start) start ;;
+  start) shift; start "$@" ;;
   attach) exec_clean herdr session attach "$SESSION" ;;
   status) status ;;
   herdr) shift; in_session herdr "$@" ;;

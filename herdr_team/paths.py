@@ -69,7 +69,7 @@ DEFAULT_APP_DIR = "herdr"
 SESSIONS_DIR = "sessions"
 
 TEAM_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,14}\Z")
-ROLE_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,13}\Z")
+ROLE_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}\Z")
 SESSION_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}\Z")
 #: Herdr terminal ids look like ``term_...``; keep file names strictly safe.
 TERMINAL_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}\Z")

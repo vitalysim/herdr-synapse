@@ -7,7 +7,7 @@ Plan sections 5.1, 5.3, 5.4, 5.5 and 4.2.
 Member ``status`` in ``active|starting|missing|unbound|left|kind_changed|
 name_conflict|failed``; ``delivery`` in ``nudge|hooks``.
 
-Names: team ``[a-z][a-z0-9_-]{0,14}``, role ``[a-z][a-z0-9_-]{0,13}``,
+Names: team ``[a-z][a-z0-9_-]{0,14}``, role ``[a-z][a-z0-9_-]{0,31}``,
 derived member name ``<team>-<role>`` (29 chars max so ``-2`` fits under
 Herdr's 32-char cap). Reserved: ``{human, all, me, none, system, team}``
 plus every agent kind label and alias Herdr knows. Validate every name
@@ -350,7 +350,14 @@ def validate_role(role: str, allow_kind_label: bool = False) -> str:
     Reserved words (``human``, ``all``, ``me`` ...) are refused always.
     """
     if not isinstance(role, str) or not ROLE_NAME_RE.match(role):
-        raise HerdrTeamError("role_invalid", "role must match [a-z][a-z0-9_-]{0,13}", EXIT_REFUSED, {"role": role})
+        text = role if isinstance(role, str) else ""
+        if len(text) > 32:
+            detail = "yours is {} characters".format(len(text))
+        elif not text or not ("a" <= text[0] <= "z"):
+            detail = "it must start with a lowercase letter"
+        else:
+            detail = "no spaces or other characters"
+        raise HerdrTeamError("role_invalid", "role: lowercase letters, digits, - and _, up to 32 characters ({})".format(detail), EXIT_REFUSED, {"role": role})
     reason = _reserved_reason(role)
     if reason and (not allow_kind_label or reason == "reserved word"):
         raise HerdrTeamError("role_invalid", "role {!r} is a {}".format(role, reason), EXIT_REFUSED, {"role": role, "reason": reason})
@@ -372,6 +379,29 @@ def validate_member_name(name: str) -> str:
     return name
 
 
+#: Leading role segments dropped first when ``<team>-<role>`` must be shortened: kind labels and the default suffix.
+GENERIC_ROLE_SEGMENTS = frozenset({"dev", "agent"})
+
+
+def fit_member_name(team: str, role: str, cap: int = 32) -> str:
+    """``<team>-<role>`` when it fits ``cap``; otherwise the role loses leading segments, most generic first.
+
+    ``red-dev`` + ``opencode-dev-brainstormer`` is 33 characters; a cut mid-word
+    gave ``red-dev-opencode-dev-brainstorme``. Dropping leading segments until
+    it fits, then the generic ones (kind labels, ``dev``), gives
+    ``red-dev-brainstormer``. A single oversized segment is hard-clipped.
+    """
+    full = "{}-{}".format(team, role)
+    if len(full) <= cap:
+        return full
+    segments = [s for s in role.split("-") if s]
+    while len(segments) > 1 and len("{}-{}".format(team, "-".join(segments))) > cap:
+        segments.pop(0)
+    while len(segments) > 1 and (segments[0] in GENERIC_ROLE_SEGMENTS or segments[0] in KIND_LABELS):
+        segments.pop(0)
+    return "{}-{}".format(team, "-".join(segments))[:cap].rstrip("-_")
+
+
 def derive_name(team: str, role: str, naming: str = "prefixed") -> str:
     """``<team>-<role>`` (or ``<role>`` with plain naming), validated.
 
@@ -383,7 +413,8 @@ def derive_name(team: str, role: str, naming: str = "prefixed") -> str:
     validate_role(role, allow_kind_label=(naming != "plain"))
     if naming == "plain":
         return validate_member_name(role)
-    return validate_member_name("{}-{}".format(team, role))
+    # A long role still gets a valid, readable default (``fit_member_name``).
+    return validate_member_name(fit_member_name(team, role))
 
 
 def suffixed_name(name: str, ordinal: int) -> str:
@@ -414,7 +445,7 @@ def label_for(team: str, role: str) -> str:
     return "team:{}/{}".format(team, role)
 
 
-_LABEL_RE = re.compile(r"^team:([a-z][a-z0-9_-]{0,14})/([a-z][a-z0-9_-]{0,13})\Z")
+_LABEL_RE = re.compile(r"^team:([a-z][a-z0-9_-]{0,14})/([a-z][a-z0-9_-]{0,31})\Z")
 
 
 def parse_label(label: Optional[str]) -> Optional[Tuple[str, str]]:

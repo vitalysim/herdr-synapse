@@ -33,7 +33,7 @@ holds `daemon.json`, `daemon.log`, `who.json`, `kinds.json`, `view.json`,
 | --- | --- | --- |
 | Create from live agents | `prefix+t` picker (section 7) | `herdr-team create <team> --member <pane\|name>[:<role>[:<name>]] … [--charter "…"\|--charter-file p] [--ref p] [--brief NAME=TEXT]… [--names plain] [--rename] [--reuse] [--use]` |
 | Create from every agent in a Space | picker: `w` then `a` | `create <team> --from-workspace <ws-id>`: waits up to 60 s for agents still launching and warns about the rest |
-| Add agents to an existing team | picker: select the agents, then type the existing team's name at the name stage (the stage lists them); the charter stage is skipped, role, name, and brief are asked per agent, the confirm screen reads `Add N agents to team <t>?` | `herdr-team add <team> <pane\|name> [--role <r>] [--as <name>] [--brief "…"]`, one per agent; each new member is briefed once idle |
+| Add agents to an existing team | picker: select the agents, Enter; when teams exist a numbered choice follows (`1  add it to team <t>  (N members)`, last number `create a new team`; type the number or move with the arrows); adding skips the charter stage, asks role, name, and brief per agent, and confirms with `Add N agents to team <t>?`; every other member is nudged with a `member_joined` record and the newcomer is briefed. A kind that is not trusted yet (`kinds list`) is flagged on the confirm screen and by `add` (`kind_trusted: false`, a warning): nothing is typed into it until `herdr-team kinds trust <kind>` | `herdr-team add <team> <pane\|name> [--role <r>] [--as <name>] [--brief "…"]`, one per agent; each new member is briefed once idle |
 | Create from scratch | | `create <team> --new [--workspace ID] --spawn <role>:<kind>[:<cwd>] …` lays out the panes and starts the agents |
 | Add a member later | | `add <team> <pane\|name> [--role r] [--as name] [--brief TEXT] [--rename] [--steal]` |
 | Remove, leave | console `/remove name` (asks y/n) | `remove <team> <name> [--keep-name]` (clears tokens and label, clears the Herdr name unless `--keep-name`, keeps a tombstone); `leave` from the member's own pane |
@@ -43,7 +43,7 @@ holds `daemon.json`, `daemon.log`, `who.json`, `kinds.json`, `view.json`,
 
 Rules you will see enforced: an agent belongs to one team at a time
 (`member_claimed` unless `--steal`); team names match `[a-z][a-z0-9_-]{0,14}`;
-roles `[a-z][a-z0-9_-]{0,13}`; every name is validated before anything is
+roles `[a-z][a-z0-9_-]{0,31}` (when `<team>-<role>` is over 32 the default member name drops the role's leading segments, kind labels and `dev` first: `red-dev` + `opencode-dev-brainstormer` gives `red-dev-brainstormer`); every name is validated before anything is
 renamed or written, so a failed create leaves nothing behind. Under the
 default naming a role may equal a kind label (`t-claude`); with `--names
 plain` the default role becomes `agent`, `agent2`, … because a member name

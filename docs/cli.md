@@ -586,9 +586,9 @@ entrypoint as a popup started on its roster box (`HERDR_TEAM_CONSOLE_VIEW=who`
 in the pane env). `ui picker` runs `ensure_daemon()` first unless
 `HERDR_TEAM_NO_DAEMON=1`. JSON `{"ui":"picker","opened":true,"placement":"popup|split|tab","pane_id":"…"|null,"fallback":"console"|null,"retried":bool}`;
 `ui close` → `{"ui":"close","closed":true}`. Registered by `cmd_ui.py`
-together with the pane entrypoints below. In the picker, typing the name of
-an existing team at the name stage adds the selected agents to it (one `add`
-per agent, the charter untouched) instead of refusing the name.
+together with the pane entrypoints below. In the picker, when teams already
+exist, a numbered choice follows the selection: `add it to team <t>` per team
+(one `add` per agent, the charter untouched) or `create a new team`.
 
 Opening the console entrypoint stamps `launched_at` in `console.json`
 (section 10). `doctor` and `daemon start` close a pane labelled `Team
