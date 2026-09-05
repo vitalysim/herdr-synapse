@@ -838,6 +838,16 @@ class Registry(unittest.TestCase):
         spec = cmd_roster.parse_member_spec("alice-agent:worker")
         self.assertEqual((spec.target, spec.role, spec.name), ("alice-agent", "worker", None))
 
+    def test_member_spec_accepts_base36_pane_ids(self):
+        # M5 rig: the tenth pane of a workspace is ``w1:pA``; ``w1:pA:a:f2`` used to be read as
+        # target ``w1`` with three trailing parts and refused with a usage error.
+        spec = cmd_roster.parse_member_spec("w1:pA:a:f2")
+        self.assertEqual((spec.target, spec.role, spec.name), ("w1:pA", "a", "f2"))
+        spec = cmd_roster.parse_member_spec("wA:pF")
+        self.assertEqual((spec.target, spec.role, spec.name), ("wA:pF", None, None))
+        spec = cmd_roster.parse_member_spec("w1:pB:worker")
+        self.assertEqual((spec.target, spec.role, spec.name), ("w1:pB", "worker", None))
+
 
 if __name__ == "__main__":
     unittest.main()

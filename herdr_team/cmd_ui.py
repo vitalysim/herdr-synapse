@@ -60,7 +60,11 @@ def open_params(target: str, target_pane: Optional[str], env: Dict[str, str], te
     params: Dict[str, Any] = {"plugin_id": PLUGIN_ID, "entrypoint": entrypoint, "focus": True}
     if pane_env:
         params["env"] = pane_env
-    if target_pane:
+    if target_pane and PLACEMENTS.get(target, "popup") != "popup":
+        # HP-07 (2026-09-05, Herdr 0.8.2): ``plugin.pane.open`` rejects ``target_pane_id`` for a
+        # popup with ``invalid_params`` ("overlay and popup plugin panes target the active pane"),
+        # which is not retryable and skipped the "popup already open" retry. ``--target-pane`` for
+        # a popup target names the console fallback split only.
         params["target_pane_id"] = target_pane
     if target == "who":
         params["placement"] = "popup"
@@ -74,8 +78,13 @@ def _is_retryable(err: HerdrTeamError) -> bool:
     return "popup already open" in text or "too small" in text or "busy" in text
 
 
-def open_pane(api: Any, target: str, target_pane: Optional[str], env: Dict[str, str], team: Optional[str], retry: bool = True, sleep: Any = time.sleep) -> Dict[str, Any]:
-    """Open ``target``; retry once, then fall back to the console with an explicit target pane."""
+def open_pane(api: Any, target: str, target_pane: Optional[str], env: Dict[str, str], team: Optional[str], retry: bool = True, sleep: Any = time.sleep, layout: Any = None) -> Dict[str, Any]:
+    """Open ``target``; retry once, then fall back to the console with an explicit target pane.
+
+    With ``layout`` the fallback first looks for the live console (plan 7.3, single writer) and
+    focuses it instead of opening a second one; HP-07 (2026-09-05) opened a second console pane and
+    overwrote ``console.json`` so the first console's posts became ``cli-unverified``.
+    """
     params = open_params(target, target_pane, env, team)
     retried = False
     last: Optional[HerdrTeamError] = None
@@ -92,6 +101,10 @@ def open_pane(api: Any, target: str, target_pane: Optional[str], env: Dict[str, 
     assert last is not None
     if target == "console":
         raise last
+    if layout is not None:
+        live_pane = focus_live_console(api, layout)
+        if live_pane is not None:
+            return {"ui": target, "opened": False, "focused": True, "placement": "split", "pane_id": live_pane, "fallback": "console", "retried": retried, "error": last.to_json()}
     fallback_pane = target_pane or env.get("HERDR_PANE_ID")
     if not fallback_pane:
         raise last
@@ -102,6 +115,34 @@ def open_pane(api: Any, target: str, target_pane: Optional[str], env: Dict[str, 
     except HerdrTeamError:
         raise last
     return {"ui": target, "opened": True, "placement": "split", "pane_id": plugin_pane_id(result), "fallback": "console", "retried": retried, "error": last.to_json()}
+
+
+def focus_live_console(api: Any, layout: Any) -> Optional[str]:
+    """Focus the live console recorded in ``console.json`` and return its current pane id, else None.
+
+    Plan 7.3: a second open locates the console by ``terminal_id`` (pane ids change on move) and
+    calls ``plugin.pane.focus``; the console is single-writer, so nothing may open a second one
+    while this one is alive.
+    """
+    from herdr_team.cmd_board import read_console_json
+
+    try:
+        console = read_console_json(layout.session)
+    except (HerdrTeamError, OSError):
+        return None
+    if not (console.get("open") and _pid_alive(console.get("pid"))):
+        return None
+    try:
+        live = find_console_pane(api, console)
+    except HerdrTeamError:
+        return None
+    if live is None or not isinstance(live.get("pane_id"), str):
+        return None
+    try:
+        api.request("plugin.pane.focus", {"pane_id": live["pane_id"]})
+    except HerdrTeamError:
+        return None
+    return str(live["pane_id"])
 
 
 CONSOLE_TITLE = "Team console"
@@ -325,22 +366,16 @@ def _run_ui(args: argparse.Namespace) -> int:
             pass
     if target == "console":
         # Plan 7.3: a second open locates the console by terminal_id and focuses it (single writer).
-        from herdr_team.cmd_board import read_console_json
-
-        console = read_console_json(layout.session)
-        if console.get("open") and _pid_alive(console.get("pid")):
-            live = find_console_pane(api, console)
-            if live is not None and isinstance(live.get("pane_id"), str):
-                try:
-                    api.request("plugin.pane.focus", {"pane_id": live["pane_id"]})
-                    return emit(args, {"ui": "console", "opened": False, "focused": True, "placement": "split", "pane_id": live["pane_id"], "fallback": None, "retried": False}, "console already open in {}; focused".format(live["pane_id"]))
-                except HerdrTeamError:
-                    pass
-    payload = open_pane(api, target, getattr(args, "target_pane", None), env, team, retry=not getattr(args, "no_retry", False))
-    if target in ("console", "who") or payload.get("fallback") == "console":
+        live_pane = focus_live_console(api, layout)
+        if live_pane is not None:
+            return emit(args, {"ui": "console", "opened": False, "focused": True, "placement": "split", "pane_id": live_pane, "fallback": None, "retried": False}, "console already open in {}; focused".format(live_pane))
+    payload = open_pane(api, target, getattr(args, "target_pane", None), env, team, retry=not getattr(args, "no_retry", False), layout=layout)
+    if payload.get("opened") and (target in ("console", "who") or payload.get("fallback") == "console"):
         record_console_launch(layout)  # protects the booting pane from reconcile_console's close rule
     human = "{} opened ({})".format(target, payload["placement"])
-    if payload.get("fallback"):
+    if payload.get("fallback") and payload.get("focused"):
+        human = "{} popup failed; live console {} focused instead".format(target, payload["pane_id"])
+    elif payload.get("fallback"):
         human += "; popup failed, console opened in a split instead"
     return emit(args, payload, human)
 

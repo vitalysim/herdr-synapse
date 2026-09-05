@@ -107,6 +107,8 @@ BRIEF_ACK_S = 90.0
 DIALOG_TOAST_AFTER_S = 600.0
 TOAST_RETRY_BUSY_S = 1.1
 TOAST_GIVE_UP_S = 30.0
+#: How long the ``disabled`` verdict is trusted before one more ``notification.show`` probe.
+TOAST_DISABLED_RECHECK_S = 60.0
 TOAST_RETRY_NO_CLIENT_S = 15.0
 TOAST_GLOBAL_INTERVAL_S = 1.0
 KIND_UNVERIFIED_TOAST_S = 3600.0
@@ -956,8 +958,16 @@ class Pending:
     follow_up_due: bool = False
     #: The one immediate follow-up of this landing schedule was spent (gate 11); a regular landing resets it.
     follow_up_used: bool = False
+    #: Board seqs addressed to the member while this briefing was pending (HP-10, 2026-09-05: they were
+    #: dropped and never nudged); they become a nudge when the briefing is acknowledged or given up.
+    deferred_seqs: List[int] = field(default_factory=list)
+    deferred_authors: Set[str] = field(default_factory=set)
+    deferred_urgent: bool = False
     #: The member's cursor as re-read right before the last ``agent.prompt`` (becomes ``last_nudge_cursor_seq``).
     gate_cursor: Optional[int] = None
+    #: When the newest seq joined this nudge; the send waits ``burst_window_ms`` after it so a same-second
+    #: burst becomes one nudge covering the range (plan 12; M5 ND-03: five posts used to yield "1 new post").
+    last_added_ms: Optional[float] = None
     #: Cursor file state at the briefing's landing; an ack is a *later* cursor write at or past ``brief_seq``.
     brief_cursor_updated: Optional[str] = None
     #: A probe that jumped the queue keeps the briefing or nudge it displaced here and puts it back when done.
@@ -973,6 +983,8 @@ class MemberRuntime:
     last_headline: Optional[str] = None
     last_post: Optional[Dict[str, Any]] = None
     kind_unverified_toast_ms: Optional[float] = None
+    #: Last toast for a gate 3 / gate 11 hold (``kind_mismatch``, ``pair_budget``): one per (member, reason) per hour.
+    hold_toast_ms: Dict[str, float] = field(default_factory=dict)
     brief_landed_ms: Optional[float] = None
     brief_seq: Optional[int] = None
     rebriefed: bool = False
@@ -1103,6 +1115,11 @@ class Daemon:
         self.pair_exchanges: Dict[Tuple[str, str], List[float]] = {}
         self.notifications: List[Notification] = []
         self.toasts_disabled = False
+        #: When ``notification.show`` answered ``disabled``: the latch time and the ``[ui.toast] delivery``
+        #: read then. HP-14 (2026-09-05): the latch was permanent, so ``herdr server reload-config`` that
+        #: turned toasts back on was never noticed; now a changed delivery or 60 s lifts it for one probe.
+        self.toasts_disabled_ms: Optional[float] = None
+        self.toasts_disabled_delivery: Optional[str] = None
         self.next_toast_ms = 0.0
         self.who_dirty = True
         self.last_who_ms: Optional[float] = None
@@ -1591,6 +1608,90 @@ class Daemon:
         cursors = [read_cursor_seq(team.paths, str(m.get("name"))) for m in team.members() if m.get("terminal_id")]
         team.tailer = store.BoardTailer(team.paths, start_seq=min(cursors) if cursors else 0)
         team.watermark = team.tailer.watermark_seq
+        self._rebuild_pending(team)
+
+    def _rebuild_pending(self, team: TeamState) -> None:
+        """Cold start: unread posts the previous daemon had already tailed become pending again.
+
+        ``notifier/state.json`` resumes the tail *after* the last ingested seq,
+        so work the old process held only in memory (a post inside its stable
+        window, a landed-but-unread nudge) would never be nudged again (M5
+        ND-12: a post made 0.2 s before SIGTERM was lost). Records the ledger
+        shows as landed keep that landing, so the 2/5/10 min re-nudge schedule
+        applies instead of an immediate duplicate. Human toasts are not
+        replayed: the attention mirror already has them.
+        """
+        now = self.now_ms()
+        cursors: Dict[str, Tuple[int, Set[int]]] = {}
+        for member in team.members():
+            if member.get("kind") != "human" and member.get("terminal_id"):
+                cursors[str(member["name"])] = read_cursor_state(team.paths, str(member["name"]))
+        if not cursors or team.watermark <= 0:
+            return
+        floor = min(c[0] for c in cursors.values())
+        if floor >= team.watermark:
+            return
+        try:
+            records = store.BoardStore(team.paths).read(since_seq=floor, include_retracted=True)
+        except HerdrTeamError as err:
+            self.log("{}: pending rebuild skipped: {}".format(team.name, err))
+            return
+        records = [r for r in records if isinstance(r.get("seq"), int) and r["seq"] <= team.watermark]
+        retracted = {r["retracts"] for r in records if isinstance(r.get("retracts"), int)}
+        team.retracted.update(retracted)
+        added: Dict[str, List[int]] = {}
+        for rec in records:
+            seq = int(rec["seq"])
+            if seq in retracted or rec.get("kind") == "retract" or isinstance(rec.get("retracts"), int) or not self._counts_for_nudges(rec):
+                continue
+            author = str(rec.get("from"))
+            urgent = bool(rec.get("urgent"))
+            targets: List[str] = []
+            if author == "system":
+                if rec.get("event") == "charter_updated" and urgent:
+                    targets = list(cursors)
+            else:
+                for target in rec.get("to", []) or []:
+                    if not isinstance(target, str) or target == author or target == "human":
+                        continue
+                    if target == "all":
+                        if urgent:
+                            targets.extend(cursors)
+                        continue
+                    recipient = team.member(target) or team.member_by_retired_name(target)
+                    if recipient is not None:
+                        targets.append(str(recipient.get("name")))
+            for name in targets:
+                if name == author or name not in cursors:
+                    continue
+                cursor, seen = cursors[name]
+                if seq <= cursor or seq in seen:
+                    continue
+                self._add_pending(team, name, seq, urgent, author, now)
+                added.setdefault(name, []).append(seq)
+        if not added:
+            return
+        landed_results = (RESULT_LANDED_WORKING, RESULT_DRY)
+        attempts = [a for a in team.ledger.attempts().values() if a.get("result") in landed_results and a.get("member") in added]
+        for name, seqs in added.items():
+            pending = team.pending.get(name)
+            if pending is None or pending.kind != "nudge":
+                continue
+            hits = [a for a in attempts if a.get("member") == name and any(s in (a.get("seqs") or []) for s in seqs)]
+            if hits:
+                last = hits[-1]
+                landed_at = _parse_iso(last.get("result_ts") or last.get("ts"))
+                age_ms = max(0.0, (time.time() - landed_at) * 1000.0) if landed_at is not None else 0.0
+                pending.landed_ms = now - age_ms
+                pending.landed_seq_max = max([int(s) for s in (last.get("seqs") or []) if isinstance(s, int)] or [0])
+                pending.attempts = max(1, int(last.get("attempts") or 1))
+                pending.attempt_id = str(last.get("id"))
+                if pending.attempts == 1 and any(s > pending.landed_seq_max for s in seqs):
+                    pending.follow_up_due = True  # posts arrived after that landing: the one follow-up still applies
+                self.log("{}: rebuilt pending for {}: {} (nudged {:.0f} s ago as {}, unread)".format(team.name, name, sorted(seqs), age_ms / 1000.0, last.get("id")))
+            else:
+                self.log("{}: rebuilt pending for {}: {} (never nudged)".format(team.name, name, sorted(seqs)))
+        self.who_dirty = True
 
     def _replay_ledger(self, team: TeamState) -> None:
         for entry in team.ledger.open_intents():
@@ -2115,6 +2216,8 @@ class Daemon:
             if isinstance(retracts, int):
                 team.retracted.add(retracts)
                 for name, pending in list(team.pending.items()):
+                    if retracts in pending.deferred_seqs:
+                        pending.deferred_seqs = [s for s in pending.deferred_seqs if s != retracts]
                     if retracts in pending.seqs:
                         already_landed = pending.landed_ms is not None and retracts <= pending.landed_seq_max
                         pending.seqs = [s for s in pending.seqs if s != retracts]
@@ -2150,15 +2253,32 @@ class Daemon:
                 continue
             self._add_pending(team, str(recipient.get("name")), seq, urgent, author, now)
 
+    def _requeue_deferred(self, team: TeamState, name: str, brief: Pending, cursor: int, now: float) -> None:
+        """Posts that arrived while ``brief`` was pending become a nudge once the member is past the briefing."""
+        seqs = [s for s in brief.deferred_seqs if s > cursor and s not in team.retracted]
+        if not seqs:
+            return
+        pending = Pending(first_ms=now, seqs=sorted(seqs), urgent=brief.deferred_urgent, authors=set(brief.deferred_authors))
+        team.pending[name] = pending
+        self.who_dirty = True
+        self.log("{}: {} briefing done; nudging for {} deferred during the briefing".format(team.name, name, ", ".join("#{}".format(s) for s in pending.seqs)))
+
     def _add_pending(self, team: TeamState, name: str, seq: int, urgent: bool, author: str, now: float) -> None:
         pending = team.pending.get(name)
         if pending is None or pending.kind != "nudge":
             if pending is not None and pending.kind == "brief":
-                return  # the briefing lands first; the nudge follows on the next read
+                # The briefing lands first; the seq is kept so the nudge follows once the briefing is
+                # acknowledged or given up (``_requeue_deferred``), never dropped.
+                if seq not in pending.deferred_seqs:
+                    pending.deferred_seqs.append(seq)
+                pending.deferred_authors.add(author)
+                pending.deferred_urgent = pending.deferred_urgent or urgent
+                return
             pending = Pending(first_ms=now)
             team.pending[name] = pending
         if seq not in pending.seqs:
             pending.seqs.append(seq)
+            pending.last_added_ms = now
         pending.urgent = pending.urgent or urgent
         pending.authors.add(author)
         if pending.landed_ms is not None and seq > pending.landed_seq_max and pending.attempts == 1 and not pending.renudges:
@@ -2369,6 +2489,7 @@ class Daemon:
             if rt.brief_seq is not None and cursor >= rt.brief_seq and written_since:
                 del team.pending[name]
                 self.log("{}: {} acknowledged the briefing".format(team.name, name))
+                self._requeue_deferred(team, name, pending, cursor, now)
                 return
             if now - pending.landed_ms > BRIEF_ACK_S * 1000.0:
                 if not rt.rebriefed:
@@ -2379,6 +2500,7 @@ class Daemon:
                 else:
                     del team.pending[name]
                     self.enqueue_toast(team.name, [], "herdr-team {}: {} unbriefed".format(team.name, name), "{} never acknowledged its briefing".format(name), "none", kind="outcome")
+                    self._requeue_deferred(team, name, pending, cursor, now)
                     return
             else:
                 return
@@ -2406,6 +2528,8 @@ class Daemon:
                     return
         if now < pending.next_eligible_ms:
             return
+        if pending.kind == "nudge" and pending.landed_ms is None and pending.last_added_ms is not None and now - pending.last_added_ms < team.gate_config.burst_window_ms:
+            return  # let a same-second burst settle so one nudge covers the whole range (plan 12)
         if name in team.open_intents:
             # A prior daemon sent this without recording a result: count it as sent once.
             entry = team.open_intents.pop(name)
@@ -2437,10 +2561,15 @@ class Daemon:
             self.reconcile_due = True
             return
         snapshot = self._snapshot(team, member, fresh, rt, now, pending)
+        # Gate 6 (plan 8.2): the stable window is confirmed by this fresh ``agent.get``; log the seq
+        # it saw against the polled one so a delivery can be audited from daemon.log alone (M5 ND-01).
+        polled_seq = int(agent.get("state_change_seq") or 0) if agent is not None else None
+        self.log("{}: {} agent.get re-check: state_change_seq {} -> {} ({}), stable for {:.0f} ms".format(
+            team.name, name, polled_seq, snapshot.state_change_seq, snapshot.agent_status, now - (snapshot.stable_since_ms if snapshot.stable_since_ms is not None else now)))
         snapshot.explain = self._explain(str(member.get("pane_id")))
         snapshot.detection_text = self._read_detection(rt, str(member.get("pane_id")), self.now_ms())
         snapshot.detection_stable_since_ms = rt.detection_stable_since_ms
-        snapshot.prompt_line = gate.prompt_line_text(snapshot.detection_text, str(member.get("kind")))
+        snapshot.prompt_line = self._prompt_line(team, name, str(member.get("pane_id")), str(member.get("kind")), snapshot.detection_text)
         # Gate 1 again: three socket round trips passed; the member may have run board --new meanwhile
         # (register: "Board read between gate and send -> cursor re-read immediately before the prompt").
         cursor = self._refresh_pending_seqs(team, name, pending)
@@ -2504,6 +2633,20 @@ class Daemon:
             if hold in (gate_mod.HOLD_DIALOG, gate_mod.HOLD_FOCUSED, gate_mod.HOLD_DRAFT_PRESENT, gate_mod.HOLD_BLOCKED):
                 pending.hold_toasted = True
                 self.enqueue_toast(team.name, pending.seqs, "herdr-team {}: {} waiting".format(team.name, name), "{} has been held for 10 min: {}".format(name, hold), "none", kind="outcome")
+        if hold in (gate_mod.HOLD_PAIR_BUDGET, gate_mod.HOLD_KIND_MISMATCH):
+            # Plan 8.2 gates 3 and 11 (``gate.TOAST_HOLDS``): the human learns about a ping-pong pause or a
+            # kind mismatch once, coalesced per (member, reason) per hour (M5 ND-08: no toast was ever sent).
+            rt = team.rt(name)
+            last = rt.hold_toast_ms.get(hold)
+            if last is None or now - last > KIND_UNVERIFIED_TOAST_S * 1000.0:
+                rt.hold_toast_ms[hold] = now
+                if hold == gate_mod.HOLD_PAIR_BUDGET:
+                    title = "herdr-team {}: {} ping-pong paused".format(team.name, name)
+                    body = "{} and {} hit the pair budget ({}); posts wait for the window".format(name, ", ".join(sorted(pending.authors)) or "a teammate", detail or "")
+                else:
+                    title = "herdr-team {}: {} not nudged".format(team.name, name)
+                    body = "{}'s pane hosts another agent kind ({}); posts wait for a rebind".format(name, detail or "kind_mismatch")
+                self.enqueue_toast(team.name, pending.seqs, title, body, "none", kind="outcome")
         if hold == gate_mod.HOLD_KIND_UNVERIFIED:
             rt = team.rt(name)
             if rt.kind_unverified_toast_ms is None or now - rt.kind_unverified_toast_ms > KIND_UNVERIFIED_TOAST_S * 1000.0:
@@ -2601,6 +2744,32 @@ class Daemon:
         except HerdrTeamError:
             return None
         return read_text(result)  # ``pane_read``: ``read.text`` (a legacy top-level ``text`` still works)
+
+    def _visible_ansi(self, pane_id: str) -> Optional[str]:
+        """``agent.read --source visible --format ansi``: the only read that carries styling (the detection source is plain)."""
+        try:
+            result = self.api.request("agent.read", {"target": pane_id, "source": "visible", "format": "ansi"}, timeout=5.0)
+        except HerdrTeamError:
+            return None
+        return read_text(result)
+
+    def _prompt_line(self, team: TeamState, name: str, pane_id: str, kind: str, detection_text: Optional[str]) -> Optional[str]:
+        """Gate 9 input: the typed draft, with Claude's faint prompt suggestion (ghost text) excluded.
+
+        The plain detection text cannot tell a suggestion from a draft; when
+        it shows one, a second read of the visible viewport with styling
+        decides (``gate.styled_prompt_line_text``). Only that case costs the
+        extra round trip; an empty or unknown prompt line never does.
+        """
+        draft = gate.prompt_line_text(detection_text, kind)
+        if not draft or not draft.strip() or kind != "claude":
+            return draft
+        typed = gate.styled_prompt_line_text(self._visible_ansi(pane_id), kind)
+        if typed is None:
+            return draft
+        if not typed.strip():
+            self.log("{}: {} prompt suggestion (faint ghost text) is not a draft: {!r}".format(team.name, name, draft.strip().splitlines()[0][:40]))
+        return typed
 
     def _read_detection(self, rt: MemberRuntime, pane_id: str, now: float) -> Optional[str]:
         """Detection read plus the gate 10 stability clock: the digest's unchanged-since time."""
@@ -2951,7 +3120,7 @@ class Daemon:
             seqs = sorted(set(note.seqs))
             note.seqs = seqs
             note.title = "{} new posts for you #{}-#{}".format(len(seqs), seqs[0], seqs[-1])[:80]
-        if self.toasts_disabled:
+        if self.toasts_disabled and self._toasts_still_disabled(now):
             self.notifications.remove(note)
             self._mirror_toast(note, "disabled", False)
             return
@@ -2980,6 +3149,8 @@ class Daemon:
                 note.next_ms = now + TOAST_RETRY_BUSY_S * 1000.0
         elif reason == "disabled":
             self.toasts_disabled = True
+            self.toasts_disabled_ms = now
+            self.toasts_disabled_delivery = read_toast_delivery(self.layout.config_dir)
             self.log("toasts disabled on this server; mirroring to human-attention only")
             for pending_note in list(self.notifications):
                 self.notifications.remove(pending_note)
@@ -2989,6 +3160,21 @@ class Daemon:
         else:
             self.notifications.remove(note)
             self._mirror_toast(note, reason, bool(result.get("shown")))
+
+    def _toasts_still_disabled(self, now: float) -> bool:
+        """Lift the ``disabled`` latch when ``[ui.toast] delivery`` changed (a config reload) or after
+        ``TOAST_DISABLED_RECHECK_S``; the next ``notification.show`` re-latches if it still says disabled."""
+        delivery = read_toast_delivery(self.layout.config_dir)
+        if delivery != "off" and delivery != (self.toasts_disabled_delivery or "off"):
+            self.log("toast delivery changed to {!r}; probing notification.show again".format(delivery))
+        elif self.toasts_disabled_ms is not None and now - self.toasts_disabled_ms < TOAST_DISABLED_RECHECK_S * 1000.0:
+            return True
+        else:
+            self.log("toasts disabled for {:.0f} s; probing notification.show again".format(TOAST_DISABLED_RECHECK_S))
+        self.toasts_disabled = False
+        self.toasts_disabled_ms = None
+        self.toasts_disabled_delivery = None
+        return False
 
     def _mirror_toast(self, note: Notification, reason: str, shown: bool) -> None:
         entry = {"ts": now_iso(), "team": note.team, "seqs": note.seqs, "title": note.title, "body": note.body, "reason": reason, "shown": shown, "kind": note.kind}

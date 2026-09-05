@@ -115,6 +115,32 @@ class PostReadRoundTrip(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertEqual(err["code"], "reply_to_unknown")
 
+    def test_corrupt_board_lines_are_reported_not_hidden(self):
+        """M5 F-03: a torn last line plus a garbage line show up as ``skipped`` (JSON) and a stderr warning (human)."""
+        with TempState() as ts:
+            for i in range(3):
+                code, _, err = json_out(run_cli(["--json", "--team", "alpha", "post", "post {}".format(i)], ts.env))
+                self.assertEqual(code, 0, err)
+            raw = ts.team.board_jsonl.read_bytes()
+            lines = raw.rstrip(b"\n").split(b"\n")
+            torn = lines[-1][: len(lines[-1]) // 2]
+            ts.team.board_jsonl.write_bytes(b"\n".join(lines[:-1]) + b"\n" + torn + b"\n" + b"not json {{{ garbage\n")
+            code, payload, err = json_out(run_cli(["--json", "--team", "alpha", "board", "--last", "5"], ts.env))
+            self.assertEqual(code, 0, err)
+            self.assertEqual([p["seq"] for p in payload["posts"]], [1, 2])
+            self.assertIn("skipped", payload)
+            self.assertGreaterEqual(payload["skipped"]["corrupt"] + payload["skipped"]["fragment"], 2)
+            code, out, err = run_cli(["--team", "alpha", "board", "--last", "5"], ts.env)
+            self.assertEqual(code, 0)
+            self.assertIn("warning: board: skipped", err)
+            # a clean board carries no ``skipped`` key at all
+            code, payload, _ = json_out(run_cli(["--json", "--team", "alpha", "post", "post 3"], ts.env))
+            self.assertEqual(code, 0)
+            self.assertEqual(payload["seq"], 4)  # board.seq stays the authority: the torn seq 3 is not reused
+            ts.team.board_jsonl.write_bytes(b"\n".join(l for l in ts.team.board_jsonl.read_bytes().split(b"\n") if l.startswith(b"{") and l.endswith(b"}")) + b"\n")
+            code, payload, _ = json_out(run_cli(["--json", "--team", "alpha", "board"], ts.env))
+            self.assertNotIn("skipped", payload)
+
     def test_human_output_mode(self):
         with TempState() as ts:
             code, out, _ = run_cli(["--team", "alpha", "post", "hello"], ts.env)

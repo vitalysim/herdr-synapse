@@ -316,6 +316,7 @@ def plugin_request_params() -> List[Tuple[str, str, Dict[str, Any]]]:
         ("daemon.deliver_line first line", "agent.prompt", {"target": "w2:p1", "text": "[herdr-team] request from human", "wait": {"until": ["working", "blocked"], "timeout_ms": 8000}}),
         ("daemon.deliver_line follow-on line", "agent.prompt", {"target": "w2:p1", "text": "second line"}),
         ("daemon._detection_text", "agent.read", {"target": "w2:p1", "source": "detection", "format": "text"}),
+        ("daemon._visible_ansi (gate 9 ghost-text check)", "agent.read", {"target": "w2:p1", "source": "visible", "format": "ansi"}),
         ("cmd_misc._run_read", "agent.read", {"target": "w2:p1", "source": "visible"}),
         ("daemon._explain", "agent.explain", {"target": "w2:p1"}),
         ("roster.rename_agent / daemon._apply_name / hooks._apply_name", "agent.rename", {"target": "w2:p1", "name": "alpha-reviewer"}),

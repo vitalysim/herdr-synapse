@@ -604,6 +604,47 @@ def build_feed(
     return [feed_entry(r, receipts, retractions, ascii_only, width) for r in recs if r.get("kind") != "retract"]
 
 
+#: ``audit.jsonl`` events the console surfaces as warnings (plan 7.1: ``--as human`` from an agent
+#: pane is refused, audited, and shown in the console; a forged ``HERDR_PANE_ID`` likewise).
+AUDIT_WARNING_EVENTS = ("author_mismatch", "pane_mismatch")
+
+
+def audit_warning_entry(entry: Dict[str, Any], ascii_only: bool = False, width: int = 80) -> Optional[Dict[str, Any]]:
+    """A feed entry for one ``audit.jsonl`` line, None when the event is not a warning."""
+    event = entry.get("event")
+    if event not in AUDIT_WARNING_EVENTS:
+        return None
+    ts = str(entry.get("ts") or "")
+    clock = clock_label(ts) if ts else "--:--"
+    author = sanitize.sanitize_text(str(entry.get("author") or "?"), max_len=64)
+    details = entry.get("details") if isinstance(entry.get("details"), dict) else {}
+    if event == "author_mismatch":
+        what = "tried to post as {}".format(sanitize.sanitize_text(str(details.get("requested") or "human"), max_len=32))
+    else:
+        what = "claimed pane {}".format(sanitize.sanitize_text(str(details.get("claimed_pane_id") or entry.get("pane_id") or "?"), max_len=32))
+    where = sanitize.sanitize_text(str(entry.get("pane_id") or "?"), max_len=32)
+    glyph = "!" if ascii_only else "⚠"
+    line = "{} {} warning: {} {} ({}, {})".format(glyph, clock, author, what, event, where)
+    return {"seq": None, "ts": ts, "line": truncate_columns(line, width), "struck": False, "kind": "warning", "from": author, "to": [], "record": entry, "audit": True}
+
+
+def merge_audit_warnings(feed: List[Dict[str, Any]], audit: Optional[Iterable[Dict[str, Any]]], ascii_only: bool = False, width: int = 80) -> List[Dict[str, Any]]:
+    """Insert audit warnings into ``feed`` by timestamp (board entries keep their seq order)."""
+    warnings = [w for w in (audit_warning_entry(e, ascii_only, width) for e in (audit or []) if isinstance(e, dict)) if w is not None]
+    if not warnings:
+        return feed
+    out = list(feed)
+    for warning in warnings:
+        index = len(out)
+        for i, entry in enumerate(out):
+            rec_ts = str((entry.get("record") or {}).get("ts") or "")
+            if rec_ts and warning["ts"] and rec_ts > warning["ts"]:
+                index = i
+                break
+        out.insert(index, warning)
+    return out
+
+
 def build_console_model(
     team: str,
     who: Optional[Dict[str, Any]],
@@ -619,6 +660,7 @@ def build_console_model(
     ascii_only: bool = False,
     now: Optional[datetime] = None,
     previous: Optional[ConsoleModel] = None,
+    audit: Optional[Iterable[Dict[str, Any]]] = None,
 ) -> ConsoleModel:
     """Assemble the whole console state from files; ``previous`` keeps input, scroll, filter."""
     recs = list(records)
@@ -639,7 +681,7 @@ def build_console_model(
         team=team,
         header=header,
         roster_lines=roster_lines_for(members, width, ascii_only, mutes, now),
-        feed=build_feed(recs, cursors, members, ascii_only, width),
+        feed=merge_audit_warnings(build_feed(recs, cursors, members, ascii_only, width), audit, ascii_only, width),
         width=width,
         height=height,
         ascii_only=ascii_only,
@@ -670,7 +712,7 @@ def filter_matches(entry: Dict[str, Any], filter_name: str) -> bool:
     if filter_name == "human":
         return entry.get("from") == "human"
     if filter_name == "system":
-        return entry.get("kind") == "system"
+        return entry.get("kind") in ("system", "warning")
     return True
 
 

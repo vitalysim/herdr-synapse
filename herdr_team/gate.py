@@ -45,6 +45,8 @@ DIALOG_HOLD_CAP_MS = 600000
 PAIR_BUDGET = 10
 PAIR_WINDOW_MS = 600000
 SAMPLE_GAP_RESET_MS = 10000
+#: Plan 12 "same-second bursts -> one nudge per range": a nudge waits this long after its newest seq arrived.
+BURST_WINDOW_MS = 1000
 POST_TTL_MS = 1800000
 #: Accepted ``nudge_focused`` values: gate 10 holds a focused pane only for the exact word ``never``.
 NUDGE_FOCUSED_VALUES = ("never", "always")
@@ -147,6 +149,86 @@ _CLAUDE_PROMPT_RE = re.compile(r"^\s*❯")
 _CLAUDE_PROMPT_SPLIT_RE = re.compile(r"^\s*❯[ \t]?")
 _GENERIC_PROMPT_MARKERS = ("❯", "›", "> ", "$ ")
 
+#: One CSI sequence (``ESC [ params intermediates final``) or one OSC string, as painted by ``agent.read
+#: --source visible --format ansi``. The detection source is always plain text (Herdr 0.8.2), so styling
+#: is only available from the visible viewport.
+_CSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+_OSC_RE = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?")
+#: SGR parameters that reset the faint attribute (2): a full reset or ``22`` (normal intensity).
+_SGR_UNFAINT = frozenset({"", "0", "22"})
+
+
+def _sgr_codes(params: str) -> List[str]:
+    """SGR parameters with the sub-parameters of extended colours (38/48/58 ``;2;r;g;b`` and ``;5;n``) dropped.
+
+    ``\x1b[38;2;255;255;255m`` carries a literal ``2`` that is a colour-space
+    selector, not the faint attribute; a naive split would read it as dim.
+    """
+    parts = params.split(";") if params else [""]
+    out: List[str] = []
+    index = 0
+    while index < len(parts):
+        code = parts[index]
+        out.append(code)
+        if code in ("38", "48", "58") and index + 1 < len(parts):
+            selector = parts[index + 1]
+            index += 1 + (4 if selector == "2" else 1 if selector == "5" else 0)
+        index += 1
+    return out
+
+
+def visible_line_text(line: str, drop_faint: bool = False) -> str:
+    """The plain text of one ANSI-styled screen line; with ``drop_faint`` the runs painted with SGR 2 are removed.
+
+    Claude Code 2.1.261 paints its prompt suggestion ("ghost text": a
+    proposed next prompt the user accepts with Tab) inside the prompt box as
+    ``❯\xa0ESC[2m<suggestion>ESC[0m``. It reads as a draft in the plain
+    detection text, so gate 9 held every nudge as ``draft_present`` for as
+    long as the suggestion stayed on screen (observed live 2026-09-05, rig
+    ND-04-prep). A typed draft is painted without the faint attribute.
+    """
+    out: List[str] = []
+    faint = False
+    pos = 0
+    for match in _CSI_RE.finditer(line):
+        segment = line[pos:match.start()]
+        if segment and not (drop_faint and faint):
+            out.append(segment)
+        pos = match.end()
+        seq = match.group()
+        if seq.endswith("m"):
+            for code in _sgr_codes(seq[2:-1]):
+                if code in _SGR_UNFAINT:
+                    faint = False
+                elif code == "2":
+                    faint = True
+    segment = line[pos:]
+    if segment and not (drop_faint and faint):
+        out.append(segment)
+    return _OSC_RE.sub("", "".join(out)).rstrip("\r")
+
+
+def styled_prompt_line_text(visible_ansi: Optional[str], kind: str) -> Optional[str]:
+    """Gate 9 on a ``--source visible --format ansi`` read: the *typed* draft, faint ghost text excluded.
+
+    Only Claude paints suggestions today, so other kinds get None (caller
+    falls back to the detection text). None also when the viewport shows no
+    prompt box (scrolled away, or another screen), so the detection text
+    keeps the last word; ``""`` means the box is there and nothing is typed.
+    """
+    if visible_ansi is None or kind != "claude":
+        return None
+    plain_lines: List[str] = []
+    for raw in visible_ansi.split("\n"):
+        plain = visible_line_text(raw)
+        if _CLAUDE_PROMPT_RE.match(plain):
+            plain = visible_line_text(raw, drop_faint=True)
+        plain_lines.append(plain)
+    plain_text = "\n".join(plain_lines)
+    if prompt_box_body(plain_text) is None:
+        return None
+    return prompt_line_text(plain_text, kind)
+
 
 # --------------------------------------------------------------------------
 # configuration
@@ -169,6 +251,7 @@ class GateConfig:
     pair_window_ms: int = PAIR_WINDOW_MS
     sample_gap_reset_ms: int = SAMPLE_GAP_RESET_MS
     post_ttl_ms: int = POST_TTL_MS
+    burst_window_ms: int = BURST_WINDOW_MS
     nudge_focused: str = "never"
 
     @classmethod
@@ -386,6 +469,20 @@ def is_codex_prompt_line(line: str) -> bool:
     return line == "›" or line.startswith("› ")
 
 
+#: Placeholder text Codex 0.153 paints on an empty prompt line ("› Ask Codex to do anything"); it is
+#: not a draft. Observed live 2026-09-05 (Herdr 0.8.2): the gate held a fresh idle Codex member with
+#: ``draft_present (Ask Codex to do anything)`` and never nudged it.
+CODEX_PROMPT_PLACEHOLDERS = ("Ask Codex to do anything",)
+
+
+def codex_prompt_draft(line: str) -> str:
+    """The draft on a Codex prompt line, ``""`` for the bare marker or a known placeholder."""
+    if line == "›":
+        return ""
+    draft = line[2:].strip()
+    return "" if draft in CODEX_PROMPT_PLACEHOLDERS else draft
+
+
 def after_last_horizontal_rule(text: Optional[str]) -> str:
     lines = split_lines(text)
     last_rule = -1
@@ -498,7 +595,7 @@ def prompt_line_text(detection_text: Optional[str], kind: str) -> Optional[str]:
         lines = split_lines(detection_text)
         for index in range(len(lines) - 1, -1, -1):
             if is_codex_prompt_line(lines[index]):
-                return lines[index][2:].strip() if lines[index] != "›" else ""
+                return codex_prompt_draft(lines[index])
         return None
     for line in reversed(split_lines(detection_text)):
         if not line.strip():
@@ -673,11 +770,15 @@ def evaluate(snapshot: MemberSnapshot, pending: PendingWork, now_ms: float, glob
         return hold(8, HOLD_DIALOG, line, line=line, dialog_hold_capped=capped, toast=capped)
 
     # 9. prompt line empty
+    # The daemon sets ``prompt_line`` from the styled visible read when the plain detection text shows a
+    # draft (``styled_prompt_line_text``), so it wins when present; the detection text is the fallback.
     draft: Optional[str]
-    if snapshot.detection_text is not None:
+    if snapshot.prompt_line is not None:
+        draft = snapshot.prompt_line
+    elif snapshot.detection_text is not None:
         draft = prompt_line_text(snapshot.detection_text, snapshot.kind)
     else:
-        draft = snapshot.prompt_line
+        draft = None
     if draft is not None and draft.strip():
         preview = draft.strip().splitlines()[0][:40]
         return hold(9, HOLD_DRAFT_PRESENT, preview)

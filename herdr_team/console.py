@@ -132,6 +132,21 @@ def read_cursors(team: TeamPaths) -> Dict[str, Dict[str, Any]]:
     return out
 
 
+AUDIT_WARNINGS_SHOWN = 20
+
+
+def read_audit_warnings(layout: Layout, team: str) -> List[Dict[str, Any]]:
+    """The newest ``audit.jsonl`` warnings (plan 7.1: refused ``--as human`` and forged pane ids show in the console)."""
+    from herdr_team.identity import read_audit
+
+    try:
+        entries = read_audit(layout, team)
+    except (HerdrTeamError, OSError):
+        return []
+    warnings = [e for e in entries if e.get("event") in tui_model.AUDIT_WARNING_EVENTS]
+    return warnings[-AUDIT_WARNINGS_SHOWN:]
+
+
 def read_mutes(team: TeamPaths) -> Dict[str, Any]:
     doc = store.read_json(team.mute_json, None)
     return doc if isinstance(doc, dict) else {}
@@ -249,6 +264,7 @@ def build_model(layout: Layout, team: str, state: Optional[ConsoleState] = None,
         ascii_only=state.ascii_only,
         now=datetime.now(timezone.utc),
         previous=previous,
+        audit=read_audit_warnings(layout, team),
     )
 
 

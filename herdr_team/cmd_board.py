@@ -436,8 +436,25 @@ def _archive_segments(team: TeamPaths) -> List[Tuple[int, int, Path]]:
 
 def board_read_all(team: TeamPaths, include_archive: bool = False) -> List[Dict[str, Any]]:
     """Every parseable record, sorted and deduped by seq (filters are applied by the caller)."""
-    records = store.BoardStore(team).read(include_archive=include_archive)
-    return sorted((r for r in records if _grammar_ok(r)), key=lambda r: r["seq"])
+    return board_read_all_detailed(team, include_archive=include_archive)[0]
+
+
+def board_read_all_detailed(team: TeamPaths, include_archive: bool = False) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+    """``board_read_all`` plus what the store skipped: ``{"corrupt", "fragment", "duplicates", "grammar"}`` line counts.
+
+    ``corrupt`` lines are unparseable JSON, ``fragment`` a torn last line,
+    ``duplicates`` repeated seqs, ``grammar`` parseable records that fail the
+    plan 6.1 grammar (M5 F-03: ``board`` used to hide all of them).
+    """
+    records, stats = store.BoardStore(team).read_detailed(include_archive=include_archive)
+    kept = [r for r in records if _grammar_ok(r)]
+    skipped = {
+        "corrupt": int(stats.get("corrupt") or 0),
+        "fragment": int(stats.get("fragment") or 0),
+        "duplicates": int(stats.get("duplicates") or 0),
+        "grammar": len(records) - len(kept),
+    }
+    return sorted(kept, key=lambda r: r["seq"]), skipped
 
 
 def board_get(team: TeamPaths, seq: int) -> Optional[Dict[str, Any]]:
@@ -578,7 +595,10 @@ def verify_shell_ancestry(api: Any, pane_id: str, own_pgrp: int) -> Tuple[bool, 
 def resolve_author(args: argparse.Namespace, layout: Layout, api: Any, team: Optional[str] = None, as_human: bool = False, relayed_for: Optional[str] = None, label: Optional[str] = None, require_server: bool = True) -> Author:
     """Plan 4.3 tiers through ``identity.resolve_author`` with the local fallback."""
     env = env_of(args)
-    author = _identity.resolve_author(env, layout, api, team=team, as_human=as_human, relayed_for=relayed_for, label=label, require_server=require_server)
+    # ``team`` is explicit when --team / HERDR_TEAM / HERDR_TEAM_DIR named it; a hint that came only
+    # from ``default_team`` must not hide a member pane of another team (plan 4.3, M5 rig finding).
+    explicit = team is None or _paths.team_name_from_arg(getattr(args, "team", None), env) is not None
+    author = _identity.resolve_author(env, layout, api, team=team, as_human=as_human, relayed_for=relayed_for, label=label, require_server=require_server, team_explicit=explicit)
     if author.reason and not author.verified and author.via != VIA_OUTSIDE:
         warn(args, "author unverified: {}".format(author.reason))
     return author
@@ -969,7 +989,7 @@ def _run_board(args: argparse.Namespace) -> int:
     reader = reader_id(author)
     is_human = author.is_human or author.name == AUTHOR_SYSTEM
     hook_mode = env_of(args).get("HERDR_TEAM_HOOK") == "1"
-    all_records = board_read_all(team, include_archive=bool(args.since or args.thread))
+    all_records, skipped = board_read_all_detailed(team, include_archive=bool(args.since or args.thread))
     selection = all_records
     cursor_state = cursor_get(team, reader)
     cursor_before = int(cursor_state.get("seq", 0))
@@ -1035,6 +1055,11 @@ def _run_board(args: argparse.Namespace) -> int:
     }
     if receipts is not None:
         payload["receipts"] = receipts
+    if any(skipped.values()):
+        # F-03: a torn or garbage line is reported, never silently dropped (JSON key, stderr warning otherwise).
+        payload["skipped"] = skipped
+        if not (fmt == "json" or args.json):
+            warn(args, "board: skipped {} line(s): {}".format(sum(skipped.values()), ", ".join("{} {}".format(v, k) for k, v in skipped.items() if v)))
     out = getattr(args, "stdout", None) or sys.stdout
     if fmt == "json" or args.json:
         out.write(json.dumps(payload, ensure_ascii=False) + "\n")

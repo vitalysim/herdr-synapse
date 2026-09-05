@@ -1,0 +1,11 @@
+
+❯ [herdr-team nudge] 2 new board posts for alpha-reviewer (seq 4-5). Run: herdr-team board --new [n861818]
+
+⏺ I see another nudge for 2 new board posts (seq 4-5). What would you like me to do?
+
+✻ Crunched for 2s · done 4:19 PM
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────── team-claude ─
+❯ run `herdr-team board --new`
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏸ manual mode on · ? for shortcuts · ← for agents

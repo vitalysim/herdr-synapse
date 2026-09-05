@@ -464,7 +464,7 @@ def _tier_popup(env: Dict[str, str], layout: Layout, team: Optional[str]) -> Aut
     return author
 
 
-def _tier_pane(env: Dict[str, str], layout: Layout, api: Any, team: Optional[str], as_human: bool, require_server: bool) -> Author:
+def _tier_pane(env: Dict[str, str], layout: Layout, api: Any, team: Optional[str], as_human: bool, require_server: bool, team_explicit: bool = True) -> Author:
     pane_env = str(env.get("HERDR_PANE_ID"))
     env_team = _env_team(env, team)
     try:
@@ -495,7 +495,7 @@ def _tier_pane(env: Dict[str, str], layout: Layout, api: Any, team: Optional[str
         origin["env_mismatch"] = mismatches
 
     if pane.get("agent"):
-        return _agent_pane_author(env, layout, api, pane, current_pane, origin, env_team, as_human)
+        return _agent_pane_author(env, layout, api, pane, current_pane, origin, env_team, as_human, team_explicit)
     return _shell_pane_author(env, layout, api, pane, current_pane, origin, env_team)
 
 
@@ -520,13 +520,19 @@ def _offline_pane_author(env: Dict[str, str], layout: Layout, env_team: Optional
     return author
 
 
-def _agent_pane_author(env: Dict[str, str], layout: Layout, api: Any, pane: Dict[str, Any], current_pane: str, origin: Dict[str, Any], env_team: Optional[str], as_human: bool) -> Author:
+def _agent_pane_author(env: Dict[str, str], layout: Layout, api: Any, pane: Dict[str, Any], current_pane: str, origin: Dict[str, Any], env_team: Optional[str], as_human: bool, team_explicit: bool = True) -> Author:
     kind = pane.get("agent")
     terminal_id = pane.get("terminal_id")
     live_name, _agent = _agent_name(api, current_pane)
     origin["agent"] = kind
     origin["live_name"] = live_name
     found = find_member(layout, terminal_id, env_team)
+    if found is None and env_team is not None and not team_explicit:
+        # The hint was only the session's ``default_team``: plan 4.3 ranks the roster match by
+        # terminal id above it, and a terminal sits in at most one roster, so widening the search
+        # cannot mis-attribute. Without this a member of any non-default team was ``not_a_member``
+        # from its own pane (M5 rig finding).
+        found = find_member(layout, terminal_id, None)
     if found is not None:
         team_name, member = found
         author = Author(member.name, member.kind, VIA_CLI, True, pane_id=current_pane, terminal_id=terminal_id,
@@ -633,8 +639,14 @@ def resolve_author(
     relayed_for: Optional[str] = None,
     label: Optional[str] = None,
     require_server: bool = True,
+    team_explicit: bool = True,
 ) -> Author:
-    """Apply the tiers; raise ``not_a_member`` (3), ``author_mismatch`` (1), ``team_required`` (3)."""
+    """Apply the tiers; raise ``not_a_member`` (3), ``author_mismatch`` (1), ``team_required`` (3).
+
+    ``team_explicit`` says whether ``team`` came from ``--team`` / ``HERDR_TEAM`` /
+    ``HERDR_TEAM_DIR`` (True) or only from the session's ``default_team`` (False);
+    a member pane in another team is still resolved in the latter case.
+    """
     env = dict(env)
     entrypoint = env.get("HERDR_PLUGIN_ENTRYPOINT_ID")
     if (env.get("HERDR_PLUGIN_EVENT") or env.get("HERDR_PLUGIN_ID")) and not entrypoint:
@@ -644,7 +656,7 @@ def resolve_author(
     elif entrypoint:
         author = _tier_popup(env, layout, team)
     elif env.get("HERDR_PANE_ID"):
-        author = _tier_pane(env, layout, api, team, as_human, require_server)
+        author = _tier_pane(env, layout, api, team, as_human, require_server, team_explicit)
     else:
         author = _tier_outside(env, layout, team)
     if as_human and not author.is_human:

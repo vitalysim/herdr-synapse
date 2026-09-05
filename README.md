@@ -138,6 +138,18 @@ Integration pass of 2026-09-04 (fork status log lives in `FORK.md`):
   retries against the dead temp socket for 60 s). The daemon now exits, and
   skips the final `daemon.json`, when its `<session>/` directory has been
   removed under it instead of recreating the directory.
+- Rig M5 real-delivery pass (2026-09-05, cheap Claude haiku): Claude Code
+  2.1.261 paints a prompt suggestion (faint "ghost text", SGR 2) inside the
+  prompt box after every turn; the plain detection read cannot tell it from
+  a typed draft, so gate 9 held every nudge and briefing as `draft_present`
+  while it stayed on screen. The daemon now reads the visible viewport with
+  styling (`agent.read --source visible --format ansi`) only when the plain
+  text shows a draft and drops the faint runs on the prompt line
+  (`gate.styled_prompt_line_text`, `tests/test_ghost_text.py`, live fixtures
+  under `tests/fixtures/detection/claude_ghost_suggestion*`). Also observed:
+  Herdr's session restore relaunches Claude as `claude --resume <id>`, dropping
+  `--model`, `--effort`, `--allowedTools`, and `--settings` (hooks), so a
+  restored member runs the owner's default model without the team hooks.
 - Open: `hooks._reconcile_detected` still carries its own per-pane matcher
   rather than `roster.rehydrate_match` (the two now agree on a null live
   kind, ids adopted and status kept on both paths, and on a different

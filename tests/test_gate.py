@@ -327,6 +327,16 @@ class PromptLineTests(unittest.TestCase):
         self.assertFalse(prompt_line_empty("› x", "codex"))
         self.assertIsNone(prompt_line_text("nothing", "codex"))
 
+    def test_codex_placeholder_is_not_a_draft(self):
+        # Live 2026-09-05 (Codex 0.153.2): a fresh idle Codex paints "› Ask Codex to do anything" on the
+        # empty prompt line; the gate held the member with draft_present forever.
+        screen = "• You have 2 usage limit resets available. Run /usage to use one.\n› Ask Codex to do anything\n  gpt-5.4-mini low · /var/tmp/herdr-team-rig/work\n"
+        self.assertEqual(prompt_line_text(screen, "codex"), "")
+        self.assertTrue(prompt_line_empty(screen, "codex"))
+        # a real draft that merely starts like the placeholder is still a draft
+        self.assertEqual(prompt_line_text("› Ask Codex to do anything about the flaky test\n", "codex"), "Ask Codex to do anything about the flaky test")
+        self.assertFalse(prompt_line_empty("› Ask Codex to do anything about the flaky test\n", "codex"))
+
     def test_generic_prompt_line(self):
         self.assertEqual(prompt_line_text("output\n$ ls -la\n", "gemini"), "ls -la")
         self.assertEqual(prompt_line_text("output\n> \n", "gemini"), "")

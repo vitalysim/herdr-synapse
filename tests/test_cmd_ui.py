@@ -196,3 +196,90 @@ class ConsoleClosedByPaneCloseTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PopupTargetPaneTests(unittest.TestCase):
+    """HP-07 (2026-09-05, Herdr 0.8.2): ``--target-pane`` names the console fallback split only.
+
+    ``plugin.pane.open`` rejects ``target_pane_id`` for a popup with ``invalid_params`` ("overlay
+    and popup plugin panes target the active pane"), which is not retryable, so the "popup already
+    open" retry never ran and the console fallback opened at once.
+    """
+
+    def test_popup_params_omit_target_pane_id(self):
+        for target in ("compose", "picker", "who"):
+            params = cmd_ui.open_params(target, "w1:p4", {}, "alpha")
+            self.assertNotIn("target_pane_id", params, target)
+        self.assertEqual(cmd_ui.open_params("console", "w1:p4", {}, "alpha")["target_pane_id"], "w1:p4")
+
+    def test_popup_already_open_with_target_pane_retries_then_falls_back(self):
+        api = FakeApi()
+        seen = []
+
+        def open_pane(params):
+            seen.append(params)
+            if params["entrypoint"] == "compose":
+                if "target_pane_id" in params:
+                    raise HerdrTeamError("invalid_params", "overlay and popup plugin panes target the active pane", 1)
+                raise HerdrTeamError("plugin_pane_open_failed", "popup already open", 1)
+            return fake_plugin_pane_opened("console", console_pane("w1:p9"))
+
+        api.set_response("plugin.pane.open", open_pane)
+        payload = cmd_ui.open_pane(api, "compose", "w1:p4", {}, "alpha", sleep=lambda _s: None)
+        self.assertEqual((payload["retried"], payload["fallback"], payload["pane_id"], payload["error"]["code"]), (True, "console", "w1:p9", "plugin_pane_open_failed"))
+        self.assertEqual([p["entrypoint"] for p in seen], ["compose", "compose", "console"])
+        self.assertEqual((seen[2]["placement"], seen[2]["target_pane_id"]), ("split", "w1:p4"))
+
+
+class FallbackReusesLiveConsoleTests(unittest.TestCase):
+    """HP-07 (2026-09-05): the console fallback must not open a second console while one is alive.
+
+    Live run: the fallback opened ``w1:p6`` next to the live console ``w1:p5`` and overwrote
+    ``console.json``, so posts typed into ``w1:p5`` became ``cli-unverified`` (console.json
+    records terminal X, this pane is Y). Plan 7.3: the console is single-writer; a second open
+    focuses the live one by ``terminal_id``.
+    """
+
+    def _live_console(self, ts, api):
+        store.write_json(ts.session.console_json, {"pane_id": "w1:p5", "terminal_id": "term_console", "pid": os.getpid(), "open": True, "default_team": "alpha"})
+        api.set_response("pane.list", {"type": "pane_list", "panes": [fake_pane("w1:p7", "term_console", None, cmd_ui.CONSOLE_TITLE)]})
+        api.set_response("plugin.pane.focus", {"type": "ok"})
+
+    def test_open_pane_fallback_focuses_the_live_console(self):
+        with TempState() as ts:
+            api = FakeApi()
+            self._live_console(ts, api)
+            api.set_error("plugin.pane.open", "plugin_pane_open_failed", "popup already open")
+            payload = cmd_ui.open_pane(api, "compose", "w1:p4", dict(ts.env), "alpha", sleep=lambda _s: None, layout=ts.layout)
+            self.assertEqual((payload["opened"], payload["focused"], payload["fallback"], payload["pane_id"], payload["retried"]), (False, True, "console", "w1:p7", True))
+            self.assertEqual([m for m, _ in api.calls if m == "plugin.pane.open"], ["plugin.pane.open", "plugin.pane.open"])
+            self.assertEqual([p for m, p in api.calls if m == "plugin.pane.focus"], [{"pane_id": "w1:p7"}])
+            self.assertEqual(store.read_json(ts.session.console_json)["terminal_id"], "term_console")
+
+    def test_ui_compose_json_reports_the_focused_live_console(self):
+        with TempState() as ts:
+            api = FakeApi()
+            self._live_console(ts, api)
+            api.set_error("plugin.pane.open", "plugin_pane_open_failed", "popup already open")
+            with mock.patch("herdr_team.cmd_ui.time.sleep", lambda _s: None):
+                code, payload, err = json_out(run_cli(["--json", "ui", "compose", "--target-pane", "w1:p4"], ts.env, api))
+            self.assertEqual(code, 0, err)
+            self.assertEqual((payload["ui"], payload["opened"], payload["focused"], payload["fallback"], payload["pane_id"]), ("compose", False, True, "console", "w1:p7"))
+            self.assertNotIn("launched_at", store.read_json(ts.session.console_json))
+
+    def test_no_live_console_still_opens_the_fallback_split(self):
+        with TempState() as ts:
+            api = FakeApi()
+            store.write_json(ts.session.console_json, {"pane_id": "w1:p5", "terminal_id": "term_console", "pid": 999999, "open": True, "default_team": "alpha"})
+            seen = []
+
+            def open_pane(params):
+                seen.append(params)
+                if params["entrypoint"] == "compose":
+                    raise HerdrTeamError("plugin_pane_open_failed", "popup already open", 1)
+                return fake_plugin_pane_opened("console", console_pane("w1:p9"))
+
+            api.set_response("plugin.pane.open", open_pane)
+            payload = cmd_ui.open_pane(api, "compose", "w1:p4", dict(ts.env), "alpha", sleep=lambda _s: None, layout=ts.layout)
+            self.assertEqual((payload["opened"], payload["fallback"], payload["pane_id"]), (True, "console", "w1:p9"))
+            self.assertEqual([p["entrypoint"] for p in seen], ["compose", "compose", "console"])

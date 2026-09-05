@@ -508,6 +508,55 @@ class LedgerReplayTests(unittest.TestCase):
         self.assertEqual(led.counts()["open_intents"], 1)
         self.assertTrue(any("counts as sent" in line for line in d.logged))
 
+    def test_post_tailed_before_a_restart_is_nudged_by_the_next_daemon(self):
+        """M5 ND-12: the old daemon tailed the post (watermark saved) and died inside the stable window; the post must not be lost."""
+        d1, api1, clock1 = make_daemon(self.ts)
+        d1.on_connected()
+        seq = post(self.ts, "alpha-reviewer")
+        d1.tick()  # ingested and held (done_hold 60 s); notifier/state.json now resumes after seq
+        self.assertIn("alpha-reviewer", d1.teams["alpha"].pending)
+        self.assertEqual([m for m, _ in api1.calls if m == "agent.prompt"], [])
+        del d1
+        d2, api2, clock2 = make_daemon(self.ts)
+        d2.on_connected()
+        d2.tick()
+        self.assertTrue(any("rebuilt pending for alpha-reviewer: [{}] (never nudged)".format(seq) in line for line in d2.logged), d2.logged)
+        for _ in range(16):
+            clock2.advance(5)
+            d2.tick()
+        prompts = [p for m, p in api2.calls if m == "agent.prompt"]
+        self.assertEqual(len(prompts), 1)
+        self.assertIn("(seq {})".format(seq), prompts[0]["text"])
+        self.assertEqual(d2.teams["alpha"].ledger.counts()["intents"], 1)
+
+    def test_landed_unread_post_keeps_its_landing_across_a_restart(self):
+        """A nudged-but-unread post is not re-nudged right after a restart; the re-nudge schedule applies."""
+        doc = store.read_json(self.ts.team.team_json)
+        doc["config"] = {"gate": {"done_hold_ms": 0}}
+        store.write_json(self.ts.team.team_json, doc)
+        d1, api1, clock1 = make_daemon(self.ts)
+        api1.set_response("agent.explain", STRONG_IDLE)
+        d1.on_connected()
+        seq = post(self.ts, "alpha-reviewer")
+        for _ in range(6):
+            clock1.advance(2.5)
+            d1.tick()
+        self.assertEqual(len([m for m, _ in api1.calls if m == "agent.prompt"]), 1)
+        attempt_id = d1.teams["alpha"].pending["alpha-reviewer"].attempt_id
+        del d1
+        d2, api2, clock2 = make_daemon(self.ts)
+        api2.set_response("agent.explain", STRONG_IDLE)
+        d2.on_connected()
+        for _ in range(12):
+            clock2.advance(5)
+            d2.tick()
+        self.assertEqual([m for m, _ in api2.calls if m == "agent.prompt"], [], d2.logged)
+        pending = d2.teams["alpha"].pending["alpha-reviewer"]
+        self.assertIsNotNone(pending.landed_ms)
+        self.assertEqual(pending.attempt_id, attempt_id)
+        self.assertEqual(pending.seqs, [seq])
+        self.assertTrue(any("rebuilt pending for alpha-reviewer" in line and "unread" in line for line in d2.logged))
+
     def test_wrong_target_is_refused_and_counted(self):
         d, api, clock = make_daemon(self.ts)
         d.on_connected()
@@ -597,6 +646,43 @@ class NotificationTests(unittest.TestCase):
         self.assertEqual([e["reason"] for e in self.attention()], ["disabled", "disabled", "disabled"])
         self.assertEqual(self.d.build_who()["toasts"], "disabled")
 
+    def test_disabled_latch_lifts_when_the_config_turns_toasts_back_on(self):
+        # HP-14 (2026-09-05): after one `disabled` verdict the daemon never called notification.show
+        # again, so `delivery = "terminal"` plus `herdr server reload-config` still mirrored `disabled`.
+        self.answers = ["disabled", "shown"]
+        self.d.enqueue_toast("alpha", [1], "one", "b")
+        self.d.process_notifications()
+        self.assertTrue(self.d.toasts_disabled)
+        self.assertEqual(len(self.shows()), 1)
+        (self.ts.config_dir / "config.toml").write_text('[ui.toast]\ndelivery = "terminal"\n', encoding="utf-8")
+        self.d.enqueue_toast("alpha", [2], "two", "b")
+        self.clock.advance(2)
+        self.d.process_notifications()
+        self.assertFalse(self.d.toasts_disabled)
+        self.assertEqual(len(self.shows()), 2)
+        self.assertEqual([e["reason"] for e in self.attention()], ["disabled", "shown"])
+        self.assertTrue(any("toast delivery changed to 'terminal'" in line for line in self.d.logged), self.d.logged)
+
+    def test_disabled_latch_is_rechecked_after_60s(self):
+        self.answers = ["disabled", "disabled", "shown"]
+        self.d.enqueue_toast("alpha", [1], "one", "b")
+        self.d.process_notifications()
+        self.d.enqueue_toast("alpha", [2], "two", "b")
+        self.clock.advance(30)
+        self.d.process_notifications()
+        self.assertEqual(len(self.shows()), 1)  # still latched inside the window
+        self.d.enqueue_toast("alpha", [3], "three", "b")
+        self.clock.advance(31)
+        self.d.process_notifications()
+        self.assertEqual(len(self.shows()), 2)  # one probe after 60 s; still disabled -> latched again
+        self.assertTrue(self.d.toasts_disabled)
+        self.d.enqueue_toast("alpha", [4], "four", "b")
+        self.clock.advance(61)
+        self.d.process_notifications()
+        self.assertEqual(len(self.shows()), 3)
+        self.assertFalse(self.d.toasts_disabled)
+        self.assertEqual([e["reason"] for e in self.attention()], ["disabled", "disabled", "disabled", "shown"])
+
     def test_no_foreground_client_retries_every_15s_and_on_pane_focused(self):
         self.answers = ["no_foreground_client", "no_foreground_client", "shown"]
         self.d.enqueue_toast("alpha", [7], "title", "body")
@@ -683,6 +769,58 @@ class JobTests(unittest.TestCase):
         self.assertLessEqual(len(pending.lines[0]), 400)
         self.assertEqual(self.ts.team.briefing("alpha-reviewer").read_text().strip(), pending.lines[0])
         self.assertEqual(self.d.counters["jobs"], 1)
+
+    def test_posts_during_a_briefing_are_nudged_after_the_ack(self):
+        # HP-10 (2026-09-05): a post to a member whose briefing was pending was dropped by _add_pending
+        # ("the nudge follows on the next read") and never nudged: the ack cleared the pending and
+        # nothing re-queued the post, so the second role holder never heard of #18.
+        post(self.ts, "all", text="filler so the briefing has a board seq to ack")
+        self.job("brief")
+        self.consume()
+        team = self.d.teams["alpha"]
+        self.assertEqual(team.pending["alpha-reviewer"].kind, "brief")
+        # the briefing lands (stable window only) ...
+        for _ in range(4):
+            self.clock.advance(1)
+            self.d.tick()
+        pending = team.pending["alpha-reviewer"]
+        self.assertEqual(len([p for m, p in self.api.calls if m == "agent.prompt"]), 1, self.d.logged)
+        self.assertIsNotNone(pending.landed_ms)
+        brief_seq = team.rt("alpha-reviewer").brief_seq
+        # ... a post arrives before the ack: kept on the briefing, not dropped
+        seq = post(self.ts, "alpha-reviewer")
+        self.clock.advance(1)
+        self.d.tick()
+        self.assertIs(team.pending["alpha-reviewer"], pending)
+        self.assertEqual((pending.kind, pending.seqs, pending.deferred_seqs, pending.deferred_authors), ("brief", [], [seq], {"alpha-worker"}))
+        # the member acks the briefing (cursor at the briefing's seq, below the new post)
+        store.Cursors(self.ts.team).advance("alpha-reviewer", brief_seq, "term_r1", "cli")
+        self.clock.advance(1)
+        self.d.tick()
+        nudge = team.pending["alpha-reviewer"]
+        self.assertEqual((nudge.kind, nudge.seqs, nudge.authors, nudge.attempts), ("nudge", [seq], {"alpha-worker"}, 0))
+        self.assertTrue(any("deferred during the briefing" in line for line in self.d.logged), self.d.logged)
+
+    def test_deferred_post_already_read_or_retracted_is_not_requeued(self):
+        self.job("brief")
+        self.consume()
+        team = self.d.teams["alpha"]
+        first = post(self.ts, "alpha-reviewer", text="read with the briefing")
+        second = post(self.ts, "alpha-reviewer", text="retracted meanwhile")
+        self.clock.advance(1)
+        self.d.tick()
+        self.assertEqual(team.pending["alpha-reviewer"].deferred_seqs, [first, second])
+        store.BoardStore(self.ts.team).append({"from": "alpha-worker", "from_kind": "claude", "from_pane": "w2:p2", "from_terminal": "term_w1", "from_gen": 1,
+                                                "origin": {"via": "cli", "verified": True}, "to": ["alpha-reviewer"], "kind": "retract", "retracts": second, "text": ""})
+        for _ in range(4):
+            self.clock.advance(1)
+            self.d.tick()
+        self.assertEqual(team.pending["alpha-reviewer"].deferred_seqs, [first])
+        brief_seq = team.rt("alpha-reviewer").brief_seq
+        store.Cursors(self.ts.team).advance("alpha-reviewer", brief_seq, "term_r1", "cli")  # the ack covered every post
+        self.clock.advance(1)
+        self.d.tick()
+        self.assertNotIn("alpha-reviewer", team.pending)
 
     def test_brief_job_carries_the_role_brief_as_a_second_line(self):
         doc = store.read_json(self.ts.team.team_json)
@@ -902,6 +1040,24 @@ class DeliveryTests(unittest.TestCase):
         self.assertNotIn("agent.prompt", [m for m, _ in api.calls])
         self.assertEqual(d.teams["alpha"].ledger.counts()["dry"], 1)
         self.assertTrue(any("DRY nudge" in line for line in d.logged))
+
+    def test_agent_get_recheck_is_logged_before_the_send(self):
+        """M5 ND-01: daemon.log shows the fresh ``agent.get`` seq re-check immediately before the (dry) send."""
+        d, api, clock = make_daemon(self.ts, env=self.ts.env_with(HERDR_TEAM_DRY_NUDGE="1"))
+        d.on_connected()
+        post(self.ts, "alpha-reviewer")
+        d.tick()
+        for _ in range(14):
+            clock.advance(5)
+            d.tick()
+        rechecks = [i for i, line in enumerate(d.logged) if "alpha-reviewer agent.get re-check: state_change_seq" in line]
+        sends = [i for i, line in enumerate(d.logged) if "DRY nudge to alpha-reviewer" in line]
+        self.assertEqual(len(sends), 1, d.logged)
+        self.assertTrue(rechecks, d.logged)
+        self.assertLess(rechecks[-1], sends[0])
+        self.assertNotIn("agent.get re-check", "\n".join(d.logged[rechecks[-1] + 1:sends[0]]).replace(d.logged[rechecks[-1]], ""))
+        self.assertIn("(idle)", d.logged[rechecks[-1]])
+        self.assertIn("agent.get", [m for m, _ in api.calls])
 
     def test_muted_member_is_held(self):
         store.write_json(self.ts.team.mute_json, {"alpha-reviewer": "2099-01-01T00:00:00Z"})
@@ -1201,6 +1357,10 @@ class HeartbeatAndWhoTests(unittest.TestCase):
 # G6: gate config from team.json and the gate 11 follow-up exception
 
 
+def _board_max(ts):
+    return int(store.read_json(ts.team.board_seq, default={"next": 1}).get("next", 1)) - 1
+
+
 def ticks(d, clock, count, step=5):
     for _ in range(count):
         clock.advance(step)
@@ -1287,6 +1447,71 @@ class GateConfigAndFollowUpTests(unittest.TestCase):
         self.assertEqual(D.gate_config_from_roster({"config": {"gate": {"done_hold_ms": 0}}})[1], {"done_hold_ms": 0})
         self.assertEqual(D.gate_config_from_roster({})[0], gate.DEFAULT_CONFIG)
         self.assertIsNotNone(D.gate_config_from_roster({"config": {"gate": {"x": 1}}})[2])
+
+    def test_same_second_burst_becomes_one_nudge_covering_the_range(self):
+        """Plan 12 / M5 ND-03: five posts 200 ms apart to a stable idle member yield one nudge for the whole range.
+
+        Before ``burst_window_ms`` the first post passed the gate on its own tick and the nudge
+        said "1 new board post" while four more were already on the board.
+        """
+        d, api, clock = self.daemon({"done_hold_ms": 0})
+        ticks(d, clock, 3, step=2.5)  # stable idle, interval clear
+        seqs = []
+        for i in range(5):
+            seqs.append(post(self.ts, "alpha-reviewer", text="burst {}".format(i)))
+            ticks(d, clock, 1, step=0.2)
+        prompts = [p for m, p in api.calls if m == "agent.prompt"]
+        self.assertEqual(prompts, [], "a nudge went out inside the burst window")
+        ticks(d, clock, 2, step=0.6)
+        prompts = [p for m, p in api.calls if m == "agent.prompt"]
+        self.assertEqual(len(prompts), 1)
+        self.assertRegex(prompts[0]["text"], r"^\[herdr-team nudge\] 5 new board posts for alpha-reviewer \(seq {}-{}\)\.".format(seqs[0], seqs[-1]))
+        self.assertEqual(gate.GateConfig.from_mapping({"burst_window_ms": 0}).burst_window_ms, 0)
+
+    def test_pair_budget_hold_toasts_once_per_hour(self):
+        """Plan 8.2 gate 11 / M5 ND-08: the ping-pong budget hold raises one toast, coalesced per (member, reason) per hour."""
+        d, api, clock = self.daemon({"done_hold_ms": 0, "pair_budget": 2, "min_interval_ms": 0})
+        ticks(d, clock, 3, step=2.5)
+        now = d.now_ms()
+        d.pair_exchanges[("alpha-reviewer", "alpha-worker")] = [now - 1000.0, now - 500.0]
+        post(self.ts, "alpha-reviewer")  # author alpha-worker
+        ticks(d, clock, 4, step=1.5)
+        pending = d.teams["alpha"].pending["alpha-reviewer"]
+        self.assertEqual(pending.hold, gate.HOLD_PAIR_BUDGET)
+        self.assertEqual([m for m, _ in api.calls if m == "agent.prompt"], [])
+        def shown():
+            return [p for m, p in api.calls if m == "notification.show" and "ping-pong paused" in str(p.get("title"))]
+
+        toasts = shown()
+        self.assertEqual(len(toasts), 1, [p for m, p in api.calls if m == "notification.show"])
+        self.assertIn("alpha-worker", toasts[0]["body"])
+        # a second post inside the hour re-holds without another toast
+        post(self.ts, "alpha-reviewer", text="again")
+        ticks(d, clock, 4, step=1.5)
+        self.assertEqual(len(shown()), 1)
+        # once the 10 min pair window expires the held posts go out
+        clock.advance(601)
+        ticks(d, clock, 8, step=1.5)  # the gap voided the stable window; it rebuilds over these polls
+        self.assertEqual(len([m for m, _ in api.calls if m == "agent.prompt"]), 1, d.logged[-12:])
+        # a fresh hold inside the same hour is coalesced: still one toast
+        d.pair_exchanges[("alpha-reviewer", "alpha-worker")] = [d.now_ms() - 1000.0, d.now_ms() - 500.0]
+        post(self.ts, "alpha-reviewer", text="third")
+        ticks(d, clock, 4, step=1.5)
+        self.assertEqual(d.teams["alpha"].pending["alpha-reviewer"].hold, gate.HOLD_PAIR_BUDGET)
+        self.assertEqual(len(shown()), 1)
+        # an hour after the first toast the next fresh hold toasts again
+        rt = d.teams["alpha"].rt("alpha-reviewer")
+        rt.hold_toast_ms[gate.HOLD_PAIR_BUDGET] -= 3601 * 1000.0
+        clock.advance(601)
+        ticks(d, clock, 8, step=1.5)
+        self.assertEqual(len([m for m, _ in api.calls if m == "agent.prompt"]), 2)
+        store.Cursors(self.ts.team).advance("alpha-reviewer", _board_max(self.ts), "term_r1", "cli")  # read: the landed pending clears
+        ticks(d, clock, 2, step=1.5)
+        self.assertNotIn("alpha-reviewer", d.teams["alpha"].pending)
+        d.pair_exchanges[("alpha-reviewer", "alpha-worker")] = [d.now_ms() - 1000.0, d.now_ms() - 500.0]
+        post(self.ts, "alpha-reviewer", text="fourth")
+        ticks(d, clock, 4, step=1.5)
+        self.assertEqual(len(shown()), 2)
 
     def test_follow_up_nudge_is_typed_before_the_interval_and_only_once(self):
         """Plan 8.2 gate 11: one immediate follow-up when the cursor advanced past the nudged seq but posts remain."""

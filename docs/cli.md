@@ -295,6 +295,10 @@ board [--new | --peek] [--to me | --from <name> | --kind <k> | --thread <seq> | 
 - `--format context`: the Claude hook format (fixed header line, fenced
   posts). `--max 20 --max-bytes 4096` defaults in that format.
 - `--receipts`: adds `nudged` (board `system` records) and `read` (cursors).
+- Lines the store could not use are reported, never hidden (F-03): JSON
+  gains `"skipped": {"corrupt": n, "fragment": n, "duplicates": n, "grammar": n}`
+  when any count is non-zero; human and context output print
+  `warning: board: skipped N line(s): …` on stderr. The exit code stays 0.
 
 JSON:
 
@@ -584,13 +588,15 @@ optional, milliseconds unless named otherwise, defaults in parentheses:
 `focus_max_hold_ms` (300000), `focus_snapshot_stable_ms` (3000),
 `dialog_hold_cap_ms` (600000), `pair_budget` (10, count),
 `pair_window_ms` (600000), `sample_gap_reset_ms` (10000),
-`post_ttl_ms` (1800000), `nudge_focused` (`"never"`, one of
-`never|always`). `post_ttl_ms` is the target-active time after which an
+`post_ttl_ms` (1800000), `burst_window_ms` (1000), `nudge_focused`
+(`"never"`, one of `never|always`). `post_ttl_ms` is the target-active time after which an
 unread post is `expired` (paused while the member is `missing`);
 `pair_window_ms` is the window of the `pair_budget` ping-pong count between
 two members; `sample_gap_reset_ms` is the `agent list` sample gap that voids
 the stable window of that team's terminals (other terminals keep the
-default). An unknown key, a negative or non-numeric value, a non-string
+default); `burst_window_ms` is how long a nudge waits after its newest post
+arrived, so a same-second burst becomes one nudge covering the seq range
+(M5 ND-03). An unknown key, a negative or non-numeric value, a non-string
 `nudge_focused`, or a `nudge_focused` outside `never|always` makes the
 daemon ignore the whole `gate` object (logged as `config.gate ignored`) and
 run the default gate, so one bad field never changes every gate. Example:

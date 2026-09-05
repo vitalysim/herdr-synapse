@@ -94,6 +94,62 @@ class SystemTierTests(unittest.TestCase):
             self.assertEqual(entries[0]["author"], "system")
 
 
+class NonDefaultTeamMemberTests(unittest.TestCase):
+    """M5 rig finding: with ``default_team`` = alpha, a member of team beta was ``not_a_member`` from its own pane."""
+
+    def _beta(self, ts: TempState) -> None:
+        from herdr_team import paths, roster
+
+        beta = ts.session.team("beta")
+        paths.ensure_team_dirs(beta)
+        store.write_json(beta.team_json, {
+            "schema": 1, "team": "beta", "created_at": "2026-09-05T12:00:00Z", "socket": os.fspath(ts.socket_path),
+            "state_dir": os.fspath(ts.state_root), "naming": "plain", "revision": 1, "charter": None,
+            "members": [
+                {"name": "f1", "role": "a", "kind": "claude", "terminal_id": "term_f1", "pane_id": "w1:pA", "workspace_id": "w1",
+                 "tab_id": "w1:t1", "status": "active", "generation": 1, "delivery": "nudge"},
+                {"name": "human", "role": "operator", "kind": "human", "terminal_id": None, "status": "active"},
+            ],
+        })
+        roster.write_pane_record(ts.session, "term_f1", "beta", "f1", 1)
+        store.write_json(ts.session.console_json, {"default_team": "alpha"})
+
+    def _api(self) -> FakeApi:
+        api = make_api()
+        api.set_response("pane.get", lambda p: pane_info("w1:pA", "term_f1", "claude"))
+        return api
+
+    def test_default_team_hint_does_not_hide_a_member_of_another_team(self) -> None:
+        with TempState() as ts:
+            self._beta(ts)
+            env = ts.env_with(HERDR_PANE_ID="w1:pA")
+            author = identity.resolve_author(env, ts.layout, self._api(), team="alpha", team_explicit=False)
+            self.assertEqual((author.name, author.team, author.via, author.verified), ("f1", "beta", identity.VIA_CLI, True))
+
+    def test_explicit_team_stays_strict(self) -> None:
+        with TempState() as ts:
+            self._beta(ts)
+            env = ts.env_with(HERDR_PANE_ID="w1:pA")
+            with self.assertRaises(HerdrTeamError) as ctx:
+                identity.resolve_author(env, ts.layout, self._api(), team="alpha")
+            self.assertEqual(ctx.exception.code, "not_a_member")
+
+    def test_cmd_board_wrapper_marks_the_default_team_hint_as_implicit(self) -> None:
+        import argparse
+
+        from herdr_team import cmd_board
+
+        with TempState() as ts:
+            self._beta(ts)
+            args = argparse.Namespace(team=None, session=None, socket=None, json=True, env=ts.env_with(HERDR_PANE_ID="w1:pA"))
+            author = cmd_board.resolve_author(args, ts.layout, self._api(), team="alpha")
+            self.assertEqual((author.name, author.team), ("f1", "beta"))
+            args = argparse.Namespace(team="alpha", session=None, socket=None, json=True, env=ts.env_with(HERDR_PANE_ID="w1:pA"))
+            with self.assertRaises(HerdrTeamError) as ctx:
+                cmd_board.resolve_author(args, ts.layout, self._api(), team="alpha")
+            self.assertEqual(ctx.exception.code, "not_a_member")
+
+
 class ConsoleTierTests(unittest.TestCase):
     def _console_env(self, ts: TempState, pane_id: str = "w7:p1") -> Dict[str, str]:
         return ts.env_with(HERDR_PLUGIN_ENTRYPOINT_ID="console", HERDR_PLUGIN_ID="herdr-team", HERDR_PANE_ID=pane_id)

@@ -233,9 +233,13 @@ class _JoinSpec:
 
 
 def parse_member_spec(spec: str) -> _JoinSpec:
-    """``<target>[:<role>[:<name>]]``; pane ids carry one colon (``w2:p1``)."""
+    """``<target>[:<role>[:<name>]]``; pane ids carry one colon (``w2:p1``).
+
+    Herdr numbers panes and workspaces in base 36 (``w1:p9`` is followed by
+    ``w1:pA``), so the pane part is alphanumeric, not decimal (M5 rig finding).
+    """
     parts = spec.split(":")
-    if len(parts) >= 2 and re.match(r"^p\d+$", parts[1]) and re.match(r"^w[A-Za-z0-9]+$", parts[0]):
+    if len(parts) >= 2 and re.match(r"^p[A-Za-z0-9]+$", parts[1]) and re.match(r"^w[A-Za-z0-9]+$", parts[0]):
         target = parts[0] + ":" + parts[1]
         rest = parts[2:]
     else:

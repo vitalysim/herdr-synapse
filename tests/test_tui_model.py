@@ -29,7 +29,9 @@ from herdr_team.tui_model import (
     build_feed,
     compose_apply_key,
     derive_receipts,
+    filter_matches,
     header_lines,
+    merge_audit_warnings,
     parse_input_line,
     picker_apply_key,
     picker_rows_from_agent_list,
@@ -246,6 +248,33 @@ class FeedTests(unittest.TestCase):
         self.assertIn("system nudged:", by_seq[42]["line"])
         ascii_feed = build_feed(recs, cursors, FAKE_MEMBERS, ascii_only=True, width=120)
         self.assertIn("+nudged", [e for e in ascii_feed if e["seq"] == 41][0]["line"])
+
+    def test_audit_warnings_render_in_the_feed(self):
+        # HP-08 (2026-09-05): `--as human` from the reviewer pane was refused and audited, but the
+        # console showed nothing; plan 7.1 promises a console warning for author_mismatch.
+        recs = [record(1, ts="2026-09-05T12:00:00.000Z", to=["all"]), record(2, ts="2026-09-05T12:01:00.000Z", to=["all"])]
+        audit = [
+            {"ts": "2026-09-05T12:00:39.626Z", "event": "author_mismatch", "author": "alpha-reviewer", "via": "cli", "pane_id": "w1:p2", "details": {"requested": "human", "resolved": "alpha-reviewer"}},
+            {"ts": "2026-09-05T12:00:40.000Z", "event": "charter_set", "author": "human", "via": "outside", "pane_id": None, "details": {}},
+            {"ts": "2026-09-05T12:02:00.000Z", "event": "pane_mismatch", "author": "\x1b[31mevil\x1b[0m", "via": "cli", "pane_id": "w1:p4", "details": {"claimed_pane_id": "w1:p2"}},
+        ]
+        feed = merge_audit_warnings(build_feed(recs, width=200), audit, width=200)
+        self.assertEqual([e["seq"] for e in feed], [1, None, 2, None])
+        self.assertIn("warning: alpha-reviewer tried to post as human (author_mismatch, w1:p2)", feed[1]["line"])
+        self.assertTrue(feed[1]["line"].startswith("⚠ "))
+        self.assertEqual((feed[1]["kind"], feed[1]["from"], feed[1]["to"]), ("warning", "alpha-reviewer", []))
+        self.assertIn("claimed pane w1:p2 (pane_mismatch, w1:p4)", feed[3]["line"])
+        self.assertNotIn("\x1b", feed[3]["line"])  # audit author text is sanitized before render
+        ascii_feed = merge_audit_warnings(build_feed(recs, width=200), audit, ascii_only=True, width=200)
+        self.assertTrue(ascii_feed[1]["line"].startswith("! "))
+        # the system filter shows warnings; "human" does not
+        self.assertTrue(filter_matches(feed[1], "system"))
+        self.assertTrue(filter_matches(feed[1], "all"))
+        self.assertFalse(filter_matches(feed[1], "human"))
+        # rendering never trips over the None seq
+        model = build_console_model("alpha", None, recs, width=200, height=12, audit=audit)
+        screen = render_console(model, 200, 12)
+        self.assertTrue(any("warning: alpha-reviewer tried to post as human" in line for line in screen), screen)
 
     def test_read_by_tag_for_all_posts(self):
         recs = [record(7, to=["all"])]
@@ -1071,12 +1100,19 @@ class ConsoleRuntimeTests(unittest.TestCase):
             self.assertEqual(second, "charter #3: Find and fix the session-isolation bug")
             self.assertEqual(model.human_label, "vitaly")
             self.assertEqual(len(model.feed), 2)
+            # HP-08: an audit.jsonl author_mismatch line becomes a console warning on the next build
+            with open(ts.team.audit_jsonl, "ab") as fh:
+                fh.write(json.dumps({"ts": "2026-09-05T12:00:39.626Z", "event": "author_mismatch", "author": "alpha-reviewer", "via": "cli", "pane_id": "w1:p2", "details": {"requested": "human"}}).encode() + b"\n")
+                fh.write(b"not json\n")
+            model = console.build_model(ts.layout, "alpha", state, env=ts.env)
+            self.assertEqual(len(model.feed), 3)
+            self.assertTrue(any(e["kind"] == "warning" and "alpha-reviewer tried to post as human" in e["line"] for e in model.feed), [e["line"] for e in model.feed])
             self.assertTrue(any("muted" in line for line in model.roster_lines))
             with open(ts.team.board_jsonl, "ab") as fh:
                 fh.write(json.dumps(record(3)).encode() + b"\n")
             model.input = "draft"
             console.refresh(model, ts.layout, state)
-            self.assertEqual(len(model.feed), 3)
+            self.assertEqual(len(model.feed), 4)  # three records plus the audit warning
             self.assertEqual(model.input, "draft")
 
     def test_post_args(self):
