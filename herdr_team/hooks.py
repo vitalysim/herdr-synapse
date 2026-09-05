@@ -375,6 +375,13 @@ def _reconcile_gone(layout: Layout, api: Any, teams: Dict[str, Dict[str, Any]], 
             for name, fields in updates.items():
                 say("{}: {} -> {} ({})".format(team_name, name, fields["status"], why))
                 _record_change(out, team_name, name, fields)
+    if why == "pane_closed":
+        # UI-05, daemon-dead path: a console pane closed while the server is up is recorded open:false.
+        from herdr_team import cmd_ui as _cmd_ui
+
+        if _cmd_ui.mark_console_closed_if_pane_gone(layout.session, api):
+            say("console pane gone after {}; console.json open:false".format(why))
+            out["console_closed"] = True
 
 
 def _reconcile_detected(layout: Layout, api: Any, teams: Dict[str, Dict[str, Any]], pane_id: str, agent: Optional[Dict[str, Any]], code: Optional[str], out: Dict[str, Any], say: Any) -> None:

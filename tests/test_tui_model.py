@@ -1195,6 +1195,33 @@ class ConsoleRuntimeTests(unittest.TestCase):
                 picker.run_args(args)
             self.assertEqual(ctx.exception.code, "not_a_plugin_pane")
 
+    def test_sigterm_unwinds_through_the_finally_and_records_closed(self):
+        """UI-05 (rig, 2026-09-05): ``kill -TERM <console pid>`` left open:true and a hint pane waiting for a key."""
+        import signal
+
+        with TempState() as ts:
+            console.write_console_record(ts.layout, {"default_team": "alpha", "open": False})
+            seen = {}
+
+            def fake_wrapper(fn, *args):
+                seen["handler"] = signal.getsignal(signal.SIGTERM)
+                os.kill(os.getpid(), signal.SIGTERM)  # delivered to this thread; the handler raises before the next line
+                raise AssertionError("SIGTERM handler did not interrupt the loop")
+
+            before = signal.getsignal(signal.SIGTERM)
+            env = {k: v for k, v in ts.env.items() if k != "HERDR_PANE_ID"}
+            with mock.patch("curses.wrapper", fake_wrapper):
+                code = console.run(ts.layout, None, "alpha", env)
+            self.assertEqual(code, 0)
+            self.assertTrue(callable(seen["handler"]))
+            self.assertEqual(signal.getsignal(signal.SIGTERM), before)  # restored for the rest of the process
+            doc = console.read_console_json(ts.layout)
+            self.assertEqual((doc["open"], doc["pid"], doc["default_team"]), (False, None, "alpha"))
+            # a plain return from the loop still records closed and keeps the exit code
+            with mock.patch("curses.wrapper", lambda fn, *a: 0):
+                self.assertEqual(console.run(ts.layout, None, "alpha", env), 0)
+            self.assertFalse(console.read_console_json(ts.layout)["open"])
+
     def test_helpers(self):
         with TempState() as ts:
             self.assertFalse(console.view_is_on(ts.layout, "alpha"))

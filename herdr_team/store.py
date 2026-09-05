@@ -223,6 +223,12 @@ class FileLock:
 def team_lock(team: Union[TeamPaths, PathLike], timeout: float = TEAM_LOCK_TIMEOUT_S) -> FileLock:
     """``<team>/team.lock``: roster, board, ``board.seq``, cursors. Timeout -> ``board_locked``, exit 5."""
     path = team.team_lock if isinstance(team, TeamPaths) else Path(team) / "team.lock"
+    # ``FileLock.acquire`` creates the lock's directory. A team dir is created by ``create_team``
+    # (``ensure_team_dirs``) before its first lock, so a missing root means the team was dissolved
+    # or never existed: refuse instead of resurrecting ``teams/<team>/team.lock`` (RS-10/RS-13 live
+    # finding: the daemon's reconcile raced ``dissolve`` and left a lock-only ``teams/gamma``).
+    if not path.parent.is_dir():
+        raise HerdrTeamError("team_not_found", "team directory {} does not exist".format(path.parent), EXIT_REFUSED, {"team_dir": os.fspath(path.parent)})
     return FileLock(path, timeout, code="board_locked")
 
 

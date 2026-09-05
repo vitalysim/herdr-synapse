@@ -1146,6 +1146,31 @@ def label_pane(api: Any, pane_id: str, label: Optional[str]) -> bool:
         return False
 
 
+def clear_stale_label(api: Any, pane_id: str, label: Optional[str]) -> bool:
+    """Drop ``label`` from ``pane_id`` when that pane still carries it and hosts no agent (RT-02).
+
+    A member bound elsewhere (``bind`` after a cold restart, or a rebind by
+    name in another pane) leaves its old pane behind as a plain shell that
+    would otherwise keep ``team:<team>/<role>`` forever: ``dissolve`` and
+    ``remove`` only touch the member's current pane. Nothing is cleared when
+    the pane is gone, carries another label, or hosts an agent (another
+    member may have taken it over). Failures are tolerated.
+    """
+    if not label or not pane_id:
+        return False
+    try:
+        result = api.request("pane.list", {})
+    except HerdrTeamError:
+        return False
+    panes = result.get("panes") if isinstance(result, dict) else None
+    for pane in panes or []:
+        if isinstance(pane, dict) and pane.get("pane_id") == pane_id:
+            if pane.get("label") == label and not pane.get("agent"):
+                return label_pane(api, pane_id, None)
+            return False
+    return False
+
+
 def write_briefing_job(team_paths: TeamPaths, member_name: str, requested_by: Optional[Dict[str, Any]] = None, kind: str = "brief", force: bool = False) -> Path:
     """``notifier/jobs/<ts>-<id>.json`` for the daemon (docs/cli.md section 8)."""
     ensure_team_dirs(team_paths)
@@ -1271,6 +1296,7 @@ class Roster:
     def bind(self, api: Any, name: str, target: ResolvedTarget, socket: Optional[str] = None) -> Dict[str, Any]:
         """Re-attach a ``missing``/``unbound``/``kind_changed`` member to a live agent: ``generation + 1``."""
         previous_terminal: List[Optional[str]] = []
+        previous_pane: List[Optional[str]] = []
 
         def mutate(team: Team) -> None:
             member = team.find(name)
@@ -1279,6 +1305,7 @@ class Roster:
             if target.kind and target.kind != member.kind and member.status != "kind_changed":
                 raise HerdrTeamError("kind_mismatch", "{} is a {} agent, member {!r} is {}".format(target.pane_id, target.kind, name, member.kind), EXIT_REFUSED, {"name": name, "kind": member.kind, "live_kind": target.kind})
             previous_terminal.append(member.terminal_id)
+            previous_pane.append(member.pane_id)
             member.terminal_id = target.terminal_id
             member.pane_id = target.pane_id
             member.workspace_id = target.workspace_id
@@ -1300,6 +1327,8 @@ class Roster:
         if target.name != member.name:
             rename_agent(api, target.pane_id, member.name)
         label_pane(api, target.pane_id, member.label)
+        if previous_pane and previous_pane[0] and previous_pane[0] != target.pane_id:
+            clear_stale_label(api, previous_pane[0], member.label)  # RT-02: the old pane is a plain shell after a cold restart
         execute_token_commands(api, token_commands(member, self.name))
         if previous_terminal and previous_terminal[0] and previous_terminal[0] != target.terminal_id:
             remove_pane_record(self.layout.session, previous_terminal[0])
@@ -1412,12 +1441,33 @@ def join(layout: Layout, api: Any, team: Team, target: str, role: str, name: Opt
     return member
 
 
-def _kind_verified(layout: Layout, kind: str) -> bool:
-    doc = store.read_json(layout.session.kinds_json, default=None)
-    if not isinstance(doc, dict):
+def kind_entry_trusted(entry: Any) -> bool:
+    """One ``kinds.json`` entry passes gate 4 (plan 8.2) when the kind is ``verified`` (20 clean
+    round trips through the ledger), ``trusted`` (an explicit owner override), or has a passed
+    ``probe`` (the one verified send-and-read round trip ``hooks probe <kind>`` records).
+
+    Without the probe clause nothing could ever be delivered to a new kind: the ledger needs
+    delivered round trips to verify it, and gate 4 held every delivery until it was verified
+    (observed live in M0 on 2026-09-05: a fresh Claude member was ``held: kind_unverified``
+    forever, probe or not).
+    """
+    if not isinstance(entry, dict):
         return False
-    entry = doc.get(kind)
-    return bool(isinstance(entry, dict) and entry.get("verified"))
+    if entry.get("verified") or entry.get("trusted"):
+        return True
+    probe = entry.get("probe")
+    return bool(isinstance(probe, dict) and probe.get("ok"))
+
+
+def kind_trusted(doc: Any, kind: str) -> bool:
+    """``kind_entry_trusted`` for ``kinds.json[kind]``; a missing or malformed document trusts nothing."""
+    if not isinstance(doc, dict) or not kind:
+        return False
+    return kind_entry_trusted(doc.get(kind))
+
+
+def _kind_verified(layout: Layout, kind: str) -> bool:
+    return kind_trusted(store.read_json(layout.session.kinds_json, default=None), kind)
 
 
 def _sanitize_brief(text: str) -> str:

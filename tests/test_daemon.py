@@ -156,6 +156,9 @@ class DetachTests(unittest.TestCase):
         self.assertTrue(wait_until(lambda: "fd0=/dev/null fd1=daemon.log fd2=daemon.log" in self.ts.session.daemon_log.read_text(errors="replace"), 5.0))
         log = self.ts.session.daemon_log.read_text(errors="replace")
         self.assertIn("identity env unset: True", log)
+        # ``identity_env`` sets HERDR_SESSION and HERDR_CLIENT_SOCKET_PATH is inherited when the test
+        # itself runs inside Herdr; the grandchild must report both gone (S-07 live finding).
+        self.assertIn("session env unset: True", log)
         self.assertTrue(info.identity_env_unset)
         # the daemon talked to the fake server as itself: never --current, never a pane id
         self.assertTrue(wait_until(lambda: len(self.server.requests_for("agent.list")) >= 1, 5.0))
@@ -425,13 +428,25 @@ class ReconnectTests(unittest.TestCase):
         d.poll_agents(force=True)
         d.poll_registry(clock() * 1000)  # first call only arms the interval
         self.assertFalse(d.stop_requested)
-        clock.advance(61)
+        clock.advance(D.REGISTRY_POLL_S / 2)
+        d.poll_registry(clock() * 1000)  # inside the interval: no call, no exit
+        self.assertFalse(d.stop_requested)
+        self.assertFalse([m for m, _ in api.calls if m == "plugin.list"])
+        clock.advance(D.REGISTRY_POLL_S / 2 + 0.5)
         d.poll_registry(clock() * 1000)
         self.assertTrue(d.stop_requested)
         self.assertEqual(d.stop_reason, "plugin disabled")
         cleared = [p for m, p in api.calls if m == "pane.report_metadata" and p["tokens"].get("team") is None]
         self.assertTrue(cleared)
         self.assertIn(("agent.view.clear", {"source": "plugin:herdr-team"}), api.calls)
+
+    def test_registry_poll_interval_meets_the_disable_budget(self):
+        # PK-08: ``plugin disable`` must clear tokens and the view and stop the daemon within 15 s.
+        # Live on 2026-09-05 the 60 s interval took 54 s; the first poll fires one interval after start,
+        # so the interval itself has to sit under the budget with room for the teardown calls.
+        self.assertLessEqual(D.REGISTRY_POLL_S, 10.0)
+        d, _api, _clock = make_daemon(self.ts)
+        self.assertEqual(d.registry_poll_s, D.REGISTRY_POLL_S)
 
 
 # --------------------------------------------------------------------------
@@ -459,6 +474,13 @@ class EnvHygieneTests(unittest.TestCase):
         scrubbed = scrub_env(identity_env(ts))
         for name in IDENTITY_ENV_VARS:
             self.assertNotIn(name, scrubbed)
+
+    def test_dropped_env_names_cover_session_and_client_socket(self):
+        # S-07 live on 2026-09-05: ``HERDR_SESSION`` survived into the daemon because the grandchild
+        # overlaid the scrubbed copy on ``os.environ`` without removing the names the copy had dropped.
+        for name in IDENTITY_ENV_VARS + ("HERDR_SESSION", "HERDR_CLIENT_SOCKET_PATH"):
+            self.assertIn(name, D.DAEMON_DROPPED_ENV_VARS)
+        self.assertNotIn("HERDR_SOCKET_PATH", D.DAEMON_DROPPED_ENV_VARS)
 
 
 # --------------------------------------------------------------------------
@@ -989,6 +1011,25 @@ class HeartbeatAndWhoTests(unittest.TestCase):
         info = D.read_daemon_info(self.ts.session)
         self.assertEqual(info.pid, os.getpid())
 
+    def test_heartbeat_stamps_team_task_from_the_task_file(self):
+        """RS-01/RS-04 regression: ``herdr-team task`` writes ``tasks/<name>.json``; the heartbeat must read it."""
+        post(self.ts, "human", "review the diff for the login change please", author="alpha-reviewer", kind="request")
+        tasks_dir = self.ts.team.root / "tasks"
+        tasks_dir.mkdir(mode=0o700, exist_ok=True)
+        store.write_json(tasks_dir / "alpha-reviewer.json", {"v": 1, "member": "alpha-reviewer", "text": "rig smoke", "headline": "rig smoke", "set_at": D.now_iso()})
+        self.d.on_connected()
+        self.d.tick()
+        task = [p for p in self.stamps() if p["source"] == "herdr-team:task" and p["pane_id"] == "w2:p1"]
+        self.assertTrue(task, self.stamps())
+        self.assertEqual(task[0]["tokens"], {"team_task": "rig smoke"})  # the task beats the last post headline
+        self.assertEqual(task[0]["ttl_ms"], 120000)
+        # an unsafe member name or a missing file is no task
+        self.assertIsNone(D.read_task_file(self.ts.team, "../etc"))
+        self.assertIsNone(D.read_task_file(self.ts.team, "nobody"))
+        # a stale task (older than 30 min) falls back to the last post headline
+        store.write_json(tasks_dir / "alpha-reviewer.json", {"v": 1, "member": "alpha-reviewer", "text": "old task", "set_at": "2020-01-01T00:00:00.000Z"})
+        self.assertTrue(D.task_headline({"name": "alpha-reviewer"}, {"kind": "request", "text": "review the diff"}, time.time(), task=D.read_task_file(self.ts.team, "alpha-reviewer")).startswith("→ "))
+
     def test_who_json_is_coalesced_to_once_per_second(self):
         self.d.on_connected()
         self.d.tick()
@@ -1040,6 +1081,99 @@ class HeartbeatAndWhoTests(unittest.TestCase):
         self.assertEqual(self.d.teams["alpha"].member("alpha-worker")["status"], "missing")
         cleared = [p for m, p in self.api.calls if m == "pane.report_metadata" and p["pane_id"] == "w2:p2" and p["tokens"].get("team") is None]
         self.assertTrue(cleared)
+
+    def test_pane_closed_event_records_a_gone_console_as_closed(self):
+        """UI-05: the event carries a pane id (stale after a move); the tick checks the console terminal in pane.list."""
+        from support import fake_pane
+
+        self.d.on_connected()
+        store.write_json(self.ts.session.console_json, {"pane_id": "w3:p2", "terminal_id": "term_console", "pid": os.getpid(), "open": True, "default_team": "alpha"})
+        # a move kept the terminal: still open
+        self.api.set_response("pane.list", {"type": "pane_list", "panes": [fake_pane("w4:p1", "term_console", None, "Team console"), fake_pane("w1:p1", "term_shell")]})
+        self.d.handle_event({"event": "pane_closed", "data": {"pane_id": "w1:p7"}})
+        self.assertTrue(self.d.console_check_due)
+        self.d.tick()
+        self.assertFalse(self.d.console_check_due)
+        self.assertTrue(store.read_json(self.ts.session.console_json)["open"])
+        # plugin pane close: the terminal is gone while the server answers
+        self.api.set_response("pane.list", {"type": "pane_list", "panes": [fake_pane("w1:p1", "term_shell")]})
+        self.d.handle_event({"event": "pane_closed", "data": {"pane_id": "w4:p1"}})
+        self.d.tick()
+        doc = store.read_json(self.ts.session.console_json)
+        self.assertEqual((doc["open"], doc["pid"]), (False, None))
+        self.assertTrue(any("console pane closed" in line for line in self.d.logged))
+
+    def test_rebind_to_another_pane_clears_the_label_left_on_the_old_shell(self):
+        """RT-02: a member rebound by name in a new pane must not leave ``team:alpha/worker`` on its old pane."""
+        from support import fake_pane
+
+        self.api.set_response("agent.list", {"type": "agent_list", "agents": [dict(FAKE_AGENTS[0]), dict(FAKE_AGENTS[2])]})
+        self.d.on_connected()
+        self.clock.advance(31)
+        self.d.reconcile_due = True
+        self.d.tick()
+        self.assertEqual(self.d.teams["alpha"].member("alpha-worker")["status"], "missing")
+        # alpha-worker comes back under its exact name in a fresh pane; its old pane w2:p2 is a labelled shell now
+        self.api.set_response("agent.list", {"type": "agent_list", "agents": [fake_agent("w5:p1", "term_w9", "claude", "alpha-worker"), dict(FAKE_AGENTS[0]), dict(FAKE_AGENTS[2])]})
+        self.api.set_response("pane.list", {"type": "pane_list", "panes": [fake_pane("w2:p2", "term_shell2", None, "team:alpha/worker"), fake_pane("w5:p1", "term_w9", "claude", None)]})
+        self.api.set_response("agent.rename", {"type": "ok"})
+        self.api.set_response("pane.rename", {"type": "ok"})
+        self.d.handle_event({"event": "pane_agent_detected", "data": {"pane_id": "w5:p1"}})
+        self.clock.advance(1)
+        self.d.tick()
+        member = self.d.teams["alpha"].member("alpha-worker")
+        self.assertEqual((member["status"], member["pane_id"], member["terminal_id"]), ("active", "w5:p1", "term_w9"))
+        renames = [p for m, p in self.api.calls if m == "pane.rename"]
+        self.assertIn({"pane_id": "w5:p1", "label": "team:alpha/worker"}, renames)
+        self.assertIn({"pane_id": "w2:p2", "label": None}, renames)
+
+    def test_connect_schedules_a_deferred_console_pass_that_closes_the_dead_shell(self):
+        """RT-05: the startup hook's pass saw an empty foreground; the daemon retries 3 s after connect until known."""
+        from support import fake_pane
+
+        store.write_json(self.ts.session.console_json, {"pane_id": "w3:p6", "terminal_id": "term_old", "pid": 999999, "open": True, "default_team": "alpha"})
+        self.api.set_response("pane.list", {"type": "pane_list", "panes": [fake_pane("w3:p6", "term_shell6", None, "Team console"), fake_pane("w1:p1", "term_shell")]})
+        foreground = {"procs": []}
+        self.api.set_response("pane.process_info", lambda params: {"type": "pane_process_info", "process_info": {"pane_id": params["pane_id"], "shell_pid": 4, "foreground_processes": list(foreground["procs"])}})
+        self.api.set_response("plugin.pane.open", {"type": "plugin_pane_opened", "plugin_pane": {"pane": fake_pane("w3:p7", "term_new", None, "Team console")}})
+        self.api.set_response("pane.close", {"type": "ok"})
+        self.d.on_connected()
+        self.assertIsNotNone(self.d.console_reconcile_at_ms)
+        self.d.tick()
+        self.assertEqual([m for m, _ in self.api.calls if m in ("plugin.pane.open", "pane.close")], [])  # not before the delay
+        self.clock.advance(3.1)
+        self.d.tick()
+        opened = [p for m, p in self.api.calls if m == "plugin.pane.open"]
+        self.assertEqual((len(opened), opened[0]["entrypoint"]), (1, "console"))  # open:true with a dead pid: reopened once
+        self.assertEqual([m for m, _ in self.api.calls if m == "pane.close"], [])  # foreground unknown: unresolved, retry scheduled
+        self.assertIsNotNone(self.d.console_reconcile_at_ms)
+        # the reopened console writes its record; the old shell now shows a plain zsh, but the launch grace still holds
+        store.write_json(self.ts.session.console_json, dict(store.read_json(self.ts.session.console_json), pane_id="w3:p7", terminal_id="term_new", pid=os.getpid(), open=True))
+        self.api.set_response("pane.list", {"type": "pane_list", "panes": [fake_pane("w3:p6", "term_shell6", None, "Team console"), fake_pane("w3:p7", "term_new", None, "Team console"), fake_pane("w1:p1", "term_shell")]})
+        foreground["procs"] = [{"pid": 4, "name": "zsh"}]
+        console = store.read_json(self.ts.session.console_json)
+        console["launched_at"] = "2020-01-01T00:00:00.000Z"  # grace over
+        store.write_json(self.ts.session.console_json, console)
+        self.clock.advance(3.1)
+        self.d.tick()
+        self.assertEqual([p for m, p in self.api.calls if m == "pane.close"], [{"pane_id": "w3:p6"}])
+        self.assertEqual(len([m for m, _ in self.api.calls if m == "plugin.pane.open"]), 1)  # the live console is never duplicated
+        self.assertIsNone(self.d.console_reconcile_at_ms)  # resolved: no more passes
+        self.assertTrue(any("closed dead console shell w3:p6" in line for line in self.d.logged))
+
+    def test_deferred_console_pass_is_bounded(self):
+        from support import fake_pane
+
+        store.write_json(self.ts.session.console_json, {"pane_id": "w3:p6", "terminal_id": "term_old", "pid": os.getpid(), "open": True})
+        self.api.set_response("pane.list", {"type": "pane_list", "panes": [fake_pane("w3:p6", "term_old", None, "Team console"), fake_pane("w3:p9", "term_zombie", None, "Team console")]})
+        self.api.set_response("pane.process_info", {"type": "pane_process_info", "process_info": {"pane_id": "w3:p9", "shell_pid": 4, "foreground_processes": []}})
+        self.d.on_connected()
+        for _ in range(D.CONSOLE_RECONCILE_ATTEMPTS + 3):
+            self.clock.advance(D.CONSOLE_RECONCILE_DELAY_S + 0.1)
+            self.d.tick()
+        self.assertIsNone(self.d.console_reconcile_at_ms)
+        self.assertEqual(len([m for m, _ in self.api.calls if m == "pane.process_info"]), D.CONSOLE_RECONCILE_ATTEMPTS)
+        self.assertEqual([m for m, _ in self.api.calls if m in ("pane.close", "plugin.pane.open")], [])
 
     def test_board_tail_survives_rotation_and_reset(self):
         self.d.on_connected()
@@ -1400,3 +1534,124 @@ class LoopBoundaryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# --------------------------------------------------------------------------
+# M0 verify-live regressions (2026-09-05): gate 4 deadlock and the probe clobbering a briefing
+
+
+class KindGateRegressionTests(unittest.TestCase):
+    """A fresh kind could never be delivered to: gate 4 held until ``verified``, and ``verified``
+    needs 20 delivered round trips. A passed ``hooks probe`` (one verified round trip) now opens
+    the gate; the ledger then accumulates round trips toward ``verified`` as plan 8.3 says."""
+
+    def setUp(self):
+        self.ts = TempState()
+        self.addCleanup(self.ts.cleanup)
+
+    def prompts(self, api):
+        return [p for m, p in api.calls if m == "agent.prompt"]
+
+    def run_ticks(self, d, clock, count, step=5):
+        for _ in range(count):
+            clock.advance(step)
+            d.tick()
+
+    def test_passed_probe_opens_gate_4(self):
+        d, api, clock = make_daemon(self.ts, trust=False)
+        store.write_json(self.ts.session.kinds_json, {"codex": {"probe": {"nonce": 51880, "ok": True, "result": "landed_working"}}})
+        d.on_connected()
+        post(self.ts, "alpha-reviewer")
+        d.tick()
+        self.run_ticks(d, clock, 14)
+        prompts = self.prompts(api)
+        self.assertEqual(len(prompts), 1, d.logged)
+        self.assertIn("[herdr-team nudge]", prompts[0]["text"])
+        self.assertNotIn(gate.HOLD_KIND_UNVERIFIED, [p.hold for p in d.teams["alpha"].pending.values()])
+        self.assertFalse(any("kind_unverified" in line for line in d.logged))
+
+    def test_failed_probe_keeps_gate_4_closed(self):
+        d, api, clock = make_daemon(self.ts, trust=False)
+        store.write_json(self.ts.session.kinds_json, {"codex": {"probe": {"nonce": 1, "ok": False, "result": "hung"}}})
+        d.on_connected()
+        post(self.ts, "alpha-reviewer")
+        d.tick()
+        self.run_ticks(d, clock, 14)
+        self.assertEqual(self.prompts(api), [])
+        self.assertEqual(d.teams["alpha"].pending["alpha-reviewer"].hold, gate.HOLD_KIND_UNVERIFIED)
+
+    def test_who_reports_probed_kind_as_verified(self):
+        d, api, clock = make_daemon(self.ts, trust=False)
+        store.write_json(self.ts.session.kinds_json, {"codex": {"probe": {"ok": True}}})
+        self.assertTrue(d._kind_trusted("codex"))
+        self.assertFalse(d._kind_trusted("claude"))
+        self.assertFalse(d._kind_trusted(""))
+
+
+class ProbeResumeRegressionTests(unittest.TestCase):
+    """A probe job replaced the member's pending briefing outright, so ``create`` followed by
+    ``hooks probe`` lost the briefing (live M0: ``briefed: false``, ``pending_nudges: 0``)."""
+
+    def setUp(self):
+        self.ts = TempState()
+        self.addCleanup(self.ts.cleanup)
+        self.d, self.api, self.clock = make_daemon(self.ts)
+        self.d.on_connected()
+
+    def job(self, kind, member="alpha-reviewer", **extra):
+        obj = {"v": 1, "kind": kind, "member": member, "force": False, "requested_by": {"name": "human"}, "requested_at": "now"}
+        obj.update(extra)
+        path = self.ts.team.jobs_dir / "{}-{}.json".format(int(self.clock() * 1000), kind)
+        store.write_json(path, obj)
+        return path
+
+    def consume(self):
+        self.clock.advance(1)
+        self.d.consume_jobs(self.clock() * 1000)
+
+    def prompts(self):
+        return [p for m, p in self.api.calls if m == "agent.prompt"]
+
+    def run_ticks(self, count, step=5):
+        for _ in range(count):
+            self.clock.advance(step)
+            self.d.tick()
+
+    def test_probe_job_keeps_the_pending_briefing_and_delivers_it_afterwards(self):
+        self.job("brief")
+        self.consume()
+        self.assertEqual(self.d.teams["alpha"].pending["alpha-reviewer"].kind, "brief")
+        self.job("probe", nonce=4242, agent_kind="codex")
+        self.consume()
+        pending = self.d.teams["alpha"].pending["alpha-reviewer"]
+        self.assertEqual(pending.kind, "probe")
+        self.assertIsNotNone(pending.resume)
+        self.assertEqual(pending.resume.kind, "brief")
+        self.run_ticks(10)  # under the 90 s no-ack re-brief, so exactly probe + briefing
+        prompts = self.prompts()
+        self.assertEqual(len(prompts), 2, self.d.logged)
+        self.assertEqual(prompts[0]["text"], "[herdr-team probe 4242]")
+        self.assertTrue(prompts[1]["text"].startswith("[herdr-team briefing]"), prompts[1]["text"])
+        self.assertTrue(any("brief resumed after the probe" in line for line in self.d.logged))
+        self.assertTrue(any("briefing landed for alpha-reviewer" in line for line in self.d.logged))
+        member = next(m for m in store.read_json(self.ts.team.team_json)["members"] if m["name"] == "alpha-reviewer")
+        self.assertIsNotNone(member.get("briefed_at"))
+
+    def test_probe_job_keeps_a_pending_nudge(self):
+        seq = post(self.ts, "alpha-reviewer")
+        self.d.tick()
+        self.assertEqual(self.d.teams["alpha"].pending["alpha-reviewer"].seqs, [seq])
+        self.job("probe", nonce=7, agent_kind="codex")
+        self.consume()
+        self.run_ticks(3)
+        self.assertEqual(self.prompts()[0]["text"], "[herdr-team probe 7]")
+        resumed = self.d.teams["alpha"].pending.get("alpha-reviewer")
+        self.assertIsNotNone(resumed)
+        self.assertEqual((resumed.kind, resumed.seqs), ("nudge", [seq]))
+
+    def test_probe_without_pending_work_leaves_nothing_behind(self):
+        self.job("probe", nonce=9, agent_kind="codex")
+        self.consume()
+        self.run_ticks(3)
+        self.assertEqual(len(self.prompts()), 1)
+        self.assertNotIn("alpha-reviewer", self.d.teams["alpha"].pending)

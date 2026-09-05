@@ -65,6 +65,7 @@ from herdr_team.ledger import (
     Ledger,
     now_iso,
 )
+from herdr_team.paths import FILE_STEM_RE as _FILE_STEM_RE
 from herdr_team.paths import Layout, SessionPaths, TeamPaths, ensure_session_dirs, ensure_team_dirs, plugin_root, resolve_layout, socket_allowed
 
 HEARTBEAT_S = 30.0
@@ -74,8 +75,17 @@ POLL_PENDING_S = 0.5
 TAIL_TICK_S = 0.25
 RECONNECT_BACKOFF_S = (1.0, 2.0, 4.0, 8.0, 16.0, 30.0)
 RECONNECT_GIVE_UP_S = 60.0
-REGISTRY_POLL_S = 60.0
+#: ``plugin.list`` poll interval. PK-08 needs a disabled plugin to clear its tokens and view and
+#: stop the daemon within 15 s; the plan's 60 s (measured live: 54 s) missed that by 4x.
+REGISTRY_POLL_S = 10.0
+#: Env the daemon must not inherit (plan S-07): the identity trio plus the session name and the
+#: private TUI client socket. ``HERDR_SOCKET_PATH`` is pinned instead, so nothing else selects a server.
+DAEMON_DROPPED_ENV_VARS = tuple(IDENTITY_ENV_VARS) + ("HERDR_SESSION", "HERDR_CLIENT_SOCKET_PATH")
 GRACE_WINDOW_S = 30.0
+#: After a (re)connect the daemon re-runs ``cmd_ui.reconcile_console`` this many seconds later, and again while a
+#: labelled ``Team console`` pane stays unresolved (foreground unknown or a launch in its grace), bounded (RT-05).
+CONSOLE_RECONCILE_DELAY_S = 3.0
+CONSOLE_RECONCILE_ATTEMPTS = 12
 LOCK_TAKEOVER_WAIT_S = 10.0
 SUBSCRIPTIONS = ("pane.agent_detected", "pane.closed", "pane.exited", "pane.moved", "pane.focused", "pane.updated")
 
@@ -398,6 +408,11 @@ def _identity_env_unset() -> bool:
     return not any(name in os.environ for name in IDENTITY_ENV_VARS)
 
 
+def _session_env_unset() -> bool:
+    """``HERDR_SESSION`` and ``HERDR_CLIENT_SOCKET_PATH`` gone: only the pinned socket selects a server."""
+    return not any(name in os.environ for name in DAEMON_DROPPED_ENV_VARS if name not in IDENTITY_ENV_VARS)
+
+
 def _stdio_description(session: SessionPaths) -> str:
     """Where fds 0-2 point, by device/inode comparison (no ``fcntl`` outside ``store``)."""
     names = []
@@ -506,10 +521,14 @@ def _grandchild_main(layout: Layout, env: Dict[str, str], replace: bool, status_
             keep.append(status_fd)
         _close_fds_except(keep)
         # 3..n are closed now; the lock fd is opened *after* this point.
-        for name in IDENTITY_ENV_VARS:
+        # ``env`` is the scrubbed copy from ``detach_and_run``; overlaying it on ``os.environ``
+        # keeps whatever the caller inherited, so the dropped names are removed here as well
+        # (observed live in S-07: ``HERDR_SESSION`` survived into the daemon before this pop).
+        for name in DAEMON_DROPPED_ENV_VARS:
             os.environ.pop(name, None)
         for key, value in env.items():
-            os.environ[key] = value
+            if key not in DAEMON_DROPPED_ENV_VARS:
+                os.environ[key] = value
         sys.stdout = os.fdopen(1, "w", buffering=1, encoding="utf-8", errors="replace", closefd=False)
         sys.stderr = os.fdopen(2, "w", buffering=1, encoding="utf-8", errors="replace", closefd=False)
 
@@ -543,7 +562,7 @@ def _grandchild_main(layout: Layout, env: Dict[str, str], replace: bool, status_
             log("server not reachable at start ({}); will retry".format(err))
         info = daemon.write_info(started=True)
         log("started pid {} start_time {!r} socket {} {}".format(info.pid, info.start_time, layout.socket, _stdio_description(session)))
-        log("identity env unset: {}".format(_identity_env_unset()))
+        log("identity env unset: {}; session env unset: {}".format(_identity_env_unset(), _session_env_unset()))
         _write_status(status_fd, {"status": "started", "replaced": bool(lock_info.get("replaced")), "daemon": info.to_json()})
         if status_fd is not None:
             os.close(status_fd)
@@ -574,8 +593,7 @@ def detach_and_run(layout: Layout, env: Mapping[str, str], replace: bool = False
     """
     session = layout.session
     ensure_session_dirs(session)
-    scrubbed = scrub_env(env)
-    scrubbed.pop("HERDR_SESSION", None)
+    scrubbed = scrub_env(env, DAEMON_DROPPED_ENV_VARS)
     scrubbed["HERDR_SOCKET_PATH"] = os.fspath(layout.socket)
     for stream in (sys.stdout, sys.stderr):
         try:
@@ -795,12 +813,38 @@ def headline_for(text: str, columns: int = 24) -> str:
 _KIND_GLYPH = {"request": "→", "done": "✓", "blocked": "!", "question": "?"}
 
 
-def task_headline(member: Dict[str, Any], last_post: Optional[Dict[str, Any]], now_s: float) -> Optional[str]:
-    """``team_task`` value: the member's ``task`` if younger than 30 min, else its last post headline."""
-    task = member.get("task")
+TASK_MAX_AGE_S = 1800.0
+
+
+def read_task_file(team_paths: TeamPaths, member_name: str) -> Optional[Dict[str, Any]]:
+    """The member's ``tasks/<name>.json`` written by ``herdr-team task`` (plan 5.3), or None.
+
+    RS-01/RS-04 regression: the CLI stores the task in the team dir, not on
+    the roster member, so the heartbeat must read this file to stamp
+    ``team_task``. Unsafe names and unreadable files yield None.
+    """
+    if not isinstance(member_name, str) or not _FILE_STEM_RE.match(member_name):
+        return None
+    try:
+        doc = store.read_json(team_paths.root / "tasks" / (member_name + ".json"))
+    except HerdrTeamError:
+        return None
+    if not isinstance(doc, dict) or not isinstance(doc.get("text"), str):
+        return None
+    return doc
+
+
+def task_headline(member: Dict[str, Any], last_post: Optional[Dict[str, Any]], now_s: float, task: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    """``team_task`` value: the member's ``task`` if younger than 30 min, else its last post headline.
+
+    ``task`` is the ``tasks/<name>.json`` document (``read_task_file``);
+    a ``task`` key on the member dict is honoured as a fallback.
+    """
+    if task is None:
+        task = member.get("task")
     if isinstance(task, dict) and isinstance(task.get("text"), str):
         set_at = _parse_iso(task.get("set_at")) if isinstance(task.get("set_at"), str) else None
-        if set_at is None or now_s - set_at < 1800.0:
+        if set_at is None or now_s - set_at < TASK_MAX_AGE_S:
             return headline_for(task["text"], 24) or None
     if last_post is not None:
         glyph = _KIND_GLYPH.get(str(last_post.get("kind") or ""), "")
@@ -916,6 +960,8 @@ class Pending:
     gate_cursor: Optional[int] = None
     #: Cursor file state at the briefing's landing; an ack is a *later* cursor write at or past ``brief_seq``.
     brief_cursor_updated: Optional[str] = None
+    #: A probe that jumped the queue keeps the briefing or nudge it displaced here and puts it back when done.
+    resume: Optional["Pending"] = None
 
 
 @dataclass
@@ -1064,6 +1110,9 @@ class Daemon:
         self.last_ping_at: Optional[str] = None
         self.connected_ms: Optional[float] = None
         self.reconcile_due = True
+        self.console_check_due = False  # a pane.closed event: is the console's terminal still listed?
+        self.console_reconcile_at_ms: Optional[float] = None  # deferred RT-05 pass after a connect
+        self.console_reconcile_attempts = 0
         self.last_reconcile_ms: Optional[float] = None
         self.last_registry_ms: Optional[float] = None
         self.last_version_ms: Optional[float] = None
@@ -1287,6 +1336,8 @@ class Daemon:
         self.reconnect_requested = False
         self.last_agent_list_ms = None
         self.connected_ms = now
+        self.console_reconcile_at_ms = self.now_ms() + CONSOLE_RECONCILE_DELAY_S * 1000.0
+        self.console_reconcile_attempts = 0
         self.reconcile_due = True
         self.last_reconcile_ms = None
         self.socket_inode = socket_inode(self.layout.socket)
@@ -1326,6 +1377,7 @@ class Daemon:
             self.reconcile_due = True
             self.last_agent_list_ms = None  # poll on the next tick
             if kind in ("pane_closed", "pane_exited"):
+                self.console_check_due = True  # the event has no terminal id; the tick asks pane.list (cmd_ui.mark_console_closed_if_pane_gone)
                 pane_id = data.get("pane_id")
                 if isinstance(pane_id, str):
                     self._mark_pane_gone(pane_id, kind)
@@ -1352,6 +1404,36 @@ class Daemon:
                     self.log("{}: member {} pane {} {}".format(team.name, name, pane_id, why))
                     # Plan 5.3: the three tokens are cleared on agent exit, including a pane that no longer hosts one.
                     self._set_member_status(team, name, "missing", clear_tokens=True)
+
+    def _reconcile_console_after_connect(self) -> None:
+        """RT-05: close the dead ``Team console`` shell a cold restart left behind, reopen when ``open:true``.
+
+        The startup hook does the same pass but runs before restored panes
+        have spawned their shells (``pane.process_info`` foreground empty), so
+        the dead shell survives it; this pass runs ``CONSOLE_RECONCILE_DELAY_S``
+        after connect and repeats while ``reconcile_console`` reports an
+        unresolved labelled pane, up to ``CONSOLE_RECONCILE_ATTEMPTS`` times.
+        """
+        from herdr_team import cmd_ui as _cmd_ui
+
+        self.console_reconcile_attempts += 1
+        result = _cmd_ui.reconcile_console(self.layout, self.api, dict(self.env), reopen=True)
+        for pane_id in result.get("closed") or []:
+            self.log("closed dead console shell {} left by a restart".format(pane_id))
+        if result.get("reopened"):
+            self.log("reopened the console ({}): console.json says open".format(result["reopened"]))
+        if result.get("unresolved") and self.console_reconcile_attempts < CONSOLE_RECONCILE_ATTEMPTS:
+            self.console_reconcile_at_ms = self.now_ms() + CONSOLE_RECONCILE_DELAY_S * 1000.0
+        else:
+            self.console_reconcile_at_ms = None
+
+    def _check_console_pane(self) -> None:
+        """UI-05: a console pane closed while the server is up is recorded ``open:false`` so it is not reopened."""
+        self.console_check_due = False
+        from herdr_team import cmd_ui as _cmd_ui
+
+        if _cmd_ui.mark_console_closed_if_pane_gone(self.session, self.api):
+            self.log("console pane closed while the server is up; console.json open:false")
 
     # -- tick --------------------------------------------------------------------------
 
@@ -1382,6 +1464,10 @@ class Daemon:
         if self.stop_requested:
             return
         self._phase("poll_agents", self.poll_agents)
+        if self.console_check_due:
+            self._phase("console", self._check_console_pane)
+        if self.console_reconcile_at_ms is not None and now >= self.console_reconcile_at_ms:
+            self._phase("console_reconcile", self._reconcile_console_after_connect)
         if self.reconcile_due or self._reconcile_poll_due(now):
             self._phase("reconcile", self.reconcile)
         self._phase("tail_boards", self.tail_boards)
@@ -1669,6 +1755,10 @@ class Daemon:
                         changes.append((binding.member, update))
                         if "terminal_id" in update or "pane_id" in update or update.get("status") == "active":
                             self._apply_label(team, member, str(binding.agent.get("pane_id")))
+                            old_pane = member.get("pane_id")
+                            if binding.how != roster.MATCH_TERMINAL and isinstance(old_pane, str) and update.get("pane_id") and update["pane_id"] != old_pane:
+                                # RT-02: a rebind to another terminal leaves the old pane behind as a plain shell; it must not keep the team label.
+                                self._clear_stale_label(team, member, old_pane)
                             self._stamp_tokens(team, dict(member, **update), self.clock())
                 for entry in result.kind_changed:
                     member = by_name.get(str(entry.get("member")))
@@ -1875,6 +1965,21 @@ class Daemon:
             else:
                 self.log("{}: agent.rename {} failed: {}".format(team.name, name, err.code))
 
+    def _clear_stale_label(self, team: TeamState, member: Dict[str, Any], old_pane: str) -> None:
+        """Drop the member's team label from its previous pane when that pane still carries it and hosts no agent.
+
+        Uses the pane rows fetched for this reconcile (step (b) already needed
+        them for any non-terminal match), so no extra ``pane.list`` is spent;
+        ``roster.clear_stale_label`` is the same rule for the CLI's ``bind``.
+        """
+        label = member.get("label") or roster.label_for(team.name, str(member.get("role")))
+        for pane in self._fetch_panes().values():
+            if pane.get("pane_id") == old_pane:
+                if pane.get("label") == label and not pane.get("agent"):
+                    self.log("{}: clearing stale label {} on {} (member {} rebound elsewhere)".format(team.name, label, old_pane, member.get("name")))
+                    roster.label_pane(self.api, old_pane, None)
+                return
+
     def _apply_label(self, team: TeamState, member: Dict[str, Any], pane_id: str) -> None:
         label = member.get("label") or "team:{}/{}".format(team.name, member.get("role"))
         try:
@@ -1895,7 +2000,7 @@ class Daemon:
             self.log("{}: token stamp on {} failed: {}".format(team.name, pane_id, err.code))
             return
         rt = team.rt(str(member.get("name")))
-        head = task_headline(member, rt.last_post, time.time())
+        head = task_headline(member, rt.last_post, time.time(), task=read_task_file(team.paths, str(member.get("name"))))
         if head:
             rt.last_headline = head
             value = head[:80]
@@ -2133,6 +2238,11 @@ class Daemon:
             agent_kind = str(job.get("agent_kind") or member.get("kind") or "")
             pending = Pending(first_ms=now, kind="probe", lines=[probe_text_for(nonce)], force=True, urgent=True)
             pending.probe = {"nonce": job.get("nonce"), "agent_kind": agent_kind, "requested_ms": now}
+            existing = team.pending.get(str(member["name"]))
+            if existing is not None and existing.kind in ("brief", "nudge") and existing.landed_ms is None:
+                # The probe jumps the queue but must not lose the briefing or nudge already waiting
+                # (observed live in M0: a probe sent while the briefing was held dropped the briefing).
+                pending.resume = existing
             team.pending[str(member["name"])] = pending
         elif kind == "focus":
             if member is None or not isinstance(member.get("pane_id"), str):
@@ -2444,13 +2554,8 @@ class Daemon:
         )
 
     def _kind_trusted(self, kind: str) -> bool:
-        """``kinds.json[kind].verified`` (20 clean round trips) or ``trusted`` (an explicit owner override)."""
-        kinds = store.read_json(self.session.kinds_json, default=None)
-        if isinstance(kinds, dict):
-            entry = kinds.get(kind)
-            if isinstance(entry, dict) and (entry.get("verified") or entry.get("trusted")):
-                return True
-        return False
+        """``kinds.json[kind]``: ``verified`` (20 clean round trips), ``trusted`` (owner override), or a passed probe."""
+        return roster.kind_trusted(store.read_json(self.session.kinds_json, default=None), kind)
 
     def _maybe_verify_kind(self, team: TeamState, kind: str) -> None:
         """Plan 8.3: a kind becomes verified after 20 round trips at >= 90 % clean; recorded in kinds.json."""
@@ -2710,7 +2815,7 @@ class Daemon:
                 self.log("{}: briefing landed for {}".format(team.name, name))
             elif pending.kind == "probe":
                 self._record_probe(team, member, pending, result, details, now)
-                team.pending.pop(name, None)
+                self._finish_probe(team, name, pending, now)
             else:
                 self._append_system(team, "nudged", "nudged {} for {}".format(name, ", ".join("#{}".format(s) for s in pending.seqs)), [name], {"seqs": list(pending.seqs)})
             if result == RESULT_DRY and pending.kind == "nudge":
@@ -2719,7 +2824,7 @@ class Daemon:
             return
         if pending.kind == "probe" and (result in (RESULT_HUNG, RESULT_REFUSED, RESULT_WRONG_OCCUPANT) or pending.attempts >= 3):
             self._record_probe(team, member, pending, result, details, now)
-            team.pending.pop(name, None)
+            self._finish_probe(team, name, pending, now)
             return
         if result == RESULT_HUNG:
             rt.pane_stuck_until_ms = now + PANE_STUCK_S * 1000.0
@@ -2759,6 +2864,20 @@ class Daemon:
             return None
         # Our own record will come back through the tail; the ingest ignores ``system`` authors.
         return seq
+
+    def _finish_probe(self, team: TeamState, name: str, pending: Pending, now: float) -> None:
+        """Drop the finished probe and put back the briefing or nudge it displaced, gate-fresh."""
+        team.pending.pop(name, None)
+        resumed = pending.resume
+        if resumed is None or resumed.landed_ms is not None:
+            return
+        resumed.next_eligible_ms = now
+        resumed.hold = None
+        resumed.hold_since_ms = None
+        resumed.hold_toasted = False
+        team.pending[name] = resumed
+        self.log("{}: {} {} resumed after the probe".format(team.name, name, resumed.kind))
+        self.who_dirty = True
 
     def _record_probe(self, team: TeamState, member: Dict[str, Any], pending: Pending, result: str, details: Dict[str, Any], now: float) -> None:
         """``kinds.json[kind].probe``: the round trip ``hooks probe <kind>`` waits for."""

@@ -205,16 +205,52 @@ def _launch_in_progress(console: Dict[str, Any]) -> bool:
     return age is not None and 0.0 <= age < CONSOLE_LAUNCH_GRACE_S
 
 
-def reconcile_console(layout: Any, api: Any, env: Dict[str, str], reopen: bool = True) -> Dict[str, Any]:
-    """Plan 7.3 / RT-05: close dead ``Team console`` shells left by a cold restart; reopen when ``open:true``.
+def mark_console_closed_if_pane_gone(session: Any, api: Any) -> bool:
+    """After ``pane.closed`` while the server is up: ``open:false`` once the console's terminal is gone (UI-05).
 
-    Returns ``{"closed": [pane ids], "reopened": pane id|None, "live": pane id|None}``; never raises.
-    A labelled shell is closed only when its foreground is known to be a
-    shell and no console launch is inside ``CONSOLE_LAUNCH_GRACE_S``.
+    Herdr's pane shutdown hangs the console up (SIGHUP, then SIGTERM, then
+    SIGKILL at 250 ms steps), so the process cannot record its own exit, and
+    the event carries only a pane id that ``console.json`` may hold stale
+    after a move. ``pane.list`` by ``terminal_id`` is the truth: the pane is
+    gone while the server answers, so the human (or ``plugin pane close``)
+    closed it and ``daemon start``/``doctor`` must not reopen it. A session
+    stop fires no ``pane.closed`` event, so a cold restart keeps ``open:true``
+    and ``reconcile_console`` reopens. An unreachable or empty ``pane.list``
+    is no evidence. Returns True when the record changed; never raises.
     """
     from herdr_team.cmd_board import read_console_json, write_console_json
 
-    out: Dict[str, Any] = {"closed": [], "reopened": None, "live": None}
+    try:
+        console = read_console_json(session)
+        terminal_id = console.get("terminal_id")
+        if not console.get("open") or not isinstance(terminal_id, str) or not terminal_id:
+            return False
+        panes = _pane_list(api)
+        if not panes or any(p.get("terminal_id") == terminal_id for p in panes):
+            return False
+        console["open"] = False
+        console["pid"] = None
+        console["closed_at"] = _utc_now_iso()
+        write_console_json(session, console)
+        return True
+    except (HerdrTeamError, OSError, ValueError, TypeError):
+        return False
+
+
+def reconcile_console(layout: Any, api: Any, env: Dict[str, str], reopen: bool = True) -> Dict[str, Any]:
+    """Plan 7.3 / RT-05: close dead ``Team console`` shells left by a cold restart; reopen when ``open:true``.
+
+    Returns ``{"closed": [pane ids], "reopened": pane id|None, "live": pane id|None, "unresolved": [pane ids]}``;
+    never raises. A labelled shell is closed only when its foreground is
+    known to be a shell and no console launch is inside
+    ``CONSOLE_LAUNCH_GRACE_S``; labelled non-live panes skipped for either
+    reason are listed in ``unresolved`` so the daemon can try again (the
+    startup hook runs before a restored pane's shell has even been spawned,
+    RT-05 in the rig).
+    """
+    from herdr_team.cmd_board import read_console_json, write_console_json
+
+    out: Dict[str, Any] = {"closed": [], "reopened": None, "live": None, "unresolved": []}
     try:
         console = read_console_json(layout.session)
         panes = _pane_list(api)
@@ -225,14 +261,21 @@ def reconcile_console(layout: Any, api: Any, env: Dict[str, str], reopen: bool =
         for pane in panes:
             if live is not None and pane.get("terminal_id") == live.get("terminal_id"):
                 continue
-            if launching:
-                continue  # a console opened seconds ago is booting; its pane is a bare shell until python starts
             if pane.get("label") != CONSOLE_TITLE and pane.get("title") != CONSOLE_TITLE:
                 continue
             if pane.get("agent"):
                 continue  # an agent adopted the labelled pane; never close it
             pane_id = pane.get("pane_id")
-            if not isinstance(pane_id, str) or _foreground_is_shell(api, pane_id) is not True:
+            if not isinstance(pane_id, str):
+                continue
+            if launching:
+                out["unresolved"].append(pane_id)
+                continue  # a console opened seconds ago is booting; its pane is a bare shell until python starts
+            foreground = _foreground_is_shell(api, pane_id)
+            if foreground is None:
+                out["unresolved"].append(pane_id)  # process info not known yet (a restored pane before its shell spawned)
+                continue
+            if foreground is not True:
                 continue
             try:
                 api.request("pane.close", {"pane_id": pane_id})

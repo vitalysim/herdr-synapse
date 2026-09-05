@@ -484,6 +484,54 @@ class TaskAndAck(unittest.TestCase):
             self.assertEqual(err["code"], "ack_from_hook")
 
 
+class SessionMismatchGuard(unittest.TestCase):
+    """RS-08 regression: writes against a team whose socket differs from the resolved one are refused (plan 12)."""
+
+    def _env(self, ts, socket):
+        env = dict(ts.env)
+        env.pop("HERDR_SESSION", None)
+        if socket is None:
+            env.pop("HERDR_SOCKET_PATH", None)
+        else:
+            env["HERDR_SOCKET_PATH"] = socket
+        return env
+
+    def test_post_and_charter_and_use_refuse_a_foreign_socket(self):
+        with TempState() as ts:
+            other = os.fspath(ts.tmp / "nonexistent" / "herdr.sock")
+            env = self._env(ts, other)
+            team_dir = os.fspath(ts.team.root)
+            for argv in (["post", "hello"], ["charter", "set", "new charter"], ["use", "alpha"], ["retract", "1"], ["edit", "1", "x"]):
+                code, _, err = json_out(run_cli(["--json", "--team", team_dir] + argv, env))
+                self.assertEqual(code, 1, (argv, err))
+                self.assertEqual(err["code"], "team_session_mismatch", argv)
+            self.assertEqual(store.BoardStore(ts.team).read(), [])
+            self.assertEqual(store.read_json(ts.team.team_json)["charter"]["seq"], 1)  # unchanged
+            # the escape hatch, and the explicit --socket override, allow the write
+            code, payload, err = json_out(run_cli(["--json", "--team", team_dir, "--session-mismatch-ok", "post", "hello"], env))
+            self.assertEqual(code, 0, err)
+            self.assertEqual(payload["seq"], 1)
+            code, payload, err = json_out(run_cli(["--json", "--team", team_dir, "--socket", other, "post", "again"], env))
+            self.assertEqual(code, 0, err)
+            # reads never check
+            code, payload, err = json_out(run_cli(["--json", "--team", team_dir, "board"], env))
+            self.assertEqual(code, 0, err)
+            self.assertEqual(payload["count"], 2)
+
+    def test_default_socket_outside_herdr_still_appends(self):
+        """HP-05: outside Herdr with --team <path> and nothing configured, the append works offline."""
+        with TempState() as ts:
+            env = self._env(ts, None)
+            code, payload, err = json_out(run_cli(["--json", "--team", os.fspath(ts.team.root), "post", "offline"], env))
+            self.assertEqual(code, 0, err)
+            self.assertEqual(payload["author"]["via"], "outside")
+
+    def test_matching_socket_writes(self):
+        with TempState() as ts:
+            code, payload, err = json_out(run_cli(["--json", "--team", os.fspath(ts.team.root), "post", "same socket"], ts.env))
+            self.assertEqual(code, 0, err)
+
+
 class Helpers(unittest.TestCase):
     def test_toast_delivery_parsed_from_config(self):
         with TempState() as ts:

@@ -253,6 +253,24 @@ class ReconcileGoneTests(unittest.TestCase):
         cleared = [p for m, p in self.api.calls if m == "pane.report_metadata"]
         self.assertEqual(cleared, [])  # closed panes get no token calls
 
+    def test_pane_closed_records_a_gone_console_as_closed(self):
+        """UI-05, daemon dead: the hook fixes console.json when the console terminal left pane.list."""
+        from support import fake_pane
+
+        self.api.set_error("agent.get", "agent_not_found", "gone")
+        store.write_json(self.ts.session.console_json, {"pane_id": "w3:p2", "terminal_id": "term_console", "pid": os.getpid(), "open": True, "default_team": "alpha"})
+        self.api.set_response("pane.list", {"type": "pane_list", "panes": [fake_pane("w1:p1", "term_shell")]})
+        code, out = run_event(self.ts, self.api, "pane_closed", pane_id="w3:p2")
+        self.assertEqual(code, 0)
+        self.assertTrue(out.get("console_closed"))
+        doc = store.read_json(self.ts.session.console_json)
+        self.assertEqual((doc["open"], doc["pid"]), (False, None))
+        # pane_exited never touches the record (the pane, and the terminal, still exist)
+        store.write_json(self.ts.session.console_json, {"pane_id": "w3:p2", "terminal_id": "term_console", "pid": os.getpid(), "open": True})
+        code, out = run_event(self.ts, self.api, "pane_exited", pane_id="w3:p2")
+        self.assertNotIn("console_closed", out)
+        self.assertTrue(store.read_json(self.ts.session.console_json)["open"])
+
     def test_pane_exited_clears_tokens(self):
         self.api.set_error("agent.get", "agent_not_found", "gone")
         code, out = run_event(self.ts, self.api, "pane_exited", pane_id="w2:p2")

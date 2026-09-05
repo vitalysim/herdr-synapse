@@ -703,12 +703,31 @@ def render_charter(charter: Dict[str, Any]) -> str:
 # shared command scaffolding
 
 
-def _open_team(args: argparse.Namespace, require_server: bool, as_human: bool = False, relayed_for: Optional[str] = None, label: Optional[str] = None) -> Tuple[Layout, Any, Author, str, TeamPaths, Dict[str, Any]]:
+def check_write_session(args: argparse.Namespace, layout: Layout, team_name: str) -> None:
+    """Plan 12 (RS-08): a write against a team whose ``team.json`` socket differs from the resolved socket is refused.
+
+    ``team_session_mismatch`` (exit 1) unless ``--session-mismatch-ok`` or an
+    explicit ``--socket`` says the caller means it. The check is skipped when
+    the socket came from the *default* fallback (nothing configured): that is
+    the outside-Herdr ``--team <path>`` case of plan 7 / HP-05, where the
+    append must work offline.
+    """
+    if getattr(args, "session_mismatch_ok", False) or getattr(args, "socket", None):
+        return
+    if layout.env_socket.source == _paths.SOCKET_SOURCE_DEFAULT:
+        return
+    team = _roster.load_team(layout.team(team_name))
+    _roster.check_session(layout, team)
+
+
+def _open_team(args: argparse.Namespace, require_server: bool, as_human: bool = False, relayed_for: Optional[str] = None, label: Optional[str] = None, write: bool = False) -> Tuple[Layout, Any, Author, str, TeamPaths, Dict[str, Any]]:
     layout = layout_for(args)
     api = api_for(args, layout)
     hinted = resolve_team(args, layout, None, required=False)
     author = resolve_author(args, layout, api, team=hinted, as_human=as_human, relayed_for=relayed_for, label=label, require_server=require_server)
     team_name = resolve_team(args, layout, author)
+    if write:
+        check_write_session(args, layout, team_name)
     team = layout.team(team_name)
     doc = load_doc(team)
     return layout, api, author, team_name, team, doc
@@ -823,7 +842,7 @@ def prepare_text(raw: str, spill: bool, force: bool) -> Tuple[str, bool, Optiona
 
 def _run_post(args: argparse.Namespace) -> int:
     as_human = args.as_who == "human"
-    layout, api, author, team_name, team, doc = _open_team(args, require_server=False, as_human=as_human, relayed_for=args.relayed_for, label=args.name)
+    layout, api, author, team_name, team, doc = _open_team(args, require_server=False, as_human=as_human, relayed_for=args.relayed_for, label=args.name, write=True)
     if author.name == AUTHOR_SYSTEM:
         raise HerdrTeamError("author_mismatch", "hooks and startup processes cannot post as themselves", EXIT_REFUSED)
     if args.relayed_for and not author.is_member:
@@ -1110,7 +1129,7 @@ def _own_or_human(record: Dict[str, Any], author: Author, verb: str) -> None:
 
 
 def _run_retract(args: argparse.Namespace) -> int:
-    layout, api, author, team_name, team, doc = _open_team(args, require_server=False)
+    layout, api, author, team_name, team, doc = _open_team(args, require_server=False, write=True)
     seq = parse_seq(args.seq)
     original = board_get(team, seq)
     if original is None:
@@ -1130,7 +1149,7 @@ def _add_edit_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def _run_edit(args: argparse.Namespace) -> int:
-    layout, api, author, team_name, team, doc = _open_team(args, require_server=False)
+    layout, api, author, team_name, team, doc = _open_team(args, require_server=False, write=True)
     seq = parse_seq(args.seq)
     original = board_get(team, seq)
     if original is None:
@@ -1165,7 +1184,7 @@ def read_task(team: TeamPaths, member_name: str) -> Optional[Dict[str, Any]]:
 
 
 def _run_task(args: argparse.Namespace) -> int:
-    layout, api, author, team_name, team, doc = _open_team(args, require_server=False)
+    layout, api, author, team_name, team, doc = _open_team(args, require_server=False, write=True)
     require_member(author, "task")
     text = sanitize_text(validate_utf8(args.text.encode("utf-8", "surrogateescape")), _sanitize.ADVISED_TEXT_CHARS)
     if is_marker_text(text):
@@ -1181,7 +1200,7 @@ def _run_task(args: argparse.Namespace) -> int:
 def _run_ack(args: argparse.Namespace) -> int:
     if env_of(args).get("HERDR_TEAM_HOOK") == "1":
         raise HerdrTeamError("ack_from_hook", "ack must be run by the member itself, not from a hook", EXIT_REFUSED)
-    layout, api, author, team_name, team, doc = _open_team(args, require_server=False)
+    layout, api, author, team_name, team, doc = _open_team(args, require_server=False, write=True)
     require_member(author, "ack")
     member = find_member(doc, author.name, allow_retired=False)
     if member is None:

@@ -89,6 +89,23 @@ class LockTests(unittest.TestCase):
         self.assertFalse(lock.held)
         self.assertEqual(stat.S_IMODE(self.ts.team.team_lock.stat().st_mode), 0o600)
 
+    def test_team_lock_refuses_a_missing_team_dir(self):
+        """A dissolved team's dir must not come back as a lock-only ``teams/<team>/`` (live RS-10 finding)."""
+        gone = self.ts.team.root.parent / "gone"
+        self.assertFalse(gone.exists())
+        with self.assertRaises(HerdrTeamError) as ctx:
+            store.team_lock(gone)
+        self.assertEqual(ctx.exception.code, "team_not_found")
+        self.assertFalse(gone.exists())
+        archived = self.ts.team.root.parent / "archived-copy"
+        os.rename(self.ts.team.root, archived)
+        try:
+            with self.assertRaises(HerdrTeamError):
+                store.team_lock(self.ts.team)
+            self.assertFalse(self.ts.team.root.exists())
+        finally:
+            os.rename(archived, self.ts.team.root)
+
     def test_lock_excludes_other_process_and_times_out(self):
         ready = multiprocessing.Event()
         child = multiprocessing.Process(target=_hold_lock_in_child, args=(os.fspath(self.ts.team.team_lock), 1.0, ready))

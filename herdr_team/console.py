@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -621,6 +622,31 @@ def _loop(stdscr: Any, state: ConsoleState, api: Any) -> int:
         disable_bracketed_paste()
 
 
+class ConsoleTerminated(Exception):
+    """Raised by the SIGTERM handler inside the curses loop so ``run`` unwinds through its ``finally``."""
+
+
+def install_sigterm_handler() -> Any:
+    """SIGTERM ends the console cleanly (UI-05): the ``finally`` in ``run`` writes ``open:false`` and the exit is 0.
+
+    Without it Python dies on the signal, ``console.json`` keeps ``open:true``
+    with a dead pid, and ``console.sh`` shows the failure hint and waits for
+    a key instead of letting the pane close. SIGHUP is deliberately left at
+    its default: a session stop hangs the PTY up and must leave ``open:true``
+    so the restart reopens the console; the pane-closed-by-a-human case is
+    recorded by the daemon and hook from ``pane.closed``. Returns the
+    previous handler (None when handlers cannot be installed here).
+    """
+
+    def on_term(signum: int, _frame: Any) -> None:
+        raise ConsoleTerminated(signum)
+
+    try:
+        return signal.signal(signal.SIGTERM, on_term)
+    except (ValueError, OSError):  # not the main thread
+        return None
+
+
 def run(layout: Layout, api: Any, team: Optional[str], env: Dict[str, str]) -> int:
     """curses wrapper; returns the exit code for ``console.sh``."""
     import curses
@@ -639,6 +665,7 @@ def run(layout: Layout, api: Any, team: Optional[str], env: Dict[str, str]) -> i
         pane = pane_get_cli(api, pane_id, FOCUS_CHECK_TIMEOUT_S)
         terminal_id = pane.get("terminal_id") if pane is not None and isinstance(pane.get("terminal_id"), str) else None
     record = read_console_json(layout)
+    record.pop("closed_at", None)  # written by the pane.closed path; meaningless once the console is open again
     record.update(
         {
             "pane_id": pane_id,
@@ -651,9 +678,18 @@ def run(layout: Layout, api: Any, team: Optional[str], env: Dict[str, str]) -> i
         }
     )
     write_console_record(layout, record)
+    previous = install_sigterm_handler()
     try:
-        return int(curses.wrapper(_loop, state, api))
+        try:
+            return int(curses.wrapper(_loop, state, api))
+        except ConsoleTerminated:
+            return EXIT_OK  # a deliberate stop: the pane closes and the record below says closed
     finally:
+        if previous is not None:
+            try:
+                signal.signal(signal.SIGTERM, previous)
+            except (ValueError, OSError, TypeError):
+                pass
         closing = read_console_json(layout)
         closing["open"] = False
         closing["pid"] = None

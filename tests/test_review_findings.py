@@ -542,22 +542,33 @@ class PaneIdGuardTests(unittest.TestCase):
 
 
 class KindVerificationTests(unittest.TestCase):
-    """Low: plan 8.3, a kind is verified after 20 round trips at >= 90 % clean, never by one probe or an env flag."""
+    """Low: plan 8.3, a kind is ``verified`` after 20 round trips at >= 90 % clean, never by one probe or an env flag.
 
-    def test_probe_success_does_not_verify_and_env_flag_is_gone(self):
+    M0 verify-live (2026-09-05) revised the gate-4 half of this finding: holding every delivery until
+    ``verified`` meant the ledger could never collect the 20 round trips (a fresh Claude member was held
+    ``kind_unverified`` forever). A passed probe now opens gate 4 (``roster.kind_entry_trusted``) while
+    ``verified`` itself still comes only from the ledger; see ``test_daemon.KindGateRegressionTests``.
+    """
+
+    def test_probe_success_does_not_verify_but_opens_gate_4_and_env_flag_is_gone(self):
         with TempState() as ts:
             d, api, clock = _member_daemon(ts, trust=False, env=dict(ts.env, HERDR_TEAM_TRUST_KINDS="1"))
             d.on_connected()
+            self.assertFalse(d._kind_trusted("codex"), "the env flag must not trust a kind")
             store.write_json(ts.team.jobs_dir / "20260904T000000000Z-probe.json", {"v": 1, "kind": "probe", "member": "alpha-reviewer", "agent_kind": "codex", "nonce": 77})
             d.tick()
             _ticks(d, clock, 4)
             kinds = store.read_json(ts.session.kinds_json)
             self.assertTrue(kinds["codex"]["probe"]["ok"])
             self.assertFalse(kinds["codex"].get("verified"))
-            self.assertFalse(d._kind_trusted("codex"))
+            self.assertTrue(d._kind_trusted("codex"), "one passed probe is the round trip that opens gate 4")
             post(ts, "alpha-reviewer")
             _ticks(d, clock, 14)
-            self.assertEqual(d.teams["alpha"].pending["alpha-reviewer"].hold, gate.HOLD_KIND_UNVERIFIED)
+            pending = d.teams["alpha"].pending["alpha-reviewer"]
+            self.assertIsNotNone(pending.landed_ms, "the post was delivered (awaiting the cursor), not held kind_unverified")
+            self.assertNotEqual(pending.hold, gate.HOLD_KIND_UNVERIFIED)
+            self.assertEqual(len([p for p in _prompts(api) if "[herdr-team nudge]" in p["text"]]), 1)
+            self.assertFalse(store.read_json(ts.session.kinds_json)["codex"].get("verified"), "still not verified by the ledger")
 
     def test_twenty_clean_round_trips_verify_the_kind(self):
         with TempState() as ts:

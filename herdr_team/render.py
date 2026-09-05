@@ -620,6 +620,8 @@ def render_who(
         lines.append("(no members)")
         return "\n".join(lines)
     name_w = max(sanitize.display_width(_safe_token(m.get("name"), 32)) for m in members)
+    # SK-02: the role sits next to the name so a member reading ``who`` can say who does what (plan 5.5).
+    role_w = max(sanitize.display_width(_safe_token(m.get("role"), 14)) for m in members)
     kind_w = max(sanitize.display_width(_safe_token(m.get("kind"), 20)) for m in members)
     pane_w = max(sanitize.display_width(_safe_token(m.get("pane_id"), 16)) for m in members)
     status_w = max(sanitize.display_width(_member_status(m)) for m in members)
@@ -634,6 +636,7 @@ def render_who(
         cells = [
             glyph,
             _pad(_safe_token(member.get("name"), 32), name_w),
+            _pad(_safe_token(member.get("role"), 14), role_w),
             _pad(_safe_token(member.get("kind"), 20), kind_w),
             _pad(_safe_token(member.get("pane_id"), 16), pane_w),
             _pad(_member_status(member), status_w),

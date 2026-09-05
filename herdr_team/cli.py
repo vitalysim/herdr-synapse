@@ -96,6 +96,7 @@ def add_global_arguments(parser: argparse.ArgumentParser, nested: bool = False) 
     parser.add_argument("--team", metavar="NAME|PATH", help="team name, or a team directory path when outside Herdr", **kw)
     parser.add_argument("--session", metavar="NAME", help="Herdr named session (mirrors herdr --session)", **kw)
     parser.add_argument("--socket", metavar="PATH", help="Herdr socket path override (wins over --session and env)", **kw)
+    parser.add_argument("--session-mismatch-ok", dest="session_mismatch_ok", action="store_true", help="write to a team whose team.json socket differs from the resolved socket (plan 12)", **kw)
 
 
 def build_parser(commands: Optional[List[Command]] = None) -> argparse.ArgumentParser:

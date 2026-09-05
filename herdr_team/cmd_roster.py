@@ -48,6 +48,7 @@ from herdr_team.cmd_board import (
     charter_summary,
     cli_path,
     cursor_get,
+    check_write_session,
     cursors_all,
     daemon_status,
     default_team_of,
@@ -259,6 +260,12 @@ def validate_join_batch(team: _roster.Team, api: Any, specs: List[_JoinSpec], na
         spec.resolved = _roster.resolve_target(api, spec.target)
         if spec.resolved.kind is None:
             raise HerdrTeamError("not_an_agent", "pane {} hosts no detected agent".format(spec.resolved.pane_id), EXIT_REFUSED, {"target": spec.target})
+    # Live names held by the targets of this very call are vacated by their renames (RS-11: a
+    # second codex already named ``<team>-codex-2`` must not block the batch), so they are not
+    # "taken" for the other specs; ``order_join_specs`` renames the holder first.
+    vacating = {s.resolved.name for s in specs if s.resolved is not None and s.resolved.name}
+    for spec in specs:
+        assert spec.resolved is not None
         if spec.role is not None:
             spec.final_role = _roster.validate_role(spec.role, allow_kind_label=not names_plain)
         else:
@@ -270,8 +277,7 @@ def validate_join_batch(team: _roster.Team, api: Any, specs: List[_JoinSpec], na
             wanted = _roster.validate_member_name(spec.name)
         else:
             wanted = _roster.derive_name(team.team, spec.final_role, "plain" if names_plain else team.naming)
-        own_live = spec.resolved.name
-        taken = set(existing) | set(pending_names) | {n for n in live if n != own_live}
+        taken = set(existing) | set(pending_names) | {n for n in live if n not in vacating}
         if wanted in taken:
             if spec.name is not None:
                 code = "name_taken" if wanted in existing or wanted in pending_names else "agent_name_taken"
@@ -279,6 +285,7 @@ def validate_join_batch(team: _roster.Team, api: Any, specs: List[_JoinSpec], na
             wanted = _roster.unique_name(wanted, taken)
         spec.final_name = wanted
         pending_names.append(wanted)
+    order_join_specs(specs)
     seen_terminals: Dict[str, str] = {}
     for spec in specs:
         assert spec.resolved is not None
@@ -294,6 +301,43 @@ def validate_join_batch(team: _roster.Team, api: Any, specs: List[_JoinSpec], na
                     EXIT_REFUSED,
                     {"owner_team": owner[0], "member": owner[1].name, "terminal_id": spec.resolved.terminal_id},
                 )
+
+
+def order_join_specs(specs: List[_JoinSpec]) -> List[_JoinSpec]:
+    """Validated specs in an order Herdr's ``agent.rename`` accepts.
+
+    A spec whose ``final_name`` is another target's *current* live name must
+    rename after that target has moved to its own final name (Herdr refuses a
+    duplicate live name, and a mid-batch refusal would leave a half-named
+    team). Two targets swapping names cannot be ordered; that is ``name_taken``
+    with the advice to choose names explicitly.
+    """
+    by_live: Dict[str, _JoinSpec] = {}
+    for spec in specs:
+        if spec.resolved is not None and spec.resolved.name:
+            by_live[spec.resolved.name] = spec
+    ordered: List[_JoinSpec] = []
+    done: set = set()
+    visiting: set = set()
+
+    def visit(spec: _JoinSpec) -> None:
+        key = id(spec)
+        if key in done:
+            return
+        holder = by_live.get(spec.final_name)
+        if key in visiting:
+            raise HerdrTeamError("name_taken", "the names of {} and {} would swap; choose names explicitly".format(spec.target, holder.target if holder is not None else "?"), EXIT_REFUSED, {"name": spec.final_name})
+        visiting.add(key)
+        if holder is not None and holder is not spec and holder.resolved is not None and holder.resolved.name != holder.final_name:
+            visit(holder)
+        visiting.discard(key)
+        done.add(key)
+        ordered.append(spec)
+
+    for spec in specs:
+        visit(spec)
+    specs[:] = ordered
+    return specs
 
 
 def perform_join(layout: Layout, api: Any, team: _roster.Team, spec: _JoinSpec, steal: bool, force_rename: bool, env: Dict[str, str], author: Author) -> Tuple[_roster.Member, str]:
@@ -753,6 +797,7 @@ def _run_remove(args: argparse.Namespace) -> int:
     api = api_for(args, layout)
     team_name = _paths.validate_team_name(args.team_pos)
     author = _author(args, layout, api, team=team_name)
+    check_write_session(args, layout, team_name)
     result = _roster.Roster(layout, team_name).remove_member(api, args.name, keep_name=args.keep_name, reason="removed by {}".format(author.name), socket=os.fspath(layout.socket))
     payload = {"team": team_name, "removed": result["removed"], "tokens_cleared": bool(result["tokens_cleared"]), "name_cleared": bool(result["name_cleared"])}
     return emit(args, payload, "{} removed from {}".format(result["removed"], team_name))
@@ -779,6 +824,7 @@ def _run_bind(args: argparse.Namespace) -> int:
     api = api_for(args, layout)
     team_name = _paths.validate_team_name(args.team_pos)
     _author(args, layout, api, team=team_name)
+    check_write_session(args, layout, team_name)
     target = _roster.resolve_target(api, args.target)
     result = _roster.Roster(layout, team_name).bind(api, args.name, target, socket=os.fspath(layout.socket))
     _ensure_daemon(layout, env_of(args))
@@ -801,6 +847,7 @@ def _run_dissolve(args: argparse.Namespace) -> int:
     if not args.yes:
         raise HerdrTeamError("confirmation_required", "dissolve archives team {!r}; pass --yes".format(team_name), EXIT_REFUSED, {"team": team_name})
     _roster.load_team(layout.team(team_name))
+    check_write_session(args, layout, team_name)
     result = _roster.Roster(layout, team_name).dissolve(api)
     view_cleared = False
     if view_state(layout.session) == "on":
@@ -833,6 +880,7 @@ def _run_use(args: argparse.Namespace) -> int:
     team_name = _paths.validate_team_name(args.team_pos)
     if team_name not in layout.session.list_teams():
         raise HerdrTeamError("team_not_found", "team {!r} does not exist in this session".format(team_name), EXIT_REFUSED, {"team": team_name, "teams": layout.session.list_teams()})
+    check_write_session(args, layout, team_name)
     _set_default_team(layout, team_name)
     return emit(args, {"default_team": team_name}, "default team: {}".format(team_name))
 
@@ -864,6 +912,7 @@ def _run_rename(args: argparse.Namespace) -> int:
     author = _author(args, layout, api)
     team_name = resolve_team(args, layout, author)
     assert team_name is not None
+    check_write_session(args, layout, team_name)
     team = _roster.load_team(layout.team(team_name))
     member = team.find(args.old)
     if member is None or member.is_human:
@@ -1121,6 +1170,7 @@ def _run_charter(args: argparse.Namespace) -> int:
     if action == "history":
         history = _charter.charter_history(layout, team_name)
         return emit(args, {"team": team_name, "history": history}, lambda: "\n".join("#{} charter {} ({}): {}".format(h["seq"], h["charter_seq"], h["ts"], (h.get("text") or "").split("\n")[0][:120]) for h in history) or "no charter history")
+    check_write_session(args, layout, team_name)
     if action == "edit":
         _human_only(layout, team_name, author, "charter edit")
         current = charter_of(load_doc(team_paths))
@@ -1159,6 +1209,7 @@ def _run_brief(args: argparse.Namespace) -> int:
     assert team_name is not None
     team_paths = layout.team(team_name)
     if args.set_text is not None:
+        check_write_session(args, layout, team_name)
         result = _charter.set_brief(layout, team_name, author, args.name, args.set_text)
         return emit(args, {"team": team_name, "member": result["member"], "brief": result["brief"]}, "brief for {}: {}".format(result["member"], result["brief"]))
     doc = load_doc(team_paths)

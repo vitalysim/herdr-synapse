@@ -18,7 +18,7 @@ Conventions used below:
 ## 1. Invocation
 
 ```
-herdr-team [--json] [--team NAME|PATH] [--session NAME] [--socket PATH] <command> [args]
+herdr-team [--json] [--team NAME|PATH] [--session NAME] [--socket PATH] [--session-mismatch-ok] <command> [args]
 herdr-team --version [--json]
 herdr-team --skill [--json]
 ```
@@ -31,6 +31,7 @@ Global flags are accepted before or after the command name.
 | `--team NAME` | Team name. `--team PATH` (contains `/`, or starts with `.` or `~`) is a team directory `<state>/sessions/<slug>/teams/<team>`; the state root and slug derive from it, so this works outside Herdr with no socket. |
 | `--session NAME` | Named session, mirrors `herdr --session`. `default` means the default session. |
 | `--socket PATH` | Socket override. Wins over `--session`, `HERDR_SOCKET_PATH`, `HERDR_SESSION`. |
+| `--session-mismatch-ok` | Allow a write (`post`, `retract`, `edit`, `task`, `ack`, `charter set|edit`, `brief --set`, `use`, `rename`, `remove`, `bind`, `dissolve`) to a team whose `team.json` socket differs from the resolved socket. Without it such a write is refused with `team_session_mismatch` (plan 12, RS-08) whenever the socket was resolved explicitly (`HERDR_SOCKET_PATH`, `HERDR_SESSION`, `--session`); `--socket` counts as consent; the default-socket fallback outside Herdr (`--team <path>`, nothing configured) is not checked so the offline append of HP-05 keeps working. `add` checks always (as before). Reads never check. |
 | `--version` | `herdr-team 0.1.0`; JSON `{"version","skill_version","plugin_id"}`. |
 | `--skill` | Prints `skills/herdr-team/SKILL.md`; JSON `{"skill","skill_version"}`. |
 
@@ -151,7 +152,11 @@ From a member pane: `remove` on self. JSON `{"team","left":"<name>"}`.
 
 Re-attach a `missing`/`unbound`/`kind_changed` member to a live agent
 (rehydration case (e) or a manual fix). JSON
-`{"team","member":member,"previous_terminal_id":"…"}`.
+`{"team","member":member,"previous_terminal_id":"…"}`. When the member moves
+to another pane, its previous pane loses the `team:<team>/<role>` label if
+that pane still carries it and hosts no agent (after a cold restart it is a
+plain shell; RT-02). The daemon applies the same rule when a reconcile
+rebinds a member to another terminal.
 
 ### `dissolve <team> [--yes]`
 
@@ -244,7 +249,9 @@ calls `agent read`. JSON:
 ```
 
 `--role` filters `members`; `--brief` drops `brief`, `last_seen_at`,
-`hooks_last_seen` from human output only.
+`hooks_last_seen` from human output only. Human rows are glyph, name, role,
+kind, pane, status, headline, tags (the role column is added to the plan 11
+layout so a member reading `who` can say who does what; SK-02).
 
 ### `audit [--last N]`
 
@@ -489,7 +496,21 @@ Opening the console entrypoint stamps `launched_at` in `console.json`
 console` only when it hosts no agent, its `pane process-info` foreground is
 known to be a shell (an empty foreground list is unknown, not a shell), and
 no console launch is younger than 15 s; a console still booting is never
-closed by a concurrent `doctor` or `daemon start`.
+closed by a concurrent `doctor` or `daemon start`. Labelled panes skipped
+for either reason are reported as `unresolved`; because the `[[startup]]`
+hook runs before restored panes have spawned their shells, the daemon
+repeats the pass 3 s after every connect and every 3 s while something stays
+unresolved, at most 12 times (RT-05).
+
+Console lifecycle (UI-05): SIGTERM to the console pid ends it cleanly
+(`open:false`, exit 0, the pane closes); SIGHUP keeps Python's default so a
+session stop leaves `open:true` and the restart reopens the console. A
+console pane closed while the server is up (`plugin pane close`, the
+human) cannot record its own exit because Herdr hangs it up first, so the
+daemon (and the `pane.closed` hook when the daemon is dead) checks
+`pane.list` for the console's `terminal_id` and writes `open:false` plus
+`closed_at` when it is gone; that console is not reopened later. After a
+`pane move` the record's `pane_id` is stale; only `terminal_id` is used.
 
 ### `teardown`
 
@@ -579,7 +600,9 @@ after the stable window.
 `daemon.json` (one line, compact): `{"pid":4021,"start_time":"Thu Sep  4 13:53:10 2026","beat_at":"…","socket":"…","socket_inode":123,"version":"0.1.0","herdr_version":"0.8.2","protocol":20}`.
 `start_time` is `ps -o lstart= -p <pid>` with surrounding whitespace trimmed.
 
-`console.json`: `{"pane_id","terminal_id","pid","open":true,"default_team":"…","human_label":"…","opened_at","launched_at"}`.
+`console.json`: `{"pane_id","terminal_id","pid","open":true,"default_team":"…","human_label":"…","opened_at","launched_at"}`,
+plus `closed_at` (and `pid:null`) after the daemon or hook recorded a pane
+closed while the server was up; the next console open drops `closed_at`.
 `opened_at` is written by the console process itself; `launched_at` by
 whoever opened the pane (`ui console`, `ui who`, the console fallback, or
 the reopen in `doctor`/`daemon start`), so a console that has not written

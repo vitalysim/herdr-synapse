@@ -412,7 +412,14 @@ class WhoTests(unittest.TestCase):
         self.assertTrue(by_name["human"].startswith("- "))
         self.assertIn("    brief: Review every patch.", out)
 
-    def test_headline_column_is_24_wide_at_most(self):
+    def test_role_column_follows_the_name(self):
+        """SK-02 regression: ``who`` rows carry the role so a member can post who does what from ``who`` alone."""
+        out = render.render_who(who_doc(), "alpha", now=NOW)
+        rows = [line.split() for line in out.split("\n")[2:] if line and not line.startswith(" ")]
+        self.assertEqual([(r[1], r[2], r[3]) for r in rows[:2]], [("alpha-reviewer", "reviewer", "codex"), ("alpha-worker", "worker", "claude")])
+        self.assertEqual(rows[-1][:3], ["-", "human", "operator"])
+
+
         out = render.render_who(who_doc(), "alpha", now=NOW)
         for quoted in re.findall(r'"([^"]*)"', out):
             self.assertLessEqual(sanitize.display_width(quoted), 24, quoted)

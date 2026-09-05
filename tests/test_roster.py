@@ -420,6 +420,48 @@ class MemberCrudTests(unittest.TestCase):
             self.assertIsNone(roster.read_pane_record(ts.session, "term_w1"))
             self.assertEqual(board_events(ts), ["member_restarted"])
 
+    def test_bind_clears_the_team_label_left_on_the_previous_shell_pane(self) -> None:
+        """RT-02 (rig, 2026-09-05): after a cold restart ``bind`` to w1:p9 left ``team:alpha/worker`` on the old pane w3:p1."""
+        from support import fake_pane
+
+        with TempState() as ts:
+            api = FakeApi()
+            api.set_response("agent.rename", {"type": "ok"})
+            api.set_response("pane.rename", {"type": "ok"})
+            api.set_response("pane.list", {"type": "pane_list", "panes": [
+                fake_pane("w2:p2", "term_shell9", None, "team:alpha/worker"),  # the old pane: a plain shell with the stale label
+                fake_pane("w4:p2", "term_w2", "claude", None),
+            ]})
+            rs = roster.Roster(ts.layout, "alpha")
+            rs.set_status("alpha-worker", "missing")
+            target = roster.ResolvedTarget("w4:p2", "term_w2", "claude", None, "w4", "w4:t1", "/tmp/new", False, "idle", {})
+            rs.bind(api, "alpha-worker", target)
+            renames = [p for m, p in api.calls if m == "pane.rename"]
+            self.assertEqual(renames, [{"pane_id": "w4:p2", "label": "team:alpha/worker"}, {"pane_id": "w2:p2", "label": None}])
+
+    def test_bind_leaves_the_previous_pane_alone_when_it_changed_hands(self) -> None:
+        from support import fake_pane
+
+        with TempState() as ts:
+            api = FakeApi()
+            api.set_response("agent.rename", {"type": "ok"})
+            api.set_response("pane.rename", {"type": "ok"})
+            rs = roster.Roster(ts.layout, "alpha")
+            target = roster.ResolvedTarget("w4:p2", "term_w2", "claude", None, "w4", "w4:t1", None, False, "idle", {})
+            # another agent took the old pane (label kept by its own team), or the label already differs
+            api.set_response("pane.list", {"type": "pane_list", "panes": [fake_pane("w2:p2", "term_x", "codex", "team:alpha/worker")]})
+            rs.set_status("alpha-worker", "missing")
+            rs.bind(api, "alpha-worker", target)
+            api.set_response("pane.list", {"type": "pane_list", "panes": [fake_pane("w2:p2", "term_x", None, "team:beta/qa")]})
+            rs.set_status("alpha-worker", "missing")
+            rs.bind(api, "alpha-worker", roster.ResolvedTarget("w6:p1", "term_w6", "claude", None, "w6", "w6:t1", None, False, "idle", {}))
+            self.assertNotIn({"pane_id": "w2:p2", "label": None}, [p for m, p in api.calls if m == "pane.rename"])
+            # pane.list unavailable: tolerated
+            api.set_error("pane.list", "unknown_method", "no")
+            rs.set_status("alpha-worker", "missing")
+            rs.bind(api, "alpha-worker", roster.ResolvedTarget("w7:p1", "term_w7", "claude", None, "w7", "w7:t1", None, False, "idle", {}))
+            self.assertEqual(rs.load().find("alpha-worker").pane_id, "w7:p1")
+
     def test_bind_refuses_kind_mismatch_and_foreign_claims(self) -> None:
         with TempState() as ts:
             api = FakeApi()
@@ -789,6 +831,21 @@ class JoinTests(unittest.TestCase):
             member = roster.join(ts.layout, api, roster.load_team(ts.team), "wA:p6", "lead", None, None)
             self.assertTrue(member.verified_kind)
 
+    def test_join_treats_a_passed_probe_as_verified_kind(self) -> None:
+        # M0 verify-live 2026-09-05: one passed ``hooks probe`` round trip opens gate 4 for the kind.
+        with TempState() as ts:
+            store.write_json(ts.session.kinds_json, {"claude": {"probe": {"nonce": 51880, "ok": True, "result": "landed_working"}}})
+            api = self._api()
+            member = roster.join(ts.layout, api, roster.load_team(ts.team), "wA:p6", "lead", None, None)
+            self.assertTrue(member.verified_kind)
+
+    def test_join_ignores_a_failed_probe(self) -> None:
+        with TempState() as ts:
+            store.write_json(ts.session.kinds_json, {"claude": {"probe": {"nonce": 1, "ok": False, "result": "hung"}}})
+            api = self._api()
+            member = roster.join(ts.layout, api, roster.load_team(ts.team), "wA:p6", "lead", None, None)
+            self.assertFalse(member.verified_kind)
+
 
 class SystemRecordTests(unittest.TestCase):
     def test_append_and_read_system_records(self) -> None:
@@ -814,6 +871,22 @@ class SystemRecordTests(unittest.TestCase):
             self.assertEqual(seq, 41)
             self.assertEqual(store.read_json(ts.team.board_seq)["next"], 42)
             self.assertEqual(roster.read_board_records(ts.team)[-1]["seq"], 41)
+
+
+class KindTrustRegressionTests(unittest.TestCase):
+    """M0 verify-live 2026-09-05: a passed ``hooks probe`` counts as a verified kind for gate 4."""
+
+    def test_kind_entry_trusted_accepts_verified_trusted_or_passed_probe(self) -> None:
+        self.assertTrue(roster.kind_entry_trusted({"verified": True}))
+        self.assertTrue(roster.kind_entry_trusted({"trusted": True}))
+        self.assertTrue(roster.kind_entry_trusted({"probe": {"ok": True, "result": "landed_working"}}))
+        self.assertFalse(roster.kind_entry_trusted({"probe": {"ok": False, "result": "hung"}}))
+        self.assertFalse(roster.kind_entry_trusted({"probe": "yes"}))
+        self.assertFalse(roster.kind_entry_trusted({}))
+        self.assertFalse(roster.kind_entry_trusted(None))
+        self.assertFalse(roster.kind_trusted({"claude": {"probe": {"ok": True}}}, "codex"))
+        self.assertFalse(roster.kind_trusted("garbage", "claude"))
+        self.assertFalse(roster.kind_trusted({"claude": {"probe": {"ok": True}}}, ""))
 
 
 if __name__ == "__main__":

@@ -203,6 +203,67 @@ class CreateFromLive(unittest.TestCase):
             self.assertIn("skipping w5:p3", err)
             self.assertEqual(sleeps, [])
 
+    def test_from_workspace_ignores_names_the_batch_itself_vacates(self):
+        """RS-11 live finding: a second codex already named ``<team>-codex-2`` made the whole batch fail
+        with ``name_taken`` although its own rename vacates that name. The holder renames first."""
+        rows = [
+            fake_agent("w6:p1", "term_61", "codex", "six-codex-2"),
+            fake_agent("w6:p2", "term_62", "codex", None),
+        ]
+        with TempState(write_team=False) as ts:
+            api = live_api(rows)
+            env = env_no_daemon(ts)
+
+            def strict_rename(params):
+                for row in api.rows:
+                    if row.get("name") == params.get("name") and row["pane_id"] != params["target"]:
+                        raise FakeError("agent_name_taken", "agent name {} is already used".format(params.get("name")))
+                for row in api.rows:
+                    if row["pane_id"] == params["target"]:
+                        row["name"] = params.get("name")
+                        return {"type": "ok"}
+                raise FakeError("agent_not_found", "no agent in {}".format(params["target"]))
+
+            api.set_response("agent.rename", strict_rename)
+            self.addCleanup(setattr, cmd_roster, "FROM_WORKSPACE_SETTLE_S", cmd_roster.FROM_WORKSPACE_SETTLE_S)
+            cmd_roster.FROM_WORKSPACE_SETTLE_S = 0.0
+            code, payload, err = json_out(run_cli(["--json", "create", "six", "--from-workspace", "w6"], env, api))
+            self.assertEqual(code, 0, err)
+            self.assertEqual(sorted((m["pane_id"], m["name"]) for m in payload["members"]), [("w6:p1", "six-codex"), ("w6:p2", "six-codex-2")])
+            renames = [(p["target"], p["name"]) for m, p in api.calls if m == "agent.rename"]
+            self.assertEqual(renames, [("w6:p1", "six-codex"), ("w6:p2", "six-codex-2")])
+            # Reversed listing order: the unnamed agent derives the base name and the named one keeps its own.
+        rows = [
+            fake_agent("w6:p2", "term_62", "codex", None),
+            fake_agent("w6:p1", "term_61", "codex", "six-codex-2"),
+        ]
+        with TempState(write_team=False) as ts:
+            api = live_api(rows)
+            env = env_no_daemon(ts)
+            cmd_roster.FROM_WORKSPACE_SETTLE_S = 0.0
+            code, payload, err = json_out(run_cli(["--json", "create", "six", "--from-workspace", "w6"], env, api))
+            self.assertEqual(code, 0, err)
+            self.assertEqual(sorted((m["pane_id"], m["name"], m["renamed"]) for m in payload["members"]), [("w6:p1", "six-codex-2", False), ("w6:p2", "six-codex", True)])
+
+    def test_explicit_names_that_swap_are_refused_before_any_write(self):
+        rows = [
+            fake_agent("w6:p1", "term_61", "codex", "alice"),
+            fake_agent("w6:p2", "term_62", "claude", "bob"),
+        ]
+        with TempState(write_team=False) as ts:
+            api = live_api(rows)
+            env = env_no_daemon(ts)
+            code, _, err = json_out(run_cli(["--json", "create", "six", "--member", "w6:p1:a:bob", "--member", "w6:p2:b:alice"], env, api))
+            self.assertEqual(code, 1)
+            self.assertEqual(err["code"], "name_taken")
+            self.assertFalse(ts.session.team("six").root.exists())
+            self.assertFalse(any(m in ("agent.rename", "pane.rename", "pane.report_metadata") for m, _ in api.calls))
+            # One explicit name that another batch target vacates is fine: bob moves to carol first.
+            code, payload, err = json_out(run_cli(["--json", "create", "six", "--member", "w6:p1:a:bob", "--member", "w6:p2:b:carol"], env, api))
+            self.assertEqual(code, 0, err)
+            renames = [(p["target"], p["name"]) for m, p in api.calls if m == "agent.rename"]
+            self.assertEqual(renames, [("w6:p2", "carol"), ("w6:p1", "bob")])
+
     def test_from_workspace_settles_a_pending_agent(self):
         with TempState(write_team=False) as ts:
             api = live_api()

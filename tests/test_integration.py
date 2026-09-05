@@ -174,7 +174,14 @@ class Workflow1Tests(unittest.TestCase):
         rec2 = store.BoardStore(team_paths).get(post2["seq"])
         self.assertEqual(rec2["from_label"], "vitaly")
         self.assertTrue(identity.human_origin_ok(rec2["origin"]))
-        # --as human from an agent pane is refused and audited
+        # --as human from an agent pane is refused and audited. The worker pane's process tree
+        # must contain this process (a CLI run inside the pane); the step-4 shell-pane override
+        # leaned on os.getpgrp() being a live ancestor, which fails once the launching shell has
+        # exited (orphaned process group under a backgrounded runner: pane_mismatch instead).
+        api.set_response("pane.process_info", {"type": "pane_process_info", "process_info": {
+            "pane_id": WORKER_PANE, "shell_pid": os.getppid(), "foreground_process_group_id": os.getpid(),
+            "foreground_processes": [{"pid": os.getpid(), "name": "python3"}],
+        }})
         code, _, err = self.cli(["--json", "post", "x", "--as", "human"], HERDR_PANE_ID=WORKER_PANE)
         self.assertEqual(code, 1)
         self.assertEqual(json.loads(err.splitlines()[0])["code"], "author_mismatch")
