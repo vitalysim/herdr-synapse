@@ -16,7 +16,7 @@ default session.
 
 ```bash
 # from a terminal window that is NOT inside Herdr:
-~/MyPlace/projects/herdr-fork/plugins/herdr-team/bin/herdr-team-sandbox start
+~/MyPlace/projects/herdr-fork/plugins/herdr-team/bin/herdr-team-sandbox start ~/MyPlace/projects/<your-project>
 ```
 
 `start` creates `~/herdr-teamtest/`, copies your `config.toml` into it and

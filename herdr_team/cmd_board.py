@@ -709,19 +709,23 @@ def resolve_files(layout: Layout, team_name: str, files: Sequence[str], doc: Opt
 
     A file the team can already read (under the team dir or a member's cwd)
     becomes a ``--ref``; anything else is copied into ``payloads/`` like
-    ``--attach``. A missing file is ``ref_invalid`` and a file under a
-    dot-directory (``.ssh``, ``.aws``, ``.config`` ...) is refused either way.
+    ``--attach``. A relative path is looked up under the caller's cwd first,
+    then under every member's cwd (the console's ``@@`` finder inserts
+    project-relative paths). A missing file is ``ref_invalid`` and a file
+    under a dot-directory (``.ssh``, ``.aws``, ``.config`` ...) is refused
+    either way.
     """
     refs: List[str] = []
     attach: List[str] = []
+    roots = [Path.cwd()] + [Path(r) for r in _roster.member_roots(members_of(doc) if doc else [])]
     for raw in files:
         if not isinstance(raw, str) or not raw.strip():
             raise HerdrTeamError("ref_invalid", "empty --file", EXIT_REFUSED, {"ref": raw})
         source = Path(os.path.expanduser(raw))
         if not source.is_absolute():
-            source = Path.cwd() / source
+            source = next((root / source for root in roots if (root / source).is_file()), roots[0] / source)
         if not source.is_file():
-            raise HerdrTeamError("ref_invalid", "file does not exist or is not a file: {}".format(raw), EXIT_REFUSED, {"ref": raw, "path": os.fspath(source)})
+            raise HerdrTeamError("ref_invalid", "file does not exist under your directory or any member's: {}".format(raw), EXIT_REFUSED, {"ref": raw, "searched": [os.fspath(r) for r in roots]})
         if any(part.startswith(".") and part not in (".", "..") for part in source.resolve().parts[1:]):
             raise HerdrTeamError("ref_invalid", "file sits under a dot-directory (.ssh, .aws, .config ...): {}".format(raw), EXIT_REFUSED, {"ref": raw, "path": os.fspath(source)})
         try:

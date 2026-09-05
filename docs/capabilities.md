@@ -341,10 +341,17 @@ a popup on the roster box.
   `/login`, `/resume` unless `!!`. `@@path` anywhere in the line attaches
   that file to the post (`post --file`: a file the team can read is
   referenced, anything else is copied into `payloads/`; the status says
-  `attached <name>`); typing `@@` opens a file list that completes against
-  the console's working directory (`~` and absolute paths work, directories
-  end in `/` and Tab descends into them, dot-files stay hidden unless you
-  type the dot). `?` on an empty line, or `/help`, opens a box with every
+  `attached <name>`); typing `@@` opens a project finder. The team's project
+  is the working directory most members share (the roster's `cwd`); an agent
+  sitting in another directory adds a second project that is searched only
+  when the first has no match. `@@` alone lists the project's top level,
+  `@@ma` searches it recursively
+  (name prefix first, then path segment, substring, and in-order letters),
+  `~`, `/`, and `dir/` complete as paths, and a partial path such as
+  `rules/ba` matches anywhere in the tree; directories end in `/` and Tab
+  descends into them; dot-files, `.git`, `node_modules`, `target`, and build
+  dirs are skipped. Inserted paths are project-relative; `post --file`
+  resolves them against the members' directories. `?` on an empty line, or `/help`, opens a box with every
   sign, command, and key; the footer reads `? help`. Prefixes `/all`, `/human`, `/kind k`, `/reply N` (with no
   `@`, addressed to the author of #N), `/urgent`, `/ref path`. Commands:
   `/retract N` and `/remove name` (ask `y`/`n`); `/mute [name|all] [30s|10m|2h]`,

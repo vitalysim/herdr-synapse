@@ -250,7 +250,9 @@ def build_model(layout: Layout, team: str, state: Optional[ConsoleState] = None,
     state.tail.poll()
     who = read_who(layout)
     team_paths = layout.team(team)
-    return tui_model.build_console_model(
+    roster_doc = store.read_json(team_paths.team_json, None)
+    roster_members = [m for m in (roster_doc or {}).get("members", []) if isinstance(m, dict)] if isinstance(roster_doc, dict) else []
+    model = tui_model.build_console_model(
         team,
         who,
         state.tail.records,
@@ -267,6 +269,9 @@ def build_model(layout: Layout, team: str, state: Optional[ConsoleState] = None,
         previous=previous,
         audit=read_audit_warnings(layout, team),
     )
+    # ``@@`` searches the members' project directories (the roster's cwd), not the console's own cwd.
+    model.file_roots = tui_model.member_file_roots(roster_members)
+    return model
 
 
 def refresh(model: ConsoleModel, layout: Layout, state: Optional[ConsoleState] = None) -> None:
@@ -281,6 +286,7 @@ def refresh(model: ConsoleModel, layout: Layout, state: Optional[ConsoleState] =
     model.feed = fresh.feed
     model.members = fresh.members
     model.human_label = fresh.human_label
+    model.file_roots = fresh.file_roots
     if model.watching_say:
         tui_model.settle_say_watch(model, state.tail.records, time.monotonic())
 

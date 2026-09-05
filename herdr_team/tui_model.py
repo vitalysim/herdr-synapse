@@ -253,6 +253,9 @@ class ConsoleModel:
     watching_say: Dict[int, Tuple[str, float]] = field(default_factory=dict)
     #: Directory relative ``@@path`` tokens complete against (the console process cwd when None).
     file_base: Optional[str] = None
+    #: Project roots the ``@@`` finder searches: the members' working directories (the roster's ``cwd``), most
+    #: common first; empty means the console process cwd only.
+    file_roots: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -337,6 +340,11 @@ def parse_bang(line: str) -> Tuple[Optional[SaySpec], Optional[str]]:
     if "\n" in text:
         return None, "!{} types one line; remove the newline or post it with @{} text".format(name, name)
     return SaySpec(member=name, text=text, force=sigil == "!!"), None
+
+
+def member_file_roots(members: Iterable[Dict[str, Any]], home: Optional[str] = None) -> List[str]:
+    """The project roots the ``@@`` finder searches: ``roster.member_roots`` (members' cwds, most common first)."""
+    return roster.member_roots(members, home)
 
 
 def agent_member_names(members: Iterable[Dict[str, Any]]) -> List[str]:
@@ -1144,6 +1152,125 @@ def _size_label(path: Path) -> str:
     return "?"
 
 
+#: Directories the ``@@`` finder never walks into.
+FILE_INDEX_SKIP_DIRS = frozenset({"node_modules", "target", "__pycache__", ".venv", "venv", "dist", "build", ".git", ".hg", ".svn", ".tox", ".mypy_cache", ".pytest_cache", ".idea", ".vscode"})
+#: Entries indexed per root at most, and how long an index is reused before it is rebuilt.
+FILE_INDEX_LIMIT = 5000
+FILE_INDEX_TTL_S = 15.0
+_FILE_INDEX_CACHE: Dict[str, Tuple[float, List[Tuple[str, bool]]]] = {}
+
+
+def file_index(root: str, now: Optional[float] = None, limit: int = FILE_INDEX_LIMIT) -> List[Tuple[str, bool]]:
+    """``(relative path, is_dir)`` for everything under ``root`` (dot-entries and build dirs skipped), cached ``FILE_INDEX_TTL_S``."""
+    import time as _time
+
+    now = _time.monotonic() if now is None else now
+    cached = _FILE_INDEX_CACHE.get(root)
+    if cached is not None and now - cached[0] < FILE_INDEX_TTL_S:
+        return cached[1]
+    entries: List[Tuple[str, bool]] = []
+    base = Path(root)
+    try:
+        for dirpath, dirnames, filenames in os.walk(base):
+            dirnames[:] = sorted(d for d in dirnames if not d.startswith(".") and d not in FILE_INDEX_SKIP_DIRS)
+            rel_dir = os.path.relpath(dirpath, base)
+            prefix = "" if rel_dir == "." else rel_dir + "/"
+            for name in dirnames:
+                entries.append((prefix + name + "/", True))
+            for name in sorted(filenames):
+                if name.startswith("."):
+                    continue
+                entries.append((prefix + name, False))
+            if len(entries) >= limit:
+                break
+    except OSError:
+        entries = []
+    entries = entries[:limit]
+    _FILE_INDEX_CACHE[root] = (now, entries)
+    return entries
+
+
+def _match_rank(needle: str, rel: str) -> Optional[int]:
+    """0 name prefix, 1 a path segment prefix, 2 substring of the path, 3 in-order letters of the name; None when unrelated.
+
+    The in-order match looks at the file or folder name only and needs three
+    letters: over a whole path it matched almost everything (``readme`` found
+    ``tests/fixtures/detection/claude_model_picker.txt``).
+    """
+    low = rel.lower().rstrip("/")
+    base = low.rsplit("/", 1)[-1]
+    if base.startswith(needle):
+        return 0
+    if any(seg.startswith(needle) for seg in low.split("/")):
+        return 1
+    if needle in low or needle in rel.lower():  # the second form lets ``rules/`` match the directory entry itself
+        return 2
+    if len(needle) >= 3:
+        it = iter(base)
+        if all(ch in it for ch in needle):
+            return 3
+    return None
+
+
+def file_candidates(prefix: str, roots: Optional[List[str]] = None, base_dir: Optional[str] = None) -> List[Dict[str, str]]:
+    """Menu rows for ``@@<prefix>``: a project-wide finder over ``roots``, or plain path completion for explicit paths.
+
+    No prefix lists the first root's top level (directories first). A bare
+    word searches every root recursively (``_match_rank`` order, shorter
+    paths first). Anything that looks like a path (``~``, ``/``, ``./``, a
+    slash inside) completes as a path relative to the first root. Rows carry
+    the path to insert: relative when it lives under the console's own cwd,
+    absolute otherwise so ``post --file`` finds it (and references a file
+    under a member's cwd instead of copying it).
+    """
+    roots = [r for r in (roots or []) if r] or [base_dir or os.getcwd()]
+    here = os.path.realpath(base_dir or os.getcwd())
+    anchored = prefix.startswith(("~", "/", "./", "../"))
+    if anchored or not prefix:
+        return path_candidates(prefix, roots[0])
+    if "/" in prefix:
+        rows = path_candidates(prefix, roots[0])
+        if rows:
+            return rows
+        # ``rules/ba`` typed from deeper in the tree: the search below matches it anywhere in a path
+    needle = prefix.lower()
+    # The team's project (the first root) answers alone; the other roots are consulted only when it has no match,
+    # so an agent that happens to sit in another directory does not mix its files into the list.
+    for index, root in enumerate(roots):
+        ranked: List[Tuple[int, int, str, Dict[str, str]]] = []
+        for rel, is_dir in file_index(root):
+            rank = _match_rank(needle, rel)
+            if rank is None:
+                continue
+            insert = _insert_path(root, rel, here, primary=index == 0)
+            label = "{}  {}".format(rel, "dir" if is_dir else _size_label(Path(root) / rel))
+            if index > 0:
+                label += "  in {}".format(os.path.basename(root.rstrip("/")) or root)
+            ranked.append((rank, len(rel), rel.lower(), {"insert": insert, "label": label}))
+        if ranked:
+            ranked.sort(key=lambda item: item[:3])  # best match, then the shorter path
+            return [row for *_, row in ranked[:MAX_FILE_ROWS]]
+    return []
+
+
+def _insert_path(root: str, rel: str, here: str, primary: bool = True) -> str:
+    """The token to insert for ``rel`` under ``root``.
+
+    Relative for the first root and for the console's own cwd (``post --file``
+    resolves a relative path against its cwd, then every member's cwd, so the
+    short form is enough); absolute for a secondary root, where the same
+    relative path could exist in two projects.
+    """
+    if rel.startswith(("~", "/")):
+        return rel
+    try:
+        if primary or os.path.realpath(root) == here:
+            return rel
+    except OSError:
+        pass
+    return os.path.join(root, rel)
+
+
 def path_candidates(prefix: str, base_dir: Optional[str] = None) -> List[Dict[str, str]]:
     """Menu rows for ``@@<prefix>``: directories (ending in ``/``) then files completing the path.
 
@@ -1169,6 +1296,8 @@ def path_candidates(prefix: str, base_dir: Optional[str] = None) -> List[Dict[st
     for name in names:
         if name.startswith(".") and not stem.startswith("."):
             continue
+        if not stem and name in FILE_INDEX_SKIP_DIRS:
+            continue  # a bare listing hides build and dependency dirs; typing their name still finds them
         if not name.lower().startswith(stem.lower()):
             continue
         target = root / name
@@ -1248,7 +1377,7 @@ def mention_menu(model: Any) -> List[Dict[str, str]]:
     if ctx is None:
         return []
     if ctx[3] == "@@":
-        return path_candidates(ctx[2], getattr(model, "file_base", None))
+        return file_candidates(ctx[2], getattr(model, "file_roots", None) or None, getattr(model, "file_base", None))
     if ctx[3] != "@" and not getattr(model, "bang_menu", True):
         return []  # the compose popup refuses ! lines, so it does not offer names for them
     return mention_candidates(model.members, ctx[2], members_only=ctx[3] != "@")
@@ -1272,8 +1401,9 @@ def mention_lines(model: Any, width: int, ascii_only: bool = False) -> List[str]
     if len(rows) > MENTION_MENU_ROWS:
         out.append(truncate_columns("  {} of {}  (↑/↓ move, Tab or Enter picks, Esc hides)".format(index + 1, len(rows)) if not ascii_only else "  {} of {}  (up/down move, Tab or Enter picks, Esc hides)".format(index + 1, len(rows)), width))
     if sigil == "@@":
-        base = getattr(model, "file_base", None) or os.getcwd()
-        out.append(truncate_columns("  files under {}  (Tab completes, a dir/ descends; the file is attached to the post)".format(base), width))
+        roots = [r for r in (getattr(model, "file_roots", None) or []) if r] or [getattr(model, "file_base", None) or os.getcwd()]
+        where = roots[0] + ("  (then {} other project{})".format(len(roots) - 1, "" if len(roots) == 2 else "s") if len(roots) > 1 else "")
+        out.append(truncate_columns("  project {}  (type to search names, Tab picks, a dir/ descends; ~ or / for other paths)".format(where), width))
     return out
 
 
@@ -2494,6 +2624,8 @@ class ComposeModel:
     mention_hidden_for: Optional[str] = None
     #: The popup cannot be verified as the human (no pane id on 0.8.2), so it refuses ``!`` lines and offers no names for them.
     bang_menu: bool = False
+    #: Project roots the ``@@`` finder searches (the members' cwds), like ``ConsoleModel.file_roots``.
+    file_roots: List[str] = field(default_factory=list)
 
     @property
     def members(self) -> List[Dict[str, Any]]:

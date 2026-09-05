@@ -7,7 +7,8 @@
 # `herdr` binary; no fork build is involved.
 #
 #   herdr-team-sandbox prepare          create the sandbox, copy your config, link the plugin, trust claude/codex
-#   herdr-team-sandbox start            prepare, then launch the sandbox session (run from a terminal outside Herdr)
+#   herdr-team-sandbox start [<dir>]    prepare, then launch the sandbox session in <dir> (default: the current
+#                                       directory); new panes and agents open there, so pass your project
 #   herdr-team-sandbox attach           attach another terminal to the running sandbox
 #   herdr-team-sandbox status           session state, daemon state, sandbox paths
 #   herdr-team-sandbox herdr <args...>  run `herdr` against the sandbox (e.g. `herdr agent list`)
@@ -127,12 +128,20 @@ prepare() {
 }
 
 start() {
+  project=${1:-$PWD}
+  case "$project" in /*) ;; *) project=$PWD/$project ;; esac
+  [ -d "$project" ] || die "project directory not found: $project"
   prepare
   if [ "${HERDR_ENV:-}" = 1 ]; then
     say "note: you are inside a Herdr pane; the sandbox will run nested in this pane. A separate terminal window is nicer."
   fi
+  if [ "$project" = "$PLUGIN" ]; then
+    say "note: starting inside the plugin checkout; agents you open will work here. Pass your project instead: $0 start <dir>"
+  fi
+  say "project directory: $project (new panes and agents open here; the console's @@ finder follows the agents)"
   say "starting the sandbox session; the plugin's startup hook starts the notifier daemon"
   say "inside it: open two panes, start agents, then prefix+t to make a team (see docs/human-testing.md)"
+  cd -- "$project" || die "cannot enter $project"
   exec_clean herdr --session "$SESSION"
 }
 

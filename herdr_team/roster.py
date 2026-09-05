@@ -614,6 +614,26 @@ def remove_pane_record(session: SessionPaths, terminal_id: Optional[str]) -> boo
 # board helper (system records)
 
 
+def member_roots(members: Iterable[Dict[str, Any]], home: Optional[str] = None) -> List[str]:
+    """Distinct member ``cwd`` directories that exist, most common first; HOME (where a restart leaves a pane) is not a project root."""
+    home_real = os.path.realpath(home or os.path.expanduser("~"))
+    counts: Dict[str, int] = {}
+    order: List[str] = []
+    for member in members:
+        cwd = member.get("cwd") if isinstance(member, dict) else None
+        if not isinstance(cwd, str) or not cwd or member.get("kind") == "human" or member.get("status") in ("left",):
+            continue
+        try:
+            if os.path.realpath(cwd) == home_real or not os.path.isdir(cwd):
+                continue
+        except OSError:
+            continue
+        if cwd not in counts:
+            order.append(cwd)
+        counts[cwd] = counts.get(cwd, 0) + 1
+    return sorted(order, key=lambda c: (-counts[c], order.index(c)))
+
+
 def system_record(event: str, text: str, to: Optional[Sequence[str]] = None, extra: Optional[Dict[str, Any]] = None, socket: Optional[str] = None) -> Dict[str, Any]:
     """A schema v1 board record with ``from:system``, ``kind:system`` (seq and ts assigned at append)."""
     record: Dict[str, Any] = {

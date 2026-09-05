@@ -291,6 +291,7 @@ post "<text>" [--to <name>[,<name>…] | all | human | role:<r>] [--kind note|re
   cwd; `--attach` copies into `payloads/` (16 MiB cap) with a safe basename.
   `--file` (the console's `@@path`) picks for you: a file the team can
   already read becomes a `--ref`, anything else is copied like `--attach`;
+  a relative path is looked up under your cwd, then under every member's cwd;
   a missing file or one under a dot-directory (`.ssh`, `.aws`, `.config`) is
   `ref_invalid` (1) either way.
 - Works with the server down (author unverified). Never calls

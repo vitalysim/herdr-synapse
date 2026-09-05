@@ -77,7 +77,7 @@ class FileMenuTests(unittest.TestCase):
         self.assertEqual([r["insert"] for r in tm.mention_menu(model)], ["docs/", "src/", "README.md"])
         lines = tm.mention_lines(model, 120)
         self.assertTrue(lines[0].startswith(tm.MENTION_MARKER + " @@docs/"), lines[0])
-        self.assertIn("files under", lines[-1])
+        self.assertIn("project ", lines[-1])
         tm.apply_key(model, "DOWN")
         tm.apply_key(model, "TAB")
         self.assertEqual(model.input, "@@src/")
@@ -95,6 +95,98 @@ class FileMenuTests(unittest.TestCase):
         type_keys(model, "please read")
         intent = tm.apply_key(model, "ENTER")
         self.assertEqual((intent.kind, intent.args["files"], intent.args["text"]), ("post", ["src/main.rs"], "please read"))
+
+
+class ProjectFinderTests(unittest.TestCase):
+    def setUp(self):
+        self.ts = TempState()
+        self.addCleanup(self.ts.cleanup)
+        self.root = self.ts.tmp / "project"
+        for d in ("src", "docs", ".git", "node_modules", "src/deep"):
+            (self.root / d).mkdir(parents=True)
+        (self.root / "src" / "main.rs").write_text("fn main() {}\n")
+        (self.root / "src" / "deep" / "matrix.rs").write_text("x\n")
+        (self.root / "docs" / "manual.md").write_text("m\n")
+        (self.root / "README.md").write_text("hi\n")
+        (self.root / ".env").write_text("SECRET=1\n")
+        (self.root / "node_modules" / "pkg.js").write_text("x\n")
+        self.other = self.ts.tmp / "other"
+        (self.other / "lib").mkdir(parents=True)
+        (self.other / "lib" / "matrix.py").write_text("y\n")
+        tm._FILE_INDEX_CACHE.clear()
+
+    def test_index_skips_dot_and_build_dirs_and_is_cached(self):
+        entries = tm.file_index(os.fspath(self.root))
+        rels = [rel for rel, _ in entries]
+        self.assertEqual(rels, ["docs/", "src/", "README.md", "docs/manual.md", "src/deep/", "src/main.rs", "src/deep/matrix.rs"])
+        self.assertIs(tm.file_index(os.fspath(self.root)), entries)  # cached within the TTL
+        self.assertEqual(tm.file_index(os.fspath(self.ts.tmp / "missing")), [])
+
+    def test_match_ranks(self):
+        self.assertEqual(tm._match_rank("ma", "src/main.rs"), 0)
+        self.assertEqual(tm._match_rank("sr", "src/main.rs"), 1)
+        self.assertEqual(tm._match_rank("ain", "src/main.rs"), 2)
+        self.assertEqual(tm._match_rank("mrs", "src/main.rs"), 3)  # in-order letters of the name
+        self.assertIsNone(tm._match_rank("smr", "src/main.rs"))  # letters spread over the path do not count
+        self.assertIsNone(tm._match_rank("readme", "tests/fixtures/detection/claude_model_picker.txt"))
+        self.assertIsNone(tm._match_rank("mr", "src/main.rs"))  # two letters: prefix or substring only
+        self.assertIsNone(tm._match_rank("zzz", "src/main.rs"))
+
+    def test_bare_word_searches_every_root_and_paths_complete_under_the_first(self):
+        roots = [os.fspath(self.root), os.fspath(self.other)]
+        rows = tm.file_candidates("ma", roots, base_dir=os.fspath(self.ts.tmp))
+        self.assertEqual([r["insert"] for r in rows], ["src/main.rs", "docs/manual.md", "src/deep/matrix.rs"])  # the team's project answers alone
+        self.assertNotIn(" in ", rows[0]["label"])
+        rows = tm.file_candidates("lib", roots, base_dir=os.fspath(self.ts.tmp))  # nothing in the project: the other root answers
+        self.assertEqual([r["insert"] for r in rows], [os.fspath(self.other / "lib") + "/", os.fspath(self.other / "lib" / "matrix.py")])
+        self.assertIn("in other", rows[0]["label"])
+        rows = tm.file_candidates("", roots, base_dir=os.fspath(self.ts.tmp))
+        self.assertEqual([r["insert"] for r in rows], ["docs/", "src/", "README.md"])  # node_modules hidden from the bare listing
+        self.assertEqual([r["insert"] for r in tm.file_candidates("node", [os.fspath(self.root)])], [])  # and not indexed either
+        self.assertEqual([r["insert"] for r in tm.path_candidates("node", os.fspath(self.root))], ["node_modules/"])  # but reachable by name
+        rows = tm.file_candidates("src/", roots, base_dir=os.fspath(self.ts.tmp))
+        self.assertEqual([r["insert"] for r in rows], ["src/deep/", "src/main.rs"])
+        rows = tm.file_candidates("deep/", roots, base_dir=os.fspath(self.ts.tmp))  # a partial path from deeper down
+        self.assertEqual([r["insert"] for r in rows], ["src/deep/", "src/deep/matrix.rs"])
+        rows = tm.file_candidates("deep/ma", roots, base_dir=os.fspath(self.ts.tmp))
+        self.assertEqual([r["insert"] for r in rows], ["src/deep/matrix.rs"])
+        rows = tm.file_candidates("mrs", [os.fspath(self.root)])
+        self.assertEqual([r["insert"] for r in rows], ["src/main.rs", "src/deep/matrix.rs"])  # in-order letters of the name, shorter first
+        self.assertEqual(tm.file_candidates("zzz", roots), [])
+        # no roots: the console's own directory
+        rows = tm.file_candidates("", [], base_dir=os.fspath(self.other))
+        self.assertEqual([r["insert"] for r in rows], ["lib/"])
+
+    def test_member_roots_come_from_the_roster(self):
+        members = [
+            {"name": "a", "kind": "claude", "cwd": os.fspath(self.other)},
+            {"name": "b", "kind": "codex", "cwd": os.fspath(self.root)},
+            {"name": "c", "kind": "opencode", "cwd": os.fspath(self.root)},
+            {"name": "gone", "kind": "codex", "cwd": os.fspath(self.other), "status": "left"},
+            {"name": "home", "kind": "codex", "cwd": os.fspath(self.ts.tmp)},
+            {"name": "human", "kind": "human"},
+            {"name": "nowhere", "kind": "codex", "cwd": os.fspath(self.ts.tmp / "missing")},
+        ]
+        self.assertEqual(tm.member_file_roots(members, home=os.fspath(self.ts.tmp)), [os.fspath(self.root), os.fspath(self.other)])
+
+    def test_console_and_compose_models_take_the_roots_from_team_json(self):
+        doc = store.read_json(self.ts.team.team_json)
+        for member in doc["members"]:
+            if member.get("kind") != "human":
+                member["cwd"] = os.fspath(self.root)
+        store.write_json(self.ts.team.team_json, doc)
+        state = console.ConsoleState(self.ts.layout, "alpha", self.ts.env)
+        model = console.build_model(self.ts.layout, "alpha", state, env=self.ts.env)
+        self.assertEqual(model.file_roots, [os.fspath(self.root)])
+        for ch in "@@ma":
+            tm.apply_key(model, ch)
+        self.assertEqual([r["insert"] for r in tm.mention_menu(model)][:1], ["src/main.rs"])
+        self.assertTrue(any("project {}".format(self.root) in line for line in tm.mention_lines(model, 160)))
+        console.refresh(model, self.ts.layout, state)
+        self.assertEqual(model.file_roots, [os.fspath(self.root)])
+        from herdr_team import compose
+        popup = compose.build_model(self.ts.layout, "alpha", {})
+        self.assertEqual(popup.file_roots, [os.fspath(self.root)])
 
 
 class PostFileTests(unittest.TestCase):
@@ -123,6 +215,15 @@ class PostFileTests(unittest.TestCase):
         self.assertTrue((self.ts.team.root / payload["attached"][0]).is_file())
         record = store.BoardStore(self.ts.team).get(payload["seq"])
         self.assertEqual(record["refs"], payload["attached"])
+
+    def test_relative_file_resolves_under_a_member_directory(self):
+        doc = store.read_json(self.ts.team.team_json)
+        doc["members"][0]["cwd"] = os.fspath(self.outside)
+        store.write_json(self.ts.team.team_json, doc)
+        self.assertFalse((Path.cwd() / "notes.md").exists())
+        code, payload, err = self.post("see notes", "--file", "notes.md")
+        self.assertEqual(code, 0, err)
+        self.assertEqual((payload["refs"], payload["attached"]), ([os.path.realpath(self.outside / "notes.md")], []))  # under a member's cwd: referenced, not copied
 
     def test_missing_and_dot_directory_files_are_refused(self):
         code, _, err = self.post("x", "--file", os.fspath(self.outside / "nope.md"))
