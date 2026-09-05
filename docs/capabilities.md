@@ -212,8 +212,7 @@ once that member is safe to interrupt:
 ```
 
 Posts arriving within 1 s of each other (`burst_window_ms`) become one
-nudge covering the range. Broadcasts to `all` are not nudged; members see
-them on their next read, or on their next turn with Claude hooks.
+nudge covering the range. A broadcast to `all` from the human nudges every member (normal holds apply); an agent's broadcast is not nudged, members see it on their next board read unless it is urgent.
 `--urgent` on a post nudges every recipient. Posts to `human` become toasts.
 
 ### The gate, in order (defaults; per-team overrides in `team.json` `config.gate`)
@@ -539,7 +538,7 @@ Each row: do this, expect that.
 | C3 | two fresh idle agents; `prefix+t`; Space on both; Enter; team name; charter; per member role, name, brief (fields are prefilled: Ctrl-U clears before typing, Enter accepts the default); confirm | `who` lists both with roles; `herdr agent list` shows names and tokens; `herdr pane list` shows labels `team:<t>/<role>` |
 | C4 | wait about a minute; `who` | the `unbriefed` tag disappears from both rows once the briefing lines landed; each screen shows the `[herdr-team briefing]` lines and the agent running `herdr-team ack` (otherwise one re-brief after 90 s, then a `<name> unbriefed` toast) |
 | C5 | ask a member "what is this team for and what is your role" | it answers from `charter` and `me` with the right names |
-| C6 | `herdr-team post "hello team"` from a shell pane | `board --last 1`: from `human`, to `all`, no `(unverified)`; nobody nudged |
+| C6 | `herdr-team post "hello team"` from a shell pane | `board --last 1`: from `human`, to `all`, no `(unverified)`; every member shows `↪1` and is nudged once idle (an agent's post to `all` nudges nobody) |
 | C7 | `herdr-team post --to <member> "reply on the board with pong"` | `who` shows `↪1`; the nudge lands after the member has been idle for the stable window plus the 60 s done-hold (lower `config.gate.done_hold_ms` to see it sooner); the member replies; `board --receipts` shows `✓nudged` and `✓read by <member>` |
 | C8 | same while the member is mid-turn | `daemon.log` shows `held: not_idle (working)` (or `who --json` `.members[].hold`); it lands after the turn plus the windows |
 | C9 | open the member's model picker (`/model`), post to it, wait 20 s | nothing typed; `daemon.log` shows `held: dialog (… select model …)` or `held: skip_state_update`; after Esc it lands within about 6 s |

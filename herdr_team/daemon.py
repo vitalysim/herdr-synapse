@@ -2306,10 +2306,12 @@ class Daemon:
                     team.human_queue.append(rec)
                 continue
             if target == "all":
-                if urgent:
+                # The operator addressing the whole team is heard by every member (normal holds apply);
+                # an agent's broadcast waits for the next board read unless it is urgent.
+                if urgent or author == "human":
                     for m in team.members():
                         if m.get("kind") != "human" and m.get("name") != author and m.get("terminal_id"):
-                            self._add_pending(team, str(m["name"]), seq, True, author, now)
+                            self._add_pending(team, str(m["name"]), seq, urgent, author, now)
                 continue
             if target == author:
                 continue

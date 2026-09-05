@@ -278,8 +278,9 @@ post "<text>" [--to <name>[,<name>…] | all | human | role:<r>] [--kind note|re
 
 - Default `--to`: `all` (the whole team) for every author, member or human.
   Address one member with `--to <name>`, the operator with `--to human`, and
-  a role with `--to role:<r>`. Only directed posts trigger a nudge; a post to
-  `all` is read at the next board read (or nudged to everyone with `--urgent`).
+  a role with `--to role:<r>`. Directed posts nudge their recipients. A post
+  to `all` from the human nudges every member (normal holds apply); from a
+  member it is read at the next board read unless `--urgent`.
 - `--to` names are validated against the roster (current names, names
   retired under 10 min, `role:<r>` expands and records `to_role`); a typo is
   `recipient_unknown` (1) with `roster` in details unless `--to-any`.

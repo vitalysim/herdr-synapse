@@ -47,7 +47,8 @@ and a test checklist). Short form: `herdr plugin link <this dir>`,
 claude` (and `codex`), paste `herdr-team keys print` and `herdr-team setup
 --print-config` into your config, reload, then `prefix+t` to pick two fresh
 panes into a team. A post with no recipient goes to the whole team; `@name`
-addresses one member and is the only thing that nudges it. `!name text` types
+addresses one member and nudges it; your posts to the whole team nudge everyone,
+an agent's only with `--urgent`. `!name text` types
 the line into that member's input box right now (`!!name text` even while it
 works) and records it as a `direct` post. `@@path` attaches a file to a post
 (`@@` lists files); `?` on an empty line shows every command.

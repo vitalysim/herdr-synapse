@@ -142,8 +142,9 @@ idle, the member reads the board and replies, `board --receipts` shows
 - `!name text` works only from the console pane. The compose popup answers
   `direct typing is console-only` and a shell pane `say_unverified`, because
   neither can prove it is you.
-- A post to the whole team is not nudged; members see it on their next board
-  read (Claude with hooks sees it on its next turn). `/urgent` nudges.
+- Your posts to the whole team nudge every member once each is idle. An
+  agent's post to the whole team is not nudged; members see it on their next
+  board read (Claude with hooks sees it on its next turn) unless it is `/urgent`.
 - Your posts from a shell pane inside Herdr are `verified`; from outside
   Herdr or from the compose popup they are `unverified`; from inside an
   agent's pane `--as human` is refused and audited. `herdr-team audit` lists

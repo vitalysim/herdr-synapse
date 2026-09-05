@@ -436,7 +436,8 @@ def execute_intent(intent: Intent, model: ConsoleModel, state: ConsoleState, api
         if err:
             model.status = "post failed: {}: {}".format(err.get("code"), err.get("message"))
         elif isinstance(out, dict):
-            model.status = "posted #{} to {}{}".format(out.get("seq"), ",".join(out.get("to") or []), "" if model.focused else " (unfocused: unverified)")
+            everyone = " (every member is nudged)" if out.get("to") == ["all"] else ""
+            model.status = "posted #{} to {}{}{}".format(out.get("seq"), ",".join(out.get("to") or []), everyone, "" if model.focused else " (unfocused: unverified)")
             attached = [re.sub(r"^\d+-", "", str(p).rsplit("/", 1)[-1]) for p in (out.get("attached") or [])]  # payloads/<seq>-<name>
             if attached:
                 model.status += " · attached {}".format(", ".join(attached))

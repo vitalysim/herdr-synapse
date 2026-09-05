@@ -968,7 +968,22 @@ class DeliveryTests(unittest.TestCase):
         self.assertEqual(self.prompts(), [])
         self.assertEqual(self.d.teams["alpha"].pending["alpha-worker"].hold, gate.HOLD_NOT_IDLE)
 
-    def test_broadcast_nudges_nobody_unless_urgent(self):
+    def test_human_broadcast_nudges_every_member(self):
+        seq = post(self.ts, "all", author="human")
+        self.d.tick()
+        pending = self.d.teams["alpha"].pending
+        self.assertEqual(sorted(pending), ["alpha-reviewer", "alpha-worker"])
+        self.assertEqual((pending["alpha-reviewer"].seqs, pending["alpha-reviewer"].urgent), ([seq], False))
+        # a cold start rebuilds the same work from the board
+        d2, _api2, _clock2 = make_daemon(self.ts)
+        d2.on_connected()
+        team2 = d2.teams["alpha"]
+        team2.pending.clear()
+        team2.watermark = seq
+        d2._rebuild_pending(team2)
+        self.assertEqual(sorted(team2.pending), ["alpha-reviewer", "alpha-worker"])
+
+    def test_agent_broadcast_nudges_nobody_unless_urgent(self):
         post(self.ts, "all")
         self.d.tick()
         self.assertEqual(self.d.teams["alpha"].pending, {})
