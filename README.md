@@ -36,7 +36,9 @@ tests/                   unittest suite; tests/support.py has TempState, FakeHer
 
 ## Try it in your own session
 
-Read `docs/human-testing.md` first. Short form: `herdr plugin link <this dir>`,
+Read `docs/human-testing.md` first (the guided first run) and
+`docs/capabilities.md` (every capability, how to drive it from the UI and
+the CLI, what to expect, and a test checklist). Short form: `herdr plugin link <this dir>`,
 `herdr plugin action invoke herdr-team.daemon-start`, `herdr-team kinds trust
 claude` (and `codex`), paste `herdr-team keys print` and `herdr-team setup
 --print-config` into your config, reload, then `prefix+t` to pick two fresh

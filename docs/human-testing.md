@@ -1,6 +1,8 @@
 # Human testing guide
 
-How to try herdr-team in your own Herdr session for the first time. Written
+How to try herdr-team in your own Herdr session for the first time. The
+complete list of capabilities, with UI and CLI paths, expected behaviour, and
+a test checklist, is `capabilities.md` in this directory. Written
 2026-09-05 after four rig runs against Herdr 0.8.2. Everything here has run
 in a throwaway session; this is the first time it meets your real one.
 
