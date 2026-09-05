@@ -272,6 +272,7 @@ what was actually sent: intents, results, per-kind clean-landing rate,
 | `herdr-team nudge <name> [--force]` | evaluate now; builds pending work from the member's unread posts (to it or to all) if none is pending; `--force` marks it urgent so broadcast-only unread posts become nudgeable and skips the done-hold and interval, never the dialog, draft, or focus checks |
 | `herdr-team mute <name> \| --all [--for 10m\|2h\|1d\|N]`, `unmute <name> \| --all`, `pause` | silence nudges (gate 2) and the Claude Stop hook; posts still land and **toasts are not muted** |
 | `herdr-team focus <name>` | focus the member's pane through the daemon |
+| `herdr-team say <name> "<text>" [--force]` (console: `!name text`, `!!name text`) | type one line into the member's input box now, with operator authority, recorded as a `direct` board record; refused while the member shows a dialog, a permission prompt, an overlay, or a draft, and while it is working unless `--force`; the outcome is a `typed` record and a feed tag (`✓typed`, `✗ not typed (working)`, …); human only, from the focused console only |
 | `herdr-team read <name>` | the member's visible screen; `--lines` is refused for every member because scrolling an alternate screen types into it |
 | `herdr-team notifier stats [--team] [--kind]` | the delivery ledger |
 | `herdr-team kinds list \| trust <kind> [--reason "…"] \| untrust <kind>` | the trust override behind gate 4; `list` prints `<kind>  delivers\|held  <flags>`; a kind also becomes `verified` on its own after 20 clean round trips |
@@ -322,7 +323,29 @@ a popup on the roster box.
   list above the input line: every member with role, kind, and status, then
   `role:<r>` groups, `all`, and `human`; keep typing to filter (a role or
   part of a name matches), Up/Down move, Tab or Enter insert the pick, Esc
-  hides the list. The compose popup has the same list. Prefixes `/all`, `/human`, `/kind k`, `/reply N` (with no
+  hides the list. The compose popup has the same list. `!name text` types
+  the line into that member's input box right now (a `direct` record; the
+  member is not nudged and does not see it as mail); `!!name text` also
+  types into a member that is working or muted. Typing `!` at the start of
+  the line opens the same list with members only. Every line that starts
+  with `!` is such an attempt and never becomes a post: a wrong name is an
+  error, and text that should start with `!` is posted as `/all !text` or
+  `@name !text`. The entry shows `… typing`, then `✓typed`, `✓typed (in
+  running turn)`, `✗ not typed (working|dialog|draft|overlay open|…)`,
+  `✗ blocked`, `✗ not submitted`, or `✗ no outcome (notifier?)`; the status
+  line repeats the outcome (`(!!name text forces)` when `!!` would help) and
+  the member's row reads `» typing` while the daemon confirms. Refused
+  before anything is typed: a name that is not a member, text that looks
+  like a herdr-team header or a secret, more than one line or 500
+  characters, and `/clear`, `/exit`, `/quit`, `exit`, `quit`, `/logout`,
+  `/login`, `/resume` unless `!!`. `@@path` anywhere in the line attaches
+  that file to the post (`post --file`: a file the team can read is
+  referenced, anything else is copied into `payloads/`; the status says
+  `attached <name>`); typing `@@` opens a file list that completes against
+  the console's working directory (`~` and absolute paths work, directories
+  end in `/` and Tab descends into them, dot-files stay hidden unless you
+  type the dot). `?` on an empty line, or `/help`, opens a box with every
+  sign, command, and key; the footer reads `? help`. Prefixes `/all`, `/human`, `/kind k`, `/reply N` (with no
   `@`, addressed to the author of #N), `/urgent`, `/ref path`. Commands:
   `/retract N` and `/remove name` (ask `y`/`n`); `/mute [name|all] [30s|10m|2h]`,
   `/unmute [name]`, `/pause [10m]`; `/nudge name [--force]`; `/focus name`;
@@ -352,7 +375,9 @@ text goes to `all` only when the focused pane is not a member. Esc closes;
 the popup exits after a successful post and keeps the line after a refused
 one; a second open while one is up fails `popup already open` and the CLI
 falls back to the console. Posts from the popup are unverified and count
-for nudges.
+for nudges. `@@path` attaches a file there too. `!name text` is refused in the popup (`direct typing is
+console-only`): a popup has no pane id on Herdr 0.8.2, so nothing can prove
+it is you, and typing into an agent needs that proof.
 
 ### CLI from a shell pane, and outside Herdr
 
@@ -458,12 +483,22 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
 
 - Only the daemon types into an agent, one line at a time, only into panes
   that are in a team roster. `herdr-team notifier stats` reports
-  `wrong_target`; it must stay 0.
+  `wrong_target`; it must stay 0. The one exception to *waiting for idle* is
+  `say`: the human, verified at the focused console, asks the daemon to type
+  one recorded line now (`!name text`); a dialog, permission prompt, overlay,
+  or draft still refuses it, members can never enqueue it (a member pane is
+  `author_mismatch`, a shell pane or popup `say_unverified`, both audited),
+  and the daemon types only a `direct` record whose origin is the console.
+  Residual limit: Herdr itself lets any same-user process type into any
+  pane, including the console; the plugin cannot prevent that, it guarantees
+  that every line it types is recorded (`direct` plus `typed`) and every
+  refused attempt is audited.
 - Only the daemon sends toasts, plus the single probe from `doctor` and
   `setup` (skip with `--no-probe`).
 - Nothing is typed while a member is working, blocked, in a menu, has a
   draft, or is the pane you are looking at (until the 5 min focus hold
-  expires and its screen has been still for 3 s).
+  expires and its screen has been still for 3 s). Your own `!!name text` is
+  the only thing that types into a working member.
 - Authorship is stamped by the system from the pane and process, never
   claimed by text. `herdr-team audit` shows refusals.
 - Every board line renders inside a quote under a system header; the hook
@@ -481,6 +516,10 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
   call and asks to rerun unsandboxed; approve its read-only `herdr-team`
   commands or start it with an approval policy that allows them.
 - Hooks exist for Claude only. The only briefing path is the typed line.
+- `!!name text` into a running turn is verified for Claude Code only (it
+  queues the line as its next message). For other kinds the line is typed
+  and the outcome carries `unverified for <kind>`; Codex is the next to
+  verify live.
 - No shared task list with claiming; no cross-session or cross-machine
   teams; no Windows.
 - The console opens as a split in the current tab, not its own tab.
@@ -520,3 +559,5 @@ Each row: do this, expect that.
 | C24 | `herdr-team hooks install claude`; start a fresh Claude member; post to it | its next session start shows the briefing context block; its next prompt shows `[herdr-team board: 1 posts from peers; …]`; at Stop a `[herdr-team stop] 1 unread board post …` block once per new seq, at most 3 per 10 min; `daemon.log` shows `held: stop_blocked` instead of a second delivery |
 | C25 | `herdr plugin disable herdr-team` | tokens and the view gone within 10 s, daemon exited; pane labels remain until `teardown`; `enable` and `daemon start` recover |
 | C26 | `herdr-team notifier stats` at the end | `wrong_target 0`, `open_intents 0`, a clean rate per kind; hold reasons are in `daemon.log` and `who --json`, not here |
+| C27 | in the console, while a member is idle: `!<member> reply with the word pong` | the text is in its input box within about a second with no `[herdr-team` header and the member starts working; the feed shows a `»direct` entry with `… typing` then `✓typed`; `board --thread <seq>` shows the `typed` record under it; the member's `board --new` does not list it; `notifier stats` intents grow by one and the clean rate is unchanged |
+| C28 | `!<member> x` while it works; then `!!<member> summarize so far`; `!<member> /clear`; the compose popup `!<member> hi`; `herdr-team say <member> x` from a shell pane | `✗ not typed (working)` with the `!!` hint in the status line, nothing typed; the forced line lands as `✓typed (in running turn)` (`, unverified for codex` on Codex); `/clear` is refused `say_control_command`; the popup answers `direct typing is console-only`; the shell answers `say_unverified` and `herdr-team audit` lists it |

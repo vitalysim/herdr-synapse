@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -280,6 +281,8 @@ def refresh(model: ConsoleModel, layout: Layout, state: Optional[ConsoleState] =
     model.feed = fresh.feed
     model.members = fresh.members
     model.human_label = fresh.human_label
+    if model.watching_say:
+        tui_model.settle_say_watch(model, state.tail.records, time.monotonic())
 
 
 def write_console_record(layout: Layout, record: Dict[str, Any]) -> None:
@@ -321,6 +324,38 @@ def run_cli(args: Sequence[str], env: Dict[str, str], timeout: float = CLI_TIMEO
     return proc.returncode, out, err_obj
 
 
+#: Status hints for ``say`` refusals the human can act on (docs/cli.md section 7); other codes show the CLI message.
+SAY_HINTS = {
+    "author_mismatch": "only the human can type into a member",
+    "member_not_found": "no such agent member (see /who)",
+    "echo_rejected": "the text looks like a herdr-team header; reword it",
+    "secret_detected": "the text looks like a secret; it is never typed",
+    "daemon_down": "the notifier is not running; run: herdr-team daemon start",
+    "say_unverified": "this console is not verified as the human (is its pane focused?); click it and retry",
+    "say_control_command": "that would end, clear, or switch the member's session; !!{member} text forces it",
+    "kind_unverified": "that agent kind is not trusted yet; run: herdr-team kinds trust <kind>",
+    "say_multiline": "one line only; post multi-line text with @name instead",
+    "say_too_long": "500 characters at most; post longer text with @name instead",
+}
+
+
+def say_args(intent: Intent, team: str) -> List[str]:
+    """``herdr-team --json --team T say --no-wait [--force] -- <member> <text>``; the outcome comes from the board tail."""
+    a = intent.args
+    args: List[str] = ["--team", team, "say", "--no-wait"]
+    if a.get("force"):
+        args.append("--force")
+    return args + ["--", str(a.get("member")), str(a.get("text", ""))]
+
+
+def say_failure_status(err: Dict[str, Any], member: str) -> str:
+    code = str(err.get("code") or "cli_failed")
+    hint = SAY_HINTS.get(code)
+    if hint:
+        return "say to {} refused: {} ({})".format(member, hint.format(member=member), code)
+    return "say to {} failed: {}: {}".format(member, code, err.get("message"))
+
+
 def post_args(intent: Intent, team: str) -> List[str]:
     a = intent.args
     args: List[str] = ["--team", team, "post", str(a.get("text", ""))]
@@ -336,6 +371,8 @@ def post_args(intent: Intent, team: str) -> List[str]:
         args.append("--urgent")
     for ref in a.get("refs") or []:
         args += ["--ref", str(ref)]
+    for path in a.get("files") or []:
+        args += ["--file", str(path)]
     if a.get("spill"):
         args.append("--spill")
     if a.get("label"):
@@ -400,10 +437,26 @@ def execute_intent(intent: Intent, model: ConsoleModel, state: ConsoleState, api
             model.status = "post failed: {}: {}".format(err.get("code"), err.get("message"))
         elif isinstance(out, dict):
             model.status = "posted #{} to {}{}".format(out.get("seq"), ",".join(out.get("to") or []), "" if model.focused else " (unfocused: unverified)")
+            attached = [re.sub(r"^\d+-", "", str(p).rsplit("/", 1)[-1]) for p in (out.get("attached") or [])]  # payloads/<seq>-<name>
+            if attached:
+                model.status += " · attached {}".format(", ".join(attached))
             if out.get("notifier") == "offline":
                 model.status += " · notifier offline"
         else:
             model.status = "post exited {}".format(rc)
+        return True
+    if kind == "say":
+        # Never --wait here: the curses loop is single-threaded and run_cli blocks; the typed outcome arrives
+        # through the board tail (a feed tag and, via watching_say, the status line).
+        member = str(intent.args.get("member"))
+        rc, out, err = run_cli(say_args(intent, team), env)
+        if err:
+            model.status = say_failure_status(err, member)
+        elif isinstance(out, dict) and isinstance(out.get("seq"), int):
+            model.status = "typing into {}{} #{}".format(member, "..." if model.ascii_only else "…", out["seq"])
+            model.watching_say[out["seq"]] = (member, time.monotonic())
+        else:
+            model.status = "say exited {}".format(rc)
         return True
     if kind == "retract":
         rc, out, err = run_cli(["--team", team, "retract", str(intent.args.get("seq"))], env)

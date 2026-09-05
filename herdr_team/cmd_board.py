@@ -704,6 +704,37 @@ def validate_refs(layout: Layout, team_name: str, refs: List[str], doc: Optional
     return list(_charter.validate_refs(layout, team_name, refs, env=env))
 
 
+def resolve_files(layout: Layout, team_name: str, files: Sequence[str], doc: Optional[Dict[str, Any]] = None, env: Optional[Dict[str, str]] = None) -> Tuple[List[str], List[str]]:
+    """``--file`` (the console's ``@@path``): ``(refs, sources to attach)``.
+
+    A file the team can already read (under the team dir or a member's cwd)
+    becomes a ``--ref``; anything else is copied into ``payloads/`` like
+    ``--attach``. A missing file is ``ref_invalid`` and a file under a
+    dot-directory (``.ssh``, ``.aws``, ``.config`` ...) is refused either way.
+    """
+    refs: List[str] = []
+    attach: List[str] = []
+    for raw in files:
+        if not isinstance(raw, str) or not raw.strip():
+            raise HerdrTeamError("ref_invalid", "empty --file", EXIT_REFUSED, {"ref": raw})
+        source = Path(os.path.expanduser(raw))
+        if not source.is_absolute():
+            source = Path.cwd() / source
+        if not source.is_file():
+            raise HerdrTeamError("ref_invalid", "file does not exist or is not a file: {}".format(raw), EXIT_REFUSED, {"ref": raw, "path": os.fspath(source)})
+        if any(part.startswith(".") and part not in (".", "..") for part in source.resolve().parts[1:]):
+            raise HerdrTeamError("ref_invalid", "file sits under a dot-directory (.ssh, .aws, .config ...): {}".format(raw), EXIT_REFUSED, {"ref": raw, "path": os.fspath(source)})
+        try:
+            for ref in validate_refs(layout, team_name, [os.fspath(source)], doc, env=env):
+                if ref not in refs:
+                    refs.append(ref)
+        except HerdrTeamError as err:
+            if err.code != "ref_invalid":
+                raise
+            attach.append(os.fspath(source))
+    return refs, attach
+
+
 def stage_attachments(team: TeamPaths, sources: Sequence[str]) -> List[store.StagedAttachment]:
     """Copy every ``--attach`` into ``payloads/.tmp-*`` before the lock (``BoardStore.stage_attachment``)."""
     board = store.BoardStore(team)
@@ -809,6 +840,7 @@ def _add_post_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--kind", choices=POST_KINDS, default="note")
     parser.add_argument("--ref", metavar="PATH", action="append", default=[], help="reference a file under the team dir, payloads/, or a member cwd")
     parser.add_argument("--attach", metavar="PATH", action="append", default=[], help="copy a file into payloads/ and reference it")
+    parser.add_argument("--file", metavar="PATH", action="append", default=[], help="reference the file when it lives under the team dir or a member's cwd, else copy it into payloads/ (the console's @@path)")
     parser.add_argument("--reply-to", metavar="SEQ", type=int)
     parser.add_argument("--urgent", action="store_true")
     parser.add_argument("--spill", action="store_true", help="write over-length text to payloads/<seq>-body.md")
@@ -910,7 +942,9 @@ def _run_post(args: argparse.Namespace) -> int:
         if board_get(team, reply_to) is None:
             raise HerdrTeamError("reply_to_unknown", "no post #{} on this board".format(reply_to), EXIT_REFUSED, {"reply_to": reply_to})
     refs = validate_refs(layout, team_name, list(args.ref), doc, env=env_of(args))
-    staged = stage_attachments(team, list(args.attach))
+    file_refs, file_attach = resolve_files(layout, team_name, list(getattr(args, "file", None) or []), doc, env=env_of(args))
+    refs = refs + [r for r in file_refs if r not in refs]
+    staged = stage_attachments(team, list(args.attach) + file_attach)
     record = build_record(author, to, args.kind, text, to_role=to_role, refs=refs, reply_to=reply_to, urgent=args.urgent, relayed_for=args.relayed_for, socket_path=os.fspath(layout.socket), truncated=truncated, from_gen=member_generation(doc, author))
 
     try:
@@ -925,7 +959,7 @@ def _run_post(args: argparse.Namespace) -> int:
     payload = {
         "seq": seq, "team": team_name, "notifier": notifier, "to": to, "to_role": to_role, "kind": args.kind,
         "author": {"name": author.name, "via": author.via, "verified": bool(author.verified)},
-        "spilled": body is not None, "attached": attached,
+        "spilled": body is not None, "attached": attached, "refs": refs,
     }
     return emit(args, payload, "#{} posted to {} as {} (notifier {})".format(seq, ",".join(to), author.name, notifier))
 

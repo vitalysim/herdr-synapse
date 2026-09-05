@@ -87,6 +87,9 @@ class SkillFileTests(unittest.TestCase):
             self.assertIn(forbidden, lowered, forbidden)
         self.assertRegex(lowered, r"herdr config")
         self.assertRegex(lowered, r"overrides[^\n]*upstream|upstream[^\n]*teammates only")
+        self.assertRegex(lowered, r"never `send-keys` or `send-text` into any pane you did not start")
+        self.assertIn("board --kind direct", lowered)
+        self.assertNotRegex(lowered, r"operator authority[^\n]*raw line|raw line[^\n]*operator authority")
 
     def test_skill_flag_prints_the_file(self):
         code, out, err = run_cli(["--skill"], {})

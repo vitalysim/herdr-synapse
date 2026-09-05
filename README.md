@@ -47,7 +47,10 @@ and a test checklist). Short form: `herdr plugin link <this dir>`,
 claude` (and `codex`), paste `herdr-team keys print` and `herdr-team setup
 --print-config` into your config, reload, then `prefix+t` to pick two fresh
 panes into a team. A post with no recipient goes to the whole team; `@name`
-addresses one member and is the only thing that nudges it.
+addresses one member and is the only thing that nudges it. `!name text` types
+the line into that member's input box right now (`!!name text` even while it
+works) and records it as a `direct` post. `@@path` attaches a file to a post
+(`@@` lists files); `?` on an empty line shows every command.
 
 ## Dev loop
 
@@ -81,6 +84,9 @@ Rules for code in this package:
   JSON object on stderr with the contract exit code (`docs/cli.md` section 2).
 - Only the daemon calls `agent.prompt` and `notification.show`, and never on
   a terminal outside a roster.
+  A human-only `say` job (the console's `!name text`) asks the daemon to type
+  one recorded `direct` line now; agents cannot enqueue it and the daemon types
+  only a record whose origin is the verified console.
 
 ## Test rig rules (summary of plan section 14)
 
@@ -125,6 +131,10 @@ pointer file → `${XDG_STATE_HOME:-$HOME/.local/state}/<app>/plugins/herdr-team
 ## Status
 
 Integration pass of 2026-09-04 (fork status log lives in `FORK.md`):
+
+- 2026-09-05: `herdr-team say` and the console's `!name text` / `!!name text`
+  type one line into a member now (docs/cli.md section 7, capabilities section
+  7 and 11). Suite: 1141 tests green under both interpreters.
 
 - Suite: 945 tests, green under Homebrew python 3.14.6 and Apple python
   3.9.6 (3 skips on 3.9). `tests/test_schema_conformance.py` (37 tests)

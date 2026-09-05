@@ -270,7 +270,7 @@ JSON `{"team","entries":[{"ts","event":"author_mismatch","author":"…","via","p
 
 ```
 post "<text>" [--to <name>[,<name>…] | all | human | role:<r>] [--kind note|request|handoff|done|blocked|question|answer]
-     [--ref <path>]… [--attach <path>]… [--reply-to <seq>] [--urgent] [--spill] [--as human] [--name <label>]
+     [--ref <path>]… [--attach <path>]… [--file <path>]… [--reply-to <seq>] [--urgent] [--spill] [--as human] [--name <label>]
      [--relayed-for human] [--to-any]
 ```
 
@@ -286,10 +286,15 @@ post "<text>" [--to <name>[,<name>…] | all | human | role:<r>] [--kind note|re
   check (`echo_rejected`, 4), secret patterns refused without `--force`.
 - `--ref` must exist under the team dir, `payloads/`, or a roster member's
   cwd; `--attach` copies into `payloads/` (16 MiB cap) with a safe basename.
+  `--file` (the console's `@@path`) picks for you: a file the team can
+  already read becomes a `--ref`, anything else is copied like `--attach`;
+  a missing file or one under a dot-directory (`.ssh`, `.aws`, `.config`) is
+  `ref_invalid` (1) either way.
 - Works with the server down (author unverified). Never calls
   `notification.show`.
 
-JSON `{"seq":42,"team":"vuln-hunt","notifier":"alive|offline","to":["reviewer"],"to_role":null,"kind":"request","author":{"name":"builder","via":"cli","verified":true},"spilled":false,"attached":[]}`.
+JSON `{"seq":42,"team":"vuln-hunt","notifier":"alive|offline","to":["reviewer"],"to_role":null,"kind":"request","author":{"name":"builder","via":"cli","verified":true},"spilled":false,"attached":[],"refs":[]}`
+(`attached` lists the copies made under `payloads/`, `refs` every reference the record carries).
 
 ### `board [options]`
 

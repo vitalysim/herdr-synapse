@@ -35,9 +35,9 @@ def type_keys(model, keys: str):
 
 class MentionContextTests(unittest.TestCase):
     def test_at_start_and_after_space_open_the_menu(self):
-        self.assertEqual(tm.mention_context("@", 1), (0, 1, ""))
-        self.assertEqual(tm.mention_context("@rev", 4), (0, 4, "rev"))
-        self.assertEqual(tm.mention_context("hello @re", 9), (6, 9, "re"))
+        self.assertEqual(tm.mention_context("@", 1), (0, 1, "", "@"))
+        self.assertEqual(tm.mention_context("@rev", 4), (0, 4, "rev", "@"))
+        self.assertEqual(tm.mention_context("hello @re", 9), (6, 9, "re", "@"))
 
     def test_mid_word_and_no_at_do_not(self):
         self.assertIsNone(tm.mention_context("mail me at foo@bar", 18))
@@ -45,7 +45,7 @@ class MentionContextTests(unittest.TestCase):
         self.assertIsNone(tm.mention_context("@name done", 10))  # cursor after the token, on another word
 
     def test_cursor_inside_the_token(self):
-        self.assertEqual(tm.mention_context("@red-dev rest", 4), (0, 4, "red"))
+        self.assertEqual(tm.mention_context("@red-dev rest", 4), (0, 4, "red", "@"))
 
 
 class MentionCandidateTests(unittest.TestCase):

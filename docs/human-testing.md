@@ -44,8 +44,10 @@ manual setup in your real session later.
   is mid-task; the plan (M10) says start with two new panes and watch for a
   day before adding anything you care about.
 - The daemon only ever types into panes that are in a team roster, and only
-  one short line at a time. It never touches a pane outside a roster. If you
-  see anything else, run `herdr-team daemon stop` and tell me.
+  one short line at a time. It never touches a pane outside a roster. The
+  one thing that types *now*, without waiting for idle, is your own
+  `!name text` in the console; nothing an agent does can trigger that. If
+  you see anything else, run `herdr-team daemon stop` and tell me.
 - Everything the plugin writes lives under
   `~/.local/state/herdr/plugins/herdr-team/` plus a pointer file under
   `~/.config/herdr/plugins/config/herdr-team/`. Nothing else in `~/.config`
@@ -112,7 +114,10 @@ prefix+u                            # the console: charter, roster, live board t
 ```
 
 In the console: plain text goes to the whole team, `@name text` to one
-member (that member is nudged once idle), `@role:worker text` to a role,
+member (that member is nudged once idle), `!name text` straight into that
+member's input box right now (`!!name text` even while it works; the entry
+shows `✓typed` or why not), `@@path` attaches a file to the post (type
+`@@` for a file list), `?` on an empty line shows every command, `@role:worker text` to a role,
 `/human` to yourself, `/urgent` before text nudges everyone, `/reply N`,
 `/retract N`, `/mute name 10m`, `/peek name`, `/focus name`, `/charter`,
 `/charter set`, `/use team`, `/quit`.
@@ -126,7 +131,12 @@ idle, the member reads the board and replies, `board --receipts` shows
 ## 6. Things that are expected, not bugs
 
 - Nothing lands while a member is working, blocked at a dialog, or in the
-  model picker. That is the point.
+  model picker. That is the point. `!name text` is the exception you control:
+  it types now, but a dialog, the model picker, or a draft still refuses it
+  (`✗ not typed (dialog)`), and only `!!` types into a working member.
+- `!name text` works only from the console pane. The compose popup answers
+  `direct typing is console-only` and a shell pane `say_unverified`, because
+  neither can prove it is you.
 - A post to the whole team is not nudged; members see it on their next board
   read (Claude with hooks sees it on its next turn). `/urgent` nudges.
 - Your posts from a shell pane inside Herdr are `verified`; from outside

@@ -20,6 +20,8 @@ may still be stubs; every call is guarded so this module works standalone.
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 import re
 import unicodedata
 from dataclasses import dataclass, field
@@ -60,17 +62,32 @@ PEEK_MARKER_REPLACEMENT = "▸"
 
 STATUS_GLYPHS = {"idle": "○", "working": "◐", "blocked": "●", "done": "✓", "unknown": "?"}
 ASCII_STATUS_GLYPHS = {"idle": "o", "working": "*", "blocked": "!", "done": "+", "unknown": "?"}
-KIND_GLYPHS = {"request": "→", "done": "✓", "blocked": "!", "question": "?"}
-ASCII_KIND_GLYPHS = {"request": ">", "done": "+", "blocked": "!", "question": "?"}
+KIND_GLYPHS = {"request": "→", "done": "✓", "blocked": "!", "question": "?", "direct": "»"}
+ASCII_KIND_GLYPHS = {"request": ">", "done": "+", "blocked": "!", "question": "?", "direct": ">>"}
 
 MEMBER_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}\Z")
 RESERVED_NAMES = frozenset({"human", "all", "me", "none", "system", "team"})
 RECIPIENT_RE = re.compile(r"^(?:[a-z][a-z0-9_-]{0,31}|role:[a-z][a-z0-9_-]{0,13}|all|human)\Z")
+#: ``!name text`` types the line into one member now (docs/cli.md section 7, ``say``). Every input line
+#: that starts with ``!`` is such an attempt and never falls back to a post, so a mistyped name can
+#: never leak a one-member instruction to the whole team.
+BANG_HINT = 'to post text that starts with "!" write /all !text or @name !text'
+_BANG_RE = re.compile(r"^(!{1,2})([a-z])")
+#: A ``direct`` entry with no ``typed`` outcome yet reads "typing" this long, then "no outcome".
+SAY_NO_OUTCOME_S = 10.0
+#: A say the console sent is watched for its outcome this long before the status line gives up.
+SAY_WATCH_S = 30.0
+#: Refusal reasons the console's ``!!`` bypasses (the status line says so).
+FORCEABLE_REASONS = ("working", "muted")
 _ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]")
 _DIRECTIVE_RE = re.compile(
     r"^\s*(?:(?P<at>@\S+)|(?P<all>/all\b)|(?P<human>/human\b)|(?P<urgent>/urgent\b)"
     r"|/kind\s+(?P<kind>\S+)|/reply\s+(?P<reply>\S+)|/ref\s+(?P<ref>\S+))"
 )
+#: ``@@path`` anywhere in a post line attaches that file (``post --file``): a token at the start or after whitespace.
+_FILE_TOKEN_RE = re.compile(r"(?:(?<=\s)|^)@@(\S+)")
+#: Rows offered by the ``@@`` file menu at most (the menu window scrolls through them).
+MAX_FILE_ROWS = 40
 _SEQ_RANGE_RE = re.compile(r"seq\s+(\d+)(?:\s*-\s*(\d+))?")
 _SEQ_HASH_RE = re.compile(r"#(\d+)")
 _ID_NUM_RE = re.compile(r"(\d+)")
@@ -232,11 +249,15 @@ class ConsoleModel:
     #: ``@`` mention menu: highlighted row, and the input snapshot Esc hid it for.
     mention_index: int = 0
     mention_hidden_for: Optional[str] = None
+    #: Says this console sent and still awaits an outcome for: ``{direct seq: (member, monotonic sent)}``.
+    watching_say: Dict[int, Tuple[str, float]] = field(default_factory=dict)
+    #: Directory relative ``@@path`` tokens complete against (the console process cwd when None).
+    file_base: Optional[str] = None
 
 
 @dataclass
 class Intent:
-    kind: str  # post | retract | mute | unmute | nudge | focus | peek | who | filter | as | use | charter | remove | help | error | quit | none | create | load_file
+    kind: str  # post | say | retract | mute | unmute | nudge | focus | peek | who | filter | as | use | charter | remove | help | error | quit | none | create | load_file
     args: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -250,6 +271,8 @@ class PostSpec:
     reply_to: Optional[int] = None
     urgent: bool = False
     refs: List[str] = field(default_factory=list)
+    #: ``@@path`` tokens: referenced when the team can read them, copied into ``payloads/`` otherwise.
+    files: List[str] = field(default_factory=list)
 
     def to_args(self) -> Dict[str, Any]:
         return {
@@ -259,7 +282,66 @@ class PostSpec:
             "reply_to": self.reply_to,
             "urgent": self.urgent,
             "refs": list(self.refs),
+            "files": list(self.files),
         }
+
+
+def extract_file_tokens(line: str) -> Tuple[str, List[str]]:
+    """Pull every ``@@path`` token out of ``line``; returns the remaining text and the paths in order."""
+    files: List[str] = []
+
+    def take(match: "re.Match[str]") -> str:
+        path = match.group(1)
+        if path not in files:
+            files.append(path)
+        return ""
+
+    rest = _FILE_TOKEN_RE.sub(take, line)
+    return " ".join(rest.split()) if files else line, files
+
+
+@dataclass
+class SaySpec:
+    """A parsed ``!member text`` / ``!!member text`` line: type ``text`` into ``member`` now (``!!`` forces)."""
+
+    member: str
+    text: str
+    force: bool = False
+
+
+def parse_bang(line: str) -> Tuple[Optional[SaySpec], Optional[str]]:
+    """``(spec, None)`` for a say line, ``(None, error)`` for a malformed one, ``(None, None)`` when ``line`` is not one.
+
+    Any line that starts with ``!`` is a say attempt and never becomes a post.
+    The text after the name is passed verbatim (``!peer /compact``, ``!peer @x look``).
+    """
+    stripped = line.strip()
+    if not stripped.startswith("!"):
+        return None, None
+    usage = "usage: !name text or !!name text ({})".format(BANG_HINT)
+    match = _BANG_RE.match(stripped)
+    if match is None:
+        return None, usage
+    sigil = match.group(1)
+    parts = stripped[len(sigil):].split(None, 1)
+    name = parts[0]
+    text = parts[1].strip() if len(parts) > 1 else ""
+    if name.startswith("role:"):
+        return None, "!{} types into one member, not a role (post to the role with @{} text)".format(name, name)
+    if name in RESERVED_NAMES:
+        return None, "!{} is not a member; the sign types into one agent (post with @{} text)".format(name, name)
+    if not MEMBER_NAME_RE.match(name):
+        return None, "invalid member name {} ({})".format(name, usage)
+    if not text:
+        return None, "usage: !{} <text> (nothing to type)".format(name)
+    if "\n" in text:
+        return None, "!{} types one line; remove the newline or post it with @{} text".format(name, name)
+    return SaySpec(member=name, text=text, force=sigil == "!!"), None
+
+
+def agent_member_names(members: Iterable[Dict[str, Any]]) -> List[str]:
+    """Names a ``!`` line may type into: agent members on the roster that have not left."""
+    return [str(m.get("name")) for m in members if m.get("name") and m.get("name") != "human" and m.get("kind") != "human" and m.get("status") not in ("left",)]
 
 
 def degrade_level(width: int) -> int:
@@ -393,6 +475,8 @@ def roster_line(
         # Show why a queued nudge is waiting (daemon.log has the detail); observed live 2026-09-05:
         # a bare ↪3 next to an idle member read as "nothing happens" when the hold was `focused`.
         fields.append("{}{}{}".format("^" if ascii_only else "↪", pending, " ({})".format(hold) if hold else ""))
+    if member.get("say") == "confirming":
+        fields.append("{} typing".format(">>" if ascii_only else "»"))
     if member_muted(member, mutes, now):
         fields.append("muted")
     if roster_status in ("missing", "left", "unbound", "kind_changed", "name_conflict", "failed", "starting"):
@@ -452,12 +536,83 @@ def nudged_seqs(record: Dict[str, Any]) -> List[int]:
     return out
 
 
+def typed_outcomes(records: Iterable[Dict[str, Any]]) -> Dict[int, Dict[str, Any]]:
+    """``{direct seq: outcome}`` from ``typed`` system records (docs/cli.md section 7); the newest wins."""
+    out: Dict[int, Dict[str, Any]] = {}
+    for rec in records:
+        if rec.get("from") != "system" or rec.get("kind") != "system" or rec.get("event") != "typed":
+            continue
+        outcome = {
+            "result": rec.get("result"), "reason": rec.get("reason"), "detail": rec.get("detail"), "member": rec.get("member"),
+            "kind": rec.get("kind_of_member"), "force": rec.get("force"), "force_verified": rec.get("force_verified"),
+            "ts": rec.get("ts"), "seq": rec.get("seq"),
+        }
+        for s in nudged_seqs(rec):
+            out[s] = outcome
+    return out
+
+
+_TYPED_REFUSED_LABELS = {
+    "working": "not typed (working)", "muted": "not typed (muted)", "blocked": "blocked", "dialog": "not typed (dialog)",
+    "draft": "not typed (draft)", "skip_state_update": "not typed (overlay open)", "unknown": "not typed (state unknown)",
+    "not_ready": "not typed (not ready)", "absent": "not typed (absent)", "wrong_occupant": "not typed (absent)",
+    "wrong_target": "not typed (absent)", "in_flight": "not typed (busy)", "stale": "not typed (stale job)",
+    "unverified_source": "refused (unverified source)", "member_not_found": "not typed (no such member)",
+    "kind_unverified": "not typed (kind not trusted)",
+}
+
+
+def typed_label(outcome: Optional[Dict[str, Any]]) -> Tuple[bool, str]:
+    """``(ok, label)`` for a ``typed`` outcome; the vocabulary shared by the feed tag and the status line."""
+    if not outcome:
+        return False, "failed (unknown)"
+    result = str(outcome.get("result") or "")
+    reason = outcome.get("reason")
+    reason_s = headline(str(reason), 24) if reason else ""
+    if result == "typed":
+        if reason == "in_turn":
+            if outcome.get("force_verified") is False and outcome.get("kind"):
+                return True, "typed (in running turn, unverified for {})".format(headline(str(outcome["kind"]), 16))
+            return True, "typed (in running turn)"
+        if reason == "dry":
+            return True, "typed (dry run)"
+        return True, "typed"
+    if result == "refused":
+        return False, _TYPED_REFUSED_LABELS.get(reason_s, "not typed ({})".format(reason_s or "refused"))
+    if result == "not_submitted":
+        return False, "not submitted"
+    if result == "failed" and reason == "hung":
+        return False, "failed (pane hung)"
+    if result == "failed" and reason == "unconfirmed":
+        return False, "unconfirmed"
+    return False, "failed ({})".format(headline(str(outcome.get("detail") or reason_s or result or "unknown"), 24))
+
+
+def typed_tag(outcome: Optional[Dict[str, Any]], ascii_only: bool = False) -> str:
+    ok, label = typed_label(outcome)
+    if ok:
+        return ("+" if ascii_only else "✓") + label
+    return ("x " if ascii_only else "✗ ") + label
+
+
+def pending_say_tag(record: Dict[str, Any], now: Optional[datetime] = None, ascii_only: bool = False) -> str:
+    """The tag of a ``direct`` entry with no outcome yet: typing, or after SAY_NO_OUTCOME_S no outcome."""
+    parsed = parse_iso(record.get("ts"))
+    age = (_now(now) - parsed).total_seconds() if parsed is not None else 0.0
+    if age < SAY_NO_OUTCOME_S:
+        return "... typing" if ascii_only else "… typing"
+    return "{}no outcome (notifier?)".format("x " if ascii_only else "✗ ")
+
+
 def derive_receipts(
     records: Iterable[Dict[str, Any]],
     cursors: Dict[str, Dict[str, Any]],
     members: Iterable[Dict[str, Any]],
 ) -> Dict[int, Dict[str, Any]]:
-    """``{seq: {"nudged": [ts...], "read": [names], "read_by": "k/n"|None}}``.
+    """``{seq: {"nudged": [ts...], "read": [names], "read_by": "k/n"|None, "typed": outcome|None}}``.
+
+    A ``direct`` line gets no read or nudge receipts, only its ``typed``
+    outcome (docs/cli.md section 7).
 
     ``nudged`` comes from board ``system`` records, ``read`` from cursors,
     ``read_by k/n`` for posts to ``all`` counted over agent members other
@@ -476,12 +631,16 @@ def derive_receipts(
         if rec.get("from") == "system" and rec.get("kind") == "system" and rec.get("event") == "nudged":
             for s in nudged_seqs(rec):
                 nudged.setdefault(s, []).append(str(rec.get("ts") or ""))
+    typed = typed_outcomes(recs)
     receipts: Dict[int, Dict[str, Any]] = {}
     for rec in recs:
         if rec.get("kind") in ("system", "retract"):
             continue
         seq = rec.get("seq")
         if not isinstance(seq, int):
+            continue
+        if rec.get("kind") == "direct":
+            receipts[seq] = {"nudged": [], "read": [], "read_by": None, "typed": typed.get(seq)}
             continue
         to = [str(t) for t in (rec.get("to") or [])]
         author = str(rec.get("from") or "")
@@ -496,7 +655,7 @@ def derive_receipts(
                 if reader.startswith("human@") and cseq >= seq:
                     read.append("human")
                     break
-        entry: Dict[str, Any] = {"nudged": list(nudged.get(seq, [])), "read": read, "read_by": None}
+        entry: Dict[str, Any] = {"nudged": list(nudged.get(seq, [])), "read": read, "read_by": None, "typed": None}
         if "all" in to:
             entry["read_by"] = "{}/{}".format(len([n for n in read if n != "human"]), len(audience))
         receipts[seq] = entry
@@ -548,6 +707,7 @@ def feed_entry(
     retractions: Optional[Dict[int, int]] = None,
     ascii_only: bool = False,
     width: int = 80,
+    now: Optional[datetime] = None,
 ) -> Dict[str, Any]:
     """One rendered feed line plus the facts the filters need."""
     seq = record.get("seq")
@@ -584,6 +744,9 @@ def feed_entry(
         rec_receipts = (receipts or {}).get(seq) if isinstance(seq, int) else None
         if rec_receipts and struck_by is None and level == 0:
             tags: List[str] = []
+            if kind == "direct":
+                outcome = rec_receipts.get("typed")
+                tags.append(typed_tag(outcome, ascii_only) if outcome else pending_say_tag(record, now, ascii_only))
             if rec_receipts.get("nudged"):
                 tags.append("{}nudged".format("+" if ascii_only else "✓"))
             if rec_receipts.get("read_by") is not None:
@@ -726,11 +889,12 @@ def build_feed(
     members: Optional[Iterable[Dict[str, Any]]] = None,
     ascii_only: bool = False,
     width: int = 80,
+    now: Optional[datetime] = None,
 ) -> List[Dict[str, Any]]:
     recs = sorted((r for r in records if isinstance(r.get("seq"), int)), key=lambda r: r["seq"])
     receipts = derive_receipts(recs, cursors or {}, list(members or []))
     retractions = retraction_map(recs)
-    return [feed_entry(r, receipts, retractions, ascii_only, width) for r in recs if r.get("kind") != "retract"]
+    return [feed_entry(r, receipts, retractions, ascii_only, width, now) for r in recs if r.get("kind") != "retract"]
 
 
 #: ``audit.jsonl`` events the console surfaces as warnings (plan 7.1: ``--as human`` from an agent
@@ -810,7 +974,7 @@ def build_console_model(
         team=team,
         header=header,
         roster_lines=roster_lines_for(members, width, ascii_only, mutes, now),
-        feed=merge_audit_warnings(build_feed(recs, cursors, members, ascii_only, width), audit, ascii_only, width),
+        feed=merge_audit_warnings(build_feed(recs, cursors, members, ascii_only, width, now), audit, ascii_only, width),
         width=width,
         height=height,
         ascii_only=ascii_only,
@@ -828,6 +992,7 @@ def build_console_model(
         model.paste_mode = previous.paste_mode
         model.pending_confirm = previous.pending_confirm
         model.peek = previous.peek
+        model.watching_say = previous.watching_say
     return model
 
 
@@ -867,7 +1032,7 @@ def filter_line(model: ConsoleModel) -> str:
     parts = []
     for i, name in enumerate(FILTERS):
         parts.append("[{}]".format(name) if i == model.filter_index % len(FILTERS) else name)
-    return "filter: " + "  ".join(parts) + "  (Tab cycles)"
+    return "filter: " + "  ".join(parts) + "  (Tab cycles)   ? help"
 
 
 # -- input editing -------------------------------------------------------------
@@ -933,31 +1098,102 @@ MENTION_MARKER = "▸"
 MENTION_MARKER_ASCII = ">"
 
 
-def mention_context(text: str, cursor: int) -> Optional[Tuple[int, int, str]]:
-    """The ``@token`` under the cursor as ``(start, end, prefix)``, or None.
+def mention_context(text: str, cursor: int) -> Optional[Tuple[int, int, str, str]]:
+    """The ``@token``, ``!token``, or ``!!token`` under the cursor as ``(start, end, prefix, sigil)``, or None.
 
-    The token must begin with ``@`` at the start of the line or after
-    whitespace and contain no whitespace up to the cursor, so an e-mail
-    address or ``foo@bar`` typed mid-word never opens the menu.
+    An ``@`` token must begin at the start of the line or after whitespace
+    and contain no whitespace up to the cursor, so an e-mail address or
+    ``foo@bar`` typed mid-word never opens the menu. A ``!`` or ``!!`` token
+    opens it only as the head of the line (a say line, docs/cli.md section 7)
+    and only when what follows could be a member name, so ``wow!``,
+    ``hello !re``, ``!!!x`` and ``!Name`` never do.
     """
     cursor = max(0, min(cursor, len(text)))
     start = cursor
     while start > 0 and not text[start - 1].isspace():
         start -= 1
-    if start >= cursor or text[start] != "@":
+    if start >= cursor:
         return None
     if start > 0 and not text[start - 1].isspace():
         return None
-    return start, cursor, text[start + 1 : cursor]
+    token = text[start:cursor]
+    if token.startswith("@@"):
+        return start, cursor, token[2:], "@@"
+    if token.startswith("@"):
+        return start, cursor, token[1:], "@"
+    if token.startswith("!") and text[:start].strip() == "":
+        sigil = "!!" if token.startswith("!!") else "!"
+        prefix = token[len(sigil):]
+        if prefix and not ("a" <= prefix[0] <= "z"):
+            return None
+        return start, cursor, prefix, sigil
+    return None
 
 
-def mention_candidates(members: Iterable[Dict[str, Any]], prefix: str = "") -> List[Dict[str, str]]:
+def _size_label(path: Path) -> str:
+    try:
+        size = float(path.stat().st_size)
+    except OSError:
+        return "?"
+    if size < 1024:
+        return "{}B".format(int(size))
+    for unit in ("KB", "MB", "GB"):
+        size /= 1024.0
+        if size < 1024 or unit == "GB":
+            return "{:.1f}{}".format(size, unit)
+    return "?"
+
+
+def path_candidates(prefix: str, base_dir: Optional[str] = None) -> List[Dict[str, str]]:
+    """Menu rows for ``@@<prefix>``: directories (ending in ``/``) then files completing the path.
+
+    Relative paths complete against ``base_dir`` (the console process cwd by
+    default); ``~`` expands. Dot-files stay hidden unless the typed name
+    starts with a dot. Listing errors yield no rows.
+    """
+    expanded = os.path.expanduser(prefix)
+    base = Path(base_dir) if base_dir else Path.cwd()
+    if prefix == "" or prefix.endswith("/"):
+        directory, stem = (expanded or "."), ""
+        typed_dir = prefix
+    else:
+        directory = os.path.dirname(expanded) or "."
+        stem = os.path.basename(expanded)
+        typed_dir = prefix[: len(prefix) - len(os.path.basename(prefix))]
+    root = Path(directory) if os.path.isabs(directory) else base / directory
+    try:
+        names = sorted(os.listdir(root))
+    except OSError:
+        return []
+    rows: List[Tuple[int, str, Dict[str, str]]] = []
+    for name in names:
+        if name.startswith(".") and not stem.startswith("."):
+            continue
+        if not name.lower().startswith(stem.lower()):
+            continue
+        target = root / name
+        is_dir = target.is_dir()
+        insert = typed_dir + name + ("/" if is_dir else "")
+        label = "{}  {}".format(insert, "dir" if is_dir else _size_label(target))
+        rows.append((0 if is_dir else 1, name.lower(), {"insert": insert, "label": label}))
+    rows.sort(key=lambda item: (item[0], item[1]))
+    return [row for _, _, row in rows[:MAX_FILE_ROWS]]
+
+
+def mention_sigil(model: Any) -> str:
+    """The sigil of the open menu (``@``, ``!``, or ``!!``); ``@`` when none is open."""
+    ctx = mention_context(model.input, model.cursor)
+    return ctx[3] if ctx is not None else "@"
+
+
+def mention_candidates(members: Iterable[Dict[str, Any]], prefix: str = "", members_only: bool = False) -> List[Dict[str, str]]:
     """Menu rows for ``@<prefix>``: members, then ``role:<r>`` groups, then ``all`` and ``human``.
 
     Matching is case-insensitive; a prefix match on the inserted text sorts
     before a substring match on the name or role, so ``@rev`` finds
     ``red-dev-codex-reviewer`` through its role even though the name does not
-    start with it.
+    start with it. ``members_only`` (the ``!`` menu) drops the group rows: a
+    line can only be typed into one agent.
     """
     needle = prefix.lower()
     rows: List[Tuple[int, int, Dict[str, str]]] = []
@@ -976,17 +1212,18 @@ def mention_candidates(members: Iterable[Dict[str, Any]], prefix: str = "") -> L
         if rank is not None:
             rows.append((rank, order, {"insert": name, "label": label}))
         order += 1
-    for role, count in roles.items():
-        insert = "role:" + role
-        rank = _mention_rank(needle, insert, role)
-        if rank is not None:
-            rows.append((rank, order, {"insert": insert, "label": "{}  everyone with role {} ({})".format(insert, role, count)}))
-        order += 1
-    for insert, label in (("all", "all  everyone on the team"), ("human", "human  the operator (you)")):
-        rank = _mention_rank(needle, insert, "")
-        if rank is not None:
-            rows.append((rank, order, {"insert": insert, "label": label}))
-        order += 1
+    if not members_only:
+        for role, count in roles.items():
+            insert = "role:" + role
+            rank = _mention_rank(needle, insert, role)
+            if rank is not None:
+                rows.append((rank, order, {"insert": insert, "label": "{}  everyone with role {} ({})".format(insert, role, count)}))
+            order += 1
+        for insert, label in (("all", "all  everyone on the team"), ("human", "human  the operator (you)")):
+            rank = _mention_rank(needle, insert, "")
+            if rank is not None:
+                rows.append((rank, order, {"insert": insert, "label": label}))
+            order += 1
     rows.sort(key=lambda item: (item[0], item[1]))
     return [row for _, _, row in rows]
 
@@ -1010,7 +1247,11 @@ def mention_menu(model: Any) -> List[Dict[str, str]]:
     ctx = mention_context(model.input, model.cursor)
     if ctx is None:
         return []
-    return mention_candidates(model.members, ctx[2])
+    if ctx[3] == "@@":
+        return path_candidates(ctx[2], getattr(model, "file_base", None))
+    if ctx[3] != "@" and not getattr(model, "bang_menu", True):
+        return []  # the compose popup refuses ! lines, so it does not offer names for them
+    return mention_candidates(model.members, ctx[2], members_only=ctx[3] != "@")
 
 
 def mention_lines(model: Any, width: int, ascii_only: bool = False) -> List[str]:
@@ -1023,22 +1264,27 @@ def mention_lines(model: Any, width: int, ascii_only: bool = False) -> List[str]
     if len(rows) > MENTION_MENU_ROWS:
         first = max(0, min(index - MENTION_MENU_ROWS + 1, len(rows) - MENTION_MENU_ROWS))
     marker = MENTION_MARKER_ASCII if ascii_only else MENTION_MARKER
+    sigil = mention_sigil(model)
     out: List[str] = []
     for i, row in enumerate(rows[first : first + MENTION_MENU_ROWS], start=first):
-        lead = (marker if i == index else " ") + " @"
+        lead = (marker if i == index else " ") + " " + sigil
         out.append(truncate_columns(lead + row["label"], width))
     if len(rows) > MENTION_MENU_ROWS:
         out.append(truncate_columns("  {} of {}  (↑/↓ move, Tab or Enter picks, Esc hides)".format(index + 1, len(rows)) if not ascii_only else "  {} of {}  (up/down move, Tab or Enter picks, Esc hides)".format(index + 1, len(rows)), width))
+    if sigil == "@@":
+        base = getattr(model, "file_base", None) or os.getcwd()
+        out.append(truncate_columns("  files under {}  (Tab completes, a dir/ descends; the file is attached to the post)".format(base), width))
     return out
 
 
 def accept_mention(model: Any, row: Dict[str, str]) -> None:
-    """Replace the ``@token`` under the cursor with ``@<insert> `` and move the cursor after it."""
+    """Replace the token under the cursor with ``<sigil><insert> `` (same sigil) and move the cursor after it."""
     ctx = mention_context(model.input, model.cursor)
     if ctx is None:
         return
-    start, end, _ = ctx
-    replacement = "@" + row["insert"] + " "
+    start, end, _, sigil = ctx
+    # A completed directory keeps the menu open on its contents; a file or a name closes it with a space.
+    replacement = sigil + row["insert"] + ("" if sigil == "@@" and row["insert"].endswith("/") else " ")
     model.input = model.input[:start] + replacement + model.input[end:]
     model.cursor = start + len(replacement)
     model.mention_index = 0
@@ -1073,7 +1319,7 @@ def mention_key(model: Any, key: str) -> bool:
 def parse_post_directives(line: str, default_to: Optional[str] = None) -> Tuple[Optional[PostSpec], Optional[str]]:
     """Leading ``@name`` ``@role:r`` ``/all`` ``/human`` ``/kind k`` ``/reply N`` ``/urgent`` ``/ref p`` then text."""
     spec = PostSpec(text="")
-    rest = line
+    rest, spec.files = extract_file_tokens(line)
     while True:
         m = _DIRECTIVE_RE.match(rest)
         if not m:
@@ -1105,6 +1351,8 @@ def parse_post_directives(line: str, default_to: Optional[str] = None) -> Tuple[
             spec.refs.append(m.group("ref"))
         rest = rest[m.end() :]
     text = rest.strip()
+    if not text and spec.files:
+        text = "file: " + ", ".join(os.path.basename(f.rstrip("/")) or f for f in spec.files)
     if not text:
         return None, "empty post"
     spec.text = text
@@ -1122,6 +1370,11 @@ def parse_input_line(line: str, default_team: str) -> Intent:
     stripped = line.strip()
     if not stripped:
         return Intent("none")
+    if stripped.startswith("!"):
+        spec, err = parse_bang(stripped)
+        if err or spec is None:
+            return Intent("error", {"message": err or "usage: !name text"})
+        return Intent("say", {"member": spec.member, "text": spec.text, "force": spec.force, "team": default_team})
     if stripped.startswith("/"):
         head = stripped.split(None, 1)[0].lower()
         if head not in POST_DIRECTIVES:
@@ -1217,11 +1470,33 @@ def _parse_slash(head: str, rest: str, default_team: str) -> Intent:
 
 
 HELP_TEXT = (
-    "@ opens the name list (↑/↓ move, Tab or Enter picks, Esc hides) | "
+    "? or /help opens the full list | @ opens the name list (↑/↓ move, Tab or Enter picks, Esc hides) | "
+    "!name text types into that member now (!!name also while it works; ! lists members) | @@path attaches a file (@@ lists files) | "
     "@name text | @role:r text | /all text | /human text | /kind k | /reply N | /urgent | /ref path | "
     "/retract N | /mute [name] [10m] | /unmute [name] | /pause | /nudge name [--force] | /focus name | "
     "/peek name | /who | /filter [name] | /as label | /use team | /charter [set [--urgent] text] | /remove name | /quit"
 )
+
+
+HELP_LINES = (
+    "post:      text (whole team)   @name text (one member)   @role:r text (a role)   /human text (yourself)",
+    "           /kind k  /reply N  /urgent (nudges everyone)  /ref path  @@path attaches a file (@@ lists files)",
+    "type now:  !name text types into that member's input box right now (recorded as a direct line)",
+    "           !!name text also while it works or is muted; ! lists members; the entry shows the outcome",
+    "menus:     @ names   @@ files   ! members   (up/down move, Tab or Enter picks, Esc hides)",
+    "board:     /retract N   /filter [all|to me|requests|human|system]   Tab cycles the filter",
+    "members:   /who   /peek name   /focus name   /nudge name [--force]   /remove name",
+    "delivery:  /mute [name] [10m]   /unmute [name]   /pause [10m]",
+    "team:      /charter   /charter set [--urgent] text   /use team   /as label",
+    "keys:      Up/Down and PgUp/PgDn scroll   Alt+Enter newline   Ctrl-U clear   Ctrl-K kill to end",
+    "           Esc clears the status or closes a box   Ctrl-C clears the line, quits when empty   /quit",
+    "signs:     a line starting with ! never posts; text that starts with ! goes as /all !text",
+)
+
+
+def help_lines() -> List[str]:
+    """The full command list shown in a box by ``?`` (on an empty line) and ``/help``."""
+    return list(HELP_LINES)
 
 
 def apply_key(model: ConsoleModel, key: str) -> Optional[Intent]:
@@ -1246,6 +1521,11 @@ def apply_key(model: ConsoleModel, key: str) -> Optional[Intent]:
         return None
     if mention_key(model, key):
         return None
+    if key == "?" and not model.input and not model.paste_mode:
+        # A help sign on an empty line; ``?`` inside text is just a character.
+        model.peek = box(help_lines(), model.width, "help (Esc closes)")
+        model.status = "Esc closes"
+        return Intent("help", {"commands": list(SLASH_COMMANDS)})
     if key == "TAB" and not model.paste_mode:
         model.filter_index = (model.filter_index + 1) % len(FILTERS)
         model.scroll = 0
@@ -1304,6 +1584,15 @@ def _after_parse(model: ConsoleModel, intent: Intent) -> Intent:
         if not model.focused:
             model.status = "posted while unfocused: recorded as unverified"
         return intent
+    if intent.kind == "say":
+        # The roster is checked here so a typo is an error before the CLI runs; a still-empty roster defers to the CLI.
+        known = agent_member_names(model.members)
+        member = str(intent.args.get("member"))
+        if known and member not in known:
+            message = "no member {} ({})".format(member, BANG_HINT)
+            model.status = "error: {}".format(message)
+            return Intent("error", {"message": message})
+        return intent
     if intent.kind in ("retract", "remove"):
         what = "retract #{}".format(intent.args.get("seq")) if intent.kind == "retract" else "remove {}".format(intent.args.get("member"))
         model.pending_confirm = intent
@@ -1323,12 +1612,41 @@ def _after_parse(model: ConsoleModel, intent: Intent) -> Intent:
         model.status = "posting as human ({})".format(model.human_label)
         return intent
     if intent.kind == "help":
+        model.peek = box(help_lines(), model.width, "help (Esc closes)")
         model.status = HELP_TEXT
         return intent
     if intent.kind == "error":
         model.status = "error: {}".format(intent.args.get("message"))
         return intent
     return intent
+
+
+def settle_say_watch(model: ConsoleModel, records: Iterable[Dict[str, Any]], now_mono: float) -> Optional[str]:
+    """Turn the ``typed`` outcome of a say this console sent into a status line; drop watches that gave up.
+
+    Cheap when nothing is watched (one truthiness check); otherwise one pass
+    over the records. Receipt tags need 60 columns, so the status line is the
+    outcome's home on a narrow pane.
+    """
+    if not model.watching_say:
+        return None
+    outcomes = typed_outcomes(records)
+    status: Optional[str] = None
+    for seq in sorted(model.watching_say):
+        member, sent = model.watching_say[seq]
+        outcome = outcomes.get(seq)
+        if outcome is not None:
+            ok, label = typed_label(outcome)
+            status = "say #{} to {}: {}".format(seq, member, label)
+            if not ok and outcome.get("reason") in FORCEABLE_REASONS:
+                status += " (!!{} text forces)".format(member)
+            del model.watching_say[seq]
+        elif now_mono - sent >= SAY_WATCH_S:
+            status = "say #{} to {}: no outcome after {:.0f}s (herdr-team notifier stats)".format(seq, member, SAY_WATCH_S)
+            del model.watching_say[seq]
+    if status is not None:
+        model.status = status
+    return status
 
 
 # -- full-screen rendering -----------------------------------------------------
@@ -1421,7 +1739,7 @@ def mention_rows_styled(model: Any, width: int, ascii_only: bool = False) -> Lis
         insert = rows[i]["insert"]
         if i == index:
             style = STYLE_MENU_SELECTED
-        elif insert in ("all", "human") or insert.startswith("role:"):
+        elif mention_sigil(model) == "@@" or insert in ("all", "human") or insert.startswith("role:"):
             style = STYLE_MENU
         else:
             style = member_style(insert)
@@ -2050,6 +2368,8 @@ class ComposeModel:
     roster_members: List[Dict[str, Any]] = field(default_factory=list)
     mention_index: int = 0
     mention_hidden_for: Optional[str] = None
+    #: The popup cannot be verified as the human (no pane id on 0.8.2), so it refuses ``!`` lines and offers no names for them.
+    bang_menu: bool = False
 
     @property
     def members(self) -> List[Dict[str, Any]]:
@@ -2078,6 +2398,10 @@ def compose_apply_key(model: ComposeModel, key: str) -> Optional[Intent]:
     if key in ("ESC", "CTRL_C"):
         return Intent("quit")
     if key == "ENTER" and not model.paste_mode:
+        if model.input.strip().startswith("!"):
+            err = "direct typing is console-only (prefix+u opens the console; !name text works there)"
+            model.status = "error: {}".format(err)
+            return Intent("error", {"message": err})
         spec, err = parse_post_directives(model.input, model.default_to)
         if err:
             model.status = "error: {}".format(err)
