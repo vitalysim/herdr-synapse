@@ -1,0 +1,9 @@
+• Ran cargo test -p bff
+  └ 42 passed, 0 failed
+
+• I've updated the session middleware and every test passes. The change
+  is limited to src/bff/session.rs.
+
+›
+
+  ? for shortcuts                                    92% context left

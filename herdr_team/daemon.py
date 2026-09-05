@@ -1,0 +1,3018 @@
+"""The notifier daemon: sole caller of ``agent.prompt`` and ``notification.show`` (plan 8).
+
+Process model (plan 8.1): fork, ``setsid``, fork again, ``chdir`` to the
+session dir, ``dup2`` ``/dev/null`` onto 0 and ``daemon.log`` onto 1 and 2,
+close every other inherited fd, **then** open and flock ``daemon.lock``
+(``store.daemon_lock``). ``daemon.json`` is written before the original
+parent returns so ``bin/hook`` short-circuits from the first event. The
+identity variables ``HERDR_PANE_ID``, ``HERDR_TAB_ID``, ``HERDR_WORKSPACE_ID``
+are unset at start (``api.scrub_env``); the daemon never uses ``--current``.
+
+``daemon.json`` (one line, read by the sh gate with parameter expansion)::
+
+    {"pid":N,"start_time":"<ps -o lstart= trimmed>","beat_at":"<iso>",
+     "socket":"...","socket_inode":N,"version":"0.1.0","herdr_version":"0.8.2",
+     "protocol":20,"manifest_version":"0.1.0","last_ping_at":"<iso>",...}
+
+Main loop: one ``events.subscribe`` with the six global kinds; every event
+only wakes the evaluator; ``agent.list`` is polled every 2 s (500 ms while
+a directed post is pending); boards are tailed every 250 ms; jobs under
+``notifier/jobs/`` are consumed; tokens are restamped every 30 s;
+``who.json`` is rewritten at most once per second; toasts go through one
+queue that honours the server's ``reason``. Reconnect backoff 1, 2, 4 ... 30 s
+for 60 s, then exit releasing the lock. Every (re)connect is a cold start.
+
+Hard rule: never ``agent.prompt`` a terminal that is not in a roster. The
+guard is ``Daemon._assert_roster_terminal``; a trip is counted as
+``wrong_target`` in the ledger and must stay zero.
+
+Delivery decisions are delegated to ``herdr_team.gate`` and the texts to
+``herdr_team.nudge``; ``herdr_team.store`` owns the board, cursors, and the
+roster file.
+"""
+
+from __future__ import annotations
+
+import argparse
+import calendar
+import json
+import os
+import re
+import select
+import signal
+import subprocess
+import sys
+import threading
+import time
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple
+
+from herdr_team import PLUGIN_ID, VERSION, gate, nudge, render, roster, sanitize, store
+from herdr_team.api import HerdrApi, IDENTITY_ENV_VARS, PROMPT_TIMEOUT_S, read_text, scrub_env
+from herdr_team.errors import EXIT_DAEMON_DOWN, EXIT_OK, EXIT_REFUSED, EXIT_UNREACHABLE, HerdrTeamError, LockTimeout
+from herdr_team.ledger import (
+    RESULT_DRY,
+    RESULT_HUNG,
+    RESULT_LANDED_IN_TURN,
+    RESULT_LANDED_WORKING,
+    RESULT_NOT_SUBMITTED,
+    RESULT_REFUSED,
+    RESULT_TRANSIENT,
+    RESULT_WRONG_OCCUPANT,
+    Attempt,
+    Ledger,
+    now_iso,
+)
+from herdr_team.paths import Layout, SessionPaths, TeamPaths, ensure_session_dirs, ensure_team_dirs, plugin_root, resolve_layout, socket_allowed
+
+HEARTBEAT_S = 30.0
+TASK_TTL_MS = 120000
+POLL_IDLE_S = 2.0
+POLL_PENDING_S = 0.5
+TAIL_TICK_S = 0.25
+RECONNECT_BACKOFF_S = (1.0, 2.0, 4.0, 8.0, 16.0, 30.0)
+RECONNECT_GIVE_UP_S = 60.0
+REGISTRY_POLL_S = 60.0
+GRACE_WINDOW_S = 30.0
+LOCK_TAKEOVER_WAIT_S = 10.0
+SUBSCRIPTIONS = ("pane.agent_detected", "pane.closed", "pane.exited", "pane.moved", "pane.focused", "pane.updated")
+
+SUPPORTED_HERDR_MAJOR_MINOR = "0.8"
+VERSION_WATCH_S = 5.0
+RECONCILE_POLL_S = 10.0
+RECONCILE_POLL_BOUND_S = 300.0
+JOBS_POLL_S = 0.5
+WHO_COALESCE_S = 1.0
+HOLD_REEVALUATE_S = 5.0
+TRANSIENT_BACKOFF_MIN_S = 3.0
+TRANSIENT_BACKOFF_MAX_S = 60.0
+PANE_STUCK_S = 60.0
+STALLED_READ_DELAY_S = 1.5
+LANDED_FAST_MS = 250.0
+RENUDGE_AFTER_S = (120.0, 300.0, 600.0)
+# The post TTL (plan 8.3, 30 min of target-active time) is ``gate.POST_TTL_MS``, per team via ``config.gate.post_ttl_ms``.
+BRIEF_ACK_S = 90.0
+DIALOG_TOAST_AFTER_S = 600.0
+TOAST_RETRY_BUSY_S = 1.1
+TOAST_GIVE_UP_S = 30.0
+TOAST_RETRY_NO_CLIENT_S = 15.0
+TOAST_GLOBAL_INTERVAL_S = 1.0
+KIND_UNVERIFIED_TOAST_S = 3600.0
+LOG_ROTATE_BYTES = 1024 * 1024
+LOG_ROTATE_KEEP = 3
+PING_FAILURES_BEFORE_RECONNECT = 3
+STATUS_PIPE_TIMEOUT_S = LOCK_TAKEOVER_WAIT_S * 2 + 10.0
+#: A Claude Stop-hook block for seqs at or above the pending ones suppresses nudges this long (plan 12, SK-08).
+STOP_BLOCK_SUPPRESS_S = 600.0
+#: ``team_task`` is restamped when its value changed or this long after the last stamp (TTL 120 s; plan 5.3, register).
+TASK_RESTAMP_S = 90.0
+#: A kind becomes ``verified`` in kinds.json after this many round trips at ``KIND_VERIFY_CLEAN_RATE`` (plan 8.3).
+KIND_VERIFY_WINDOW = 20
+KIND_VERIFY_CLEAN_RATE = 0.9
+
+_MANIFEST_VERSION_RE = re.compile(r'^version\s*=\s*"([^"\n]*)"', re.M)
+
+
+# --------------------------------------------------------------------------
+# small helpers
+
+
+def _now_ms(clock: Callable[[], float]) -> float:
+    return clock() * 1000.0
+
+
+def _parse_iso(value: Optional[str]) -> Optional[float]:
+    """Seconds since the epoch for an ISO-8601 UTC timestamp (``Z`` or an offset), else None.
+
+    Timezone-aware throughout: a ``Z`` suffix is UTC and a naive timestamp
+    is taken as UTC, never as local time (the daemon's TTLs, heartbeat age,
+    and mute expiries all go through here, so this must not depend on the
+    host zone).
+    """
+    if not isinstance(value, str) or not value:
+        return None
+    text = value.strip()
+    if text.endswith("Z") or text.endswith("z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        parsed = None
+    if parsed is None:
+        # ``fromisoformat`` on 3.9 accepts only 3 or 6 fractional digits; fall back to a strict parse.
+        match = re.match(r"^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})(?:\.(\d+))?(?:([+-]\d{2}):?(\d{2})|\+00:00)?$", text)
+        if not match:
+            return None
+        try:
+            base = calendar.timegm(time.strptime(match.group(1) + "T" + match.group(2), "%Y-%m-%dT%H:%M:%S"))
+        except (ValueError, OverflowError):
+            return None
+        frac = float("0." + match.group(3)) if match.group(3) else 0.0
+        offset = 0
+        if match.group(4) is not None:
+            sign = -1 if match.group(4).startswith("-") else 1
+            offset = sign * (abs(int(match.group(4))) * 3600 + int(match.group(5)) * 60)
+        return base + frac - offset
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.timestamp()
+
+
+def _short_text(text: Any, limit: int) -> str:
+    text = " ".join(str(text or "").split())
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 1)] + "…"
+
+
+def read_manifest_version(root: Optional[Path] = None) -> Optional[str]:
+    """``version = "..."`` from ``herdr-plugin.toml``; None when unreadable or unparseable."""
+    path = (root or plugin_root()) / "herdr-plugin.toml"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    match = _MANIFEST_VERSION_RE.search(text)
+    if not match:
+        return None
+    return match.group(1)
+
+
+def socket_inode(path: Path) -> Optional[int]:
+    try:
+        return os.stat(path).st_ino
+    except OSError:
+        return None
+
+
+# --------------------------------------------------------------------------
+# daemon.json and process identity
+
+
+@dataclass
+class DaemonInfo:
+    pid: int
+    start_time: str
+    beat_at: str
+    socket: str
+    socket_inode: Optional[int]
+    version: str
+    herdr_version: Optional[str]
+    protocol: Optional[int]
+    manifest_version: Optional[str] = None
+    last_ping_at: Optional[str] = None
+    started_at: Optional[str] = None
+    identity_env_unset: Optional[bool] = None
+
+    def to_json(self) -> Dict[str, Any]:
+        obj: Dict[str, Any] = {
+            "pid": int(self.pid),
+            "start_time": self.start_time,
+            "beat_at": self.beat_at,
+            "socket": self.socket,
+            "socket_inode": self.socket_inode,
+            "version": self.version,
+            "herdr_version": self.herdr_version,
+            "protocol": self.protocol,
+        }
+        if self.manifest_version is not None:
+            obj["manifest_version"] = self.manifest_version
+        if self.last_ping_at is not None:
+            obj["last_ping_at"] = self.last_ping_at
+        if self.started_at is not None:
+            obj["started_at"] = self.started_at
+        if self.identity_env_unset is not None:
+            obj["identity_env_unset"] = self.identity_env_unset
+        return obj
+
+    @classmethod
+    def from_json(cls, obj: Dict[str, Any]) -> "DaemonInfo":
+        def _int(value: Any) -> Optional[int]:
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return None
+
+        pid = _int(obj.get("pid"))
+        if pid is None:
+            raise ValueError("daemon.json has no pid")
+        return cls(
+            pid=pid,
+            start_time=str(obj.get("start_time") or "").strip(),
+            beat_at=str(obj.get("beat_at") or ""),
+            socket=str(obj.get("socket") or ""),
+            socket_inode=_int(obj.get("socket_inode")),
+            version=str(obj.get("version") or ""),
+            herdr_version=obj.get("herdr_version") if isinstance(obj.get("herdr_version"), str) else None,
+            protocol=_int(obj.get("protocol")),
+            manifest_version=obj.get("manifest_version") if isinstance(obj.get("manifest_version"), str) else None,
+            last_ping_at=obj.get("last_ping_at") if isinstance(obj.get("last_ping_at"), str) else None,
+            started_at=obj.get("started_at") if isinstance(obj.get("started_at"), str) else None,
+            identity_env_unset=obj.get("identity_env_unset") if isinstance(obj.get("identity_env_unset"), bool) else None,
+        )
+
+
+def process_start_time(pid: int) -> Optional[str]:
+    """``ps -o lstart= -p <pid>`` trimmed; None when the pid is gone."""
+    try:
+        completed = subprocess.run(
+            ["ps", "-o", "lstart=", "-p", str(int(pid))],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=3.0,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return None
+    text = completed.stdout.decode("utf-8", "replace").strip()
+    if completed.returncode != 0 or not text:
+        return None
+    return text
+
+
+def pid_alive(pid: int) -> bool:
+    try:
+        os.kill(int(pid), 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def read_daemon_info(session: SessionPaths) -> Optional[DaemonInfo]:
+    obj = store.read_json(session.daemon_json, default=None)
+    if not isinstance(obj, dict):
+        return None
+    try:
+        return DaemonInfo.from_json(obj)
+    except ValueError:
+        return None
+
+
+def write_daemon_info(session: SessionPaths, info: DaemonInfo) -> None:
+    store.write_json(session.daemon_json, info.to_json(), fsync=False)
+
+
+def info_alive(info: Optional[DaemonInfo]) -> bool:
+    if info is None or info.pid <= 0 or not info.start_time:
+        return False
+    if not pid_alive(info.pid):
+        return False
+    live = process_start_time(info.pid)
+    return live is not None and live == info.start_time
+
+
+def daemon_alive(session: SessionPaths) -> bool:
+    """Live pid whose start time matches ``daemon.json`` (same rule as ``bin/hook``)."""
+    return info_alive(read_daemon_info(session))
+
+
+def beat_age_s(session: SessionPaths) -> Optional[float]:
+    info = read_daemon_info(session)
+    if info is None:
+        return None
+    beat = _parse_iso(info.beat_at)
+    if beat is None:
+        return None
+    return max(0.0, time.time() - beat)
+
+
+def stop_daemon(session: SessionPaths, timeout_s: float = 10.0) -> bool:
+    """SIGTERM the pid in ``daemon.json`` only after the start time matches; True when it is gone."""
+    info = read_daemon_info(session)
+    if not info_alive(info):
+        return False
+    assert info is not None
+    try:
+        os.kill(info.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return True
+    except OSError:
+        return False
+    deadline = time.monotonic() + max(0.0, timeout_s)
+    while time.monotonic() < deadline:
+        if not pid_alive(info.pid) or process_start_time(info.pid) != info.start_time:
+            return True
+        time.sleep(0.05)
+    return not pid_alive(info.pid)
+
+
+# --------------------------------------------------------------------------
+# detach
+
+
+def _close_fds_except(keep: Sequence[int]) -> None:
+    keep_set = set(int(fd) for fd in keep)
+    try:
+        limit = os.sysconf("SC_OPEN_MAX")
+    except (ValueError, OSError, AttributeError):
+        limit = 1024
+    if limit <= 0 or limit > 65536:
+        limit = 65536
+    start = 3
+    for fd in sorted(keep_set):
+        if fd >= start:
+            if fd > start:
+                os.closerange(start, fd)
+            start = fd + 1
+    if start < limit:
+        os.closerange(start, limit)
+
+
+def _open_log_fd(session: SessionPaths) -> int:
+    return store.secure_open(session.daemon_log, os.O_WRONLY | os.O_APPEND | os.O_CREAT)
+
+
+def rotate_log(path: Path, keep: int = LOG_ROTATE_KEEP, limit: int = LOG_ROTATE_BYTES) -> bool:
+    """Rename ``path`` to ``.1`` (``.1`` to ``.2`` ...) when it exceeds ``limit``; True when rotated."""
+    try:
+        size = os.lstat(path).st_size
+    except OSError:
+        return False
+    if size <= limit:
+        return False
+    for index in range(keep, 0, -1):
+        src = Path(os.fspath(path) + ("" if index == 1 else ".{}".format(index - 1)))
+        dst = Path(os.fspath(path) + ".{}".format(index))
+        try:
+            if index == keep:
+                try:
+                    os.unlink(dst)
+                except FileNotFoundError:
+                    pass
+            os.replace(src, dst)
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return False
+    return True
+
+
+def _identity_env_unset() -> bool:
+    return not any(name in os.environ for name in IDENTITY_ENV_VARS)
+
+
+def _stdio_description(session: SessionPaths) -> str:
+    """Where fds 0-2 point, by device/inode comparison (no ``fcntl`` outside ``store``)."""
+    names = []
+    try:
+        null_st = os.stat("/dev/null")
+    except OSError:
+        null_st = None
+    try:
+        log_st = os.stat(session.daemon_log)
+    except OSError:
+        log_st = None
+    for fd in (0, 1, 2):
+        try:
+            st = os.fstat(fd)
+        except OSError:
+            names.append("fd{}=closed".format(fd))
+            continue
+        if null_st is not None and (st.st_dev, st.st_ino) == (null_st.st_dev, null_st.st_ino):
+            names.append("fd{}=/dev/null".format(fd))
+        elif log_st is not None and (st.st_dev, st.st_ino) == (log_st.st_dev, log_st.st_ino):
+            names.append("fd{}=daemon.log".format(fd))
+        else:
+            names.append("fd{}=other".format(fd))
+    return " ".join(names)
+
+
+def _write_status(fd: Optional[int], obj: Dict[str, Any]) -> None:
+    if fd is None:
+        return
+    data = (json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8")
+    try:
+        while data:
+            written = os.write(fd, data)
+            data = data[written:]
+    except OSError:
+        pass
+
+
+def acquire_daemon_lock(session: SessionPaths, socket_path: Path, replace: bool, wait_s: float = LOCK_TAKEOVER_WAIT_S, log: Optional[Callable[[str], None]] = None) -> Tuple[Optional[store.FileLock], Dict[str, Any]]:
+    """Take ``daemon.lock`` with the plan 8.1 takeover rules.
+
+    Returns ``(lock, info)``; ``lock`` is None when another daemon keeps it and
+    no takeover applies (``info['already_running']``). Takeover happens with
+    ``replace`` or when the holder's recorded identity (socket path or socket
+    inode) differs from ours; the holder is SIGTERMed only when its start
+    time matches ``daemon.json``.
+    """
+    say = log or (lambda _m: None)
+    lock = store.daemon_lock(session)
+    if lock.try_acquire():
+        return lock, {"replaced": False}
+    say("daemon.lock held; waiting up to {:g}s".format(wait_s))
+    try:
+        lock.acquire(wait_s)
+        return lock, {"replaced": False}
+    except LockTimeout:
+        pass
+    holder = read_daemon_info(session)
+    identity_differs = False
+    if holder is not None:
+        current_inode = socket_inode(socket_path)
+        if holder.socket and os.path.realpath(holder.socket) != os.path.realpath(os.fspath(socket_path)):
+            identity_differs = True
+        elif holder.socket_inode is not None and current_inode is not None and holder.socket_inode != current_inode:
+            identity_differs = True
+    if not replace and not identity_differs:
+        return None, {"already_running": True, "replaced": False, "holder": holder.to_json() if holder else None}
+    if holder is not None and info_alive(holder):
+        say("taking over from pid {} (replace={}, identity_differs={})".format(holder.pid, replace, identity_differs))
+        try:
+            os.kill(holder.pid, signal.SIGTERM)
+        except OSError:
+            pass
+    try:
+        lock.acquire(wait_s)
+    except LockTimeout:
+        if holder is not None and info_alive(holder):
+            say("holder ignored SIGTERM; sending SIGKILL to pid {}".format(holder.pid))
+            try:
+                os.kill(holder.pid, signal.SIGKILL)
+            except OSError:
+                pass
+            try:
+                lock.acquire(2.0)
+            except LockTimeout:
+                return None, {"already_running": True, "replaced": False, "error": "daemon_lock_held"}
+        else:
+            return None, {"already_running": True, "replaced": False, "error": "daemon_lock_held"}
+    return lock, {"replaced": True, "holder": holder.to_json() if holder else None}
+
+
+def _grandchild_main(layout: Layout, env: Dict[str, str], replace: bool, status_fd: Optional[int], allow_version: bool, dry_nudge: bool) -> None:
+    """Runs in the detached grandchild; never returns."""
+    session = layout.session
+    exit_code = 1
+    try:
+        os.chdir(os.fspath(session.root))
+        null_fd = os.open("/dev/null", os.O_RDWR)
+        rotate_log(session.daemon_log)
+        log_fd = _open_log_fd(session)
+        os.dup2(null_fd, 0)
+        os.dup2(log_fd, 1)
+        os.dup2(log_fd, 2)
+        keep = [0, 1, 2]
+        if status_fd is not None:
+            keep.append(status_fd)
+        _close_fds_except(keep)
+        # 3..n are closed now; the lock fd is opened *after* this point.
+        for name in IDENTITY_ENV_VARS:
+            os.environ.pop(name, None)
+        for key, value in env.items():
+            os.environ[key] = value
+        sys.stdout = os.fdopen(1, "w", buffering=1, encoding="utf-8", errors="replace", closefd=False)
+        sys.stderr = os.fdopen(2, "w", buffering=1, encoding="utf-8", errors="replace", closefd=False)
+
+        def log(message: str) -> None:
+            sys.stderr.write("{} [{}] {}\n".format(now_iso(), os.getpid(), message))
+            sys.stderr.flush()
+
+        try:
+            wait_s = float(os.environ.get("HERDR_TEAM_LOCK_WAIT_S") or LOCK_TAKEOVER_WAIT_S)
+        except ValueError:
+            wait_s = LOCK_TAKEOVER_WAIT_S
+        lock, lock_info = acquire_daemon_lock(session, layout.socket, replace, wait_s=wait_s, log=log)
+        if lock is None:
+            lock_info.setdefault("status", "already_running")
+            _write_status(status_fd, {"status": "already_running", "daemon": lock_info.get("holder")})
+            log("another daemon holds the lock; exiting")
+            exit_code = 0
+            return
+        api = HerdrApi(layout.socket, env=os.environ)
+        daemon = Daemon(layout, dict(os.environ), api, dry_nudge=dry_nudge, allow_version=allow_version)
+        daemon.lock = lock
+        daemon.detached = True
+        try:
+            daemon.connect_server()
+        except HerdrTeamError as err:
+            if err.code == "herdr_version_mismatch":
+                _write_status(status_fd, {"status": "error", "error": err.to_json()})
+                log("refusing to run: {}".format(err))
+                lock.release()
+                return
+            log("server not reachable at start ({}); will retry".format(err))
+        info = daemon.write_info(started=True)
+        log("started pid {} start_time {!r} socket {} {}".format(info.pid, info.start_time, layout.socket, _stdio_description(session)))
+        log("identity env unset: {}".format(_identity_env_unset()))
+        _write_status(status_fd, {"status": "started", "replaced": bool(lock_info.get("replaced")), "daemon": info.to_json()})
+        if status_fd is not None:
+            os.close(status_fd)
+            status_fd = None
+        exit_code = daemon.run()
+    except BaseException as err:  # noqa: BLE001 - the grandchild must never unwind into the parent's code
+        try:
+            _write_status(status_fd, {"status": "error", "error": {"code": "daemon_start_failed", "message": "{}: {}".format(type(err).__name__, err)}})
+            sys.stderr.write("{} daemon crashed: {}: {}\n".format(now_iso(), type(err).__name__, err))
+            sys.stderr.flush()
+        except Exception:  # noqa: BLE001
+            pass
+        exit_code = 1
+    finally:
+        if status_fd is not None:
+            try:
+                os.close(status_fd)
+            except OSError:
+                pass
+        os._exit(exit_code)
+
+
+def detach_and_run(layout: Layout, env: Mapping[str, str], replace: bool = False, allow_version: bool = False, dry_nudge: bool = False) -> Dict[str, Any]:
+    """The double fork; returns in the original parent once the grandchild reported.
+
+    The result is ``{"status": "started"|"already_running"|"error", "daemon": {...},
+    "replaced": bool, "intermediate_exit_ms": float, "error": {...}}``.
+    """
+    session = layout.session
+    ensure_session_dirs(session)
+    scrubbed = scrub_env(env)
+    scrubbed.pop("HERDR_SESSION", None)
+    scrubbed["HERDR_SOCKET_PATH"] = os.fspath(layout.socket)
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.flush()
+        except (OSError, ValueError):
+            pass
+    read_fd, write_fd = os.pipe()
+    t0 = time.monotonic()
+    pid = os.fork()
+    if pid == 0:
+        # intermediate child
+        try:
+            os.close(read_fd)
+            os.setsid()
+            grandchild = os.fork()
+            if grandchild == 0:
+                _grandchild_main(layout, scrubbed, replace, write_fd, allow_version, dry_nudge)
+        except BaseException:  # noqa: BLE001
+            _write_status(write_fd, {"status": "error", "error": {"code": "daemon_start_failed", "message": "fork failed"}})
+        finally:
+            os._exit(0)
+    os.close(write_fd)
+    _, _status = os.waitpid(pid, 0)
+    intermediate_exit_ms = (time.monotonic() - t0) * 1000.0
+    result: Dict[str, Any] = {"status": "error", "error": {"code": "daemon_start_failed", "message": "daemon reported nothing"}}
+    buffer = b""
+    deadline = time.monotonic() + STATUS_PIPE_TIMEOUT_S
+    try:
+        while time.monotonic() < deadline:
+            remaining = max(0.0, deadline - time.monotonic())
+            ready, _, _ = select.select([read_fd], [], [], remaining)
+            if not ready:
+                result = {"status": "error", "error": {"code": "daemon_start_failed", "message": "timed out waiting for the daemon to report"}}
+                break
+            chunk = os.read(read_fd, 65536)
+            if not chunk:
+                break
+            buffer += chunk
+            if b"\n" in buffer:
+                break
+    finally:
+        os.close(read_fd)
+    line = buffer.split(b"\n", 1)[0].strip()
+    if line:
+        try:
+            parsed = json.loads(line.decode("utf-8", "replace"))
+            if isinstance(parsed, dict):
+                result = parsed
+        except ValueError:
+            result = {"status": "error", "error": {"code": "daemon_start_failed", "message": "unparseable daemon report"}}
+    result["intermediate_exit_ms"] = intermediate_exit_ms
+    result.setdefault("replaced", False)
+    return result
+
+
+def ensure_daemon(layout: Layout, env: Mapping[str, str]) -> bool:
+    """Start the daemon when none is alive; True when one is running afterwards.
+
+    Honours ``allowed-sockets`` exactly like ``daemon start`` (plan 4.1 /
+    PK-07): a socket the rig has not listed never gets a daemon forked
+    against it, whichever command asked (``create``, ``add``, ``bind``,
+    the team-up action).
+    """
+    if daemon_alive(layout.session):
+        return True
+    try:
+        if not socket_allowed(layout.config_dir, layout.socket):
+            return False
+    except HerdrTeamError:
+        return False
+    try:
+        result = detach_and_run(layout, env)
+    except OSError:
+        return False
+    if result.get("status") not in ("started", "already_running"):
+        return False
+    deadline = time.monotonic() + 3.0
+    while time.monotonic() < deadline:
+        if daemon_alive(layout.session):
+            return True
+        time.sleep(0.05)
+    return daemon_alive(layout.session)
+
+
+# --------------------------------------------------------------------------
+# fallbacks for modules owned by other implementers
+
+
+def _load_roster_doc(team: TeamPaths) -> Optional[Dict[str, Any]]:
+    doc = store.read_json(team.team_json, default=None)
+    if not isinstance(doc, dict) or not isinstance(doc.get("members"), list):
+        return None
+    return doc
+
+
+def update_roster(team: TeamPaths, mutate: Callable[[Dict[str, Any]], Any]) -> Optional[Dict[str, Any]]:
+    """Lock, load, ``mutate(doc)`` in place, bump ``revision``, write; None when the team is gone."""
+    try:
+        return store.RosterStore(team).update(mutate)
+    except HerdrTeamError as err:
+        if err.code == "team_not_found":
+            return None
+        raise
+
+
+def read_board_records(team: TeamPaths, since_seq: int = 0) -> List[Dict[str, Any]]:
+    """Records with ``seq > since_seq`` from the active board, sorted and deduped; never locks."""
+    return list(store.BoardStore(team).read(since_seq=since_seq))
+
+
+def _board_max_seq(team: TeamPaths) -> int:
+    """Highest seq known to the store (board.seq hint, tail scan, archives)."""
+    return int(store.BoardStore(team).max_seq())
+
+
+def system_record(team_name: str, event: str, text: str, to: Sequence[str], socket: str, extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """A plan 6.1 ``system`` record without ``seq``/``ts`` (the appender assigns them)."""
+    rec: Dict[str, Any] = {
+        "v": 1, "seq": None, "ts": None, "from": "system", "from_label": None, "from_kind": None,
+        "from_pane": None, "from_terminal": None, "from_gen": None,
+        "origin": {"via": "system", "verified": True, "pid": os.getpid(), "ppid": os.getppid(), "workspace_id": None, "tab_id": None, "socket": socket},
+        "to": list(to) or ["all"], "to_role": None, "kind": "system", "text": text, "refs": [], "reply_to": None,
+        "retracts": None, "supersedes": None, "urgent": False, "ttl_ms": None, "truncated": False, "event": event, "relayed_for": None,
+    }
+    if extra:
+        rec.update(extra)
+    rec["team"] = team_name
+    return rec
+
+
+def append_board_record(team: TeamPaths, record: Dict[str, Any]) -> int:
+    """Append one record through ``store.BoardStore`` (plan 6.2 sequence under ``team.lock``)."""
+    record = dict(record)
+    record.pop("team", None)
+    return int(store.BoardStore(team).append(record))
+
+
+def read_cursor_state(team: TeamPaths, reader: str) -> Tuple[int, Set[int]]:
+    """``(cursor seq, seqs above it read individually by a filtered board --new)``."""
+    try:
+        obj = store.Cursors(team).get(reader)
+    except HerdrTeamError:
+        return 0, set()
+    try:
+        seq = max(0, int(obj.get("seq") or 0))
+    except (TypeError, ValueError, AttributeError):
+        seq = 0
+    seen = {int(s) for s in (obj.get("seen") or []) if isinstance(s, int) and not isinstance(s, bool)}
+    return seq, seen
+
+
+def read_cursor_seq(team: TeamPaths, reader: str) -> int:
+    return read_cursor_state(team, reader)[0]
+
+
+_TOAST_SECTION_RE = re.compile(r"^\s*\[ui\.toast\]\s*$")
+_TOML_SECTION_RE = re.compile(r"^\s*\[")
+_TOAST_DELIVERY_RE = re.compile(r"^\s*delivery\s*=\s*[\"']([A-Za-z_]+)[\"']")
+
+
+def read_toast_delivery(config_dir: Any) -> str:
+    """``[ui.toast] delivery`` from ``<config_dir>/config.toml`` (compiled default ``off``; plan 7.2)."""
+    try:
+        text = (Path(config_dir) / "config.toml").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return "off"
+    in_section = False
+    for line in text.splitlines():
+        if _TOAST_SECTION_RE.match(line):
+            in_section = True
+            continue
+        if _TOML_SECTION_RE.match(line):
+            in_section = False
+            continue
+        if in_section:
+            match = _TOAST_DELIVERY_RE.match(line)
+            if match:
+                return match.group(1)
+    return "off"
+
+
+def read_mute(team: TeamPaths) -> Dict[str, Optional[float]]:
+    """``{"*"|name: until_epoch_s | None}``; a key present with null means muted indefinitely."""
+    obj = store.read_json(team.mute_json, default=None)
+    out: Dict[str, Optional[float]] = {}
+    if not isinstance(obj, dict):
+        return out
+    for key, value in obj.items():
+        if not isinstance(key, str):
+            continue
+        if value is None:
+            out[key] = None
+        elif isinstance(value, str):
+            parsed = _parse_iso(value)
+            if parsed is not None:
+                out[key] = parsed
+    return out
+
+
+def muted_until(mute: Dict[str, Optional[float]], name: str, now_s: float) -> Optional[float]:
+    """Epoch seconds until which ``name`` is muted, ``float('inf')`` for indefinitely, None when not muted."""
+    best: Optional[float] = None
+    for key in ("*", name):
+        if key not in mute:
+            continue
+        until = mute[key]
+        value = float("inf") if until is None else until
+        if value > now_s and (best is None or value > best):
+            best = value
+    return best
+
+
+def headline_for(text: str, columns: int = 24) -> str:
+    return sanitize.headline(text, columns)
+
+
+_KIND_GLYPH = {"request": "→", "done": "✓", "blocked": "!", "question": "?"}
+
+
+def task_headline(member: Dict[str, Any], last_post: Optional[Dict[str, Any]], now_s: float) -> Optional[str]:
+    """``team_task`` value: the member's ``task`` if younger than 30 min, else its last post headline."""
+    task = member.get("task")
+    if isinstance(task, dict) and isinstance(task.get("text"), str):
+        set_at = _parse_iso(task.get("set_at")) if isinstance(task.get("set_at"), str) else None
+        if set_at is None or now_s - set_at < 1800.0:
+            return headline_for(task["text"], 24) or None
+    if last_post is not None:
+        glyph = _KIND_GLYPH.get(str(last_post.get("kind") or ""), "")
+        text = headline_for(str(last_post.get("text") or ""), 24 - (2 if glyph else 0))
+        if text:
+            return (glyph + " " + text) if glyph else text
+    return None
+
+
+def nudge_text_for(name: str, seqs: Sequence[int], nonce: int) -> str:
+    return nudge.nudge_text(name, list(seqs), nonce)
+
+
+def briefing_lines_for(name: str, role: str, team: str, charter_headline: Optional[str], teammates: List[Tuple[str, str]], brief: Optional[str], cli_path: str) -> List[str]:
+    return list(nudge.briefing_lines(name, role, team, charter_headline, teammates, brief, cli_path))
+
+
+def new_nonce() -> int:
+    return int(nudge.new_nonce())
+
+
+def probe_text_for(nonce: str) -> str:
+    safe = re.sub(r"[^A-Za-z0-9]", "", str(nonce))[:32] or "0"
+    return nudge.probe_text(safe)
+
+
+# -- gate wrappers ------------------------------------------------------------
+
+
+def gate_is_weak_idle(explain: Optional[Dict[str, Any]]) -> bool:
+    return bool(gate.is_weak_idle(explain))
+
+
+def gate_dialog_line(detection_text: Optional[str], kind: str) -> Optional[str]:
+    return gate.dialog_line(detection_text, kind)
+
+
+def gate_prompt_line_empty(detection_text: Optional[str], kind: str) -> bool:
+    return bool(gate.prompt_line_empty(detection_text, kind))
+
+
+def gate_evaluate(snapshot: Any, pending: Any, now_ms: float, global_last_nudge_ms: Optional[float], pair_exchanges: int, config: Any = None) -> Any:
+    """Plan 8.2 gates through ``gate.evaluate``; ``config`` is a ``gate.GateConfig`` or an override mapping."""
+    return gate.evaluate(snapshot, pending, now_ms, global_last_nudge_ms, pair_exchanges, config=config)
+
+
+def gate_config_from_roster(doc: Optional[Dict[str, Any]]) -> Tuple[gate.GateConfig, Optional[Dict[str, Any]], Optional[str]]:
+    """``(config, overrides, error)`` from ``team.json`` ``config.gate`` (docs/cli.md section 10).
+
+    Unknown keys, non-numeric ``*_ms`` / ``pair_budget`` values, or a
+    ``nudge_focused`` that is not a string yield ``DEFAULT_CONFIG`` plus the
+    error text, so one bad roster field can never change every gate.
+    """
+    config = doc.get("config") if isinstance(doc, dict) and isinstance(doc.get("config"), dict) else None
+    overrides = config.get("gate") if config is not None else None
+    if overrides is None:
+        return gate.DEFAULT_CONFIG, None, None
+    if not isinstance(overrides, dict):
+        return gate.DEFAULT_CONFIG, None, "config.gate is not an object"
+    try:
+        built = gate.GateConfig.from_mapping(overrides)
+    except ValueError as err:
+        return gate.DEFAULT_CONFIG, None, str(err)
+    for key, value in overrides.items():
+        if key == "nudge_focused":
+            if not isinstance(value, str):
+                return gate.DEFAULT_CONFIG, None, "nudge_focused must be a string"
+            if value not in gate.NUDGE_FOCUSED_VALUES:
+                # Gate 10 compares against the exact word: "Never" or "no" would silently drop the focus hold.
+                return gate.DEFAULT_CONFIG, None, "nudge_focused must be one of {}".format("|".join(gate.NUDGE_FOCUSED_VALUES))
+        elif isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+            return gate.DEFAULT_CONFIG, None, "{} must be a non-negative number".format(key)
+    return built, dict(overrides), None
+
+
+# --------------------------------------------------------------------------
+# daemon state
+
+
+@dataclass
+class Pending:
+    """Undelivered work for one member: a nudge for board seqs or a briefing."""
+
+    seqs: List[int] = field(default_factory=list)
+    urgent: bool = False
+    authors: Set[str] = field(default_factory=set)
+    first_ms: float = 0.0
+    kind: str = "nudge"  # nudge | brief | probe
+    lines: Optional[List[str]] = None
+    probe: Optional[Dict[str, Any]] = None
+    force: bool = False
+    attempts: int = 0
+    landed_ms: Optional[float] = None
+    landed_seq_max: int = 0
+    next_eligible_ms: float = 0.0
+    active_ms: float = 0.0
+    last_tick_ms: Optional[float] = None
+    attempt_id: Optional[str] = None
+    gate_seq: Optional[int] = None
+    hold: Optional[str] = None
+    hold_since_ms: Optional[float] = None
+    hold_toasted: bool = False
+    transient_failures: int = 0
+    renudges: int = 0
+    turn_completed_since_landing: bool = False
+    #: First ``focused`` hold for this work (gate 10 max-hold clock); reset by any other hold or a landing.
+    focus_hold_since_ms: Optional[float] = None
+    #: Posts arrived after a landing: one immediate follow-up nudge is allowed (plan 8.2 gate 11).
+    follow_up_due: bool = False
+    #: The one immediate follow-up of this landing schedule was spent (gate 11); a regular landing resets it.
+    follow_up_used: bool = False
+    #: The member's cursor as re-read right before the last ``agent.prompt`` (becomes ``last_nudge_cursor_seq``).
+    gate_cursor: Optional[int] = None
+    #: Cursor file state at the briefing's landing; an ack is a *later* cursor write at or past ``brief_seq``.
+    brief_cursor_updated: Optional[str] = None
+
+
+@dataclass
+class MemberRuntime:
+    last_nudge_ms: Optional[float] = None
+    in_flight: bool = False
+    pane_stuck_until_ms: Optional[float] = None
+    last_seen_present_ms: Optional[float] = None
+    last_headline: Optional[str] = None
+    last_post: Optional[Dict[str, Any]] = None
+    kind_unverified_toast_ms: Optional[float] = None
+    brief_landed_ms: Optional[float] = None
+    brief_seq: Optional[int] = None
+    rebriefed: bool = False
+    #: Cursor seq at the last landed nudge; gate 11 allows one immediate follow-up once the cursor moved past it.
+    last_nudge_cursor_seq: Optional[int] = None
+    #: Terminal id of the fingerprint candidate last logged for an unbound member (rehydration step e).
+    unbound_candidate: Optional[str] = None
+    #: Detection-read digest and when it last changed (gate 10: unchanged for 3 s after the max-hold).
+    detection_hash: Optional[str] = None
+    detection_stable_since_ms: Optional[float] = None
+    #: Last ``team_task`` value and stamp time (restamp only on change or TTL refresh).
+    last_task_value: Optional[str] = None
+    last_task_stamp_ms: Optional[float] = None
+
+
+@dataclass
+class Stability:
+    state_change_seq: int = -1
+    since_ms: Optional[float] = None
+    status: Optional[str] = None
+    idle_since_ms: Optional[float] = None
+    turns: int = 0  # increments on every idle/done -> working transition
+
+
+@dataclass
+class TeamState:
+    name: str
+    paths: TeamPaths
+    ledger: Ledger
+    roster: Dict[str, Any] = field(default_factory=dict)
+    tailer: Optional[store.BoardTailer] = None  # plan 6.3 contract, state in notifier/state.json
+    watermark: int = 0
+    pending: Dict[str, Pending] = field(default_factory=dict)
+    runtime: Dict[str, MemberRuntime] = field(default_factory=dict)
+    human_queue: List[Dict[str, Any]] = field(default_factory=list)
+    retracted: Set[int] = field(default_factory=set)
+    open_intents: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    #: Plan 8.2 tunables from ``team.json`` ``config.gate`` (``gate.DEFAULT_CONFIG`` without overrides).
+    gate_config: gate.GateConfig = gate.DEFAULT_CONFIG
+    #: The raw ``config.gate`` value the current ``gate_config`` was built from (change detection).
+    gate_overrides: Any = None
+    gate_loaded: bool = False
+
+    def members(self) -> List[Dict[str, Any]]:
+        return [m for m in self.roster.get("members", []) if isinstance(m, dict)]
+
+    def member(self, name: str) -> Optional[Dict[str, Any]]:
+        for m in self.members():
+            if m.get("name") == name:
+                return m
+        return None
+
+    def member_by_terminal(self, terminal_id: Optional[str]) -> Optional[Dict[str, Any]]:
+        if not terminal_id:
+            return None
+        for m in self.members():
+            if m.get("terminal_id") == terminal_id:
+                return m
+        return None
+
+    def member_by_retired_name(self, name: str) -> Optional[Dict[str, Any]]:
+        """The member that carried ``name`` before an adopted rename (plan 5.5: old names resolve for 10 min)."""
+        now = time.time()
+        for m in self.members():
+            for old in m.get("previous_names") or []:
+                if isinstance(old, dict) and old.get("name") == name:
+                    retired = _parse_iso(old.get("retired_at")) if isinstance(old.get("retired_at"), str) else None
+                    if retired is None or now - retired <= 600.0:
+                        return m
+        return None
+
+    def rt(self, name: str) -> MemberRuntime:
+        return self.runtime.setdefault(name, MemberRuntime())
+
+
+@dataclass
+class Notification:
+    team: str
+    seqs: List[int]
+    title: str
+    body: str
+    sound: str
+    created_ms: float
+    next_ms: float
+    reason: Optional[str] = None
+    kind: str = "post"  # post | outcome | roster
+
+
+class Daemon:
+    """Event loop: subscribe, poll ``agent.list``, tail boards, run the gate, deliver."""
+
+    def __init__(self, layout: Layout, env: Dict[str, str], api: Any, dry_nudge: bool = False, allow_version: bool = False, clock: Optional[Callable[[], float]] = None, sleep: Optional[Callable[[float], None]] = None) -> None:
+        self.layout = layout
+        self.env = scrub_env(env)
+        self.api = api
+        self.dry_nudge = bool(dry_nudge) or self.env.get("HERDR_TEAM_DRY_NUDGE") == "1"
+        self.allow_version = allow_version
+        self.clock = clock or time.monotonic
+        self.sleep = sleep or time.sleep
+        self.session = layout.session
+        self.lock: Optional[store.FileLock] = None
+        self.detached = False
+        self.stop_requested = False
+        self.stop_reason: Optional[str] = None
+        self.exit_code = EXIT_OK
+        self.backoff = RECONNECT_BACKOFF_S
+        self.give_up_s = RECONNECT_GIVE_UP_S
+        self.registry_poll_s = REGISTRY_POLL_S
+        self.version_watch_s = VERSION_WATCH_S
+        self.tick_s = TAIL_TICK_S
+        self.server_version: Optional[str] = None
+        self.server_protocol: Optional[int] = None
+        self.socket_inode: Optional[int] = socket_inode(layout.socket)
+        self.started_at = now_iso()
+        self.start_time = process_start_time(os.getpid()) or ""
+        self.manifest_version = read_manifest_version()
+        self.manifest_seen: Optional[str] = None
+        self.teams: Dict[str, TeamState] = {}
+        self.agents: Dict[str, Dict[str, Any]] = {}
+        self.agents_by_pane: Dict[str, Dict[str, Any]] = {}
+        #: ``pane.list`` rows by terminal id, fetched lazily once per reconcile (rehydration step b).
+        self.panes_by_terminal: Dict[str, Dict[str, Any]] = {}
+        self._panes_fetched_ms: Optional[float] = None
+        self.reconnect_requested = False
+        self.last_agent_list_ms: Optional[float] = None
+        self.stability: Dict[str, Stability] = {}
+        self.global_last_nudge_ms: Optional[float] = None
+        self.pair_exchanges: Dict[Tuple[str, str], List[float]] = {}
+        self.notifications: List[Notification] = []
+        self.toasts_disabled = False
+        self.next_toast_ms = 0.0
+        self.who_dirty = True
+        self.last_who_ms: Optional[float] = None
+        self.last_heartbeat_ms: Optional[float] = None
+        self.last_ping_at: Optional[str] = None
+        self.connected_ms: Optional[float] = None
+        self.reconcile_due = True
+        self.last_reconcile_ms: Optional[float] = None
+        self.last_registry_ms: Optional[float] = None
+        self.last_version_ms: Optional[float] = None
+        self.last_jobs_ms: Optional[float] = None
+        self.last_teams_scan_ms: Optional[float] = None
+        self.ping_failures = 0
+        self.counters: Dict[str, int] = {"events": 0, "polls": 0, "reconnects": 0, "nudges": 0, "toasts": 0, "wrong_target": 0, "jobs": 0, "unverified_skipped": 0, "phase_errors": 0}
+        self.iterations = 0
+        self.max_iterations: Optional[int] = None
+        self.cli_path = os.fspath(plugin_root() / "bin" / "herdr-team")
+        self._signals_installed = False
+        #: An ``agent.prompt`` whose wait returns faster than this was already inside a turn (plan 8.3).
+        self.landed_fast_ms = LANDED_FAST_MS
+        #: Tests may append a callable here to capture log lines.
+        self.log_sinks: List[Callable[[str], None]] = []
+        #: Set False to keep log lines out of stderr (tests with a sink).
+        self.log_stderr = True
+
+    # -- logging ---------------------------------------------------------------
+
+    def log(self, message: str) -> None:
+        for sink in self.log_sinks:
+            try:
+                sink(message)
+            except Exception:  # noqa: BLE001 - a test sink must not break the loop
+                pass
+        if not self.log_stderr:
+            return
+        try:
+            sys.stderr.write("{} [{}] {}\n".format(now_iso(), os.getpid(), message))
+            sys.stderr.flush()
+        except (OSError, ValueError):
+            pass
+
+    def now_ms(self) -> float:
+        return _now_ms(self.clock)
+
+    # -- daemon.json -------------------------------------------------------------
+
+    def info(self) -> DaemonInfo:
+        return DaemonInfo(
+            pid=os.getpid(),
+            start_time=self.start_time,
+            beat_at=now_iso(),
+            socket=os.fspath(self.layout.socket),
+            socket_inode=self.socket_inode,
+            version=VERSION,
+            herdr_version=self.server_version,
+            protocol=self.server_protocol,
+            manifest_version=self.manifest_version,
+            last_ping_at=self.last_ping_at,
+            started_at=self.started_at,
+            identity_env_unset=_identity_env_unset() and not any(name in self.env for name in IDENTITY_ENV_VARS),
+        )
+
+    def write_info(self, started: bool = False) -> DaemonInfo:
+        info = self.info()
+        write_daemon_info(self.session, info)
+        return info
+
+    # -- server connection ---------------------------------------------------------
+
+    def connect_server(self) -> Dict[str, Any]:
+        """Ping, record version and protocol, refuse a different major.minor without ``allow_version``."""
+        pong = self.api.ping(timeout=5.0)
+        version = str(pong.get("version") or "")
+        protocol = pong.get("protocol")
+        self.server_version = version or None
+        self.server_protocol = int(protocol) if isinstance(protocol, int) else None
+        self.last_ping_at = now_iso()
+        self.ping_failures = 0
+        self.reconnect_requested = False
+        major_minor = ".".join(version.split(".")[:2])
+        if version and major_minor != SUPPORTED_HERDR_MAJOR_MINOR and not self.allow_version:
+            raise HerdrTeamError(
+                "herdr_version_mismatch",
+                "Herdr {} is not {}.x; pass --allow-version to run anyway".format(version, SUPPORTED_HERDR_MAJOR_MINOR),
+                EXIT_REFUSED,
+                {"herdr_version": version, "supported": SUPPORTED_HERDR_MAJOR_MINOR},
+            )
+        self.socket_inode = socket_inode(self.layout.socket)
+        return pong
+
+    def _install_signals(self) -> None:
+        if self._signals_installed or threading.current_thread() is not threading.main_thread():
+            return
+
+        def _stop(signum: int, _frame: Any) -> None:
+            self.request_stop("signal {}".format(signum))
+
+        try:
+            signal.signal(signal.SIGTERM, _stop)
+            signal.signal(signal.SIGINT, _stop)
+            signal.signal(signal.SIGHUP, _stop)
+        except (ValueError, OSError):
+            return
+        self._signals_installed = True
+
+    def request_stop(self, reason: str) -> None:
+        self.stop_requested = True
+        if self.stop_reason is None:
+            self.stop_reason = reason
+
+    def _interruptible_sleep(self, seconds: float) -> None:
+        deadline = self.clock() + seconds
+        while not self.stop_requested:
+            remaining = deadline - self.clock()
+            if remaining <= 0:
+                return
+            self.sleep(min(0.1, remaining))
+
+    # -- main loop --------------------------------------------------------------------
+
+    def run(self) -> int:
+        self._install_signals()
+        self.log("run: socket {} inode {} dry_nudge={}".format(self.layout.socket, self.socket_inode, self.dry_nudge))
+        try:
+            while not self.stop_requested:
+                if not self._connect_with_backoff():
+                    break
+                self._serve_subscription()
+                if self.stop_requested:
+                    break
+                self.counters["reconnects"] += 1
+                inode = socket_inode(self.layout.socket)
+                if inode is not None and self.socket_inode is not None and inode != self.socket_inode:
+                    self.log("subscription ended and the socket inode changed ({} -> {}): server replaced".format(self.socket_inode, inode))
+                else:
+                    self.log("subscription ended; reconnecting")
+        finally:
+            self._shutdown()
+        return self.exit_code
+
+    def _connect_with_backoff(self) -> bool:
+        """Ping until the server answers; give up after ``give_up_s`` of failures."""
+        first_failure: Optional[float] = None
+        attempt = 0
+        while not self.stop_requested:
+            try:
+                self.connect_server()
+                return True
+            except HerdrTeamError as err:
+                if err.code == "herdr_version_mismatch":
+                    self.log("exiting: {}".format(err))
+                    self.exit_code = EXIT_REFUSED
+                    self.request_stop("version mismatch")
+                    return False
+                now = self.clock()
+                if first_failure is None:
+                    first_failure = now
+                if now - first_failure >= self.give_up_s:
+                    self.log("server unreachable for {:g}s; exiting and releasing the lock".format(self.give_up_s))
+                    self.exit_code = EXIT_UNREACHABLE
+                    self.request_stop("server unreachable")
+                    return False
+                if not self._session_dir_present():
+                    self.log("session state dir removed; exiting and releasing the lock")
+                    self.exit_code = EXIT_UNREACHABLE
+                    self.request_stop("session dir removed")
+                    return False
+                delay = self.backoff[min(attempt, len(self.backoff) - 1)]
+                attempt += 1
+                self.log("ping failed ({}); retrying in {:g}s".format(err.code, delay))
+                self.write_info()
+                self._interruptible_sleep(delay)
+        return False
+
+    def _session_dir_present(self) -> bool:
+        """False once ``<session>/`` was removed under us (teardown, gc, a test's temp dir).
+
+        ``write_info`` would otherwise recreate the directory just to drop a
+        ``daemon.json`` nobody reads; the right move is to stop.
+        """
+        try:
+            return os.path.isdir(self.session.root)
+        except OSError:
+            return False
+
+    def _serve_subscription(self) -> None:
+        """One subscription lifetime: cold start, then events and ticks until EOF or stop."""
+        try:
+            stream = self.api.subscribe(list(SUBSCRIPTIONS), tick_timeout=self.tick_s, connect_timeout=5.0)
+        except HerdrTeamError as err:
+            self.log("subscribe failed: {}".format(err))
+            self._interruptible_sleep(self.backoff[0])
+            return
+        try:
+            self.on_connected()
+            while not self.stop_requested:
+                try:
+                    event = next(stream)
+                except StopIteration:
+                    return
+                except HerdrTeamError as err:
+                    self.log("subscription error: {}".format(err))
+                    return
+                if event is not None:
+                    self._phase("event", lambda: self.handle_event(event))
+                self.tick()
+                self.iterations += 1
+                if self.max_iterations is not None and self.iterations >= self.max_iterations:
+                    self.request_stop("max iterations")
+                if self.reconnect_requested:
+                    # Plan 8.1: three failed pings end the subscription; ``run`` reconnects with backoff.
+                    self.log("{} failed API calls in a row; closing the subscription to reconnect".format(self.ping_failures))
+                    return
+        finally:
+            try:
+                stream.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+    def on_connected(self) -> None:
+        """Every (re)connect is a cold start: drop caches, reconcile, restart the grace window."""
+        now = self.now_ms()
+        self.agents = {}
+        self.agents_by_pane = {}
+        self.panes_by_terminal = {}
+        self._panes_fetched_ms = None
+        self.stability = {}
+        self.reconnect_requested = False
+        self.last_agent_list_ms = None
+        self.connected_ms = now
+        self.reconcile_due = True
+        self.last_reconcile_ms = None
+        self.socket_inode = socket_inode(self.layout.socket)
+        # The same boundary as ``tick`` (plan 10, F-07): a ``board_locked`` from a rebind while an
+        # ``add``/``rename`` holds ``team.lock``, or one bad roster file, must not unwind ``run`` at
+        # connect time. A failed reconcile is retried by the 10 s reconcile poll of the grace window.
+        self._phase("scan_teams", lambda: self.scan_teams(force=True))
+        self._phase("poll_agents", lambda: self.poll_agents(force=True))
+        self._phase("reconcile", self.reconcile)
+        self.write_info()
+        self.who_dirty = True
+
+    def _shutdown(self) -> None:
+        self.log("stopping: {}".format(self.stop_reason or "unknown"))
+        if self._session_dir_present():
+            try:
+                self.write_info()
+            except Exception as err:  # noqa: BLE001
+                self.log("final daemon.json write failed: {}".format(err))
+        else:
+            self.log("session state dir removed; skipping the final daemon.json")
+        if self.lock is not None:
+            try:
+                self.lock.release()
+            except OSError:
+                pass
+            self.lock = None
+
+    # -- events ---------------------------------------------------------------------
+
+    def handle_event(self, envelope: Dict[str, Any]) -> None:
+        """Global events only wake the evaluator; every decision re-reads the API."""
+        self.counters["events"] += 1
+        kind = str(envelope.get("event") or "")
+        data = envelope.get("data") if isinstance(envelope.get("data"), dict) else {}
+        if kind in ("pane_agent_detected", "pane_closed", "pane_exited", "pane_moved"):
+            self.reconcile_due = True
+            self.last_agent_list_ms = None  # poll on the next tick
+            if kind in ("pane_closed", "pane_exited"):
+                pane_id = data.get("pane_id")
+                if isinstance(pane_id, str):
+                    self._mark_pane_gone(pane_id, kind)
+        elif kind == "pane_focused":
+            now = self.now_ms()
+            for note in self.notifications:
+                if note.reason == "no_foreground_client":
+                    note.next_ms = now
+        elif kind == "pane_updated":
+            pane = data.get("pane") if isinstance(data.get("pane"), dict) else None
+            if pane and isinstance(pane.get("terminal_id"), str):
+                cached = self.agents.get(pane["terminal_id"])
+                if cached is not None:
+                    for key in ("agent_status", "focused", "tokens", "terminal_title_stripped", "agent"):
+                        if key in pane:
+                            cached[key] = pane[key]
+                    self.who_dirty = True
+
+    def _mark_pane_gone(self, pane_id: str, why: str) -> None:
+        for team in self.teams.values():
+            for member in team.members():
+                if member.get("pane_id") == pane_id and member.get("terminal_id") and member.get("status") in ("active", "starting"):
+                    name = str(member.get("name"))
+                    self.log("{}: member {} pane {} {}".format(team.name, name, pane_id, why))
+                    # Plan 5.3: the three tokens are cleared on agent exit, including a pane that no longer hosts one.
+                    self._set_member_status(team, name, "missing", clear_tokens=True)
+
+    # -- tick --------------------------------------------------------------------------
+
+    def _phase(self, name: str, fn: Callable[[], None]) -> None:
+        """Run one tick phase or event; any ``Exception`` is logged and survived (plan 10, F-07).
+
+        ``HerdrTeamError`` covers the API and store (a held ``team.lock`` is
+        ``board_locked``), ``ValueError`` a bad job or roster field reaching
+        ``nudge``, ``OSError`` a full disk; the rest is a bug in one phase.
+        The daemon is the sole deliverer for every team in the session, so
+        a single bad file or event must never unwind ``run``. Only
+        ``SystemExit`` and ``KeyboardInterrupt`` pass (``BaseException``).
+        """
+        try:
+            fn()
+        except Exception as err:  # noqa: BLE001 - F-07: the daemon must outlive one bad file/event
+            self.counters["phase_errors"] += 1
+            self.log("tick phase {} failed: {}: {}".format(name, type(err).__name__, err))
+
+    def tick(self) -> None:
+        now = self.now_ms()
+        if self.ping_failures >= PING_FAILURES_BEFORE_RECONNECT and not self.reconnect_requested:
+            self.reconnect_requested = True
+            return
+        self._phase("scan_teams", self.scan_teams)
+        self._phase("watch_version", lambda: self.watch_version(now))
+        self._phase("poll_registry", lambda: self.poll_registry(now))
+        if self.stop_requested:
+            return
+        self._phase("poll_agents", self.poll_agents)
+        if self.reconcile_due or self._reconcile_poll_due(now):
+            self._phase("reconcile", self.reconcile)
+        self._phase("tail_boards", self.tail_boards)
+        self._phase("consume_jobs", lambda: self.consume_jobs(now))
+        self._phase("evaluate_pending", self.evaluate_pending)
+        self._phase("heartbeat", lambda: self.heartbeat_if_due(now))
+        self._phase("notifications", self.process_notifications)
+        self._phase("who", lambda: self.write_who_if_due(now))
+
+    def _reconcile_poll_due(self, now: float) -> bool:
+        if self.connected_ms is None or now - self.connected_ms > RECONCILE_POLL_BOUND_S * 1000.0:
+            return False
+        return self.last_reconcile_ms is None or now - self.last_reconcile_ms >= RECONCILE_POLL_S * 1000.0
+
+    # -- version and registry watch ---------------------------------------------------------
+
+    def watch_version(self, now: float) -> None:
+        if self.last_version_ms is not None and now - self.last_version_ms < self.version_watch_s * 1000.0:
+            return
+        self.last_version_ms = now
+        current = read_manifest_version()
+        if current is None:
+            return  # unparseable or missing: ignore
+        if current == self.manifest_version:
+            self.manifest_seen = None
+            return
+        if self.manifest_seen == current:
+            self.log("manifest version changed {} -> {} (two identical reads); exiting after the current delivery".format(self.manifest_version, current))
+            self.request_stop("manifest version changed")
+        else:
+            self.manifest_seen = current
+
+    def poll_registry(self, now: float) -> None:
+        if self.last_registry_ms is None:
+            self.last_registry_ms = now  # first poll one interval after start
+            return
+        if now - self.last_registry_ms < self.registry_poll_s * 1000.0:
+            return
+        self.last_registry_ms = now
+        try:
+            result = self.api.request("plugin.list", {}, timeout=5.0)
+        except HerdrTeamError as err:
+            self.log("plugin.list failed ({}); keeping state".format(err.code))
+            return
+        plugins = result.get("plugins") if isinstance(result, dict) else None
+        if not isinstance(plugins, list):
+            return
+        entry = None
+        for plugin in plugins:
+            if isinstance(plugin, dict) and plugin.get("plugin_id") == PLUGIN_ID:
+                entry = plugin
+                break
+        if entry is None or not entry.get("enabled", True):
+            self.log("plugin {} {}; clearing tokens and view, exiting".format(PLUGIN_ID, "missing from the registry" if entry is None else "disabled"))
+            self.teardown_projections()
+            self.request_stop("plugin disabled")
+
+    def teardown_projections(self) -> None:
+        for team in self.teams.values():
+            for member in team.members():
+                pane_id = member.get("pane_id")
+                if isinstance(pane_id, str) and member.get("terminal_id"):
+                    self._clear_tokens(pane_id)
+        try:
+            self.api.request("agent.view.clear", {"source": "plugin:" + PLUGIN_ID}, timeout=5.0)
+        except HerdrTeamError:
+            pass
+
+    # -- teams ----------------------------------------------------------------------
+
+    def scan_teams(self, force: bool = False) -> None:
+        now = self.now_ms()
+        if not force and self.last_teams_scan_ms is not None and now - self.last_teams_scan_ms < 2000.0:
+            return
+        self.last_teams_scan_ms = now
+        names = set(self.session.list_teams())
+        for name in list(self.teams):
+            if name not in names:
+                self.log("team {} gone; dropping state".format(name))
+                del self.teams[name]
+                self.who_dirty = True
+        for name in sorted(names):
+            if name in self.teams:
+                self._reload_roster(self.teams[name])
+                continue
+            paths = self.session.team(name)
+            ensure_team_dirs(paths)
+            team = TeamState(name, paths, Ledger(paths))
+            self._reload_roster(team)
+            self._load_tail_state(team)
+            self._replay_ledger(team)
+            self.teams[name] = team
+            self.who_dirty = True
+            self.log("team {} loaded: {} members, watermark {}".format(name, len(team.members()), team.watermark))
+
+    def _reload_roster(self, team: TeamState) -> None:
+        doc = _load_roster_doc(team.paths)
+        if doc is not None:
+            team.roster = doc
+            self._reload_gate_config(team)
+
+    def _reload_gate_config(self, team: TeamState) -> None:
+        """Rebuild ``team.gate_config`` from ``config.gate`` when the mapping changed; log once per change."""
+        raw = team.roster.get("config")
+        overrides = raw.get("gate") if isinstance(raw, dict) else None
+        if team.gate_loaded and overrides == team.gate_overrides:
+            return
+        team.gate_loaded = True
+        team.gate_overrides = overrides
+        config, applied, error = gate_config_from_roster(team.roster)
+        if error is not None:
+            self.log("{}: config.gate ignored ({}); using the default gate".format(team.name, error))
+        elif applied:
+            self.log("{}: gate config {}".format(team.name, json.dumps(applied, sort_keys=True)))
+        team.gate_config = config
+
+    def _load_tail_state(self, team: TeamState) -> None:
+        """``store.BoardTailer`` resumes from ``notifier/state.json``, else from the lowest member cursor."""
+        if team.tailer is not None:
+            team.tailer.close()
+        cursors = [read_cursor_seq(team.paths, str(m.get("name"))) for m in team.members() if m.get("terminal_id")]
+        team.tailer = store.BoardTailer(team.paths, start_seq=min(cursors) if cursors else 0)
+        team.watermark = team.tailer.watermark_seq
+
+    def _replay_ledger(self, team: TeamState) -> None:
+        for entry in team.ledger.open_intents():
+            member = entry.get("member")
+            if isinstance(member, str):
+                team.open_intents[member] = entry
+        if team.open_intents:
+            self.log("team {}: {} open intents count as sent".format(team.name, len(team.open_intents)))
+
+    # -- agents ---------------------------------------------------------------------
+
+    def _has_pending(self) -> bool:
+        for team in self.teams.values():
+            for name, pending in team.pending.items():
+                member = team.member(name)
+                if member is not None and member.get("terminal_id") and pending.landed_ms is None:
+                    return True
+        return False
+
+    def poll_agents(self, force: bool = False) -> None:
+        now = self.now_ms()
+        interval = (POLL_PENDING_S if self._has_pending() else POLL_IDLE_S) * 1000.0
+        if not force and self.last_agent_list_ms is not None and now - self.last_agent_list_ms < interval:
+            return
+        try:
+            result = self.api.request("agent.list", {}, timeout=5.0)
+        except HerdrTeamError as err:
+            self.ping_failures += 1
+            self.log("agent.list failed: {}".format(err.code))
+            self.last_agent_list_ms = now
+            return
+        self.counters["polls"] += 1
+        agents = result.get("agents") if isinstance(result, dict) else None
+        if not isinstance(agents, list):
+            return
+        if self.last_agent_list_ms is not None and self.stability:
+            self._reset_stability_after_gap(now - self.last_agent_list_ms)
+        self.last_agent_list_ms = now
+        fresh: Dict[str, Dict[str, Any]] = {}
+        by_pane: Dict[str, Dict[str, Any]] = {}
+        for agent in agents:
+            if not isinstance(agent, dict) or not isinstance(agent.get("terminal_id"), str):
+                continue
+            fresh[agent["terminal_id"]] = agent
+            if isinstance(agent.get("pane_id"), str):
+                by_pane[agent["pane_id"]] = agent
+            self._track_stability(agent, now)
+        for terminal_id in list(self.stability):
+            if terminal_id not in fresh:
+                del self.stability[terminal_id]
+        identity_changed = set(fresh) != set(self.agents) or any(fresh[t].get("name") != self.agents.get(t, {}).get("name") for t in fresh)
+        changed = identity_changed or any(fresh[t].get("agent_status") != self.agents.get(t, {}).get("agent_status") for t in fresh)
+        self.agents = fresh
+        self.agents_by_pane = by_pane
+        if changed:
+            self.who_dirty = True
+        if identity_changed and self.last_agent_list_ms is not None:
+            self.reconcile_due = True  # a new terminal or a changed name is a roster fact, not a status blip
+
+    def _track_stability(self, agent: Dict[str, Any], now: float) -> None:
+        terminal_id = agent["terminal_id"]
+        seq = agent.get("state_change_seq")
+        seq = int(seq) if isinstance(seq, int) else 0
+        status = str(agent.get("agent_status") or "unknown")
+        entry = self.stability.get(terminal_id)
+        if entry is None:
+            self.stability[terminal_id] = Stability(seq, now, status, now if status in ("idle", "done") else None, 0)
+            return
+        if seq != entry.state_change_seq or status != entry.status:
+            if entry.status not in ("idle", "done") and status in ("idle", "done"):
+                entry.idle_since_ms = now
+            elif status not in ("idle", "done"):
+                entry.idle_since_ms = None
+                if entry.status in ("idle", "done") and status == "working":
+                    entry.turns += 1
+            entry.state_change_seq = seq
+            entry.status = status
+            entry.since_ms = now
+
+    def _reset_stability_after_gap(self, gap_ms: float) -> None:
+        """Plan 8.2 gate 6: a sample gap over ``sample_gap_reset_ms`` voids the stable window.
+
+        The threshold is per team (``config.gate``): a roster terminal uses its
+        team's value, every other terminal the default. Cheap when no gap can
+        matter: nothing is walked unless the gap exceeds the smallest threshold.
+        """
+        floor = min([gate.DEFAULT_CONFIG.sample_gap_reset_ms] + [t.gate_config.sample_gap_reset_ms for t in self.teams.values()])
+        if gap_ms <= floor:
+            return
+        thresholds: Dict[str, int] = {}
+        for team in self.teams.values():
+            for member in team.members():
+                terminal_id = member.get("terminal_id")
+                if isinstance(terminal_id, str) and terminal_id:
+                    thresholds[terminal_id] = team.gate_config.sample_gap_reset_ms
+        reset = [t for t in self.stability if gap_ms > thresholds.get(t, gate.DEFAULT_CONFIG.sample_gap_reset_ms)]
+        if reset:
+            self.log("sample gap of {:.0f} ms; resetting {} of {} stable window(s)".format(gap_ms, len(reset), len(self.stability)))
+            for terminal_id in reset:
+                del self.stability[terminal_id]
+
+    def fresh_agent(self, target: str) -> Optional[Dict[str, Any]]:
+        try:
+            result = self.api.request("agent.get", {"target": target}, timeout=5.0)
+        except HerdrTeamError as err:
+            if err.code in ("server_not_running", "herdr_timeout"):
+                self.ping_failures += 1
+            return None
+        agent = result.get("agent") if isinstance(result, dict) else None
+        if isinstance(agent, dict) and isinstance(agent.get("terminal_id"), str):
+            self.agents[agent["terminal_id"]] = agent
+            if isinstance(agent.get("pane_id"), str):
+                self.agents_by_pane[agent["pane_id"]] = agent
+            self._track_stability(agent, self.now_ms())
+            return agent
+        return None
+
+    # -- reconcile ---------------------------------------------------------------------
+
+    def reconcile(self) -> None:
+        """Rehydrate every team by the plan 4.2 order (``roster.rehydrate_match``); rewrite ``who.json``.
+
+        One matcher for the daemon and the roster tests: (a) ``terminal_id``,
+        (b) a ``pane.list`` row with the member's label and a live agent of
+        its kind, (c) ``pane_id`` plus kind, (d) exact name, (e) a unique
+        ``(kind, cwd, workspace)`` fingerprint, which stays owner-gated
+        (``roster.AUTO_BIND_FINGERPRINT``): it is logged and waits for
+        ``bind``. Rows claimed by another team's live member never bind here.
+        """
+        now = self.now_ms()
+        self.reconcile_due = False
+        self.last_reconcile_ms = now
+        in_grace = self.connected_ms is not None and now - self.connected_ms < GRACE_WINDOW_S * 1000.0
+        self._panes_fetched_ms = None  # one pane.list per reconcile, fetched only when step (b) needs it
+        for team in self.teams.values():
+            self._reload_roster(team)
+            members, by_name = self._rehydration_members(team)
+            changes: List[Tuple[str, Dict[str, Any]]] = []
+            if members:
+                own_terminals = {m.terminal_id for m in members if m.terminal_id}
+                rows = [a for a in self.agents.values() if a.get("terminal_id") in own_terminals or self._unclaimed(team, a)]
+                live = {str(a.get("terminal_id")) for a in rows}
+                # Step (b) needs pane.list only when some member's terminal is gone.
+                panes = list(self._fetch_panes().values()) if any(m.terminal_id not in live for m in members) else []
+                result = roster.rehydrate_match(members, rows, panes)
+                for binding in result.bindings:
+                    member = by_name.get(binding.member)
+                    if member is None:
+                        continue
+                    team.rt(binding.member).last_seen_present_ms = now
+                    if binding.agent.get("agent") is None:
+                        # ``agent: null`` (launch pending, detection not yet run): the terminal is present
+                        # but there is no evidence for or against the kind. Adopt ids only; the status
+                        # (``starting`` from ``create --new``, or ``missing``) waits for a detected kind.
+                        update = self._ids_update(team, member, binding.agent)
+                    elif not binding.kind_matches:
+                        update = self._kind_changed_update(team, member, binding.agent)
+                    else:
+                        update = self._rebind_update(team, member, binding.agent, binding.how)
+                    if update:
+                        update["last_seen_at"] = now_iso()
+                        changes.append((binding.member, update))
+                        if "terminal_id" in update or "pane_id" in update or update.get("status") == "active":
+                            self._apply_label(team, member, str(binding.agent.get("pane_id")))
+                            self._stamp_tokens(team, dict(member, **update), self.clock())
+                for entry in result.kind_changed:
+                    member = by_name.get(str(entry.get("member")))
+                    if member is None or not isinstance(entry.get("agent"), dict) or not entry["agent"].get("agent"):
+                        continue  # the matcher never reports a null kind here; the guard mirrors the bindings loop
+                    team.rt(str(entry["member"])).last_seen_present_ms = now
+                    update = self._kind_changed_update(team, member, entry["agent"])
+                    if update:
+                        update["last_seen_at"] = now_iso()
+                        changes.append((str(entry["member"]), update))
+                for entry in result.unbound:
+                    name = str(entry.get("member"))
+                    candidate = entry.get("candidate") if isinstance(entry.get("candidate"), dict) else {}
+                    rt = team.rt(name)
+                    if rt.unbound_candidate != candidate.get("terminal_id"):
+                        rt.unbound_candidate = candidate.get("terminal_id")
+                        self.log("{}: {} matches only by fingerprint ({} on {}, cwd {}); not bound, waiting for `bind`".format(
+                            team.name, name, candidate.get("terminal_id"), candidate.get("pane_id"), candidate.get("cwd")))
+                    self._missing_update(team, name, by_name.get(name), in_grace, changes)
+                for name in result.missing:
+                    team.rt(name).unbound_candidate = None
+                    self._missing_update(team, name, by_name.get(name), in_grace, changes)
+            if changes:
+                self._apply_changes(team, changes)
+            self.who_dirty = True
+
+    def _rehydration_members(self, team: TeamState) -> Tuple[List[roster.Member], Dict[str, Dict[str, Any]]]:
+        """Roster members as ``roster.Member`` (label derived for pre-label rosters) plus the raw dicts by name."""
+        members: List[roster.Member] = []
+        by_name: Dict[str, Dict[str, Any]] = {}
+        for raw in team.members():
+            name = raw.get("name")
+            if not isinstance(name, str) or not name or raw.get("kind") == "human" or raw.get("status") == "left":
+                continue
+            try:
+                member = roster.Member.from_json(raw)
+            except HerdrTeamError as err:
+                self.log("{}: member {!r} skipped during rehydration: {}".format(team.name, name, err.code))
+                continue
+            if member.label is None and member.role:
+                member.label = roster.label_for(team.name, member.role)
+            members.append(member)
+            by_name[name] = raw
+        return members, by_name
+
+    def _kind_changed_update(self, team: TeamState, member: Dict[str, Any], match: Dict[str, Any]) -> Dict[str, Any]:
+        """The member's terminal now hosts another kind: ``kind_changed`` once, tokens cleared."""
+        update: Dict[str, Any] = {}
+        if member.get("status") != "kind_changed":
+            update["status"] = "kind_changed"
+            self._clear_tokens(str(match.get("pane_id")))
+            self.log("{}: {} now hosts {} (was {}); kind_changed".format(team.name, member.get("name"), match.get("agent"), member.get("kind")))
+        return update
+
+    @staticmethod
+    def _live_ids(member: Dict[str, Any], match: Dict[str, Any]) -> Dict[str, Any]:
+        """The live row's ids (and a first ``cwd``) that differ from the roster record."""
+        update: Dict[str, Any] = {}
+        for key in ("terminal_id", "pane_id", "workspace_id", "tab_id"):
+            if match.get(key) and match.get(key) != member.get(key):
+                update[key] = match.get(key)
+        if match.get("cwd") and not member.get("cwd"):
+            update["cwd"] = match.get("cwd")
+        return update
+
+    def _ids_update(self, team: TeamState, member: Dict[str, Any], match: Dict[str, Any]) -> Dict[str, Any]:
+        """A terminal match without a detected kind: adopt ids, keep the status, no name or generation change."""
+        update = self._live_ids(member, match)
+        if update:
+            self.log("{}: {} present on {} ({}) with no detected kind yet; ids adopted, status {} kept".format(
+                team.name, member.get("name"), match.get("terminal_id"), match.get("pane_id"), member.get("status")))
+        return update
+
+    def _rebind_update(self, team: TeamState, member: Dict[str, Any], match: Dict[str, Any], how: str) -> Dict[str, Any]:
+        """Adopt the live row's ids, reactivate, bump the generation after an absence, re-apply or adopt the name."""
+        name = str(member.get("name"))
+        update = self._live_ids(member, match)
+        if member.get("status") not in ("active",):
+            update["status"] = "active"
+            if member.get("status") in ("missing", "unbound", "starting"):
+                update["generation"] = int(member.get("generation") or 1) + 1
+        if "terminal_id" in update:
+            self.log("{}: {} rebound by {} to {} ({})".format(team.name, name, how, update["terminal_id"], match.get("pane_id")))
+        live_name = match.get("name")
+        if not match.get("launch_pending"):
+            if live_name is None:
+                self._apply_name(team, member, str(match.get("pane_id")))
+            elif live_name != name and isinstance(live_name, str):
+                update["name"] = live_name
+                history = list(member.get("previous_names") or [])
+                history.append({"name": name, "retired_at": now_iso()})
+                update["previous_names"] = history
+                self.log("{}: adopting rename {} -> {}".format(team.name, name, live_name))
+                self._append_system(team, "renamed", "{} was renamed to {}".format(name, live_name), ["all"])
+        return update
+
+    def _missing_update(self, team: TeamState, name: str, member: Optional[Dict[str, Any]], in_grace: bool, changes: List[Tuple[str, Dict[str, Any]]]) -> None:
+        """No live row for the member: ``missing`` after the grace window, tokens cleared (plan 5.3)."""
+        if member is None or in_grace or member.get("status") not in ("active", "starting"):
+            return
+        changes.append((name, {"status": "missing"}))
+        pane_id = member.get("pane_id")
+        if isinstance(pane_id, str):
+            self._clear_tokens(pane_id)
+
+    def _fetch_panes(self) -> Dict[str, Dict[str, Any]]:
+        """``pane.list`` rows by terminal id, cached for the current reconcile pass."""
+        now = self.now_ms()
+        if self._panes_fetched_ms is not None and now - self._panes_fetched_ms < 1000.0:
+            return self.panes_by_terminal
+        self._panes_fetched_ms = now
+        try:
+            result = self.api.request("pane.list", {}, timeout=5.0)
+        except HerdrTeamError as err:
+            if err.code in ("server_not_running", "herdr_timeout"):
+                self.ping_failures += 1
+            self.panes_by_terminal = {}
+            return self.panes_by_terminal
+        panes = result.get("panes") if isinstance(result, dict) else None
+        out: Dict[str, Dict[str, Any]] = {}
+        for pane in panes or []:
+            if isinstance(pane, dict) and isinstance(pane.get("terminal_id"), str):
+                out[pane["terminal_id"]] = pane
+        self.panes_by_terminal = out
+        return out
+
+    def _unclaimed(self, team: TeamState, agent: Dict[str, Any]) -> bool:
+        """Cross-team row filter: False when another team's live member holds the row's terminal."""
+        terminal_id = agent.get("terminal_id")
+        for other in self.teams.values():
+            if other is team:
+                continue
+            for member in other.members():
+                if member.get("terminal_id") == terminal_id and member.get("status") in ("active", "starting"):
+                    return False
+        return True
+
+    def _apply_changes(self, team: TeamState, changes: List[Tuple[str, Dict[str, Any]]]) -> None:
+        def mutate(doc: Dict[str, Any]) -> None:
+            for name, update in changes:
+                for member in doc.get("members", []):
+                    if isinstance(member, dict) and member.get("name") == name:
+                        member.update(update)
+                        break
+
+        doc = update_roster(team.paths, mutate)
+        if doc is not None:
+            team.roster = doc
+            for name, update in changes:
+                self.log("{}: {} {}".format(team.name, name, json.dumps(update, ensure_ascii=False)))
+                if update.get("status") == "missing":
+                    self._append_system(team, "member_gone", "{} is missing".format(name), ["human"])
+                elif "generation" in update:
+                    self._append_system(team, "member_restarted", "{} restarted (generation {})".format(update.get("name", name), update["generation"]), ["all"])
+            for member in team.members():
+                terminal_id = member.get("terminal_id")
+                if isinstance(terminal_id, str) and member.get("status") == "active":
+                    self._write_pane_record(team, member)
+
+    def _set_member_status(self, team: TeamState, name: str, status: str, clear_tokens: bool = False) -> None:
+        member = team.member(name)
+        if member is None:
+            return
+        pane_id = member.get("pane_id")
+        if clear_tokens and isinstance(pane_id, str):
+            self._clear_tokens(pane_id)
+        self._apply_changes(team, [(name, {"status": status, "last_seen_at": now_iso()})])
+        self.who_dirty = True
+
+    def _write_pane_record(self, team: TeamState, member: Dict[str, Any]) -> None:
+        """``panes/<terminal_id>.json``: merge, never clobber the hook-written keys (``hooks_last_seen`` ...)."""
+        try:
+            path = self.session.pane_record(str(member.get("terminal_id")))
+        except HerdrTeamError:
+            return
+        record = store.read_json(path, default=None)
+        if not isinstance(record, dict):
+            record = {}
+        record.update({"team": team.name, "name": member.get("name"), "gen": int(member.get("generation") or 1)})
+        store.write_json(path, record, fsync=False)
+
+    def _hooks_last_seen(self, member: Dict[str, Any]) -> Optional[str]:
+        terminal_id = member.get("terminal_id")
+        if not isinstance(terminal_id, str):
+            return None
+        try:
+            record = store.read_json(self.session.pane_record(terminal_id), default=None)
+        except HerdrTeamError:
+            return None
+        if isinstance(record, dict) and isinstance(record.get("hooks_last_seen"), str):
+            return record["hooks_last_seen"]
+        return None
+
+    def _apply_name(self, team: TeamState, member: Dict[str, Any], pane_id: str) -> None:
+        name = str(member.get("name"))
+        try:
+            self.api.request("agent.rename", {"target": pane_id, "name": name}, timeout=5.0)
+            self.log("{}: re-applied name {} on {}".format(team.name, name, pane_id))
+        except HerdrTeamError as err:
+            if err.code == "agent_name_taken":
+                self.log("{}: name {} taken during re-application; name_conflict".format(team.name, name))
+                self._apply_changes(team, [(name, {"status": "name_conflict"})])
+                self.enqueue_toast(team.name, [], "herdr-team {}: name conflict".format(team.name), "{} could not be renamed: {}".format(name, err.message), "none", kind="roster")
+            else:
+                self.log("{}: agent.rename {} failed: {}".format(team.name, name, err.code))
+
+    def _apply_label(self, team: TeamState, member: Dict[str, Any], pane_id: str) -> None:
+        label = member.get("label") or "team:{}/{}".format(team.name, member.get("role"))
+        try:
+            self.api.request("pane.rename", {"pane_id": pane_id, "label": label}, timeout=5.0)
+        except HerdrTeamError as err:
+            self.log("{}: pane.rename {} failed: {}".format(team.name, pane_id, err.code))
+
+    # -- tokens ------------------------------------------------------------------------
+
+    def _stamp_tokens(self, team: TeamState, member: Dict[str, Any], now_s: float) -> None:
+        pane_id = member.get("pane_id")
+        if not isinstance(pane_id, str) or not member.get("terminal_id"):
+            return
+        role = str(member.get("role") or "")
+        try:
+            self.api.request("pane.report_metadata", {"pane_id": pane_id, "source": "herdr-team:roster", "tokens": {"team": team.name, "team_role": role}}, timeout=5.0)
+        except HerdrTeamError as err:
+            self.log("{}: token stamp on {} failed: {}".format(team.name, pane_id, err.code))
+            return
+        rt = team.rt(str(member.get("name")))
+        head = task_headline(member, rt.last_post, time.time())
+        if head:
+            rt.last_headline = head
+            value = head[:80]
+            now = self.now_ms()
+            # Register (plan 12): another reporter may write team_task; overwrite only when our headline
+            # changed, or when the TTL needs a refresh (the token is the heartbeat and fades in 120 s).
+            unchanged = rt.last_task_value == value and rt.last_task_stamp_ms is not None and now - rt.last_task_stamp_ms < TASK_RESTAMP_S * 1000.0
+            if unchanged:
+                return
+            try:
+                self.api.request("pane.report_metadata", {"pane_id": pane_id, "source": "herdr-team:task", "tokens": {"team_task": value}, "ttl_ms": TASK_TTL_MS}, timeout=5.0)
+                rt.last_task_value = value
+                rt.last_task_stamp_ms = now
+            except HerdrTeamError as err:
+                self.log("{}: task token on {} failed: {}".format(team.name, pane_id, err.code))
+
+    def _clear_tokens(self, pane_id: str) -> None:
+        try:
+            self.api.request("pane.report_metadata", {"pane_id": pane_id, "source": "herdr-team:roster", "tokens": {"team": None, "team_role": None}}, timeout=5.0)
+            self.api.request("pane.report_metadata", {"pane_id": pane_id, "source": "herdr-team:task", "tokens": {"team_task": None}}, timeout=5.0)
+        except HerdrTeamError as err:
+            self.log("clear tokens on {} failed: {}".format(pane_id, err.code))
+
+    def heartbeat_if_due(self, now: float) -> None:
+        if self.last_heartbeat_ms is not None and now - self.last_heartbeat_ms < HEARTBEAT_S * 1000.0:
+            return
+        self.last_heartbeat_ms = now
+        self.heartbeat()
+
+    def heartbeat(self) -> None:
+        """Restamp ``team``/``team_role``, refresh ``team_task`` with TTL, update ``daemon.json``."""
+        now_s = time.time()
+        for team in self.teams.values():
+            for member in team.members():
+                if member.get("status") == "active" and member.get("terminal_id") in self.agents:
+                    self._stamp_tokens(team, member, now_s)
+        if not self._session_dir_present():
+            self.log("session state dir removed; stopping")
+            self.request_stop("session dir removed")
+            return
+        self.write_info()
+        if self.detached and rotate_log(self.session.daemon_log):
+            try:
+                fd = _open_log_fd(self.session)
+                os.dup2(fd, 1)
+                os.dup2(fd, 2)
+                os.close(fd)
+            except OSError:
+                pass
+            self.log("log rotated")
+
+    # -- board tail ----------------------------------------------------------------------
+
+    def tail_boards(self) -> None:
+        for team in self.teams.values():
+            try:
+                self._tail_board(team)
+            except HerdrTeamError as err:
+                self.log("{}: tail error {}".format(team.name, err))
+
+    def _tail_board(self, team: TeamState) -> None:
+        if team.tailer is None:
+            self._load_tail_state(team)
+        assert team.tailer is not None
+        records = team.tailer.poll()
+        for warning in team.tailer.warnings:
+            self.log("{}: tailer: {}".format(team.name, warning))
+        team.tailer.warnings.clear()
+        for rec in records:
+            if rec.get("synthetic"):
+                # BoardTailer saw the file restart at or below the watermark with no archive explanation.
+                self.log("{}: reset detected: {}".format(team.name, rec.get("text")))
+                self._append_system(team, "reset_detected", str(rec.get("text") or "board reset detected"), ["human"])
+                team.watermark = 0
+                continue
+            self._ingest_record(team, rec)
+        team.watermark = team.tailer.watermark_seq
+
+    @staticmethod
+    def _counts_for_nudges(rec: Dict[str, Any]) -> bool:
+        """Plan 6.1 reader rule: a record that renders ``(unverified)`` never counts for nudges.
+
+        ``from: system`` needs ``kind: system`` plus an event; ``from: human``
+        needs a console, popup, outside, or verified shell origin (an
+        unfocused console is still the console); a member record needs a
+        verified origin. Everything else could be a raw append.
+        """
+        if not render.is_unverified(rec):
+            return True
+        origin = rec.get("origin") if isinstance(rec.get("origin"), dict) else {}
+        return rec.get("from") == "human" and origin.get("via") == "console-unfocused"
+
+    def _ingest_record(self, team: TeamState, rec: Dict[str, Any]) -> None:
+        seq = rec["seq"]
+        author = rec["from"]
+        kind = rec["kind"]
+        now = self.now_ms()
+        self.who_dirty = True
+        if not self._counts_for_nudges(rec):
+            self.counters["unverified_skipped"] += 1
+            self.log("{}: #{} from {!r} is unverified (origin {}); it renders but never counts for nudges".format(
+                team.name, seq, author, json.dumps(rec.get("origin"), ensure_ascii=False)[:120]))
+            return
+        if author == "system":
+            if rec.get("event") == "charter_updated" and rec.get("urgent"):
+                for member in team.members():
+                    if member.get("kind") != "human" and member.get("terminal_id"):
+                        self._add_pending(team, str(member["name"]), seq, True, "system", now)
+            return
+        retracts = rec.get("retracts")
+        if kind == "retract" or isinstance(retracts, int):
+            if isinstance(retracts, int):
+                team.retracted.add(retracts)
+                for name, pending in list(team.pending.items()):
+                    if retracts in pending.seqs:
+                        already_landed = pending.landed_ms is not None and retracts <= pending.landed_seq_max
+                        pending.seqs = [s for s in pending.seqs if s != retracts]
+                        if not pending.seqs:
+                            del team.pending[name]
+                            self.log("{}: retract of #{} cancelled the pending nudge for {}".format(team.name, retracts, name))
+                        if already_landed:
+                            self._add_pending(team, name, seq, False, author, now)
+                self._append_system(team, "retracted", "#{} was retracted by {}".format(retracts, author), ["all"])
+            return
+        member = team.member(author)
+        if member is not None:
+            rt = team.rt(author)
+            rt.last_post = rec
+            rt.last_headline = task_headline(member, rec, time.time())
+        recipients = [str(t) for t in rec.get("to", []) if isinstance(t, str)]
+        urgent = bool(rec.get("urgent"))
+        for target in recipients:
+            if target == "human":
+                if author != "human":
+                    team.human_queue.append(rec)
+                continue
+            if target == "all":
+                if urgent:
+                    for m in team.members():
+                        if m.get("kind") != "human" and m.get("name") != author and m.get("terminal_id"):
+                            self._add_pending(team, str(m["name"]), seq, True, author, now)
+                continue
+            if target == author:
+                continue
+            recipient = team.member(target) or team.member_by_retired_name(target)  # old names resolve for 10 min
+            if recipient is None:
+                continue
+            self._add_pending(team, str(recipient.get("name")), seq, urgent, author, now)
+
+    def _add_pending(self, team: TeamState, name: str, seq: int, urgent: bool, author: str, now: float) -> None:
+        pending = team.pending.get(name)
+        if pending is None or pending.kind != "nudge":
+            if pending is not None and pending.kind == "brief":
+                return  # the briefing lands first; the nudge follows on the next read
+            pending = Pending(first_ms=now)
+            team.pending[name] = pending
+        if seq not in pending.seqs:
+            pending.seqs.append(seq)
+        pending.urgent = pending.urgent or urgent
+        pending.authors.add(author)
+        if pending.landed_ms is not None and seq > pending.landed_seq_max and pending.attempts == 1 and not pending.renudges:
+            # One immediate follow-up is allowed when posts arrived after a landing.
+            pending.follow_up_due = True
+            pending.next_eligible_ms = now
+
+    # -- jobs -------------------------------------------------------------------------
+
+    def consume_jobs(self, now: float) -> None:
+        if self.last_jobs_ms is not None and now - self.last_jobs_ms < JOBS_POLL_S * 1000.0:
+            return
+        self.last_jobs_ms = now
+        for team in self.teams.values():
+            try:
+                names = sorted(os.listdir(team.paths.jobs_dir))
+            except OSError:
+                continue
+            for name in names:
+                if not name.endswith(".json") or name.startswith("."):
+                    continue
+                path = team.paths.jobs_dir / name
+                job = store.read_json(path, default=None)
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+                if isinstance(job, dict):
+                    self.counters["jobs"] += 1
+                    try:
+                        self._run_job(team, job, now)
+                    except Exception as err:  # noqa: BLE001 - F-07: the daemon must outlive one bad file/event
+                        # A bad job file (reserved member, blank role, disk full) is logged, never fatal.
+                        self.counters["phase_errors"] += 1
+                        self.log("{}: job {} failed: {}: {}".format(team.name, name, type(err).__name__, err))
+
+    def _run_job(self, team: TeamState, job: Dict[str, Any], now: float) -> None:
+        kind = str(job.get("kind") or "")
+        member_name = job.get("member")
+        member = team.member(str(member_name)) if isinstance(member_name, str) else None
+        self.log("{}: job {} for {}".format(team.name, kind, member_name))
+        if kind == "brief":
+            if member is None:
+                return
+            if member.get("kind") == "human" or not member.get("terminal_id"):
+                self.log("{}: brief job for {} refused: not an agent member with a terminal".format(team.name, member_name))
+                return
+            self._enqueue_briefing(team, member, now)
+        elif kind == "toast":
+            # The CLI never calls notification.show; it asks the daemon (create --new failures, plan 12).
+            title = str(job.get("title") or "herdr-team {}".format(team.name))
+            body = str(job.get("body") or "")
+            seqs = [int(s) for s in job.get("seqs") or [] if isinstance(s, int)]
+            self.enqueue_toast(team.name, seqs, title, body, str(job.get("sound") or "none"), kind=str(job.get("toast_kind") or "roster"))
+        elif kind == "nudge":
+            if member is None:
+                return
+            name = str(member["name"])
+            pending = team.pending.get(name)
+            if pending is None:
+                cursor = read_cursor_seq(team.paths, name)
+                unread = [r["seq"] for r in read_board_records(team.paths, cursor) if name in r.get("to", []) or "all" in r.get("to", [])]
+                unread = [s for s in unread if s not in team.retracted]
+                if not unread:
+                    self.log("{}: nothing unread for {}; nudge job dropped".format(team.name, name))
+                    return
+                pending = Pending(seqs=unread, first_ms=now)
+                team.pending[name] = pending
+            pending.force = pending.force or bool(job.get("force"))
+            pending.urgent = pending.urgent or bool(job.get("force"))
+            pending.next_eligible_ms = now
+            pending.landed_ms = None
+        elif kind == "probe":
+            if member is None:
+                return
+            nonce = str(job.get("nonce") or new_nonce())
+            agent_kind = str(job.get("agent_kind") or member.get("kind") or "")
+            pending = Pending(first_ms=now, kind="probe", lines=[probe_text_for(nonce)], force=True, urgent=True)
+            pending.probe = {"nonce": job.get("nonce"), "agent_kind": agent_kind, "requested_ms": now}
+            team.pending[str(member["name"])] = pending
+        elif kind == "focus":
+            if member is None or not isinstance(member.get("pane_id"), str):
+                return
+            self.api.request("agent.focus", {"target": member["pane_id"]}, timeout=5.0)
+        elif kind == "mute":
+            mute = store.read_json(team.paths.mute_json, default=None)
+            if not isinstance(mute, dict):
+                mute = {}
+            key = str(job.get("member") or "*")
+            if job.get("unmute"):
+                mute.pop(key, None)
+            else:
+                mute[key] = job.get("until")
+            store.write_json(team.paths.mute_json, mute, fsync=False)
+        else:
+            self.log("{}: unknown job kind {!r}".format(team.name, kind))
+
+    def _enqueue_briefing(self, team: TeamState, member: Dict[str, Any], now: float) -> None:
+        name = str(member["name"])
+        charter = team.roster.get("charter") if isinstance(team.roster.get("charter"), dict) else None
+        headline = None
+        if charter and isinstance(charter.get("text"), str):
+            headline = " ".join(charter["text"].split())
+        teammates = [(str(m.get("name")), str(m.get("role") or "")) for m in team.members() if m.get("name") != name and m.get("kind") != "human"]
+        lines = briefing_lines_for(name, str(member.get("role") or ""), team.name, headline, teammates, member.get("brief") if isinstance(member.get("brief"), str) else None, self.cli_path)
+        pending = Pending(first_ms=now, kind="brief", lines=lines)
+        existing = team.pending.get(name)
+        if existing is not None and existing.kind == "nudge":
+            pending.seqs = list(existing.seqs)
+            pending.urgent = existing.urgent
+            pending.authors = set(existing.authors)
+        team.pending[name] = pending
+        try:
+            store.atomic_write(team.paths.briefing(name), ("\n".join(lines) + "\n").encode("utf-8"), fsync=False)
+        except HerdrTeamError:
+            pass
+
+    # -- evaluation ---------------------------------------------------------------------
+
+    def evaluate_pending(self) -> None:
+        now = self.now_ms()
+        for team in self.teams.values():
+            for name in list(team.pending):
+                pending = team.pending.get(name)
+                if pending is None:
+                    continue
+                member = team.member(name)
+                if member is None:
+                    # An adopted rename re-keys the pending work to the new name (old names resolve for 10 min).
+                    renamed = team.member_by_retired_name(name)
+                    if renamed is not None and str(renamed.get("name")) not in team.pending:
+                        new_name = str(renamed.get("name"))
+                        team.pending[new_name] = team.pending.pop(name)
+                        self.log("{}: pending work for {} follows the rename to {}".format(team.name, name, new_name))
+                        member, name = renamed, new_name
+                    else:
+                        del team.pending[name]
+                        continue
+                try:
+                    self._evaluate_member(team, member, pending, now)
+                except Exception as err:  # noqa: BLE001 - F-07: the daemon must outlive one bad file/event
+                    self.counters["phase_errors"] += 1
+                    self.log("{}: evaluate {} failed: {}: {}".format(team.name, name, type(err).__name__, err))
+
+    def _refresh_pending_seqs(self, team: TeamState, name: str, pending: Pending) -> int:
+        """Gate 1: re-read the cursor and drop read (cursor or seen) and retracted seqs; returns the cursor."""
+        cursor, seen = read_cursor_state(team.paths, name)
+        if pending.kind == "nudge":
+            pending.seqs = [s for s in pending.seqs if s > cursor and s not in seen and s not in team.retracted]
+        return cursor
+
+    def _stop_block_hold(self, team: TeamState, name: str, pending: Pending) -> Optional[str]:
+        """Plan 12 / SK-08: a Claude Stop-hook block covering the pending seqs suppresses nudges for 10 min."""
+        if pending.kind != "nudge" or not pending.seqs:
+            return None
+        from herdr_team import hooks as _hooks
+
+        state = store.read_json(_hooks._stop_state_path(team.paths, name), default=None)
+        if not isinstance(state, dict):
+            return None
+        blocked_seq = state.get("seq")
+        if not isinstance(blocked_seq, int) or isinstance(blocked_seq, bool) or max(pending.seqs) > blocked_seq:
+            return None
+        stamps = [t for t in (_parse_iso(x) for x in (state.get("blocks") or [])) if t is not None]
+        if not stamps:
+            return None
+        age = time.time() - max(stamps)
+        if age < STOP_BLOCK_SUPPRESS_S:
+            return "stop hook blocked at #{} {:.0f}s ago".format(blocked_seq, age)
+        return None
+
+    def _evaluate_member(self, team: TeamState, member: Dict[str, Any], pending: Pending, now: float) -> None:
+        name = str(member["name"])
+        rt = team.rt(name)
+        # 1. cursor re-read
+        cursor, seen = read_cursor_state(team.paths, name)
+        if pending.kind == "nudge":
+            before = list(pending.seqs)
+            pending.seqs = [s for s in pending.seqs if s > cursor and s not in seen and s not in team.retracted]
+            if pending.landed_ms is not None and any(s <= cursor or s in seen for s in before):
+                latency = now - pending.landed_ms
+                if pending.attempt_id:
+                    team.ledger.record_outcome(pending.attempt_id, True, latency)
+                    pending.attempt_id = None
+                    self._maybe_verify_kind(team, str(member.get("kind")))
+                self.log("{}: {} read up to #{} ({:.0f} ms after the nudge)".format(team.name, name, cursor, latency))
+            if not pending.seqs:
+                del team.pending[name]
+                self.who_dirty = True
+                return
+            stop_block = self._stop_block_hold(team, name, pending)
+            if stop_block is not None:
+                self._note_hold(team, name, pending, gate.HOLD_STOP_BLOCKED, stop_block, now)
+                return
+        elif pending.kind == "brief" and pending.landed_ms is not None:
+            # Plan 9.2: an ack is a cursor write (``surfaced_by: cli``, or ``herdr-team ack``) made after
+            # the landing with seq >= briefing_seq; an untouched cursor on an empty board is not one.
+            try:
+                cursor_doc = store.Cursors(team.paths).get(name)
+            except HerdrTeamError:
+                cursor_doc = {}
+            written_since = cursor_doc.get("updated") is not None and cursor_doc.get("updated") != pending.brief_cursor_updated and cursor_doc.get("surfaced_by") != "hook"
+            if rt.brief_seq is not None and cursor >= rt.brief_seq and written_since:
+                del team.pending[name]
+                self.log("{}: {} acknowledged the briefing".format(team.name, name))
+                return
+            if now - pending.landed_ms > BRIEF_ACK_S * 1000.0:
+                if not rt.rebriefed:
+                    rt.rebriefed = True
+                    pending.landed_ms = None
+                    pending.next_eligible_ms = now
+                    self.log("{}: {} did not ack the briefing; re-briefing once".format(team.name, name))
+                else:
+                    del team.pending[name]
+                    self.enqueue_toast(team.name, [], "herdr-team {}: {} unbriefed".format(team.name, name), "{} never acknowledged its briefing".format(name), "none", kind="outcome")
+                    return
+            else:
+                return
+        agent = self.agents.get(str(member.get("terminal_id") or ""))
+        present = agent is not None and member.get("status") == "active"
+        # TTL: ``post_ttl_ms`` (30 min default, ``config.gate`` per team) of target-active time, paused while missing.
+        if pending.last_tick_ms is not None and present:
+            pending.active_ms += now - pending.last_tick_ms
+        pending.last_tick_ms = now
+        if pending.kind == "nudge" and pending.active_ms >= team.gate_config.post_ttl_ms:
+            self._finish_pending(team, name, pending, "expired", "posts {} to {} expired unread".format(pending.seqs, name))
+            return
+        # landed but unread: re-nudge only after a completed turn and the schedule
+        if pending.landed_ms is not None:
+            stability = self.stability.get(str(member.get("terminal_id") or ""))
+            if stability is not None and stability.idle_since_ms is not None and stability.idle_since_ms > pending.landed_ms:
+                pending.turn_completed_since_landing = True
+            if pending.renudges >= len(RENUDGE_AFTER_S):
+                self._finish_pending(team, name, pending, "abandoned", "gave up nudging {} for {}".format(name, pending.seqs))
+                return
+            wait_s = RENUDGE_AFTER_S[pending.renudges]
+            if now - pending.landed_ms < wait_s * 1000.0 or not pending.turn_completed_since_landing:
+                # Only the one explicit follow-up (posts that arrived after the landing) may go earlier.
+                if not (pending.kind == "nudge" and pending.follow_up_due and pending.attempts == 1):
+                    return
+        if now < pending.next_eligible_ms:
+            return
+        if name in team.open_intents:
+            # A prior daemon sent this without recording a result: count it as sent once.
+            entry = team.open_intents.pop(name)
+            pending.landed_ms = now
+            pending.attempts = max(pending.attempts, int(entry.get("attempts") or 1))
+            pending.landed_seq_max = max(pending.seqs) if pending.seqs else 0
+            self.log("{}: open intent {} for {} counts as sent".format(team.name, entry.get("id"), name))
+            return
+        snapshot = self._snapshot(team, member, agent, rt, now, pending)
+        pending_work = self._pending_work(pending, cursor)
+        decision = gate_evaluate(snapshot, pending_work, now, self.global_last_nudge_ms, self._pair_exchanges(team, pending, name, now), config=team.gate_config)
+        if not decision.deliver:
+            # Gate 10 after the 5 min max-hold needs a detection read to judge the 3 s snapshot
+            # stability; only then may the expensive phase run for a focused pane.
+            max_hold_elapsed = decision.hold == gate.HOLD_FOCUSED and bool(decision.details.get("focus_max_hold_elapsed"))
+            if not max_hold_elapsed:
+                self._note_hold(team, name, pending, decision.hold, decision.detail, now)
+                return
+        # Cheap gates passed: fresh agent.get, explain, detection read, then the full gate once more.
+        fresh = self.fresh_agent(str(member.get("pane_id")))
+        if fresh is None:
+            self._note_hold(team, name, pending, "absent", "agent.get failed", now)
+            self.reconcile_due = True
+            return
+        from herdr_team import gate as gate_mod
+
+        if not self._same_occupant(member, fresh):
+            self._note_hold(team, name, pending, gate_mod.HOLD_KIND_MISMATCH, "occupant changed", now)
+            self.reconcile_due = True
+            return
+        snapshot = self._snapshot(team, member, fresh, rt, now, pending)
+        snapshot.explain = self._explain(str(member.get("pane_id")))
+        snapshot.detection_text = self._read_detection(rt, str(member.get("pane_id")), self.now_ms())
+        snapshot.detection_stable_since_ms = rt.detection_stable_since_ms
+        snapshot.prompt_line = gate.prompt_line_text(snapshot.detection_text, str(member.get("kind")))
+        # Gate 1 again: three socket round trips passed; the member may have run board --new meanwhile
+        # (register: "Board read between gate and send -> cursor re-read immediately before the prompt").
+        cursor = self._refresh_pending_seqs(team, name, pending)
+        if pending.kind == "nudge" and not pending.seqs:
+            self.log("{}: {} read the pending posts during the gate; nothing to nudge".format(team.name, name))
+            team.pending.pop(name, None)
+            self.who_dirty = True
+            return
+        pending_work = self._pending_work(pending, cursor)
+        decision = gate_evaluate(snapshot, pending_work, now, self.global_last_nudge_ms, self._pair_exchanges(team, pending, name, now), config=team.gate_config)
+        if not decision.deliver:
+            self._note_hold(team, name, pending, decision.hold, decision.detail or decision.matched_dialog_line, now)
+            return
+        pending.hold = None
+        pending.hold_since_ms = None
+        self._send(team, member, pending, snapshot, decision, now)
+
+    def _pending_work(self, pending: Pending, cursor: int) -> Any:
+        from herdr_team import gate as gate_mod
+
+        seqs = list(pending.seqs)
+        force = bool(pending.force)
+        if pending.kind in ("brief", "probe"):
+            # A briefing or probe has no board seq; the gate still needs one above the cursor,
+            # and plan 9.2 gates briefings on the stable window only (no done_hold, no interval).
+            force = True
+            if not seqs:
+                seqs = [cursor + 1]
+        # Gate 1 sees the same target-active age the TTL check above uses (``config.gate.post_ttl_ms``).
+        active_ms = pending.active_ms if pending.kind == "nudge" else None
+        return gate_mod.PendingWork(seqs, bool(pending.urgent or force), cursor, sorted(pending.authors), force=force, active_ms=active_ms)
+
+    def _pair_exchanges(self, team: TeamState, pending: Pending, name: str, now: float) -> int:
+        """Exchanges between ``name`` and each author inside the team's ``pair_window_ms`` (gate 11 pair budget)."""
+        best = 0
+        window_ms = team.gate_config.pair_window_ms
+        for author in pending.authors:
+            key = (min(author, name), max(author, name))
+            stamps = [t for t in self.pair_exchanges.get(key, []) if now - t < window_ms]
+            self.pair_exchanges[key] = stamps
+            best = max(best, len(stamps))
+        return best
+
+    def _note_hold(self, team: TeamState, name: str, pending: Pending, hold: Optional[str], detail: Optional[str], now: float) -> None:
+        from herdr_team import gate as gate_mod
+
+        if hold == gate_mod.HOLD_FOCUSED:
+            if pending.focus_hold_since_ms is None:
+                pending.focus_hold_since_ms = now  # gate 10: the 5 min max-hold clock starts here
+        else:
+            pending.focus_hold_since_ms = None
+        if hold in (gate_mod.HOLD_NAME_MISMATCH, gate_mod.HOLD_KIND_MISMATCH, gate_mod.HOLD_ABSENT):
+            self.reconcile_due = True  # adopt a rename, rebind, or mark missing before the next attempt
+        if pending.hold != hold:
+            pending.hold = hold
+            pending.hold_since_ms = now
+            pending.hold_toasted = False
+            self.log("{}: {} held: {}{}".format(team.name, name, hold, (" ({})".format(detail) if detail else "")))
+            self.who_dirty = True
+        elif pending.hold_since_ms is not None and now - pending.hold_since_ms > DIALOG_TOAST_AFTER_S * 1000.0 and not pending.hold_toasted:
+            if hold in (gate_mod.HOLD_DIALOG, gate_mod.HOLD_FOCUSED, gate_mod.HOLD_DRAFT_PRESENT, gate_mod.HOLD_BLOCKED):
+                pending.hold_toasted = True
+                self.enqueue_toast(team.name, pending.seqs, "herdr-team {}: {} waiting".format(team.name, name), "{} has been held for 10 min: {}".format(name, hold), "none", kind="outcome")
+        if hold == gate_mod.HOLD_KIND_UNVERIFIED:
+            rt = team.rt(name)
+            if rt.kind_unverified_toast_ms is None or now - rt.kind_unverified_toast_ms > KIND_UNVERIFIED_TOAST_S * 1000.0:
+                rt.kind_unverified_toast_ms = now
+                self.enqueue_toast(team.name, pending.seqs, "herdr-team {}: {} not nudged".format(team.name, name), "kind {} is unverified; posts wait for the next read".format(team.member(name).get("kind") if team.member(name) else "?"), "none", kind="outcome")
+        pending.next_eligible_ms = max(pending.next_eligible_ms, now + HOLD_REEVALUATE_S * 1000.0 if hold in (gate_mod.HOLD_DIALOG, gate_mod.HOLD_DRAFT_PRESENT, gate_mod.HOLD_FOCUSED, gate_mod.HOLD_SKIP_STATE_UPDATE, gate_mod.HOLD_VISIBLE_BLOCKER, gate_mod.HOLD_STOP_BLOCKED) else now)
+
+    def _snapshot(self, team: TeamState, member: Dict[str, Any], agent: Optional[Dict[str, Any]], rt: MemberRuntime, now: float, pending: Optional[Pending] = None) -> Any:
+        from herdr_team import gate as gate_mod
+
+        terminal_id = member.get("terminal_id") if isinstance(member.get("terminal_id"), str) else None
+        stability = self.stability.get(terminal_id or "")
+        mute = read_mute(team.paths)
+        until = muted_until(mute, str(member.get("name")), time.time())
+        muted_ms: Optional[float] = None
+        if until is not None:
+            muted_ms = float("inf") if until == float("inf") else now + max(0.0, (until - time.time()) * 1000.0)
+        # A probe is the human-requested verification round trip itself, so gate 4 does not apply to it.
+        verified = bool(member.get("verified_kind")) or self._kind_trusted(str(member.get("kind"))) or bool(pending is not None and pending.kind == "probe")
+        return gate_mod.MemberSnapshot(
+            name=str(member.get("name")),
+            kind=str(member.get("kind")),
+            terminal_id=terminal_id,
+            pane_id=agent.get("pane_id") if agent else None,
+            agent_kind=agent.get("agent") if agent else None,
+            live_name=agent.get("name") if agent and isinstance(agent.get("name"), str) else None,
+            focus_hold_since_ms=pending.focus_hold_since_ms if pending is not None else None,
+            detection_stable_since_ms=rt.detection_stable_since_ms,
+            dialog_hold_since_ms=pending.hold_since_ms if pending is not None and pending.hold == gate_mod.HOLD_DIALOG else None,
+            agent_status=str(agent.get("agent_status") or "unknown") if agent else "unknown",
+            state_change_seq=int(agent.get("state_change_seq") or 0) if agent else -1,
+            launch_pending=bool(agent.get("launch_pending")) if agent else False,
+            focused=bool(agent.get("focused")) if agent else False,
+            screen_detection_skipped=bool(agent.get("screen_detection_skipped")) if agent else False,
+            delivery=str(member.get("delivery") or "nudge"),
+            verified_kind=verified,
+            stable_since_ms=stability.since_ms if stability else None,
+            idle_since_ms=stability.idle_since_ms if stability else None,
+            explain=None,
+            detection_text=None,
+            prompt_line=None,
+            muted_until=muted_ms,
+            in_flight=rt.in_flight,
+            last_nudge_ms=rt.last_nudge_ms,
+            pane_stuck_until_ms=rt.pane_stuck_until_ms,
+            last_nudge_cursor_seq=rt.last_nudge_cursor_seq,
+            follow_up_used=bool(pending.follow_up_used) if pending is not None else False,
+        )
+
+    def _kind_trusted(self, kind: str) -> bool:
+        """``kinds.json[kind].verified`` (20 clean round trips) or ``trusted`` (an explicit owner override)."""
+        kinds = store.read_json(self.session.kinds_json, default=None)
+        if isinstance(kinds, dict):
+            entry = kinds.get(kind)
+            if isinstance(entry, dict) and (entry.get("verified") or entry.get("trusted")):
+                return True
+        return False
+
+    def _maybe_verify_kind(self, team: TeamState, kind: str) -> None:
+        """Plan 8.3: a kind becomes verified after 20 round trips at >= 90 % clean; recorded in kinds.json."""
+        if not kind or self._kind_trusted(kind):
+            return
+        try:
+            rate = team.ledger.clean_rate(kind, KIND_VERIFY_WINDOW)
+        except HerdrTeamError:
+            return
+        if rate is None or rate < KIND_VERIFY_CLEAN_RATE:
+            return
+        doc = store.read_json(self.session.kinds_json, default=None)
+        if not isinstance(doc, dict):
+            doc = {}
+        entry = doc.get(kind) if isinstance(doc.get(kind), dict) else {}
+        entry["verified"] = True
+        entry["verified_by"] = "ledger"
+        entry["clean_rate"] = round(rate, 3)
+        entry["verified_at"] = now_iso()
+        doc[kind] = entry
+        try:
+            store.write_json(self.session.kinds_json, doc, fsync=False)
+        except HerdrTeamError as err:
+            self.log("kinds.json write failed: {}".format(err))
+            return
+        self.log("kind {} verified: {:.0%} clean over the last {} round trips".format(kind, rate, KIND_VERIFY_WINDOW))
+        self.who_dirty = True
+
+    def _same_occupant(self, member: Dict[str, Any], agent: Dict[str, Any]) -> bool:
+        return agent.get("terminal_id") == member.get("terminal_id") and agent.get("agent") == member.get("kind")
+
+    def _explain(self, pane_id: str) -> Optional[Dict[str, Any]]:
+        try:
+            result = self.api.request("agent.explain", {"target": pane_id}, timeout=5.0)
+        except HerdrTeamError:
+            return None
+        explain = result.get("explain") if isinstance(result, dict) else None
+        return explain if isinstance(explain, dict) else None
+
+    def _detection_text(self, pane_id: str) -> Optional[str]:
+        try:
+            result = self.api.request("agent.read", {"target": pane_id, "source": "detection", "format": "text"}, timeout=5.0)
+        except HerdrTeamError:
+            return None
+        return read_text(result)  # ``pane_read``: ``read.text`` (a legacy top-level ``text`` still works)
+
+    def _read_detection(self, rt: MemberRuntime, pane_id: str, now: float) -> Optional[str]:
+        """Detection read plus the gate 10 stability clock: the digest's unchanged-since time."""
+        text = self._detection_text(pane_id)
+        digest = gate.detection_hash(text) if text is not None else None
+        if digest != rt.detection_hash:
+            rt.detection_hash = digest
+            rt.detection_stable_since_ms = now if digest is not None else None
+        elif rt.detection_stable_since_ms is None and digest is not None:
+            rt.detection_stable_since_ms = now
+        return text
+
+    # -- delivery ---------------------------------------------------------------------------
+
+    def _assert_roster_terminal(self, team: TeamState, member: Dict[str, Any], agent: Dict[str, Any]) -> bool:
+        """The hard rule: the target must be this member's roster terminal, in the pane the roster knows.
+
+        A terminal outside the roster counts as ``wrong_target`` (must stay
+        zero). A roster terminal that moved to another pane is refused too,
+        without the counter: reconcile adopts the new pane id first.
+        """
+        terminal_id = agent.get("terminal_id")
+        roster_terminal = member.get("terminal_id")
+        ok = isinstance(terminal_id, str) and terminal_id == roster_terminal and team.member_by_terminal(terminal_id) is not None
+        if not ok:
+            self.counters["wrong_target"] += 1
+            team.ledger.record_wrong_target(str(member.get("name")), terminal_id if isinstance(terminal_id, str) else None, agent.get("pane_id"), "terminal not in roster")
+            self.log("{}: REFUSED to prompt {} (terminal {} is not {}'s roster terminal)".format(team.name, agent.get("pane_id"), terminal_id, member.get("name")))
+            return False
+        if agent.get("pane_id") != member.get("pane_id"):
+            self.log("{}: REFUSED to prompt {}: {} now hosts {} but the roster says {}; reconciling first".format(team.name, member.get("name"), agent.get("pane_id"), terminal_id, member.get("pane_id")))
+            self.reconcile_due = True
+            return False
+        return True
+
+    def _send(self, team: TeamState, member: Dict[str, Any], pending: Pending, snapshot: Any, decision: Any, now: float) -> None:
+        name = str(member["name"])
+        rt = team.rt(name)
+        agent = self.agents.get(str(member.get("terminal_id") or ""))
+        if agent is None or not self._assert_roster_terminal(team, member, agent):
+            return
+        # Last guard before the prompt: the cursor may have moved since the gate read it.
+        pending.gate_cursor = self._refresh_pending_seqs(team, name, pending)
+        if pending.kind == "nudge" and not pending.seqs:
+            self.log("{}: {} read the pending posts right before the prompt; nothing to nudge".format(team.name, name))
+            team.pending.pop(name, None)
+            self.who_dirty = True
+            return
+        if pending.kind in ("brief", "probe"):
+            lines = list(pending.lines or [])
+        else:
+            lines = [nudge_text_for(name, pending.seqs, new_nonce())]
+        pending.attempts += 1
+        pending.gate_seq = snapshot.state_change_seq
+        attempt_id = "{}-{}-{}".format(name, int(time.time() * 1000), pending.attempts)
+        attempt = Attempt(
+            id=attempt_id, member=name, kind=str(member.get("kind")), seqs=list(pending.seqs),
+            hook_authority=bool(snapshot.screen_detection_skipped), weak_idle=bool(decision.weak_idle), focused=bool(snapshot.focused),
+            prompt_line_empty=not snapshot.prompt_line, gate_ms=max(0.0, now - (snapshot.stable_since_ms or now)),
+            queue_ms=max(0.0, now - pending.first_ms), attempts=pending.attempts,
+            manifest_source=(snapshot.explain or {}).get("manifest_source") if isinstance(snapshot.explain, dict) else None,
+            extra={"delivery": pending.kind, "stable_ms_required": decision.stable_ms_required, "pane_id": snapshot.pane_id, "terminal_id": snapshot.terminal_id},
+        )
+        team.ledger.record_intent(attempt)
+        pending.attempt_id = attempt_id
+        rt.in_flight = True
+        result = RESULT_TRANSIENT
+        details: Dict[str, Any] = {}
+        try:
+            for index, line in enumerate(lines):
+                result, details = self.deliver_line(team, member, line, snapshot.state_change_seq, follow_on=index > 0, pane_id=str(agent.get("pane_id")))
+                if result not in (RESULT_LANDED_WORKING, RESULT_DRY):
+                    break
+        finally:
+            rt.in_flight = False
+        team.ledger.record_result(attempt_id, result, details)
+        self._apply_result(team, member, pending, result, details, now, follow_up=bool(decision.details.get("follow_up")))
+
+    def deliver(self, member: str, text_lines: List[str], seqs: List[int]) -> str:
+        """``agent.prompt`` each line for a roster member (by name, any team); returns the last result."""
+        for team in self.teams.values():
+            doc = team.member(member)
+            if doc is None:
+                continue
+            agent = self.agents.get(str(doc.get("terminal_id") or "")) or self.fresh_agent(str(doc.get("pane_id")))
+            if agent is None or not self._assert_roster_terminal(team, doc, agent):
+                return RESULT_WRONG_OCCUPANT
+            seq = int(agent.get("state_change_seq") or 0)
+            result = RESULT_TRANSIENT
+            for index, line in enumerate(text_lines):
+                result, _details = self.deliver_line(team, doc, line, seq, follow_on=index > 0, pane_id=str(agent.get("pane_id")))
+                if result not in (RESULT_LANDED_WORKING, RESULT_DRY):
+                    break
+            return result
+        raise HerdrTeamError("member_not_found", "{} is not in any roster".format(member), EXIT_REFUSED)
+
+    def deliver_line(self, team: TeamState, member: Dict[str, Any], text: str, gate_seq: int, follow_on: bool = False, pane_id: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
+        """One ``agent.prompt``; classify the result per plan 8.3.
+
+        The first line of a job waits for ``working``/``blocked``. A
+        ``follow_on`` line (the second briefing line, plan 9.2) is typed right
+        after the first one started the turn: the PTY actor queues it behind
+        that Enter, so it is sent without ``wait`` and counts as landed when
+        the server accepted it for the same occupant.
+        """
+        name = str(member["name"])
+        pane_id = pane_id or str(member.get("pane_id"))
+        if self.dry_nudge:
+            self.log("{}: DRY nudge to {} ({}): {}".format(team.name, name, pane_id, text))
+            self.counters["nudges"] += 1
+            return RESULT_DRY, {"text": text}
+        params: Dict[str, Any] = {"target": pane_id, "text": text}
+        if not follow_on:
+            params["wait"] = {"until": ["working", "blocked"], "timeout_ms": 8000}
+        # The call duration is real I/O time, not a scheduling window: measure it on the wall monotonic clock.
+        t0 = time.monotonic()
+        try:
+            response = self.api.request("agent.prompt", params, timeout=PROMPT_TIMEOUT_S)
+        except HerdrTeamError as err:
+            elapsed_ms = (time.monotonic() - t0) * 1000.0
+            return self._classify_error(team, member, err, elapsed_ms, text)
+        elapsed_ms = (time.monotonic() - t0) * 1000.0
+        self.counters["nudges"] += 1
+        agent = response.get("agent") if isinstance(response, dict) else None
+        if not isinstance(agent, dict):
+            return RESULT_LANDED_WORKING, {"elapsed_ms": elapsed_ms, "note": "no agent snapshot"}
+        if agent.get("terminal_id") != member.get("terminal_id") or agent.get("agent") != member.get("kind"):
+            return RESULT_WRONG_OCCUPANT, {"elapsed_ms": elapsed_ms, "terminal_id": agent.get("terminal_id"), "agent": agent.get("agent")}
+        status = str(agent.get("agent_status") or "")
+        seq = int(agent.get("state_change_seq") or 0)
+        self._track_stability(agent, self.now_ms())
+        if follow_on:
+            return RESULT_LANDED_WORKING, {"elapsed_ms": elapsed_ms, "status": status, "seq": seq, "gate_seq": gate_seq, "note": "follow-on line queued behind the first"}
+        if status in ("idle", "done"):
+            return RESULT_TRANSIENT, {"elapsed_ms": elapsed_ms, "status": status, "note": "no transition observed"}
+        if status == "blocked":
+            # The text landed and the agent went straight to a dialog: delivered, the human sees the dialog.
+            return RESULT_LANDED_WORKING, {"elapsed_ms": elapsed_ms, "status": status, "seq": seq, "gate_seq": gate_seq, "note": "blocked after landing"}
+        if seq == gate_seq or elapsed_ms < self.landed_fast_ms:
+            # A working status with the gate's seq, or a wait that returned before the 300 ms
+            # text-to-Enter window could even elapse, means the turn was already running.
+            return RESULT_LANDED_IN_TURN, {"elapsed_ms": elapsed_ms, "status": status, "seq": seq, "gate_seq": gate_seq}
+        return RESULT_LANDED_WORKING, {"elapsed_ms": elapsed_ms, "status": status, "seq": seq, "gate_seq": gate_seq}
+
+    def _classify_error(self, team: TeamState, member: Dict[str, Any], err: HerdrTeamError, elapsed_ms: float, text: str) -> Tuple[str, Dict[str, Any]]:
+        code = err.code
+        message = (err.message or "").lower()
+        details: Dict[str, Any] = {"elapsed_ms": elapsed_ms, "code": code, "message": err.message}
+        if code == "herdr_timeout":
+            return RESULT_HUNG, details
+        if code == "agent_prompt_stalled":
+            self._interruptible_sleep(STALLED_READ_DELAY_S)
+            detection = self._detection_text(str(member.get("pane_id")))
+            line = gate.prompt_line_text(detection, str(member.get("kind")))
+            if line and line.strip() and line.strip()[:20] in text:
+                details["note"] = "text still on the prompt line"
+                return RESULT_NOT_SUBMITTED, details
+            details["note"] = "fast turn"
+            return RESULT_LANDED_WORKING, details
+        if code == "agent_prompt_failed":
+            if "full" in message and "not accepting" not in message:
+                details["pane_stuck"] = True
+                return RESULT_HUNG, details
+            return RESULT_TRANSIENT, details
+        if code == "agent_not_ready":
+            details["busy"] = "foreground" in message
+            return RESULT_TRANSIENT, details
+        if code == "agent_blocked":
+            return RESULT_REFUSED, details
+        if code in ("agent_not_found", "agent_not_running"):
+            self.reconcile_due = True
+            return RESULT_TRANSIENT, details
+        if code in ("server_not_running", "herdr_protocol"):
+            self.ping_failures += 1
+            return RESULT_TRANSIENT, details
+        details["unknown_code"] = True
+        return RESULT_TRANSIENT, details
+
+    def _apply_result(self, team: TeamState, member: Dict[str, Any], pending: Pending, result: str, details: Dict[str, Any], now: float, follow_up: bool = False) -> None:
+        name = str(member["name"])
+        rt = team.rt(name)
+        self.log("{}: {} -> {} {}".format(team.name, name, result, json.dumps(details, ensure_ascii=False)[:300]))
+        pending.follow_up_due = False
+        if result in (RESULT_LANDED_WORKING, RESULT_DRY):
+            rt.last_nudge_ms = now
+            self.global_last_nudge_ms = now
+            pending.landed_ms = now
+            # Gate 11: the cursor at this landing; a follow-up spends the one exception, a regular landing
+            # starts a new schedule and restores it.
+            previous_cursor = rt.last_nudge_cursor_seq
+            rt.last_nudge_cursor_seq = pending.gate_cursor
+            pending.follow_up_used = bool(follow_up)
+            if follow_up:
+                self.log("{}: {} follow-up nudge inside the interval (cursor {} -> {}); the exception is spent".format(team.name, name, previous_cursor, pending.gate_cursor))
+            pending.landed_seq_max = max(pending.seqs) if pending.seqs else 0
+            pending.turn_completed_since_landing = False
+            pending.transient_failures = 0
+            pending.focus_hold_since_ms = None  # a re-nudge on a focused pane waits the full max-hold again
+            if pending.attempts > 1 and not follow_up:
+                pending.renudges += 1  # the one immediate follow-up is not a re-nudge on the schedule
+            for author in pending.authors:
+                key = (min(author, name), max(author, name))
+                self.pair_exchanges.setdefault(key, []).append(now)
+            if pending.kind == "brief":
+                rt.brief_landed_ms = now
+                rt.brief_seq = _board_max_seq(team.paths)
+                try:
+                    pending.brief_cursor_updated = store.Cursors(team.paths).get(name).get("updated")
+                except HerdrTeamError:
+                    pending.brief_cursor_updated = None
+                self._apply_changes(team, [(name, {"briefed_at": now_iso(), "briefing_seq": rt.brief_seq})])
+                self.log("{}: briefing landed for {}".format(team.name, name))
+            elif pending.kind == "probe":
+                self._record_probe(team, member, pending, result, details, now)
+                team.pending.pop(name, None)
+            else:
+                self._append_system(team, "nudged", "nudged {} for {}".format(name, ", ".join("#{}".format(s) for s in pending.seqs)), [name], {"seqs": list(pending.seqs)})
+            if result == RESULT_DRY and pending.kind == "nudge":
+                pass
+            self.who_dirty = True
+            return
+        if pending.kind == "probe" and (result in (RESULT_HUNG, RESULT_REFUSED, RESULT_WRONG_OCCUPANT) or pending.attempts >= 3):
+            self._record_probe(team, member, pending, result, details, now)
+            team.pending.pop(name, None)
+            return
+        if result == RESULT_HUNG:
+            rt.pane_stuck_until_ms = now + PANE_STUCK_S * 1000.0
+            pending.next_eligible_ms = now + PANE_STUCK_S * 1000.0
+            return
+        if result == RESULT_REFUSED:
+            pending.next_eligible_ms = now + HOLD_REEVALUATE_S * 1000.0
+            return
+        if result == RESULT_WRONG_OCCUPANT:
+            # Re-resolve the member before any retry, and back off like a transient failure.
+            self.reconcile_due = True
+        # transient, landed_in_turn, not_submitted, wrong_occupant: back off 3 .. 60 s
+        pending.transient_failures += 1
+        backoff = min(TRANSIENT_BACKOFF_MAX_S, TRANSIENT_BACKOFF_MIN_S * (2 ** (pending.transient_failures - 1)))
+        pending.next_eligible_ms = now + backoff * 1000.0
+        if result == RESULT_LANDED_IN_TURN:
+            # The text landed inside a turn: treat as sent but unread; re-nudge on the schedule.
+            rt.last_nudge_ms = now
+            self.global_last_nudge_ms = now
+
+    def _finish_pending(self, team: TeamState, name: str, pending: Pending, event: str, text: str) -> None:
+        if name in team.pending:
+            del team.pending[name]
+        if pending.attempt_id:
+            team.ledger.record_outcome(pending.attempt_id, False, None)
+        self._append_system(team, event, text, ["human"], {"seqs": list(pending.seqs)})
+        self.enqueue_toast(team.name, pending.seqs, "herdr-team {}: {}".format(team.name, event), text, "none", kind="outcome")
+        self.log("{}: {} {}".format(team.name, event, text))
+        self.who_dirty = True
+
+    def _append_system(self, team: TeamState, event: str, text: str, to: Sequence[str], extra: Optional[Dict[str, Any]] = None) -> Optional[int]:
+        rec = system_record(team.name, event, text, to, os.fspath(self.layout.socket), extra)
+        try:
+            seq = append_board_record(team.paths, rec)
+        except HerdrTeamError as err:
+            self.log("{}: could not append {} record: {}".format(team.name, event, err))
+            return None
+        # Our own record will come back through the tail; the ingest ignores ``system`` authors.
+        return seq
+
+    def _record_probe(self, team: TeamState, member: Dict[str, Any], pending: Pending, result: str, details: Dict[str, Any], now: float) -> None:
+        """``kinds.json[kind].probe``: the round trip ``hooks probe <kind>`` waits for."""
+        probe = pending.probe or {}
+        kind = str(probe.get("agent_kind") or member.get("kind") or "")
+        doc = store.read_json(self.session.kinds_json, default=None)
+        if not isinstance(doc, dict):
+            doc = {}
+        entry = doc.get(kind) if isinstance(doc.get(kind), dict) else {}
+        ok = result in (RESULT_LANDED_WORKING, RESULT_DRY)
+        # ``probe.ok`` is one round trip; ``verified`` needs 20 at >= 90 % clean (``_maybe_verify_kind``).
+        entry["probe"] = {
+            "nonce": probe.get("nonce"),
+            "round_trip_ms": round(float(details.get("elapsed_ms") or 0.0), 1),
+            "paste_multiline": None,
+            "ok": ok,
+            "result": result,
+            "member": str(member.get("name")),
+            "recorded_at": now_iso(),
+            "source": "daemon",
+        }
+        doc[kind] = entry
+        try:
+            store.write_json(self.session.kinds_json, doc, fsync=False)
+        except HerdrTeamError as err:
+            self.log("kinds.json write failed: {}".format(err))
+        self.log("{}: probe for {} ({}) -> {} in {:.0f} ms".format(team.name, member.get("name"), kind, result, float(details.get("elapsed_ms") or 0.0)))
+
+    # -- toasts -------------------------------------------------------------------------------
+
+    def enqueue_toast(self, team: str, seqs: Sequence[int], title: str, body: str, sound: str = "none", kind: str = "post") -> None:
+        now = self.now_ms()
+        self.notifications.append(Notification(team, list(seqs), title[:80], body, sound, now, now, None, kind))
+
+    def _drain_human_queue(self) -> None:
+        for team in self.teams.values():
+            if not team.human_queue:
+                continue
+            posts = team.human_queue
+            team.human_queue = []
+            seqs = [int(p["seq"]) for p in posts]
+            if len(posts) == 1:
+                post = posts[0]
+                prefix = "#{} {} from {}: ".format(post["seq"], post.get("kind"), post.get("from"))
+                title = (prefix + _short_text(post.get("text"), max(0, 80 - len(prefix))))[:80]
+                body = "#{} {}".format(post["seq"], _short_text(post.get("text"), 200))
+                sound = "request" if post.get("kind") in ("request", "question", "blocked") else ("done" if post.get("kind") == "done" else "none")
+            else:
+                title = "{} new posts for you #{}-#{}".format(len(posts), min(seqs), max(seqs))[:80]
+                body = "\n".join("#{} {}: {}".format(p["seq"], p.get("from"), _short_text(p.get("text"), 60)) for p in posts[:5])
+                sound = "request" if any(p.get("kind") in ("request", "question", "blocked") for p in posts) else "none"
+            self.enqueue_toast(team.name, seqs, title, body, sound, kind="post")
+
+    def process_notifications(self) -> None:
+        self._drain_human_queue()
+        if not self.notifications:
+            return
+        now = self.now_ms()
+        if now < self.next_toast_ms:
+            return
+        # Coalesce queued post toasts per team into one before sending.
+        due = [n for n in self.notifications if n.next_ms <= now]
+        if not due:
+            return
+        note = due[0]
+        siblings = [n for n in due if n is not note and n.team == note.team and n.kind == "post" and note.kind == "post"]
+        if siblings:
+            for sibling in siblings:
+                self.notifications.remove(sibling)
+                note.seqs.extend(sibling.seqs)
+            seqs = sorted(set(note.seqs))
+            note.seqs = seqs
+            note.title = "{} new posts for you #{}-#{}".format(len(seqs), seqs[0], seqs[-1])[:80]
+        if self.toasts_disabled:
+            self.notifications.remove(note)
+            self._mirror_toast(note, "disabled", False)
+            return
+        try:
+            result = self.api.request("notification.show", {"title": note.title, "body": note.body, "sound": note.sound}, timeout=5.0)
+        except HerdrTeamError as err:
+            self.log("notification.show failed: {}".format(err.code))
+            note.reason = err.code
+            note.next_ms = now + TOAST_RETRY_NO_CLIENT_S * 1000.0
+            if now - note.created_ms > TOAST_GIVE_UP_S * 1000.0:
+                self.notifications.remove(note)
+                self._mirror_toast(note, err.code, False)
+            return
+        self.next_toast_ms = now + TOAST_GLOBAL_INTERVAL_S * 1000.0
+        reason = str(result.get("reason") or ("shown" if result.get("shown") else "unknown"))
+        note.reason = reason
+        if reason == "shown" or result.get("shown"):
+            self.counters["toasts"] += 1
+            self.notifications.remove(note)
+            self._mirror_toast(note, reason, True)
+        elif reason in ("busy", "rate_limited"):
+            if now - note.created_ms > TOAST_GIVE_UP_S * 1000.0:
+                self.notifications.remove(note)
+                self._mirror_toast(note, reason, False)
+            else:
+                note.next_ms = now + TOAST_RETRY_BUSY_S * 1000.0
+        elif reason == "disabled":
+            self.toasts_disabled = True
+            self.log("toasts disabled on this server; mirroring to human-attention only")
+            for pending_note in list(self.notifications):
+                self.notifications.remove(pending_note)
+                self._mirror_toast(pending_note, reason, False)
+        elif reason == "no_foreground_client":
+            note.next_ms = now + TOAST_RETRY_NO_CLIENT_S * 1000.0
+        else:
+            self.notifications.remove(note)
+            self._mirror_toast(note, reason, bool(result.get("shown")))
+
+    def _mirror_toast(self, note: Notification, reason: str, shown: bool) -> None:
+        entry = {"ts": now_iso(), "team": note.team, "seqs": note.seqs, "title": note.title, "body": note.body, "reason": reason, "shown": shown, "kind": note.kind}
+        team = self.teams.get(note.team)
+        if team is not None:
+            try:
+                store.append_line(team.paths.human_attention, json.dumps(entry, ensure_ascii=False).encode("utf-8"), fsync=False)
+            except HerdrTeamError as err:
+                self.log("human-attention write failed: {}".format(err))
+            self._append_system(team, "toast", "toast {}: {}".format(reason, note.title), ["human"], {"seqs": note.seqs, "shown": shown})
+        self.who_dirty = True
+
+    # -- who.json ------------------------------------------------------------------------------
+
+    def write_who_if_due(self, now: float) -> None:
+        if not self.who_dirty:
+            return
+        if self.last_who_ms is not None and now - self.last_who_ms < WHO_COALESCE_S * 1000.0:
+            return
+        self.last_who_ms = now
+        self.who_dirty = False
+        self.write_who()
+
+    def build_who(self) -> Dict[str, Any]:
+        console = store.read_json(self.session.console_json, default=None)
+        default_team = console.get("default_team") if isinstance(console, dict) else None
+        if default_team is None and len(self.teams) == 1:
+            default_team = next(iter(self.teams))
+        charters: Dict[str, Any] = {}
+        teams: Dict[str, Any] = {}
+        now_ms = self.now_ms()
+        for team in self.teams.values():
+            charter = team.roster.get("charter") if isinstance(team.roster.get("charter"), dict) else None
+            if charter is not None:
+                charters[team.name] = {"seq": charter.get("seq"), "headline": _short_text(charter.get("text"), 120), "refs": list(charter.get("refs") or [])}
+            mute = read_mute(team.paths)
+            members = []
+            for member in team.members():
+                name = str(member.get("name"))
+                agent = self.agents.get(str(member.get("terminal_id") or "")) if member.get("terminal_id") else None
+                rt = team.rt(name)
+                pending = team.pending.get(name)
+                until = muted_until(mute, name, time.time())
+                members.append({
+                    "name": name,
+                    "role": member.get("role"),
+                    "kind": member.get("kind"),
+                    "status": member.get("status"),
+                    "agent_status": agent.get("agent_status") if agent else None,
+                    "pane_id": agent.get("pane_id") if agent else member.get("pane_id"),
+                    "terminal_id": member.get("terminal_id"),
+                    "workspace_id": agent.get("workspace_id") if agent else member.get("workspace_id"),
+                    "terminal_title_stripped": agent.get("terminal_title_stripped") if agent else None,
+                    "last_headline": rt.last_headline,
+                    "pending_nudges": len(pending.seqs) if pending and pending.kind == "nudge" else (1 if pending else 0),
+                    "hold": pending.hold if pending else None,
+                    "muted_until": None if until is None else ("indefinite" if until == float("inf") else time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(until))),
+                    "verified_kind": bool(member.get("verified_kind")) or self._kind_trusted(str(member.get("kind"))),
+                    "delivery": member.get("delivery", "nudge"),
+                    "hooks_last_seen": self._hooks_last_seen(member),
+                    "last_seen_at": member.get("last_seen_at"),
+                    "briefed": member.get("briefed_at") is not None,
+                    "charter_stale": bool(charter and (member.get("charter_seq_acked") or 0) < int(charter.get("seq") or 0)) if member.get("kind") != "human" else False,
+                    "brief": member.get("brief"),
+                })
+            teams[team.name] = {"members": members, "pending": sum(len(p.seqs) for p in team.pending.values()), "watermark": team.watermark}
+        return {
+            "v": 1,
+            "daemon_beat_at": now_iso(),
+            "daemon_pid": os.getpid(),
+            "socket": os.fspath(self.layout.socket),
+            "herdr_version": self.server_version,
+            "default_team": default_team,
+            "toasts": "disabled" if self.toasts_disabled else read_toast_delivery(self.layout.config_dir),
+            "charters": charters,
+            "teams": teams,
+            "counters": dict(self.counters),
+            "uptime_ms": now_ms - (self.connected_ms or now_ms),
+        }
+
+    def write_who(self) -> None:
+        try:
+            store.write_json(self.session.who_json, self.build_who(), fsync=False)
+        except HerdrTeamError as err:
+            self.log("who.json write failed: {}".format(err))
+
+
+# --------------------------------------------------------------------------
+# entry point for a foreground daemon (tests, debugging)
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    """``python -m herdr_team.daemon --socket PATH [--state-root DIR] [--dry-nudge] [--allow-version]``.
+
+    Runs the daemon in the foreground (no double fork) holding ``daemon.lock``;
+    exit 5 when another daemon holds it. Used by tests and for debugging.
+    """
+    parser = argparse.ArgumentParser(prog="herdr_team.daemon")
+    parser.add_argument("--socket", required=True)
+    parser.add_argument("--state-root")
+    parser.add_argument("--dry-nudge", action="store_true")
+    parser.add_argument("--allow-version", action="store_true")
+    parser.add_argument("--lock-timeout", type=float, default=0.0)
+    parser.add_argument("--max-iterations", type=int)
+    parser.add_argument("--backoff", help="comma separated reconnect backoff seconds (tests)")
+    parser.add_argument("--give-up", type=float, help="seconds before giving up on reconnects (tests)")
+    parser.add_argument("--tick", type=float, help="subscription tick seconds (tests)")
+    args = parser.parse_args(list(argv) if argv is not None else None)
+    env = scrub_env(os.environ)
+    for name in IDENTITY_ENV_VARS:
+        os.environ.pop(name, None)
+    if args.state_root:
+        env["HERDR_TEAM_STATE_DIR"] = args.state_root
+        os.environ["HERDR_TEAM_STATE_DIR"] = args.state_root
+    layout = resolve_layout(env, socket=args.socket)
+    ensure_session_dirs(layout.session)
+    lock = store.daemon_lock(layout.session, timeout=args.lock_timeout)
+    try:
+        lock.acquire()
+    except LockTimeout as err:
+        sys.stderr.write(json.dumps(err.to_json()) + "\n")
+        return EXIT_DAEMON_DOWN
+    api = HerdrApi(layout.socket, env=env)
+    daemon = Daemon(layout, env, api, dry_nudge=args.dry_nudge, allow_version=args.allow_version)
+    daemon.lock = lock
+    if args.backoff:
+        daemon.backoff = tuple(float(x) for x in args.backoff.split(","))
+    if args.give_up is not None:
+        daemon.give_up_s = args.give_up
+    if args.tick is not None:
+        daemon.tick_s = args.tick
+    daemon.max_iterations = args.max_iterations
+    try:
+        daemon.connect_server()
+    except HerdrTeamError as err:
+        if err.code == "herdr_version_mismatch":
+            sys.stderr.write(json.dumps(err.to_json()) + "\n")
+            lock.release()
+            return err.exit_code
+    daemon.write_info(started=True)
+    daemon.log("foreground start pid {} {}".format(os.getpid(), _stdio_description(layout.session)))
+    return daemon.run()
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

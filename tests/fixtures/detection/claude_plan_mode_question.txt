@@ -1,0 +1,10 @@
+⏺ Before I write the plan I need one decision from you.
+
+───────────────────────────────────────────────────────────────────────
+ Which approach should the fix take?
+
+ ❯ 1. Patch the BFF session middleware (smallest diff)
+   2. Move session state into the store layer (larger, cleaner)
+   3. Type something else
+
+ Enter to select · Tab/arrow keys to navigate · Esc to cancel

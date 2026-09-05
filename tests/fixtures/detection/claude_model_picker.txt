@@ -1,0 +1,10 @@
+ Select model
+
+ Switch between Claude models. Applies to this session and future Claude
+ Code sessions. For custom model names, specify with --model.
+
+ ❯ 1. Default (recommended)   Opus 4.1 · $15/$75 per Mtok
+   2. Sonnet                  Sonnet 4.5 · $3/$15 per Mtok
+   3. Opus                    Opus 4.1 · $15/$75 per Mtok
+
+ Enter to set as default · Esc to cancel

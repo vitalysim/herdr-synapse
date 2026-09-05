@@ -1,0 +1,21 @@
+{
+  "description": "In-session pane move (plan 4.2, register 'Pane moved to another tab or workspace'): terminal ids survive, public pane ids change, and the name is intact. Reviewer moved from w2:p1 to w5:p1 and rebinds by terminal_id (a) with the new pane id; worker stayed put; a same-terminal restart with a different kind lands in kind_changed.",
+  "members": [
+    {"name": "alpha-reviewer", "role": "reviewer", "kind": "codex", "terminal_id": "term_r1", "pane_id": "w2:p1", "workspace_id": "w2", "label": "team:alpha/reviewer", "cwd": "/tmp/work", "status": "active"},
+    {"name": "alpha-worker", "role": "worker", "kind": "claude", "terminal_id": "term_w1", "pane_id": "w2:p2", "workspace_id": "w2", "label": "team:alpha/worker", "cwd": "/tmp/work", "status": "active"},
+    {"name": "alpha-swapped", "role": "swapped", "kind": "gemini", "terminal_id": "term_s1", "pane_id": "w2:p3", "workspace_id": "w2", "label": "team:alpha/swapped", "cwd": "/tmp/work", "status": "active"},
+    {"name": "human", "role": "operator", "kind": "human", "terminal_id": null, "status": "active"}
+  ],
+  "agent_list": [
+    {"terminal_id": "term_r1", "pane_id": "w5:p1", "workspace_id": "w5", "agent": "codex", "name": "alpha-reviewer", "cwd": "/tmp/work", "agent_status": "idle"},
+    {"terminal_id": "term_w1", "pane_id": "w2:p2", "workspace_id": "w2", "agent": "claude", "name": "alpha-worker", "cwd": "/tmp/work", "agent_status": "working"},
+    {"terminal_id": "term_s1", "pane_id": "w2:p3", "workspace_id": "w2", "agent": "codex", "name": null, "cwd": "/tmp/work", "agent_status": "idle"},
+    {"terminal_id": "term_decoy", "pane_id": "w2:p1", "workspace_id": "w2", "agent": "codex", "name": null, "cwd": "/tmp/work", "agent_status": "idle"}
+  ],
+  "pane_list": [],
+  "expected": {
+    "bindings": {"alpha-reviewer": ["term_r1", "terminal_id"], "alpha-worker": ["term_w1", "terminal_id"]},
+    "kind_changed": {"alpha-swapped": "term_s1"},
+    "reviewer_pane_id": "w5:p1"
+  }
+}

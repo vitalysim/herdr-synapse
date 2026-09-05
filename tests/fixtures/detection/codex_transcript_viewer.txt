@@ -1,0 +1,12 @@
+user
+fix the session isolation bug in the BFF
+
+codex
+I'll start by reading the middleware.
+
+exec
+cargo test -p bff
+
+›
+
+ ↑/↓ to scroll   PgUp/PgDn to page   Home/End to jump   q to quit   Esc to edit prev

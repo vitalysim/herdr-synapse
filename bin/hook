@@ -1,0 +1,81 @@
+#!/bin/sh
+# herdr-team manifest event gate.
+#
+# Herdr runs this for pane.agent_detected, pane.closed, and pane.exited.
+# The notifier daemon already watches those events over its own subscription,
+# so when a live daemon serves this session the hook must exit 0 in about
+# 10 ms without starting Python. Only when no daemon is alive does the hook
+# exec the Python reconciler through the launcher (`herdr-team hook-event`).
+#
+# Liveness is `<session>/daemon.json` naming a pid that is alive and whose
+# process start time (ps -o lstart=) matches the recorded one. Everything but
+# that one `ps` is a shell builtin. If the session dir cannot be derived here,
+# fall through to Python, which always computes the right answer. A wrong
+# "alive" verdict is the only unsafe outcome, and it needs both a live pid and
+# an identical start time string in a file only the daemon writes.
+#
+# Never `set -e`: a hook that dies leaves Herdr's plugin log with a failure
+# and gains nothing.
+
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P) || exit 0
+event=${1:-}
+
+# --- derive the session dir with builtins only -----------------------------
+
+state_root=${HERDR_TEAM_STATE_DIR:-${HERDR_PLUGIN_STATE_DIR:-}}
+sock=${HERDR_SOCKET_PATH:-}
+slug=""
+if [ -n "$sock" ]; then
+    case "$sock" in
+        */herdr.sock)
+            dir=${sock%/herdr.sock}
+            parent=${dir%/*}
+            case "$parent" in
+                */sessions) slug=${dir##*/} ;;
+                *) slug=default ;;
+            esac
+            ;;
+    esac
+fi
+
+if [ -n "$state_root" ] && [ -n "$slug" ]; then
+    session_dir="$state_root/sessions/$slug"
+    daemon_json="$session_dir/daemon.json"
+    if [ -r "$daemon_json" ]; then
+        # daemon.json is one line; read it into a variable, no fork.
+        IFS= read -r json < "$daemon_json" 2>/dev/null || json=""
+        case "$json" in
+            *'"pid":'*'"start_time":'*)
+                # Tolerate optional spaces after the colons (compact or indented JSON).
+                pid=${json#*\"pid\":}
+                pid=${pid#"${pid%%[! ]*}"}
+                pid=${pid%%[!0-9]*}
+                start=${json#*\"start_time\":}
+                start=${start#"${start%%[! ]*}"}
+                start=${start#\"}
+                start=${start%%\"*}
+                start=${start#"${start%%[! ]*}"}
+                start=${start%"${start##*[! ]}"}
+                if [ -n "$pid" ] && [ -n "$start" ] && kill -0 "$pid" 2>/dev/null; then
+                    live=$(ps -o lstart= -p "$pid" 2>/dev/null)
+                    # ps pads with leading spaces; trim them the way the
+                    # daemon does when it records start_time.
+                    live=${live#"${live%%[! ]*}"}
+                    live=${live%"${live##*[! ]}"}
+                    if [ "$live" = "$start" ]; then
+                        exit 0
+                    fi
+                fi
+                ;;
+        esac
+    fi
+fi
+
+# --- slow path: Python reconciler ----------------------------------------------
+#
+# Hooks exit 0 in every case that is not a bug in the plugin (plan 9, 12): when
+# the launcher itself cannot run (no python3, too old) its JSON error stays on
+# stderr for the plugin log, but the event hook still succeeds.
+
+"$root/bin/herdr-team" hook-event "$event"
+exit 0

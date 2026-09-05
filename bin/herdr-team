@@ -1,0 +1,52 @@
+#!/bin/sh
+# herdr-team launcher.
+#
+# Resolves a Python interpreter (HERDR_TEAM_PYTHON, then python3 on PATH,
+# then /usr/bin/python3), refuses anything older than 3.9, and execs
+# `python -m herdr_team.cli "$@"` with the plugin root on PYTHONPATH.
+#
+# POSIX sh only: this file runs from Herdr's plugin runtime with a minimal
+# PATH, from hooks, and from the user's shell. Keep it dependency free.
+
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P) || exit 1
+
+py=${HERDR_TEAM_PYTHON:-}
+if [ -z "$py" ]; then
+    py=$(command -v python3 2>/dev/null) || py=""
+fi
+if [ -z "$py" ] && [ -x /usr/bin/python3 ]; then
+    py=/usr/bin/python3
+fi
+if [ -z "$py" ]; then
+    printf '%s\n' '{"code":"python_missing","message":"herdr-team needs Python 3.9 or newer: set HERDR_TEAM_PYTHON or put python3 on PATH"}' >&2
+    exit 1
+fi
+
+# `python3 --version` prints "Python X.Y.Z" (to stdout on 3.4+). Parse with
+# parameter expansion only; one interpreter start is the whole cost.
+ver=$("$py" --version 2>&1) || ver=""
+ver=${ver#Python }
+major=${ver%%.*}
+rest=${ver#*.}
+minor=${rest%%.*}
+case "$major" in
+    ''|*[!0-9]*) major=0 ;;
+esac
+case "$minor" in
+    ''|*[!0-9]*) minor=0 ;;
+esac
+if [ "$major" -lt 3 ] || { [ "$major" -eq 3 ] && [ "$minor" -lt 9 ]; }; then
+    printf '{"code":"python_too_old","message":"herdr-team needs Python 3.9 or newer, found %s at %s; set HERDR_TEAM_PYTHON"}\n' "${ver:-unknown}" "$py" >&2
+    exit 1
+fi
+
+if [ -n "${PYTHONPATH:-}" ]; then
+    PYTHONPATH="$root:$PYTHONPATH"
+else
+    PYTHONPATH="$root"
+fi
+export PYTHONPATH
+HERDR_TEAM_ROOT="$root"
+export HERDR_TEAM_ROOT
+
+exec "$py" -m herdr_team.cli "$@"

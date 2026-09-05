@@ -1,0 +1,11 @@
+> fix the session isolation bug in the BFF
+
+⏺ I'll start by reading the middleware.
+
+⏺ Read(src/bff/session.rs)
+  ⎿  Read 212 lines
+
+⏺ Update(src/bff/session.rs)
+  ⎿  Updated src/bff/session.rs with 6 additions and 2 removals
+
+  Showing detailed transcript · Ctrl+O to toggle · ↑↓ scroll

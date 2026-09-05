@@ -1,0 +1,8 @@
+╭──────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.42.0)                    │
+╰──────────────────────────────────────────────╯
+• I reviewed the diff in src/bff/session.rs and found one regression.
+
+› 
+  ↑/↓ to scroll · q to quit · ? for shortcuts
+> some quoted line the agent printed

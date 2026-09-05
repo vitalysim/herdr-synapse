@@ -1,0 +1,7 @@
+⏺ Done. The session-isolation fix is in src/bff/session.rs and all 42
+  tests pass. I also removed the stale cache key in src/bff/cache.rs.
+
+───────────────────────────────────────────────────────────────────────
+❯
+───────────────────────────────────────────────────────────────────────
+  ? for shortcuts                                          Opus 4.1

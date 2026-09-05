@@ -1,0 +1,7 @@
+⏺ Done. The session-isolation fix is in src/bff/session.rs and all 42
+  tests pass.
+
+───────────────────────────────────────────────────────────────────────
+❯ now also fix the flaky test in src/bff/cache_test.rs
+───────────────────────────────────────────────────────────────────────
+  ? for shortcuts                                          Opus 4.1

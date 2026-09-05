@@ -1,0 +1,15 @@
+• I'll clear the stale build output first.
+
+• Working (2s • esc to interrupt)
+
+›
+
+  Allow command?
+
+  $ rm -rf target
+
+  ❯ 1. Yes, proceed
+    2. Yes, and don't ask again for this command
+    3. No, and tell Codex what to do differently
+
+  Press enter to confirm or esc to cancel

@@ -1,0 +1,11 @@
+⏺ Two notes before you accept the change: run `git add -p` to accept only
+  the hunks you want, and if you select model variants with /model the
+  picker prints "Enter to set as default · Esc to cancel" while it is
+  open, so "esc to cancel" in a log line does not mean a dialog is up.
+  Action required from you: none. Do you want to proceed? That is the
+  wording the permission prompt uses; I am only quoting it here.
+
+───────────────────────────────────────────────────────────────────────
+❯
+───────────────────────────────────────────────────────────────────────
+  ? for shortcuts                                          Opus 4.1
