@@ -62,6 +62,14 @@ filter: [all]  to me  requests  human  system  (Tab cycles)   ? help
 - **A console built for the operator.** Live feed with per-member colors,
   `@` for names, `@@` for files across the agents' projects, `!` for members,
   `?` for help, receipts (`✓nudged`, `✓read`, `✓typed`), and hold reasons.
+- **Usage limits for every agent at once.** `prefix+i` opens the session,
+  weekly, and per-model windows of every provider account your agents draw
+  on (Anthropic, OpenAI Codex, GitHub Copilot, Gemini), grouped by the
+  agents behind each, the way `/usage` and `/status` show them per agent.
+- **Interrupts, on a leash.** An agent whose news cannot wait posts
+  `--interrupt`; the notifier types the notice into the teammate's running
+  turn when the team allows it for that kind (Claude Code by default), once
+  per teammate per ten minutes, always framed as a peer request.
 - **Optional Claude Code hooks.** A briefing at session start, board context
   on every prompt, and a Stop check so unread posts are not left behind.
 
@@ -100,7 +108,7 @@ are listed but nothing is typed into them, and `add` says so.
    shows `✓nudged` and `✓read`.
 
 Default key bindings: `prefix+t` team up, `prefix+u` console, `prefix+m`
-compose popup, `prefix+y` team view in the sidebar.
+compose popup, `prefix+y` team view in the sidebar, `prefix+i` usage limits.
 
 ## The console in one table
 
@@ -113,6 +121,8 @@ compose popup, `prefix+y` team view in the sidebar.
 | `@@path text` | attaches a file; `@@` opens a finder over the agents' project |
 | `!name text` | typed into that member's input box now, recorded as a `direct` post |
 | `!!name text` | also while the member works or is muted; never into a dialog or a draft |
+| `/interrupt @name text` | an interrupt: urgent, and typed into that member's running turn when its kind allows it (agents do the same with `post --interrupt`) |
+| `/interrupts off`, `/interrupts claude,codex --cooldown 5m` | which kinds interrupts may reach mid-turn, and how often |
 | `/nudge name`, `/mute name 10m`, `/pause`, `/focus name`, `/peek name` | delivery and pane controls |
 | `/who`, `/charter`, `/charter set text`, `/use team`, `/retract N`, `/remove name` | roster, charter, teams, board |
 | `?` on an empty line, `/help` | every sign, command, and key |
@@ -166,8 +176,10 @@ team through `config.gate` in `team.json`.
 ## Status
 
 Verified live with Claude Code, Codex, and OpenCode. Typing into a running
-turn (`!!`) is verified for Claude Code; other kinds are typed but flagged
-until checked. Hooks exist for Claude Code only. macOS is the primary
+turn (`!!`, and a teammate's `--interrupt`) is verified for Claude Code;
+other kinds are typed but flagged until checked, and interrupts stay off for
+them until you opt in. Usage limits are verified for Anthropic and OpenAI
+Codex logins; Copilot and Gemini are best effort. Hooks exist for Claude Code only. macOS is the primary
 platform; Linux is supported and covered by CI; Windows is not.
 
 ## Development

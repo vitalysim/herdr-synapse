@@ -273,10 +273,12 @@ what was actually sent: intents, results, per-kind clean-landing rate,
 | `herdr-team mute <name> \| --all [--for 10m\|2h\|1d\|N]`, `unmute <name> \| --all`, `pause` | silence nudges (gate 2) and the Claude Stop hook; posts still land and **toasts are not muted** |
 | `herdr-team focus <name>` | focus the member's pane through the daemon |
 | `herdr-team say <name> "<text>" [--force]` (console: `!name text`, `!!name text`) | type one line into the member's input box now, with operator authority, recorded as a `direct` board record; refused while the member shows a dialog, a permission prompt, an overlay, or a draft, and while it is working unless `--force`; the outcome is a `typed` record and a feed tag (`✓typed`, `✗ not typed (working)`, …); human only, from the focused console only |
+| `herdr-team post --to <name> --interrupt "<text>"` (console: `/interrupt @name text`) | urgent, and when the recipient's kind is in `config.gate.interrupt_kinds` (default `claude`) and the sender is out of its cooldown for that teammate (10 min), the daemon types the nudge into the recipient's *running turn* instead of waiting for idle: `[herdr-team interrupt] <sender> could not wait: 1 urgent board post for <name> (seq N). Run: herdr-team board --new [nK]`. Dialog, overlay, draft, focus, and rate-limit gates still hold it; otherwise it is an ordinary urgent nudge. The feed shows `⚡INTERRUPT` on the post and `⚡interrupted` once typed; `who` shows `⚡armed`, `⚡cooldown`, or `⚡kind_not_allowed` next to `↪N`. Named recipients only; a member's repeat inside the cooldown is `interrupt_cooldown` at the CLI; the human has no cooldown |
+| `herdr-team interrupts [show\|off\|on\|<kind>,<kind>] [--cooldown 10m]` (console: `/interrupts …`) | show or set the team's interrupt kinds and cooldown (`config.gate`); changing them is human only |
 | `herdr-team read <name>` | the member's visible screen; `--lines` is refused for every member because scrolling an alternate screen types into it |
 | `herdr-team notifier stats [--team] [--kind]` | the delivery ledger |
 | `herdr-team kinds list \| trust <kind> [--reason "…"] \| untrust <kind>` | the trust override behind gate 4; `list` prints `<kind>  delivers\|held  <flags>`; a kind also becomes `verified` on its own after 20 clean round trips |
-| `team.json` → `config.gate` | `stable_ms_screen` 2000, `stable_ms_hook` 750, `stable_ms_hooks_delivery` 15000, `done_hold_ms` 60000, `min_interval_ms` 20000, `global_interval_ms` 1500, `focus_max_hold_ms` 300000, `focus_snapshot_stable_ms` 3000, `dialog_hold_cap_ms` 600000, `pair_budget` 10, `pair_window_ms` 600000, `sample_gap_reset_ms` 10000, `post_ttl_ms` 1800000, `burst_window_ms` 1000, `nudge_focused` `never\|always`; the daemon reloads it within 2 s and ignores the whole block if any key is invalid |
+| `team.json` → `config.gate` | `stable_ms_screen` 2000, `stable_ms_hook` 750, `stable_ms_hooks_delivery` 15000, `done_hold_ms` 60000, `min_interval_ms` 20000, `global_interval_ms` 1500, `focus_max_hold_ms` 300000, `focus_snapshot_stable_ms` 3000, `dialog_hold_cap_ms` 600000, `pair_budget` 10, `pair_window_ms` 600000, `sample_gap_reset_ms` 10000, `post_ttl_ms` 1800000, `burst_window_ms` 1000, `nudge_focused` `never\|always`, `interrupt_kinds` `["claude"]`, `interrupt_cooldown_ms` 600000; the daemon reloads it within 2 s and ignores the whole block if any key is invalid |
 | `daemon start --dry-nudge` | log nudges instead of typing them (for a dry run) |
 
 Measured in the rig with `done_hold_ms 5000`: post to the member working in
@@ -319,7 +321,10 @@ a popup on the roster box.
   bold; system records are dim; warnings are red. Terminals without colors
   fall back to bold and dim only.
 - **Input**: plain text → whole team; `@name text` → one member; `@role:r
-  text` → a role. Typing `@` (at the start or after a space) opens a name
+  text` → a role; `/interrupt @name text` → an interrupt (section 6): urgent,
+  and typed into that member's running turn when its kind allows it and the
+  sender is out of cooldown; `/interrupts off|on|claude,codex [--cooldown
+  10m]` sets that policy. Typing `@` (at the start or after a space) opens a name
   list above the input line: every member with role, kind, and status, then
   `role:<r>` groups, `all`, and `human`; keep typing to filter (a role or
   part of a name matches), Up/Down move, Tab or Enter insert the pick, Esc
@@ -420,8 +425,9 @@ UI-01, UI-02 (peek never makes the console look like an agent).
 
 | Capability | How | Notes |
 | --- | --- | --- |
-| Key bindings | `herdr-team keys print` → paste → `herdr server reload-config`; `keys check` reports collisions | `prefix+t` team-up, `prefix+m` compose, `prefix+u` console, `prefix+y` view toggle; all unbound in Herdr's defaults |
-| Plugin actions | `herdr plugin action invoke herdr-team.<team-up\|compose\|console\|who\|toggle-view\|daemon-start>` | same entrypoints as the keys |
+| Key bindings | `herdr-team keys print` → paste → `herdr server reload-config`; `keys check` reports collisions | `prefix+t` team-up, `prefix+m` compose, `prefix+u` console, `prefix+y` view toggle, `prefix+i` usage limits; all unbound in Herdr's defaults |
+| Plugin actions | `herdr plugin action invoke herdr-team.<team-up\|compose\|console\|who\|usage\|toggle-view\|daemon-start>` | same entrypoints as the keys |
+| Usage limits | `prefix+i`, `herdr-team ui usage`, or `herdr-team usage [--json]` | the session, weekly, and per-model windows of every provider account the session's agents draw on (Anthropic, OpenAI Codex, GitHub Copilot, Google Gemini; OpenCode Zen listed as billed per token), grouped with the agents behind each, bars with `⚠`/`‼` at 75/90 %, reset times; the popup refreshes every minute, `r` now, `q` closes; kinds with no known source are listed as not tracked |
 | Sidebar rows | `herdr-team setup --print-config` → paste the required block → reload | `$team_role` and `$team_task` per member; the optional block switches status glyphs to symbols for every agent |
 | Tokens | automatic | `team`, `team_role` stay while the team exists; `team_task` is the member's `task` text (under 30 min old) or its last post headline with a kind glyph, restamped at the 30 s heartbeat when it changed, TTL 120 s: it fading is the health signal |
 | Team view | `prefix+y`, or `herdr-team view on\|off\|toggle [--force]` | filters the Agents panel to the team plus any blocked agent elsewhere; refuses to replace a view another plugin owns unless `--force`; `plugin_disabled` when disabled |
@@ -504,8 +510,15 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
   `setup` (skip with `--no-probe`).
 - Nothing is typed while a member is working, blocked, in a menu, has a
   draft, or is the pane you are looking at (until the 5 min focus hold
-  expires and its screen has been still for 3 s). Your own `!!name text` is
-  the only thing that types into a working member.
+  expires and its screen has been still for 3 s). Two things type into a
+  *working* member: your own `!!name text`, and a teammate's `post
+  --interrupt` when the team allows it for that kind (`interrupt_kinds`,
+  default Claude only), at most once per sender and teammate per 10 min,
+  always as the `[herdr-team interrupt]` envelope and never the post text,
+  so attribution is unchanged; `herdr-team interrupts off` turns it off.
+- `herdr-team usage` reads the agent CLIs' own login tokens only to query
+  each provider's usage endpoint over HTTPS; tokens are never written,
+  logged, or printed, and the report is read-only.
 - Authorship is stamped by the system from the pane and process, never
   claimed by text. `herdr-team audit` shows refusals.
 - Every board line renders inside a quote under a system header; the hook
@@ -527,6 +540,14 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
   queues the line as its next message). For other kinds the line is typed
   and the outcome carries `unverified for <kind>`; Codex is the next to
   verify live.
+- `post --interrupt` into a running turn is verified for Claude Code only
+  (the queue behaviour `!!` relies on); other kinds are off by default and
+  `interrupts claude,codex` opts in unverified.
+- `usage` windows are verified live for Anthropic (Claude Code login) and
+  OpenAI Codex (ChatGPT login). GitHub Copilot answers without a quota on
+  individual plans; Gemini needs a valid token and its quota response is
+  parsed best effort; Cursor, Grok, Kimi, Droid, Amp, and the other kinds have
+  no known usage source and are listed as not tracked.
 - No shared task list with claiming; no cross-session or cross-machine
   teams; no Windows.
 - The console opens as a split in the current tab, not its own tab.
@@ -568,3 +589,5 @@ Each row: do this, expect that.
 | C26 | `herdr-team notifier stats` at the end | `wrong_target 0`, `open_intents 0`, a clean rate per kind; hold reasons are in `daemon.log` and `who --json`, not here |
 | C27 | in the console, while a member is idle: `!<member> reply with the word pong` | the text is in its input box within about a second with no `[herdr-team` header and the member starts working; the feed shows a `»direct` entry with `… typing` then `✓typed`; `board --thread <seq>` shows the `typed` record under it; the member's `board --new` does not list it; `notifier stats` intents grow by one and the clean rate is unchanged |
 | C28 | `!<member> x` while it works; then `!!<member> summarize so far`; `!<member> /clear`; the compose popup `!<member> hi`; `herdr-team say <member> x` from a shell pane | `✗ not typed (working)` with the `!!` hint in the status line, nothing typed; the forced line lands as `✓typed (in running turn)` (`, unverified for codex` on Codex); `/clear` is refused `say_control_command`; the popup answers `direct typing is console-only`; the shell answers `say_unverified` and `herdr-team audit` lists it |
+| C29 | `prefix+i` (or `herdr-team usage`) | a popup lists every agent grouped by provider with session and weekly bars, `% used`, `⚠`/`‼` past 75/90 %, and reset times; `r` refreshes; `herdr-team usage --json` contains no token |
+| C30 | while a Claude member works, have another member run `herdr-team post --to <claude> --interrupt "stop, wrong branch"`; repeat within 10 min; then `/interrupts off` and once more | the feed shows `⚡INTERRUPT`; `[herdr-team interrupt] <sender> could not wait …` lands in the working member's input and it reads the board after its current step (`⚡interrupted`); the repeat is `interrupt_cooldown` at the CLI; after `/interrupts off` the post waits for idle (`who`: `⚡kind_not_allowed`) |

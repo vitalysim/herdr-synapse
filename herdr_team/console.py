@@ -375,6 +375,8 @@ def post_args(intent: Intent, team: str) -> List[str]:
         args += ["--reply-to", str(a["reply_to"])]
     if a.get("urgent"):
         args.append("--urgent")
+    if a.get("interrupt"):
+        args.append("--interrupt")
     for ref in a.get("refs") or []:
         args += ["--ref", str(ref)]
     for path in a.get("files") or []:
@@ -442,7 +444,7 @@ def execute_intent(intent: Intent, model: ConsoleModel, state: ConsoleState, api
         if err:
             model.status = "post failed: {}: {}".format(err.get("code"), err.get("message"))
         elif isinstance(out, dict):
-            everyone = " (every member is nudged)" if out.get("to") == ["all"] else ""
+            everyone = " (every member is nudged)" if out.get("to") == ["all"] else (" (interrupt: typed into the turn when allowed)" if out.get("interrupt") else "")
             model.status = "posted #{} to {}{}{}".format(out.get("seq"), ",".join(out.get("to") or []), everyone, "" if model.focused else " (unfocused: unverified)")
             attached = [re.sub(r"^\d+-", "", str(p).rsplit("/", 1)[-1]) for p in (out.get("attached") or [])]  # payloads/<seq>-<name>
             if attached:
@@ -484,6 +486,19 @@ def execute_intent(intent: Intent, model: ConsoleModel, state: ConsoleState, api
             args.append("--force")
         rc, out, err = run_cli(args, env)
         model.status = "nudge failed: {}".format(err.get("message")) if err else "nudge queued for {} (job {})".format(intent.args.get("member"), (out or {}).get("job") if isinstance(out, dict) else "?")
+        return True
+    if kind == "interrupts":
+        args = ["--team", team, "interrupts"]
+        if intent.args.get("mode"):
+            args.append(str(intent.args["mode"]))
+        if intent.args.get("cooldown"):
+            args += ["--cooldown", str(intent.args["cooldown"])]
+        rc, out, err = run_cli(args, env)
+        if err:
+            model.status = "interrupts failed: {}".format(err.get("message"))
+        else:
+            kinds = (out or {}).get("kinds") if isinstance(out, dict) else None
+            model.status = "interrupts {} · cooldown {} min".format("off" if not kinds else "into working {} members".format(", ".join(kinds)), max(1, int((out or {}).get("cooldown_ms") or 0) // 60000))
         return True
     if kind == "focus":
         rc, out, err = run_cli(["--team", team, "focus", str(intent.args.get("member"))], env)

@@ -86,6 +86,12 @@ Post to the board:
   to know (`--kind note`, or `--kind answer` with `--reply-to`).
 - keep `herdr-team task "<headline>"` current; it is what teammates and the
   human see beside your name.
+- `--interrupt` (with `--to <name>`) only when a teammate is working on
+  something your news makes wrong or wasteful: a wrong branch, duplicated
+  work, a blocker that voids its task. The notifier then types the notice
+  into its running turn instead of waiting for the turn to end. Say in the
+  text why it could not wait. One per teammate per 10 minutes; everything
+  else is `--urgent` or a plain post.
 
 Keep posts short: under 500 characters. Put longer content (diffs, logs,
 findings) in a file and point to it with `--ref <path>` (a file in your

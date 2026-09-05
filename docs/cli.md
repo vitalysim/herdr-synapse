@@ -32,7 +32,7 @@ Global flags are accepted before or after the command name.
 | `--session NAME` | Named session, mirrors `herdr --session`. `default` means the default session. |
 | `--socket PATH` | Socket override. Wins over `--session`, `HERDR_SOCKET_PATH`, `HERDR_SESSION`. |
 | `--session-mismatch-ok` | Allow a write (`post`, `retract`, `edit`, `task`, `ack`, `charter set|edit`, `brief --set`, `use`, `rename`, `remove`, `bind`, `dissolve`) to a team whose `team.json` socket differs from the resolved socket. Without it such a write is refused with `team_session_mismatch` (plan 12, RS-08) whenever the socket was resolved explicitly (`HERDR_SOCKET_PATH`, `HERDR_SESSION`, `--session`); `--socket` counts as consent; the default-socket fallback outside Herdr (`--team <path>`, nothing configured) is not checked so the offline append of HP-05 keeps working. `add` checks always (as before). Reads never check. |
-| `--version` | `herdr-team 0.1.0`; JSON `{"version","skill_version","plugin_id"}`. |
+| `--version` | `herdr-team 0.1.1`; JSON `{"version","skill_version","plugin_id"}`. |
 | `--skill` | Prints `skills/herdr-team/SKILL.md`; JSON `{"skill","skill_version"}`. |
 
 Environment the CLI reads: `HERDR_SOCKET_PATH`, `HERDR_SESSION`,
@@ -48,7 +48,7 @@ Environment the CLI reads: `HERDR_SOCKET_PATH`, `HERDR_SESSION`,
 | Code | Meaning | Typical error codes |
 | --- | --- | --- |
 | 0 | ok | |
-| 1 | refused or validation failure | `team_name_invalid`, `name_invalid`, `name_reserved`, `role_invalid`, `agent_name_taken`, `member_claimed`, `team_exists`, `team_not_found`, `member_not_found`, `author_mismatch`, `text_too_long`, `invalid_utf8`, `charter_too_long`, `ref_invalid`, `path_symlink`, `team_session_mismatch`, `team_ambiguous`, `view_foreign`, `plugin_disabled`, `agent_not_found`, `agent_blocked`, `agent_not_ready`, `launch_pending`, `not_an_agent`, `board_write_failed`, `roster_conflict`, `home_unset`, `internal`, `say_unverified`, `say_multiline`, `say_too_long`, `say_control_command`, `say_timeout`, `kind_unverified`, `retract_invalid`, `edit_invalid` |
+| 1 | refused or validation failure | `team_name_invalid`, `name_invalid`, `name_reserved`, `role_invalid`, `agent_name_taken`, `member_claimed`, `team_exists`, `team_not_found`, `member_not_found`, `author_mismatch`, `text_too_long`, `invalid_utf8`, `charter_too_long`, `ref_invalid`, `path_symlink`, `team_session_mismatch`, `team_ambiguous`, `view_foreign`, `plugin_disabled`, `agent_not_found`, `agent_blocked`, `agent_not_ready`, `launch_pending`, `not_an_agent`, `board_write_failed`, `roster_conflict`, `home_unset`, `internal`, `say_unverified`, `say_multiline`, `say_too_long`, `say_control_command`, `say_timeout`, `kind_unverified`, `retract_invalid`, `edit_invalid`, `interrupt_needs_recipient`, `interrupt_cooldown` |
 | 2 | usage | `usage`, `unknown_command` |
 | 3 | not a member, or Herdr unreachable | `not_a_member`, `team_required`, `server_not_running`, `herdr_unreachable`, `herdr_timeout`, `herdr_not_found` |
 | 4 | echo rejected | `echo_rejected` |
@@ -272,7 +272,7 @@ JSON `{"team","entries":[{"ts","event":"author_mismatch","author":"…","via","p
 
 ```
 post "<text>" [--to <name>[,<name>…] | all | human | role:<r>] [--kind note|request|handoff|done|blocked|question|answer]
-     [--ref <path>]… [--attach <path>]… [--file <path>]… [--reply-to <seq>] [--urgent] [--spill] [--as human] [--name <label>]
+     [--ref <path>]… [--attach <path>]… [--file <path>]… [--reply-to <seq>] [--urgent] [--interrupt] [--spill] [--as human] [--name <label>]
      [--relayed-for human] [--to-any]
 ```
 
@@ -281,6 +281,19 @@ post "<text>" [--to <name>[,<name>…] | all | human | role:<r>] [--kind note|re
   a role with `--to role:<r>`. Directed posts nudge their recipients. A post
   to `all` from the human nudges every member (normal holds apply); from a
   member it is read at the next board read unless `--urgent`.
+- `--interrupt` (implies `--urgent`) marks a post that could not wait. The
+  notifier may type its nudge into the recipient's *running turn* when the
+  recipient's kind is in `config.gate.interrupt_kinds` (default `claude`:
+  Claude Code queues a line typed mid-turn behind its current step) and the
+  sender has not interrupted that teammate inside `interrupt_cooldown_ms`
+  (default 10 min); otherwise it is an ordinary urgent nudge, delivered once
+  idle. The typed line is the `[herdr-team interrupt] <sender> could not
+  wait: …` envelope, never the text. Named recipients only:
+  `interrupt_needs_recipient` (1) for `all` or `human` alone; a member's
+  second interrupt of the same teammate inside the cooldown is
+  `interrupt_cooldown` (1, details `member`, `last_seq`, `retry_in_s`); the
+  human has no cooldown. The record carries `interrupt: true`; the `nudged`
+  record that follows carries `interrupt: true` and `interrupt_by`.
 - `--to` names are validated against the roster (current names, names
   retired under 10 min, `role:<r>` expands and records `to_role`); a typo is
   `recipient_unknown` (1) with `roster` in details unless `--to-any`.
@@ -297,7 +310,7 @@ post "<text>" [--to <name>[,<name>…] | all | human | role:<r>] [--kind note|re
 - Works with the server down (author unverified). Never calls
   `notification.show`.
 
-JSON `{"seq":42,"team":"vuln-hunt","notifier":"alive|offline","to":["reviewer"],"to_role":null,"kind":"request","author":{"name":"builder","via":"cli","verified":true},"spilled":false,"attached":[],"refs":[]}`
+JSON `{"seq":42,"team":"vuln-hunt","notifier":"alive|offline","to":["reviewer"],"to_role":null,"kind":"request","author":{"name":"builder","via":"cli","verified":true},"spilled":false,"attached":[],"refs":[],"urgent":false,"interrupt":false}`
 (`attached` lists the copies made under `payloads/`, `refs` every reference the record carries).
 
 ### `board [options]`
@@ -463,6 +476,7 @@ followed by one indented line per entry, `<ts> <kind> [<reason>] <title>`.
 | `pause` | alias `mute --all` | same shape |
 | `focus <name>` | enqueue `agent.focus` on the member's current pane | `{"team","member","job"}` |
 | `say <name> "<text>" [--force]` | write a `direct` record and enqueue a type-now job (section 7); the daemon types it without waiting for idle and confirms it on the next agent poll | `{"team","member","seq","job","outcome"}` |
+| `interrupts [show\|off\|on\|<kind>[,<kind>]] [--cooldown 10m]` | show or set `config.gate.interrupt_kinds` (the kinds a teammate's `post --interrupt` may be typed into mid-turn; `on` restores `claude`) and `interrupt_cooldown_ms`; the daemon reloads within 2 s; a change is human only (`author_mismatch`) | `{"team","kinds","cooldown_ms","default_kinds","changed"}` |
 | `read <name> [--lines N]` | `agent read --source visible` directly; `--lines` is refused for every member (`lines_refused`, exit 1), because scrolling an idle alternate screen types keys into the agent and only the daemon may type into a member | `{"team","member","pane_id","lines":[…]}` |
 
 Job files: `notifier/jobs/<ts>-<id>.json` `{"v":1,"kind":"brief|nudge|focus|say","member","force","requested_by":author,"requested_at"}`.
@@ -524,6 +538,38 @@ landed_in_turn n transient n wrong_target n` line per team, then one
 indented `<kind>: n round trips, clean rate 85%|n/a [(verified)]` line per
 kind; `no teams in <session_dir>` when there is nothing to report.
 
+### `usage [--no-fetch] [--ascii] [--width N] [--timeout S]`
+
+Usage limits (session, week, per model) of every provider account the
+session's agents draw on, the way `/usage` in Claude Code or `/status` in
+Codex show them, for all agents at once. Limits belong to an account, not a
+pane, so the report groups the agents (`agent.list`; an unreachable server is
+`agents_error` in the output, not fatal) by provider: `claude` → Anthropic,
+`codex` → OpenAI Codex, `copilot` → GitHub Copilot, `gemini` and
+`antigravity` → Google Gemini; `pi` and `opencode` by the login their auth
+file holds (Anthropic OAuth, ChatGPT OAuth, or OpenCode Zen, which publishes
+no window). A provider with a login on this machine is listed even without a
+running agent; kinds with no known source are listed as `untracked`.
+
+Sources, one GET each, in parallel, bounded by `--timeout` (default 8 s):
+Claude Code's login (`~/.claude/.credentials.json`, else the macOS keychain
+item `Claude Code-credentials`) → `api.anthropic.com/api/oauth/usage`;
+`~/.codex/auth.json` → `chatgpt.com/backend-api/wham/usage`, with the newest
+rollout log's `rate_limits` event as the offline fallback (`as of <age>`);
+`gh auth token` (or `GH_TOKEN`) → `api.github.com/copilot_internal/user`;
+`~/.gemini/oauth_creds.json` → Code Assist `retrieveUserQuota` while the
+stored token is valid (never refreshed). `--no-fetch` reads local logs only.
+Tokens never leave the process: not logged, not written, not in the output;
+errors carry HTTP status codes only.
+
+Human text: one block per provider (title, plan, the agents behind it) with a
+bar, `% used`, `⚠` at 75 % and `‼` at 90 %, and the reset time. JSON
+`{"v":1,"generated_at","fetched","agents":N,"providers":[{"id","title","plan","login","source","fetched_at","as_of","ok","error","note","windows":[{"id","label","percent","resets_at","severity","scope","detail"}],"kinds":[…],"agents":[{"kind","name","pane_id","status"}]}],"untracked":[{"kind","pane_id","reason"}],"agents_error"}`.
+`ui usage` (`prefix+i`, action `herdr-team.usage`) opens the same report as
+a popup that refreshes every minute (`r` refreshes now, Up/Down scroll, `q`
+closes). Registered by `cmd_usage.py` with the hidden `usage-pane`
+entrypoint (`not_a_plugin_pane` outside the popup unless `--force`).
+
 ### `doctor`
 
 Never fails on warnings; `ok:false` only on hard problems. JSON:
@@ -581,7 +627,7 @@ turns the view off when we own it or `view.json` says `on`; under a foreign
 owner our view is not showing, so `toggle --force` turns it on (replacing the
 foreign view) regardless of a stale `view.json` (M7 UI-06).
 
-### `ui picker|compose|console|who|close [--target-pane <id>]`
+### `ui picker|compose|console|who|usage|close [--target-pane <id>]`
 
 Opens plugin panes over the socket (`plugin.pane.open`, `plugin.pane.focus`,
 `popup.close`); retries once after 500 ms on `plugin_pane_open_failed`, then
@@ -670,6 +716,9 @@ Board record (plan 6.1), all keys always present:
 `kind` is one of `note|request|handoff|done|blocked|question|answer|direct|retract|system`.
 `direct` records (`from:"human"`, `to:["<member>"]`, extra `force`) are lines the human typed into
 one member with `say` (section 7): on the board for everyone, never nudged, never a member's mail.
+A post made with `--interrupt` carries `interrupt: true` (and `urgent: true`): its nudge may be typed
+into the recipient's running turn (section 7). The `nudged` record of such a delivery carries
+`interrupt: true` and `interrupt_by: [<sender>…]`; an ordinary nudge carries neither.
 `system` records set `from:"system"`, `kind:"system"`, and `event` in
 `nudged|toast|retracted|expired|abandoned|member_gone|member_restarted|rotated|reset_detected|charter_updated|renamed|typed|member_joined`.
 `member_joined` (from `add`) is `urgent` and carries `member`, `role`, `member_kind`; like an urgent `charter_updated` it nudges every member, except the newcomer.
@@ -694,7 +743,10 @@ optional, milliseconds unless named otherwise, defaults in parentheses:
 `dialog_hold_cap_ms` (600000), `pair_budget` (10, count),
 `pair_window_ms` (600000), `sample_gap_reset_ms` (10000),
 `post_ttl_ms` (1800000), `burst_window_ms` (1000), `nudge_focused`
-(`"never"`, one of `never|always`). `post_ttl_ms` is the target-active time after which an
+(`"never"`, one of `never|always`), `interrupt_kinds` (`["claude"]`, the
+agent kinds whose running turn a teammate's `post --interrupt` may be typed
+into; an empty list turns interrupts off), `interrupt_cooldown_ms` (600000,
+one interrupt per sender and target). `post_ttl_ms` is the target-active time after which an
 unread post is `expired` (paused while the member is `missing`);
 `pair_window_ms` is the window of the `pair_budget` ping-pong count between
 two members; `sample_gap_reset_ms` is the `agent list` sample gap that voids
@@ -702,7 +754,8 @@ the stable window of that team's terminals (other terminals keep the
 default); `burst_window_ms` is how long a nudge waits after its newest post
 arrived, so a same-second burst becomes one nudge covering the seq range
 (M5 ND-03). An unknown key, a negative or non-numeric value, a non-string
-`nudge_focused`, or a `nudge_focused` outside `never|always` makes the
+`nudge_focused`, a `nudge_focused` outside `never|always`, or an
+`interrupt_kinds` that is not a list of names makes the
 daemon ignore the whole `gate` object (logged as `config.gate ignored`) and
 run the default gate, so one bad field never changes every gate. Example:
 `{"config":{"gate":{"done_hold_ms":0}}}` delivers to an idle member right

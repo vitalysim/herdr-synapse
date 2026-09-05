@@ -34,11 +34,11 @@ from herdr_team.paths import ROLE_NAME_RE, TEAM_NAME_RE
 
 FILTERS = ("all", "to me", "requests", "human", "system")
 SLASH_COMMANDS = (
-    "/all", "/human", "/kind", "/reply", "/urgent", "/ref", "/retract", "/mute", "/unmute", "/pause",
+    "/all", "/human", "/kind", "/reply", "/urgent", "/interrupt", "/interrupts", "/ref", "/retract", "/mute", "/unmute", "/pause",
     "/nudge", "/focus", "/peek", "/who", "/filter", "/as", "/use", "/charter", "/remove", "/help", "/quit",
 )
 #: Directives that turn a line into a post rather than a command.
-POST_DIRECTIVES = ("/all", "/human", "/kind", "/reply", "/urgent", "/ref")
+POST_DIRECTIVES = ("/all", "/human", "/kind", "/reply", "/urgent", "/interrupt", "/ref")
 POST_KINDS = ("note", "request", "handoff", "done", "blocked", "question", "answer")
 REQUEST_KINDS = ("request", "question", "blocked", "handoff")
 
@@ -81,7 +81,7 @@ SAY_WATCH_S = 30.0
 FORCEABLE_REASONS = ("working", "muted")
 _ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]")
 _DIRECTIVE_RE = re.compile(
-    r"^\s*(?:(?P<at>@\S+)|(?P<all>/all\b)|(?P<human>/human\b)|(?P<urgent>/urgent\b)"
+    r"^\s*(?:(?P<at>@\S+)|(?P<all>/all\b)|(?P<human>/human\b)|(?P<urgent>/urgent\b)|(?P<interrupt>/interrupt\b)"
     r"|/kind\s+(?P<kind>\S+)|/reply\s+(?P<reply>\S+)|/ref\s+(?P<ref>\S+))"
 )
 #: ``@@path`` anywhere in a post line attaches that file (``post --file``): a token at the start or after whitespace.
@@ -273,6 +273,8 @@ class PostSpec:
     kind: str = "note"
     reply_to: Optional[int] = None
     urgent: bool = False
+    #: ``/interrupt``: urgent, and the notifier may type the nudge into a working recipient's turn.
+    interrupt: bool = False
     refs: List[str] = field(default_factory=list)
     #: ``@@path`` tokens: referenced when the team can read them, copied into ``payloads/`` otherwise.
     files: List[str] = field(default_factory=list)
@@ -284,6 +286,7 @@ class PostSpec:
             "kind": self.kind,
             "reply_to": self.reply_to,
             "urgent": self.urgent,
+            "interrupt": self.interrupt,
             "refs": list(self.refs),
             "files": list(self.files),
         }
@@ -485,6 +488,8 @@ def roster_line(
         fields.append("{}{}{}".format("^" if ascii_only else "↪", pending, " ({})".format(hold) if hold else ""))
     if member.get("say") == "confirming":
         fields.append("{} typing".format(">>" if ascii_only else "»"))
+    if member.get("interrupt"):
+        fields.append("{}{}".format("!" if ascii_only else "⚡", member["interrupt"]))
     if member_muted(member, mutes, now):
         fields.append("muted")
     if roster_status in ("missing", "left", "unbound", "kind_changed", "name_conflict", "failed", "starting"):
@@ -635,10 +640,13 @@ def derive_receipts(
         except (TypeError, ValueError):
             cursor_seq[str(reader)] = 0
     nudged: Dict[int, List[str]] = {}
+    interrupted = set()
     for rec in recs:
         if rec.get("from") == "system" and rec.get("kind") == "system" and rec.get("event") == "nudged":
             for s in nudged_seqs(rec):
                 nudged.setdefault(s, []).append(str(rec.get("ts") or ""))
+                if rec.get("interrupt"):
+                    interrupted.add(s)
     typed = typed_outcomes(recs)
     receipts: Dict[int, Dict[str, Any]] = {}
     for rec in recs:
@@ -663,7 +671,7 @@ def derive_receipts(
                 if reader.startswith("human@") and cseq >= seq:
                     read.append("human")
                     break
-        entry: Dict[str, Any] = {"nudged": list(nudged.get(seq, [])), "read": read, "read_by": None, "typed": None}
+        entry: Dict[str, Any] = {"nudged": list(nudged.get(seq, [])), "read": read, "read_by": None, "typed": None, "interrupted": seq in interrupted}
         if "all" in to:
             entry["read_by"] = "{}/{}".format(len([n for n in read if n != "human"]), len(audience))
         receipts[seq] = entry
@@ -740,7 +748,9 @@ def feed_entry(
             parts.append("{}{}".format(glyph, kind) if glyph else kind)
         if record.get("reply_to") is not None:
             parts.append("re#{}".format(record.get("reply_to")))
-        if record.get("urgent"):
+        if record.get("interrupt"):
+            parts.append("{}INTERRUPT".format("!" if ascii_only else "⚡"))
+        elif record.get("urgent"):
             parts.append("URGENT")
         head = " ".join(parts)
         body = text
@@ -755,7 +765,9 @@ def feed_entry(
             if kind == "direct":
                 outcome = rec_receipts.get("typed")
                 tags.append(typed_tag(outcome, ascii_only) if outcome else pending_say_tag(record, now, ascii_only))
-            if rec_receipts.get("nudged"):
+            if rec_receipts.get("interrupted"):
+                tags.append("{}interrupted".format("!" if ascii_only else "⚡"))
+            elif rec_receipts.get("nudged"):
                 tags.append("{}nudged".format("+" if ascii_only else "✓"))
             if rec_receipts.get("read_by") is not None:
                 tags.append("read by {}".format(rec_receipts["read_by"]))
@@ -1467,6 +1479,9 @@ def parse_post_directives(line: str, default_to: Optional[str] = None) -> Tuple[
                 spec.to.append("human")
         elif m.group("urgent"):
             spec.urgent = True
+        elif m.group("interrupt"):
+            spec.interrupt = True
+            spec.urgent = True
         elif m.group("kind"):
             kind = m.group("kind").lower()
             if kind not in POST_KINDS:
@@ -1562,6 +1577,19 @@ def _parse_slash(head: str, rest: str, default_team: str) -> Intent:
         if len(args) != 1 or not MEMBER_NAME_RE.match(args[0]):
             return Intent("error", {"message": "usage: {} <name>".format(head)})
         return Intent(head[1:], {"member": args[0], "team": default_team})
+    if head == "/interrupts":
+        mode = None
+        cooldown = None
+        rest = list(args)
+        while rest:
+            a = rest.pop(0)
+            if a == "--cooldown" and rest:
+                cooldown = rest.pop(0)
+            elif mode is None and a != "--cooldown":
+                mode = a
+            else:
+                return Intent("error", {"message": "usage: /interrupts [show|off|on|claude,codex] [--cooldown 10m]"})
+        return Intent("interrupts", {"mode": mode, "cooldown": cooldown, "team": default_team})
     if head == "/who":
         return Intent("who", {"team": default_team})
     if head == "/filter":
@@ -1602,7 +1630,7 @@ def _parse_slash(head: str, rest: str, default_team: str) -> Intent:
 HELP_TEXT = (
     "? or /help opens the full list | @ opens the name list (↑/↓ move, Tab or Enter picks, Esc hides) | "
     "!name text types into that member now (!!name also while it works; ! lists members) | @@path attaches a file (@@ lists files) | "
-    "@name text | @role:r text | /all text | /human text | /kind k | /reply N | /urgent | /ref path | "
+    "@name text | @role:r text | /all text | /human text | /kind k | /reply N | /urgent | /interrupt | /ref path | "
     "/retract N | /mute [name] [10m] | /unmute [name] | /pause | /nudge name [--force] | /focus name | "
     "/peek name | /who | /filter [name] | /as label | /use team | /charter [set [--urgent] text] | /remove name | /quit"
 )
@@ -1617,6 +1645,7 @@ HELP_LINES = (
     "board:     /retract N   /filter [all|to me|requests|human|system]   Tab cycles the filter",
     "members:   /who   /peek name   /focus name   /nudge name [--force]   /remove name",
     "delivery:  /mute [name] [10m]   /unmute [name]   /pause [10m]",
+    "interrupt: /interrupt @name text (into a working turn)   /interrupts [off|on|claude,codex] [--cooldown 10m]",
     "team:      /charter   /charter set [--urgent] text   /use team   /as label",
     "keys:      Up/Down and PgUp/PgDn scroll   Alt+Enter newline   Ctrl-U clear   Ctrl-K kill to end",
     "           Esc clears the status or closes a box   Ctrl-C clears the line, quits when empty   /quit",

@@ -895,6 +895,18 @@ def nudge_text_for(name: str, seqs: Sequence[int], nonce: int) -> str:
     return nudge.nudge_text(name, list(seqs), nonce)
 
 
+def interrupt_text_for(name: str, seqs: Sequence[int], nonce: int, sender: str) -> str:
+    return nudge.interrupt_text(name, list(seqs), nonce, sender)
+
+
+def interrupt_sender(pending: "Pending") -> str:
+    """Who the interrupt line names: the human when the operator joined it, else the first interrupting agent."""
+    if "human" in pending.interrupt_authors:
+        return "human"
+    agents = sorted(pending.interrupt_authors)
+    return agents[0] if agents else "human"
+
+
 def briefing_lines_for(name: str, role: str, team: str, charter_headline: Optional[str], teammates: List[Tuple[str, str]], brief: Optional[str], cli_path: str) -> List[str]:
     return list(nudge.briefing_lines(name, role, team, charter_headline, teammates, brief, cli_path))
 
@@ -952,6 +964,9 @@ def gate_config_from_roster(doc: Optional[Dict[str, Any]]) -> Tuple[gate.GateCon
             if value not in gate.NUDGE_FOCUSED_VALUES:
                 # Gate 10 compares against the exact word: "Never" or "no" would silently drop the focus hold.
                 return gate.DEFAULT_CONFIG, None, "nudge_focused must be one of {}".format("|".join(gate.NUDGE_FOCUSED_VALUES))
+        elif key == "interrupt_kinds":
+            if not isinstance(value, list) or not all(isinstance(v, str) and v for v in value):
+                return gate.DEFAULT_CONFIG, None, "interrupt_kinds must be a list of kind names"
         elif isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
             return gate.DEFAULT_CONFIG, None, "{} must be a non-negative number".format(key)
     return built, dict(overrides), None
@@ -1007,6 +1022,13 @@ class Pending:
     brief_cursor_updated: Optional[str] = None
     #: A probe that jumped the queue keeps the briefing or nudge it displaced here and puts it back when done.
     resume: Optional["Pending"] = None
+    #: A teammate's ``post --interrupt`` is among the seqs: the daemon may type the nudge into a running
+    #: turn when the kind allows it and the sender is out of cooldown (``interrupt_state`` says which).
+    interrupt: bool = False
+    interrupt_authors: Set[str] = field(default_factory=set)
+    interrupt_state: Optional[str] = None  # armed | cooldown | kind_not_allowed
+    interrupt_sent: bool = False  # the last attempt was typed into a running turn
+    deferred_interrupt: bool = False
 
 
 @dataclass
@@ -1076,6 +1098,8 @@ class TeamState:
     open_intents: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     #: ``say`` lines typed and awaiting confirmation, by member name (``confirm_says``).
     say_inflight: Dict[str, SayState] = field(default_factory=dict)
+    #: Monotonic ms of the last interrupt typed per ``(sender, target)``: the ``interrupt_cooldown_ms`` clock.
+    interrupts_sent: Dict[Tuple[str, str], float] = field(default_factory=dict)
     #: Plan 8.2 tunables from ``team.json`` ``config.gate`` (``gate.DEFAULT_CONFIG`` without overrides).
     gate_config: gate.GateConfig = gate.DEFAULT_CONFIG
     #: The raw ``config.gate`` value the current ``gate_config`` was built from (change detection).
@@ -1745,7 +1769,7 @@ class Daemon:
                 cursor, seen = cursors[name]
                 if seq <= cursor or seq in seen:
                     continue
-                self._add_pending(team, name, seq, urgent, author, now)
+                self._add_pending(team, name, seq, urgent, author, now, interrupt=bool(rec.get("interrupt")))
                 added.setdefault(name, []).append(seq)
         if not added:
             return
@@ -2322,6 +2346,7 @@ class Daemon:
             rt.last_headline = task_headline(member, rec, time.time())
         recipients = [str(t) for t in rec.get("to", []) if isinstance(t, str)]
         urgent = bool(rec.get("urgent"))
+        interrupt = bool(rec.get("interrupt"))  # ``post --interrupt``: named recipients only (the CLI refuses ``all``)
         for target in recipients:
             if target == "human":
                 if author != "human":
@@ -2340,19 +2365,20 @@ class Daemon:
             recipient = team.member(target) or team.member_by_retired_name(target)  # old names resolve for 10 min
             if recipient is None:
                 continue
-            self._add_pending(team, str(recipient.get("name")), seq, urgent, author, now)
+            self._add_pending(team, str(recipient.get("name")), seq, urgent, author, now, interrupt=interrupt)
 
     def _requeue_deferred(self, team: TeamState, name: str, brief: Pending, cursor: int, now: float) -> None:
         """Posts that arrived while ``brief`` was pending become a nudge once the member is past the briefing."""
         seqs = [s for s in brief.deferred_seqs if s > cursor and s not in team.retracted]
         if not seqs:
             return
-        pending = Pending(first_ms=now, seqs=sorted(seqs), urgent=brief.deferred_urgent, authors=set(brief.deferred_authors))
+        pending = Pending(first_ms=now, seqs=sorted(seqs), urgent=brief.deferred_urgent, authors=set(brief.deferred_authors),
+                          interrupt=brief.deferred_interrupt, interrupt_authors=set(brief.deferred_authors) if brief.deferred_interrupt else set())
         team.pending[name] = pending
         self.who_dirty = True
         self.log("{}: {} briefing done; nudging for {} deferred during the briefing".format(team.name, name, ", ".join("#{}".format(s) for s in pending.seqs)))
 
-    def _add_pending(self, team: TeamState, name: str, seq: int, urgent: bool, author: str, now: float) -> None:
+    def _add_pending(self, team: TeamState, name: str, seq: int, urgent: bool, author: str, now: float, interrupt: bool = False) -> None:
         pending = team.pending.get(name)
         if pending is None or pending.kind != "nudge":
             if pending is not None and pending.kind == "brief":
@@ -2362,6 +2388,7 @@ class Daemon:
                     pending.deferred_seqs.append(seq)
                 pending.deferred_authors.add(author)
                 pending.deferred_urgent = pending.deferred_urgent or urgent
+                pending.deferred_interrupt = pending.deferred_interrupt or interrupt
                 return
             pending = Pending(first_ms=now)
             team.pending[name] = pending
@@ -2370,6 +2397,9 @@ class Daemon:
             pending.last_added_ms = now
         pending.urgent = pending.urgent or urgent
         pending.authors.add(author)
+        if interrupt:
+            pending.interrupt = True
+            pending.interrupt_authors.add(author)
         if pending.landed_ms is not None and seq > pending.landed_seq_max and pending.attempts == 1 and not pending.renudges:
             # One immediate follow-up is allowed when posts arrived after a landing.
             pending.follow_up_due = True
@@ -2629,6 +2659,7 @@ class Daemon:
             pending.landed_seq_max = max(pending.seqs) if pending.seqs else 0
             self.log("{}: open intent {} for {} counts as sent".format(team.name, entry.get("id"), name))
             return
+        self._update_interrupt_state(team, name, str(member.get("kind")), pending, now)
         snapshot = self._snapshot(team, member, agent, rt, now, pending)
         pending_work = self._pending_work(pending, cursor)
         decision = gate_evaluate(snapshot, pending_work, now, self.global_last_nudge_ms, self._pair_exchanges(team, pending, name, now), config=team.gate_config)
@@ -2678,6 +2709,26 @@ class Daemon:
         pending.hold_since_ms = None
         self._send(team, member, pending, snapshot, decision, now)
 
+    def _update_interrupt_state(self, team: TeamState, name: str, kind: str, pending: Pending, now: float) -> None:
+        """``armed`` when the interrupt may go into a running turn now; else why it waits for idle like an urgent nudge."""
+        if not pending.interrupt or pending.kind != "nudge":
+            pending.interrupt_state = None
+            return
+        cfg = team.gate_config
+        if kind not in cfg.interrupt_kinds:
+            state = "kind_not_allowed"
+        elif "human" in pending.interrupt_authors:
+            state = "armed"  # the operator is never in cooldown
+        else:
+            senders = sorted(pending.interrupt_authors)
+            cooling = [a for a in senders if (a, name) in team.interrupts_sent and now - team.interrupts_sent[(a, name)] < float(cfg.interrupt_cooldown_ms)]
+            state = "cooldown" if senders and len(cooling) == len(senders) else "armed"
+        if state != pending.interrupt_state:
+            why = "may be typed into the running turn" if state == "armed" else "{}; delivered as an urgent nudge once idle".format(state)
+            self.log("{}: interrupt of {} by {}: {}".format(team.name, name, ",".join(sorted(pending.interrupt_authors)) or "?", why))
+            pending.interrupt_state = state
+            self.who_dirty = True
+
     def _pending_work(self, pending: Pending, cursor: int) -> Any:
         from herdr_team import gate as gate_mod
 
@@ -2691,7 +2742,9 @@ class Daemon:
                 seqs = [cursor + 1]
         # Gate 1 sees the same target-active age the TTL check above uses (``config.gate.post_ttl_ms``).
         active_ms = pending.active_ms if pending.kind == "nudge" else None
-        return gate_mod.PendingWork(seqs, bool(pending.urgent or force), cursor, sorted(pending.authors), force=force, active_ms=active_ms)
+        interrupt = bool(pending.interrupt and pending.kind == "nudge")
+        return gate_mod.PendingWork(seqs, bool(pending.urgent or force), cursor, sorted(pending.authors), force=force, active_ms=active_ms,
+                                    interrupt=interrupt, interrupt_ok=interrupt and pending.interrupt_state == "armed")
 
     def _pair_exchanges(self, team: TeamState, pending: Pending, name: str, now: float) -> int:
         """Exchanges between ``name`` and each author inside the team's ``pair_window_ms`` (gate 11 pair budget)."""
@@ -2909,10 +2962,14 @@ class Daemon:
             team.pending.pop(name, None)
             self.who_dirty = True
             return
+        interrupting = pending.kind == "nudge" and bool(decision.details.get("interrupt"))
         if pending.kind in ("brief", "probe"):
             lines = list(pending.lines or [])
+        elif interrupting:
+            lines = [interrupt_text_for(name, pending.seqs, new_nonce(), interrupt_sender(pending))]
         else:
             lines = [nudge_text_for(name, pending.seqs, new_nonce())]
+        pending.interrupt_sent = interrupting
         pending.attempts += 1
         pending.gate_seq = snapshot.state_change_seq
         attempt_id = "{}-{}-{}".format(name, int(time.time() * 1000), pending.attempts)
@@ -2922,7 +2979,8 @@ class Daemon:
             prompt_line_empty=not snapshot.prompt_line, gate_ms=max(0.0, now - (snapshot.stable_since_ms or now)),
             queue_ms=max(0.0, now - pending.first_ms), attempts=pending.attempts,
             manifest_source=(snapshot.explain or {}).get("manifest_source") if isinstance(snapshot.explain, dict) else None,
-            extra={"delivery": pending.kind, "stable_ms_required": decision.stable_ms_required, "pane_id": snapshot.pane_id, "terminal_id": snapshot.terminal_id},
+            extra={"delivery": "interrupt" if interrupting else pending.kind, "interrupt_by": sorted(pending.interrupt_authors) if interrupting else None,
+                   "stable_ms_required": decision.stable_ms_required, "pane_id": snapshot.pane_id, "terminal_id": snapshot.terminal_id},
         )
         team.ledger.record_intent(attempt)
         pending.attempt_id = attempt_id
@@ -2931,7 +2989,7 @@ class Daemon:
         details: Dict[str, Any] = {}
         try:
             for index, line in enumerate(lines):
-                result, details = self.deliver_line(team, member, line, snapshot.state_change_seq, follow_on=index > 0, pane_id=str(agent.get("pane_id")))
+                result, details = self.deliver_line(team, member, line, snapshot.state_change_seq, follow_on=index > 0, pane_id=str(agent.get("pane_id")), in_turn=interrupting)
                 if result not in (RESULT_LANDED_WORKING, RESULT_DRY):
                     break
         finally:
@@ -2957,14 +3015,18 @@ class Daemon:
             return result
         raise HerdrTeamError("member_not_found", "{} is not in any roster".format(member), EXIT_REFUSED)
 
-    def deliver_line(self, team: TeamState, member: Dict[str, Any], text: str, gate_seq: int, follow_on: bool = False, pane_id: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
+    def deliver_line(self, team: TeamState, member: Dict[str, Any], text: str, gate_seq: int, follow_on: bool = False, pane_id: Optional[str] = None, in_turn: bool = False) -> Tuple[str, Dict[str, Any]]:
         """One ``agent.prompt``; classify the result per plan 8.3.
 
         The first line of a job waits for ``working``/``blocked``. A
         ``follow_on`` line (the second briefing line, plan 9.2) is typed right
         after the first one started the turn: the PTY actor queues it behind
         that Enter, so it is sent without ``wait`` and counts as landed when
-        the server accepted it for the same occupant.
+        the server accepted it for the same occupant. An ``in_turn`` line (an
+        allowed interrupt) goes into a member that is already working, so it
+        is sent without ``wait`` too: Herdr's wait needs a state *change*,
+        and a working member makes none (live 2026-09-06: the wait timed out
+        after 8 s and the retry typed the interrupt a second time).
         """
         name = str(member["name"])
         pane_id = pane_id or str(member.get("pane_id"))
@@ -2973,7 +3035,7 @@ class Daemon:
             self.counters["nudges"] += 1
             return RESULT_DRY, {"text": text}
         params: Dict[str, Any] = {"target": pane_id, "text": text}
-        if not follow_on:
+        if not follow_on and not in_turn:
             params["wait"] = {"until": ["working", "blocked"], "timeout_ms": 8000}
         # The call duration is real I/O time, not a scheduling window: measure it on the wall monotonic clock.
         t0 = time.monotonic()
@@ -2994,6 +3056,8 @@ class Daemon:
         self._track_stability(agent, self.now_ms())
         if follow_on:
             return RESULT_LANDED_WORKING, {"elapsed_ms": elapsed_ms, "status": status, "seq": seq, "gate_seq": gate_seq, "note": "follow-on line queued behind the first"}
+        if in_turn:
+            return RESULT_LANDED_WORKING, {"elapsed_ms": elapsed_ms, "status": status, "seq": seq, "gate_seq": gate_seq, "note": "typed into the running turn"}
         if status in ("idle", "done"):
             return RESULT_TRANSIENT, {"elapsed_ms": elapsed_ms, "status": status, "note": "no transition observed"}
         if status == "blocked":
@@ -3077,7 +3141,19 @@ class Daemon:
                 self._record_probe(team, member, pending, result, details, now)
                 self._finish_probe(team, name, pending, now)
             else:
-                self._append_system(team, "nudged", "nudged {} for {}".format(name, ", ".join("#{}".format(s) for s in pending.seqs)), [name], {"seqs": list(pending.seqs)})
+                seq_list = ", ".join("#{}".format(s) for s in pending.seqs)
+                nudged_extra: Dict[str, Any] = {"seqs": list(pending.seqs)}
+                text = "nudged {} for {}".format(name, seq_list)
+                if pending.interrupt_sent:
+                    senders = sorted(pending.interrupt_authors)
+                    nudged_extra.update({"interrupt": True, "interrupt_by": senders})
+                    text = "interrupted {} for {} (by {})".format(name, seq_list, ", ".join(senders) or "?")
+                    for sender in senders:
+                        if sender != "human":
+                            team.interrupts_sent[(sender, name)] = now
+                    pending.interrupt = False  # a re-nudge, if one is needed, follows the ordinary schedule
+                    pending.interrupt_state = None
+                self._append_system(team, "nudged", text, [name], nudged_extra)
             if result == RESULT_DRY and pending.kind == "nudge":
                 pass
             self.who_dirty = True
@@ -3518,6 +3594,7 @@ class Daemon:
                     "pending_nudges": len(pending.seqs) if pending and pending.kind == "nudge" else (1 if pending else 0),
                     "hold": pending.hold if pending else None,
                     "say": "confirming" if name in team.say_inflight else None,
+                    "interrupt": pending.interrupt_state if pending is not None and pending.interrupt else None,
                     "muted_until": None if until is None else ("indefinite" if until == float("inf") else time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(until))),
                     "verified_kind": bool(member.get("verified_kind")) or self._kind_trusted(str(member.get("kind"))),
                     "delivery": member.get("delivery", "nudge"),

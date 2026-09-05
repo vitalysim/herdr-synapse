@@ -52,7 +52,7 @@ class OpenPaneResultShapeTests(unittest.TestCase):
     def test_popup_ok_reports_a_null_pane_id(self):
         api = FakeApi()
         api.set_response("plugin.pane.open", {"type": "ok"})
-        for target in ("picker", "compose", "who"):
+        for target in ("picker", "compose", "usage", "who"):
             payload = cmd_ui.open_pane(api, target, None, {}, None)
             self.assertEqual((payload["ui"], payload["placement"], payload["pane_id"], payload["fallback"]), (target, "popup", None, None), target)
         who = [p for m, p in api.calls if m == "plugin.pane.open"][-1]
@@ -207,7 +207,7 @@ class PopupTargetPaneTests(unittest.TestCase):
     """
 
     def test_popup_params_omit_target_pane_id(self):
-        for target in ("compose", "picker", "who"):
+        for target in ("compose", "picker", "who", "usage"):
             params = cmd_ui.open_params(target, "w1:p4", {}, "alpha")
             self.assertNotIn("target_pane_id", params, target)
         self.assertEqual(cmd_ui.open_params("console", "w1:p4", {}, "alpha")["target_pane_id"], "w1:p4")

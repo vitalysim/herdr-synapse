@@ -74,7 +74,7 @@ class DoctorTests(unittest.TestCase):
             code, payload, err = json_out(run_cli(["--json", "doctor"], ts.env, api))
             self.assertEqual(code, 0, err)
             self.assertTrue(payload["ok"])
-            self.assertEqual(payload["version"], "0.1.0")
+            self.assertEqual(payload["version"], cmd_misc.VERSION)
             self.assertFalse(payload["herdr"]["reachable"])
             self.assertEqual(payload["herdr"]["bin"], "herdr")
             self.assertEqual(payload["socket"]["path"], os.path.realpath(ts.socket_path))
@@ -149,11 +149,11 @@ class SetupAndKeys(unittest.TestCase):
     def test_keys_print(self):
         with TempState() as ts:
             code, payload, _ = json_out(run_cli(["--json", "keys", "print"], ts.env))
-            self.assertEqual(payload["keys"], {"team-up": "prefix+t", "compose": "prefix+m", "console": "prefix+u", "toggle-view": "prefix+y"})
+            self.assertEqual(payload["keys"], {"team-up": "prefix+t", "compose": "prefix+m", "console": "prefix+u", "toggle-view": "prefix+y", "usage": "prefix+i"})
             snippet = payload["snippet"]
-            self.assertEqual(snippet.count("[[keys.command]]"), 4)
-            self.assertEqual(snippet.count('type = "plugin_action"'), 4)
-            for action in ("herdr-team.team-up", "herdr-team.compose", "herdr-team.console", "herdr-team.toggle-view"):
+            self.assertEqual(snippet.count("[[keys.command]]"), 5)
+            self.assertEqual(snippet.count('type = "plugin_action"'), 5)
+            for action in ("herdr-team.team-up", "herdr-team.compose", "herdr-team.console", "herdr-team.toggle-view", "herdr-team.usage"):
                 self.assertIn('command = "{}"'.format(action), snippet)
             code, out, _ = run_cli(["keys", "print"], ts.env)
             self.assertEqual(out.strip(), snippet.strip())

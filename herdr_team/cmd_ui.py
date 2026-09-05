@@ -1,4 +1,4 @@
-"""UI commands: the pane entrypoints and ``ui <picker|compose|console|who|close>``.
+"""UI commands: the pane entrypoints and ``ui <picker|compose|console|who|usage|close>``.
 
 The pane entrypoints (``console``, ``compose``, ``picker``) run the curses
 UIs when Herdr launches a manifest pane (``HERDR_PLUGIN_ENTRYPOINT_ID`` set);
@@ -32,9 +32,9 @@ from herdr_team.api import plugin_pane_id
 from herdr_team.cli import Command, api_for, emit, layout_for
 from herdr_team.errors import HerdrTeamError
 
-UI_TARGETS = ("picker", "compose", "console", "who", "close")
+UI_TARGETS = ("picker", "compose", "console", "who", "usage", "close")
 #: Manifest placement per entrypoint (herdr-plugin.toml ``[[panes]]``).
-PLACEMENTS = {"picker": "popup", "compose": "popup", "console": "split", "who": "popup"}
+PLACEMENTS = {"picker": "popup", "compose": "popup", "console": "split", "who": "popup", "usage": "popup"}
 #: ``ui who`` opens the console entrypoint as a popup started on its roster
 #: box (``console.START_VIEW_ENV``).
 WHO_ENV = console.START_VIEW_ENV
@@ -393,7 +393,7 @@ def _run_picker(args: argparse.Namespace) -> int:
 
 
 COMMANDS: List[Command] = [
-    Command("ui", "open a plugin pane: picker, compose, console, who; or close the popup", _add_ui_arguments, _run_ui),
+    Command("ui", "open a plugin pane: picker, compose, console, who, usage; or close the popup", _add_ui_arguments, _run_ui),
     Command("console", "team console pane (launched by the manifest pane; --target-pane from a shell)", console.add_arguments, _run_console, hidden=True),
     Command("compose", "post popup (launched by the manifest pane)", compose.add_arguments, _run_compose, hidden=True),
     Command("picker", "team-up popup (launched by the manifest pane)", picker.add_arguments, _run_picker, hidden=True),

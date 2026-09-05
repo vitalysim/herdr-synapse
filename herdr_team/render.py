@@ -257,7 +257,9 @@ def render_header(
         parts.append("retracts #{}".format(_safe_token(record.get("retracts"), 20)))
     if record.get("supersedes") is not None:
         parts.append("supersedes #{}".format(_safe_token(record.get("supersedes"), 20)))
-    if record.get("urgent"):
+    if record.get("interrupt"):
+        parts.append("interrupt")
+    elif record.get("urgent"):
         parts.append("urgent")
     if record.get("truncated"):
         parts.append("truncated")
@@ -420,7 +422,9 @@ def render_context_post(record: Dict[str, Any], text_override: Optional[str] = N
         meta += " re #{}".format(_safe_token(record.get("reply_to"), 20))
     if record.get("retracts") is not None:
         meta += " retracts #{}".format(_safe_token(record.get("retracts"), 20))
-    if record.get("urgent"):
+    if record.get("interrupt"):
+        meta += " interrupt"
+    elif record.get("urgent"):
         meta += " urgent"
     fields.append(meta)
     refs = _refs_line(record)
@@ -506,7 +510,9 @@ def render_oneline(record: Dict[str, Any], width: int = ONELINE_WIDTH, ascii_onl
     tags: List[str] = []
     if record.get("retracts") is not None:
         tags.append("retracts #{}".format(_safe_token(record.get("retracts"), 20)))
-    if record.get("urgent"):
+    if record.get("interrupt"):
+        tags.append("interrupt")
+    elif record.get("urgent"):
         tags.append("urgent")
     if is_unverified(record):
         tags.append("(unverified)")

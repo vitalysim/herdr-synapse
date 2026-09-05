@@ -29,8 +29,10 @@ from herdr_team.paths import ROLE_NAME_RE, TEAM_NAME_RE
 MARKER_NUDGE = "[herdr-team nudge]"
 MARKER_BRIEFING = "[herdr-team briefing]"
 MARKER_PROBE = "[herdr-team probe"
+MARKER_INTERRUPT = "[herdr-team interrupt]"
 MARKER_PREFIX = "[herdr-team"
 MAX_NUDGE_CHARS = 120
+MAX_INTERRUPT_CHARS = 160
 MAX_BRIEFING_CHARS = 400
 MAX_BRIEF_LINE_CHARS = 300
 MAX_CHARTER_HEADLINE_CHARS = 120
@@ -119,6 +121,35 @@ def build(name: str, seqs: Sequence[int], ledger_id: int) -> str:
     return nudge_text(name, seqs, ledger_id)
 
 
+def interrupt_text(name: str, seqs: Sequence[int], nonce: int, sender: str) -> str:
+    """``[herdr-team interrupt] reviewer could not wait: 1 urgent board post for worker (seq 41). Run: herdr-team board --new [n17]``.
+
+    The line the daemon types into a member's running turn for a teammate's
+    ``post --interrupt``. Same shape as a nudge, so the recipient's skill
+    applies unchanged: it names the sender, never carries the post text, and
+    ends in the nonce. Longer names fall back to shorter templates.
+    """
+    safe_name = validate_name(name)
+    safe_sender = "human" if sender == "human" else validate_name(sender)
+    values = sorted({_validate_int(s, "seq") for s in seqs})
+    if not values:
+        raise NudgeTextError("an interrupt needs at least one seq")
+    safe_nonce = _validate_int(nonce, "nonce")
+    count = len(values)
+    noun = "post" if count == 1 else "posts"
+    span = str(values[0]) if count == 1 else "{}-{}".format(values[0], values[-1])
+    templates = (
+        "{marker} {sender} could not wait: {n} urgent board {noun} for {name} (seq {span}). Run: {cli} board --new [n{nonce}]",
+        "{marker} {sender} could not wait: {n} urgent board {noun} for {name}. Run: {cli} board --new [n{nonce}]",
+        "{marker} from {sender}. Run: {cli} board --new [n{nonce}]",
+    )
+    for template in templates:
+        text = template.format(marker=MARKER_INTERRUPT, sender=safe_sender, n=count, noun=noun, name=safe_name, span=span, cli=DEFAULT_CLI, nonce=safe_nonce)
+        if len(text) <= MAX_INTERRUPT_CHARS:
+            return text
+    raise NudgeTextError("interrupt text exceeds {} chars".format(MAX_INTERRUPT_CHARS))
+
+
 def _teammate_list(teammates: List[Tuple[str, str]]) -> str:
     parts = ["{} ({})".format(n, r) for n, r in teammates]
     if not parts:
@@ -205,7 +236,7 @@ def is_echo(text: Optional[str]) -> bool:
         return True
     if NONCE_RE.search(text):
         return True
-    for marker in (MARKER_NUDGE, MARKER_BRIEFING, MARKER_PROBE):
+    for marker in (MARKER_NUDGE, MARKER_BRIEFING, MARKER_PROBE, MARKER_INTERRUPT):
         if marker in text:
             return True
     return False

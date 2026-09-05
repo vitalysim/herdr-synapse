@@ -58,11 +58,11 @@ CLEAN_CURSOR_LATENCY_MS = 300000.0
 
 #: Deliveries that are not nudge round trips (a human ``say`` line, docs/cli.md section 7): they never
 #: count for per-kind verification, and an unfinished one is not "sent" nudge work after a restart.
-NON_ROUND_TRIP_DELIVERIES = ("say",)
+NON_ROUND_TRIP_DELIVERIES = ("say", "interrupt")
 
 
 def is_round_trip(entry: Dict[str, Any]) -> bool:
-    """False for attempts whose ``delivery`` is not a nudge round trip (``say``)."""
+    """False for attempts whose ``delivery`` is not an idle nudge round trip (``say``, ``interrupt``)."""
     return entry.get("delivery") not in NON_ROUND_TRIP_DELIVERIES
 
 

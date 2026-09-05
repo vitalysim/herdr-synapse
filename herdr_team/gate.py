@@ -50,6 +50,13 @@ BURST_WINDOW_MS = 1000
 POST_TTL_MS = 1800000
 #: Accepted ``nudge_focused`` values: gate 10 holds a focused pane only for the exact word ``never``.
 NUDGE_FOCUSED_VALUES = ("never", "always")
+#: Kinds whose running turn a teammate's ``post --interrupt`` may be typed into. Claude Code queues a
+#: line typed mid-turn behind its current step (verified live with the console's ``!!`` on 2026-09-05);
+#: other kinds are unverified, so the default is Claude only. ``team.json`` ``config.gate.interrupt_kinds``
+#: widens it or, empty, turns interrupts off.
+INTERRUPT_KINDS = ("claude",)
+#: One interrupt per sender and target inside this window; a second one is an ordinary urgent nudge.
+INTERRUPT_COOLDOWN_MS = 600000
 HOLD_REEVAL_MS = 5000
 TRANSIENT_BACKOFF_MIN_MS = 3000
 TRANSIENT_BACKOFF_MAX_MS = 60000
@@ -256,6 +263,10 @@ class GateConfig:
     post_ttl_ms: int = POST_TTL_MS
     burst_window_ms: int = BURST_WINDOW_MS
     nudge_focused: str = "never"
+    #: Kinds an agent's ``post --interrupt`` may be typed into while they work (empty: interrupts off).
+    interrupt_kinds: Tuple[str, ...] = INTERRUPT_KINDS
+    #: One interrupt per sender and target inside this window.
+    interrupt_cooldown_ms: int = INTERRUPT_COOLDOWN_MS
 
     @classmethod
     def from_mapping(cls, overrides: Optional[Mapping[str, Any]]) -> "GateConfig":
@@ -268,6 +279,8 @@ class GateConfig:
         for key, value in overrides.items():
             if key not in known:
                 raise ValueError("unknown gate config key: {}".format(key))
+            if key == "interrupt_kinds" and isinstance(value, (list, tuple)):
+                value = tuple(str(v) for v in value)
             values[key] = value
         return cls(**values)
 
@@ -323,6 +336,8 @@ class PendingWork:
     broadcast: bool = False  # every pending post is addressed to ``all``
     force: bool = False  # ``nudge --force``: skips done_hold and the interval
     active_ms: Optional[float] = None  # target-active age of the oldest post
+    interrupt: bool = False  # a teammate's ``post --interrupt`` is among the seqs
+    interrupt_ok: bool = False  # the daemon allows it now: kind in ``interrupt_kinds``, sender not in cooldown
 
 
 @dataclass
@@ -736,24 +751,31 @@ def evaluate(snapshot: MemberSnapshot, pending: PendingWork, now_ms: float, glob
     if not snapshot.verified_kind:
         return hold(4, HOLD_KIND_UNVERIFIED)
 
-    # 5. idle or done
-    if snapshot.agent_status not in IDLE_STATUSES:
-        return hold(5, HOLD_NOT_IDLE, snapshot.agent_status)
+    # An allowed interrupt (a teammate's ``post --interrupt``, kind in ``interrupt_kinds``, sender out of
+    # cooldown) skips the two idle gates while the member is working: the line goes into the running turn.
+    # Every later gate still applies: dialog, overlay, draft, focus policy, and the rate limits.
+    in_turn = bool(pending.interrupt and pending.interrupt_ok and snapshot.agent_status == "working")
+    if in_turn:
+        details["interrupt"] = True
+    else:
+        # 5. idle or done
+        if snapshot.agent_status not in IDLE_STATUSES:
+            return hold(5, HOLD_NOT_IDLE, snapshot.agent_status)
 
-    # 6. stable window, fresh-get confirmation, done_hold
-    if snapshot.stable_since_ms is None:
-        return hold(6, HOLD_UNSTABLE, "no stable window")
-    elapsed = now_ms - snapshot.stable_since_ms
-    if elapsed < required:
-        base = stable_ms_for(snapshot, False, cfg)
-        reason = HOLD_WEAK_IDLE if (weak and elapsed >= base) else HOLD_UNSTABLE
-        return hold(6, reason, "{:.0f}/{} ms".format(elapsed, required), stable_elapsed_ms=elapsed)
-    if snapshot.fresh_state_change_seq is not None and snapshot.fresh_state_change_seq != snapshot.state_change_seq:
-        return hold(6, HOLD_UNSTABLE, "fresh agent.get seq {} != {}".format(snapshot.fresh_state_change_seq, snapshot.state_change_seq))
-    if not bypass_holds and snapshot.idle_since_ms is not None:
-        idle_for = now_ms - snapshot.idle_since_ms
-        if idle_for < cfg.done_hold_ms:
-            return hold(6, HOLD_DONE_HOLD, "{:.0f}/{} ms".format(idle_for, cfg.done_hold_ms))
+        # 6. stable window, fresh-get confirmation, done_hold
+        if snapshot.stable_since_ms is None:
+            return hold(6, HOLD_UNSTABLE, "no stable window")
+        elapsed = now_ms - snapshot.stable_since_ms
+        if elapsed < required:
+            base = stable_ms_for(snapshot, False, cfg)
+            reason = HOLD_WEAK_IDLE if (weak and elapsed >= base) else HOLD_UNSTABLE
+            return hold(6, reason, "{:.0f}/{} ms".format(elapsed, required), stable_elapsed_ms=elapsed)
+        if snapshot.fresh_state_change_seq is not None and snapshot.fresh_state_change_seq != snapshot.state_change_seq:
+            return hold(6, HOLD_UNSTABLE, "fresh agent.get seq {} != {}".format(snapshot.fresh_state_change_seq, snapshot.state_change_seq))
+        if not bypass_holds and snapshot.idle_since_ms is not None:
+            idle_for = now_ms - snapshot.idle_since_ms
+            if idle_for < cfg.done_hold_ms:
+                return hold(6, HOLD_DONE_HOLD, "{:.0f}/{} ms".format(idle_for, cfg.done_hold_ms))
 
     # 7. explain
     explain = snapshot.explain or {}

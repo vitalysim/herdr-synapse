@@ -27,6 +27,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tupl
 
 from herdr_team import charter as _charter
 from herdr_team import daemon as _daemon
+from herdr_team import gate as _gate
 from herdr_team import identity as _identity
 from herdr_team import paths as _paths
 from herdr_team import render as _render
@@ -847,6 +848,7 @@ def _add_post_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--file", metavar="PATH", action="append", default=[], help="reference the file when it lives under the team dir or a member's cwd, else copy it into payloads/ (the console's @@path)")
     parser.add_argument("--reply-to", metavar="SEQ", type=int)
     parser.add_argument("--urgent", action="store_true")
+    parser.add_argument("--interrupt", action="store_true", help="urgent, and the notifier may type the nudge into the recipient's running turn (named recipients only; one per recipient per cooldown)")
     parser.add_argument("--spill", action="store_true", help="write over-length text to payloads/<seq>-body.md")
     parser.add_argument("--as", dest="as_who", choices=("human",), help="human authorship (refused from an agent pane)")
     parser.add_argument("--name", metavar="LABEL", help="human label, honoured only when verified")
@@ -929,6 +931,51 @@ def prepare_text(raw: str, spill: bool, force: bool) -> Tuple[str, bool, Optiona
     return clean, truncated, body
 
 
+INTERRUPT_SCAN = 400
+
+
+def interrupt_cooldown_ms(doc: Dict[str, Any]) -> int:
+    """``config.gate.interrupt_cooldown_ms`` of the roster, else the gate default."""
+    config = doc.get("config") if isinstance(doc.get("config"), dict) else {}
+    gate_cfg = config.get("gate") if isinstance(config.get("gate"), dict) else {}
+    value = gate_cfg.get("interrupt_cooldown_ms")
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0:
+        return int(value)
+    return _gate.INTERRUPT_COOLDOWN_MS
+
+
+def check_interrupt(team: TeamPaths, doc: Dict[str, Any], author: Author, to: List[str]) -> None:
+    """``--interrupt`` needs named agent recipients, and a member gets one per recipient per cooldown."""
+    if "all" in to:
+        raise HerdrTeamError("interrupt_needs_recipient", "--interrupt needs named recipients (--to <name>); it is never a broadcast", EXIT_REFUSED, {"to": to})
+    agents = [t for t in to if t != AUTHOR_HUMAN]
+    if not agents:
+        raise HerdrTeamError("interrupt_needs_recipient", "--interrupt reaches agent members; the human sees every post --to human anyway", EXIT_REFUSED, {"to": to})
+    if author.is_human:
+        return
+    cooldown_ms = interrupt_cooldown_ms(doc)
+    cutoff = time.time() - cooldown_ms / 1000.0
+    top = board_max_seq(team)
+    records = store.BoardStore(team).read(since_seq=max(0, top - INTERRUPT_SCAN), include_retracted=False)
+    for rec in reversed(records):
+        if not rec.get("interrupt") or rec.get("from") != author.name:
+            continue
+        hit = [t for t in (rec.get("to") or []) if t in agents]
+        if not hit:
+            continue
+        sent = _daemon._parse_iso(rec.get("ts")) if isinstance(rec.get("ts"), str) else None
+        if sent is None or sent < cutoff:
+            continue
+        retry_in = int(sent - cutoff) + 1
+        raise HerdrTeamError(
+            "interrupt_cooldown",
+            "you interrupted {} {} s ago (#{}); one interrupt per teammate per {} min. Post --urgent instead, or wait {} s".format(
+                ",".join(hit), int(time.time() - sent), rec.get("seq"), max(1, cooldown_ms // 60000), retry_in),
+            EXIT_REFUSED,
+            {"member": hit, "last_seq": rec.get("seq"), "retry_in_s": retry_in, "cooldown_ms": cooldown_ms},
+        )
+
+
 def _run_post(args: argparse.Namespace) -> int:
     as_human = args.as_who == "human"
     layout, api, author, team_name, team, doc = _open_team(args, require_server=False, as_human=as_human, relayed_for=args.relayed_for, label=args.name, write=True)
@@ -939,6 +986,10 @@ def _run_post(args: argparse.Namespace) -> int:
     if args.name and not author.verified and author.is_human:
         warn(args, "--name ignored: author is not verified")
     to, to_role = resolve_recipients(doc, args.to, author, args.to_any)
+    interrupt = bool(getattr(args, "interrupt", False))
+    if interrupt:
+        check_interrupt(team, doc, author, to)
+    urgent = bool(args.urgent or interrupt)
     text, truncated, body = prepare_text(args.text, args.spill, args.force)
     reply_to: Optional[int] = None
     if args.reply_to is not None:
@@ -949,7 +1000,9 @@ def _run_post(args: argparse.Namespace) -> int:
     file_refs, file_attach = resolve_files(layout, team_name, list(getattr(args, "file", None) or []), doc, env=env_of(args))
     refs = refs + [r for r in file_refs if r not in refs]
     staged = stage_attachments(team, list(args.attach) + file_attach)
-    record = build_record(author, to, args.kind, text, to_role=to_role, refs=refs, reply_to=reply_to, urgent=args.urgent, relayed_for=args.relayed_for, socket_path=os.fspath(layout.socket), truncated=truncated, from_gen=member_generation(doc, author))
+    record = build_record(author, to, args.kind, text, to_role=to_role, refs=refs, reply_to=reply_to, urgent=urgent, relayed_for=args.relayed_for, socket_path=os.fspath(layout.socket), truncated=truncated, from_gen=member_generation(doc, author))
+    if interrupt:
+        record["interrupt"] = True
 
     try:
         seq = board_append(team, record, spill_text=body, attachments=staged)
@@ -963,9 +1016,9 @@ def _run_post(args: argparse.Namespace) -> int:
     payload = {
         "seq": seq, "team": team_name, "notifier": notifier, "to": to, "to_role": to_role, "kind": args.kind,
         "author": {"name": author.name, "via": author.via, "verified": bool(author.verified)},
-        "spilled": body is not None, "attached": attached, "refs": refs,
+        "spilled": body is not None, "attached": attached, "refs": refs, "urgent": urgent, "interrupt": interrupt,
     }
-    return emit(args, payload, "#{} posted to {} as {} (notifier {})".format(seq, ",".join(to), author.name, notifier))
+    return emit(args, payload, "#{} posted to {} as {} (notifier {}){}".format(seq, ",".join(to), author.name, notifier, " (interrupt)" if interrupt else ""))
 
 
 # --------------------------------------------------------------------------

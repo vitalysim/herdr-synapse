@@ -125,7 +125,15 @@ shows `✓typed` or why not), `@@path` attaches a file to the post (type
 `@@` for a file list), `?` on an empty line shows every command, `@role:worker text` to a role,
 `/human` to yourself, `/urgent` before text nudges everyone, `/reply N`,
 `/retract N`, `/mute name 10m`, `/peek name`, `/focus name`, `/charter`,
-`/charter set`, `/use team`, `/quit`.
+`/charter set`, `/use team`, `/quit`. `/interrupt @name text` is an
+interrupt: urgent, and typed into that member's running turn when its kind
+allows it (Claude by default; `/interrupts claude,codex` widens it,
+`/interrupts off` stops it). Agents have the same with
+`herdr-team post --to <name> --interrupt`, once per teammate per 10 min.
+
+`prefix+i` opens the usage popup: every agent in the session grouped by the
+provider account it draws on, with session and weekly bars and reset times
+(Claude Code and Codex logins read live; `r` refreshes, `q` closes).
 
 Ask a member to do something through the board, for example
 `@demo-worker post a one-line summary of the repo layout`, and watch:
@@ -139,6 +147,9 @@ idle, the member reads the board and replies, `board --receipts` shows
   model picker. That is the point. `!name text` is the exception you control:
   it types now, but a dialog, the model picker, or a draft still refuses it
   (`✗ not typed (dialog)`), and only `!!` types into a working member.
+- A teammate's `post --interrupt` types its notice into a *working* Claude
+  member (the same queue behaviour `!!` uses). For every other kind the same
+  post waits for idle unless you run `herdr-team interrupts claude,codex`.
 - `!name text` works only from the console pane. The compose popup answers
   `direct typing is console-only` and a shell pane `say_unverified`, because
   neither can prove it is you.

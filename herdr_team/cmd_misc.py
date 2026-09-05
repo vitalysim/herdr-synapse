@@ -21,7 +21,9 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from herdr_team import charter as _charter
 from herdr_team import cmd_board as _cmd_board
+from herdr_team import gate
 from herdr_team import PLUGIN_ID, VERSION
 from herdr_team import api as _api
 from herdr_team import cli as _cli
@@ -64,8 +66,10 @@ VIEW_LABEL_MAX_TWO = 27
 FULL_SCREEN_KINDS = frozenset({"claude", "opencode", "codex", "kilo", "omp"})
 DEFAULT_MUTE = "10m"
 
-KEYS: Dict[str, str] = {"team-up": "prefix+t", "compose": "prefix+m", "console": "prefix+u", "toggle-view": "prefix+y"}
-KEY_DESCRIPTIONS: Dict[str, str] = {"team-up": "team up: pick agents", "compose": "post to the team board", "console": "open the team console", "toggle-view": "toggle the team agents view"}
+KEYS: Dict[str, str] = {"team-up": "prefix+t", "compose": "prefix+m", "console": "prefix+u", "toggle-view": "prefix+y", "usage": "prefix+i"}
+KEY_DESCRIPTIONS: Dict[str, str] = {"team-up": "team up: pick agents", "compose": "post to the team board", "console": "open the team console", "toggle-view": "toggle the team agents view", "usage": "usage limits across agents"}
+#: The order the bindings are printed in.
+KEY_ACTIONS = ("team-up", "compose", "console", "toggle-view", "usage")
 
 SIDEBAR_SNIPPET = """[ui.sidebar.agents]
 rows = [
@@ -105,7 +109,7 @@ SETUP_NOTES = [
 def keys_snippet(keys: Optional[Dict[str, str]] = None) -> str:
     keys = keys or KEYS
     blocks = []
-    for action in ("team-up", "compose", "console", "toggle-view"):
+    for action in KEY_ACTIONS:
         blocks.append(
             "[[keys.command]]\nkey = \"{}\"\ntype = \"plugin_action\"\ncommand = \"{}.{}\"\ndescription = \"{}\"\n".format(
                 keys[action], PLUGIN_ID, action, KEY_DESCRIPTIONS[action]
@@ -838,6 +842,68 @@ def _add_mute_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--for", dest="duration", metavar="DURATION", help="e.g. 10m (default: until unmute)")
 
 
+# --------------------------------------------------------------------------
+# interrupts
+
+
+def _add_interrupts_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("mode", nargs="?", metavar="show|off|on|<kind>[,<kind>]", help="which kinds a teammate's `post --interrupt` may be typed into mid-turn (default: show; `on` restores the default list)")
+    parser.add_argument("--cooldown", metavar="10m", help="one interrupt per sender and target inside this window")
+
+
+def interrupts_view(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """The effective interrupt settings of a roster (``config.gate`` overrides or the gate defaults)."""
+    config = doc.get("config") if isinstance(doc.get("config"), dict) else {}
+    gate_cfg = config.get("gate") if isinstance(config.get("gate"), dict) else {}
+    kinds = gate_cfg.get("interrupt_kinds")
+    cooldown = gate_cfg.get("interrupt_cooldown_ms")
+    return {
+        "kinds": [str(k) for k in kinds] if isinstance(kinds, list) else list(gate.INTERRUPT_KINDS),
+        "cooldown_ms": int(cooldown) if isinstance(cooldown, (int, float)) and not isinstance(cooldown, bool) else gate.INTERRUPT_COOLDOWN_MS,
+        "default_kinds": list(gate.INTERRUPT_KINDS),
+    }
+
+
+def _interrupts_text(team_name: str, view: Dict[str, Any]) -> str:
+    kinds = view["kinds"]
+    where = "off" if not kinds else "into working {} members".format(", ".join(kinds))
+    return "{}: interrupts {} · one per sender and teammate per {} min".format(team_name, where, max(1, view["cooldown_ms"] // 60000))
+
+
+def _run_interrupts(args: argparse.Namespace) -> int:
+    layout, api, author, team_name, team, doc = _open_delivery(args)
+    mode = getattr(args, "mode", None)
+    cooldown = getattr(args, "cooldown", None)
+    if mode in (None, "show") and not cooldown:
+        view = interrupts_view(doc)
+        return emit(args, dict(view, team=team_name, changed=False), _interrupts_text(team_name, view))
+    _charter.require_human(layout, team_name, author, "interrupts")
+    kinds: Optional[List[str]] = None
+    if mode not in (None, "show"):
+        if mode == "off":
+            kinds = []
+        elif mode in ("on", "default"):
+            kinds = list(gate.INTERRUPT_KINDS)
+        else:
+            kinds = [k.strip() for k in str(mode).split(",") if k.strip()]
+            for kind in kinds:
+                if not re.match(r"^[a-z][a-z0-9_-]{0,31}\Z", kind):
+                    raise UsageError("interrupts: kinds are lowercase agent kinds such as claude or codex, comma separated")
+    cooldown_ms = parse_duration_s(cooldown) * 1000 if cooldown else None
+
+    def mutate(t: _roster.Team) -> None:
+        gate_cfg = dict(t.config.get("gate")) if isinstance(t.config.get("gate"), dict) else {}
+        if kinds is not None:
+            gate_cfg["interrupt_kinds"] = list(kinds)
+        if cooldown_ms is not None:
+            gate_cfg["interrupt_cooldown_ms"] = int(cooldown_ms)
+        t.config["gate"] = gate_cfg
+
+    _roster.update_team(team, mutate)
+    view = interrupts_view(load_doc(team))
+    return emit(args, dict(view, team=team_name, changed=True), _interrupts_text(team_name, view))
+
+
 def _run_mute(args: argparse.Namespace, force_all: bool = False) -> int:
     layout, api, author, team_name, team, doc = _open_delivery(args)
     all_members = force_all or getattr(args, "all_members", False)
@@ -1025,6 +1091,7 @@ COMMANDS: List[Command] = [
     Command("setup", "print the config blocks to paste (--print-config); never edits config", _add_setup_arguments, _run_setup),
     Command("keys", "print the key-binding snippet or check it against your config", _add_keys_arguments, _run_keys),
     Command("install-cli", "symlink ~/.local/bin/herdr-team to this plugin (--yes)", _add_install_cli_arguments, _run_install_cli),
+    Command("interrupts", "show or set which kinds a teammate's post --interrupt may reach mid-turn (human only to change)", _add_interrupts_arguments, _run_interrupts),
     Command("gc", "remove session trees whose socket is gone, lock free, older than 7 days", _no_arguments, _run_gc),
     Command("prune", "archive old board segments into _archive", _add_prune_arguments, _run_prune),
     Command("view", "turn the team Agents view on, off, or toggle it", _add_view_arguments, _run_view),
