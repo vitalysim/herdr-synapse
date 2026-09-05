@@ -303,7 +303,11 @@ a popup on the roster box.
   `hooks: silent`, `kind unverified` (no role column here; roles are in the
   CLI `who`). Narrow panes drop the kind, pane, and headline columns.
 - **Feed**: the board tail with receipts, struck retractions, system
-  records, and warnings such as a refused `--as human`. Lines are color
+  records, and warnings such as a refused `--as human`. Long posts wrap
+  over as many rows as they need: the header (`#seq time from → to kind`)
+  starts the first row, continuation rows are indented, explicit newlines in
+  the post are kept, receipts follow the last row. Scrolling moves by post;
+  the topmost post may show only its last rows. Lines are color
   coded: each member gets a stable color by its position in the roster
   (cyan, green, magenta, yellow, blue, white, then wrapping), used for its
   roster row, its posts, and its row in the `@` list; your own posts are

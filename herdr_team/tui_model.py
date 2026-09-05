@@ -551,10 +551,14 @@ def feed_entry(
     kind = str(record.get("kind") or "note")
     author = str(record.get("from") or "?")
     text = headline(str(record.get("text") or ""), 10_000)
+    full_text = clean_text(str(record.get("text") or ""))
     struck_by = (retractions or {}).get(seq) if isinstance(seq, int) else None
     level = degrade_level(width)
+    head = ""
+    tail = ""
     if kind == "system":
-        line = "#{} {} system {}: {}".format(seq, clock_label(record.get("ts")), record.get("event") or "event", text)
+        head = "#{} {} system {}:".format(seq, clock_label(record.get("ts")), record.get("event") or "event")
+        line = "{} {}".format(head, text)
     else:
         glyph = kind_glyph(kind, ascii_only)
         parts = ["#{}".format(seq)]
@@ -567,9 +571,11 @@ def feed_entry(
             parts.append("re#{}".format(record.get("reply_to")))
         if record.get("urgent"):
             parts.append("URGENT")
+        head = " ".join(parts)
         body = text
         if struck_by is not None:
             body = "~~{}~~ (retracted by #{})".format(text, struck_by)
+            full_text = "~~{}~~ (retracted by #{})".format(full_text, struck_by)
         parts.append(body)
         line = " ".join(parts)
         rec_receipts = (receipts or {}).get(seq) if isinstance(seq, int) else None
@@ -582,16 +588,133 @@ def feed_entry(
             elif rec_receipts.get("read"):
                 tags.append("{}read".format("+" if ascii_only else "✓"))
             if tags:
-                line = "{}  {}".format(line, " ".join(tags))
+                tail = " ".join(tags)
+                line = "{}  {}".format(line, tail)
     return {
         "seq": seq,
         "line": truncate_columns(line, width),
+        "head": head,
+        "text": full_text,
+        "tail": tail,
         "struck": struck_by is not None,
         "kind": kind,
         "from": author,
         "to": [str(t) for t in (record.get("to") or [])],
         "record": record,
     }
+
+
+def clean_text(text: str) -> str:
+    """Post text for display: controls and escapes stripped, tabs to spaces, newlines kept."""
+    text = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    lines = [strip_ansi(part).replace("\t", " ").rstrip() for part in text.split("\n")]
+    while lines and not lines[-1]:
+        lines.pop()
+    return "\n".join(lines)
+
+
+def wrap_columns(text: str, first_width: int, rest_width: Optional[int] = None) -> List[str]:
+    """Word-aware wrap by display columns; explicit newlines start a new row; long words hard-break.
+
+    The first row may have a different budget (the header shares it); every
+    later row gets ``rest_width``. Always returns at least one row.
+    """
+    rest_width = first_width if rest_width is None else rest_width
+    rows: List[str] = []
+    for paragraph in (text or "").split("\n"):
+        budget = first_width if not rows else rest_width
+        budget = max(1, budget)
+        if paragraph == "":
+            rows.append("")
+            first_width = rest_width
+            continue
+        words = paragraph.split(" ")
+        current = ""
+        for word in words:
+            if not word and current == "":
+                # leading or repeated spaces: keep one so indentation survives roughly
+                candidate = " "
+            else:
+                candidate = word if current == "" else current + " " + word
+            if display_width(candidate) <= budget:
+                current = candidate
+                continue
+            if current:
+                rows.append(current)
+                budget = max(1, rest_width)
+                current = ""
+            # the word alone: hard-break if it does not fit the row budget
+            while display_width(word) > budget:
+                cut = ""
+                for ch in word:
+                    if display_width(cut + ch) > budget:
+                        break
+                    cut += ch
+                if not cut:
+                    cut = word[0]
+                rows.append(cut)
+                word = word[len(cut):]
+                budget = max(1, rest_width)
+            current = word
+        rows.append(current)
+        first_width = rest_width
+    return rows or [""]
+
+
+#: Continuation rows of a wrapped feed entry are indented by this much.
+WRAP_INDENT = "    "
+
+
+def entry_rows(entry: Dict[str, Any], width: int) -> List[str]:
+    """Screen rows for one feed entry: header plus wrapped text, continuation rows indented, receipts last."""
+    width = max(1, width)
+    head = entry.get("head")
+    if head is None or "text" not in entry:
+        return [truncate_columns(str(entry.get("line") or ""), width)]
+    head = truncate_columns(str(head), width)
+    text = str(entry.get("text") or "")
+    tail = str(entry.get("tail") or "")
+    if not text:
+        rows = [head]
+    else:
+        first_budget = width - display_width(head) - 1
+        if first_budget < max(8, width // 4):
+            # header takes the row; text starts on the next one
+            rows = [head] + [WRAP_INDENT + chunk for chunk in wrap_columns(text, width - len(WRAP_INDENT))]
+        else:
+            chunks = wrap_columns(text, first_budget, width - len(WRAP_INDENT))
+            rows = [head + " " + chunks[0]] + [WRAP_INDENT + chunk for chunk in chunks[1:]]
+    if tail:
+        joined = "{}  {}".format(rows[-1], tail)
+        if display_width(joined) <= width:
+            rows[-1] = joined
+        else:
+            rows.append(truncate_columns(WRAP_INDENT + tail, width))
+    return [truncate_columns(row, width) for row in rows]
+
+
+def visible_feed_rows(model: ConsoleModel, height: int) -> List[Tuple[str, Dict[str, Any]]]:
+    """The last ``height`` screen rows of the filtered feed, ``model.scroll`` entries above the tail.
+
+    Entries wrap over several rows; the window is filled from the bottom, so
+    the topmost entry may show only its last rows. ``scroll`` counts entries
+    and is clamped so the first entry can always be reached.
+    """
+    entries = filtered_feed(model)
+    if height <= 0 or not entries:
+        return []
+    max_scroll = max(0, len(entries) - 1)
+    scroll = min(max(0, model.scroll), max_scroll)
+    model.scroll = scroll
+    end = len(entries) - scroll
+    width = max(1, model.width)
+    rows: List[Tuple[str, Dict[str, Any]]] = []
+    for entry in reversed(entries[:end]):
+        chunk = [(row, entry) for row in entry_rows(entry, width)]
+        rows = chunk + rows
+        if len(rows) >= height:
+            break
+    return rows[-height:]
 
 
 def build_feed(
@@ -1336,7 +1459,7 @@ def render_console_styled(model: ConsoleModel, width: Optional[int] = None, heig
     if model.peek is not None:
         body: List[Tuple[str, str]] = [(line, STYLE_PEEK) for line in fit_peek(model.peek, feed_height)]
     else:
-        body = [(e["line"], entry_style(e)) for e in visible_feed(model, feed_height)]
+        body = [(row, entry_style(e)) for row, e in visible_feed_rows(model, feed_height)]
     body = body + [("", STYLE_PLAIN)] * (feed_height - len(body))
     lines.extend(body)
     lines.extend(footer)
