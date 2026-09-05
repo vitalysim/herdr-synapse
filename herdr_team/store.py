@@ -269,7 +269,7 @@ TAILER_ENOENT_LOG_S = 5.0
 RECORD_KINDS = ("note", "request", "handoff", "done", "blocked", "question", "answer", "direct", "retract", "system")
 SYSTEM_EVENTS = (
     "nudged", "toast", "retracted", "expired", "abandoned", "member_gone", "member_restarted",
-    "rotated", "reset_detected", "charter_updated", "renamed", "typed",
+    "rotated", "reset_detected", "charter_updated", "renamed", "typed", "member_joined",
 )
 #: Every key of a stored record in file order (docs/cli.md section 10).
 RECORD_KEYS = (

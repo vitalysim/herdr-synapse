@@ -66,7 +66,7 @@ POST_KINDS = ("note", "request", "handoff", "done", "blocked", "question", "answ
 RECORD_KINDS = POST_KINDS + ("direct", "retract", "system")
 SYSTEM_EVENTS = (
     "nudged", "toast", "retracted", "expired", "abandoned", "member_gone", "member_restarted",
-    "rotated", "reset_detected", "charter_updated", "renamed", "typed",
+    "rotated", "reset_detected", "charter_updated", "renamed", "typed", "member_joined",
 )
 HUMAN_VIAS = (VIA_CONSOLE, VIA_CONSOLE_UNFOCUSED, VIA_POPUP, VIA_OUTSIDE)
 #: ``say`` (docs/cli.md section 7): only the verified team console may type into a member. A shell pane is

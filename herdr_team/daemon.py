@@ -1703,14 +1703,15 @@ class Daemon:
             urgent = bool(rec.get("urgent"))
             targets: List[str] = []
             if author == "system":
-                if rec.get("event") == "charter_updated" and urgent:
-                    targets = list(cursors)
+                if rec.get("event") in ("charter_updated", "member_joined") and urgent:
+                    newcomer = rec.get("member") if rec.get("event") == "member_joined" else None
+                    targets = [n for n in cursors if n != newcomer]
             else:
                 for target in rec.get("to", []) or []:
                     if not isinstance(target, str) or target == author or target == "human":
                         continue
                     if target == "all":
-                        if urgent:
+                        if urgent or author == "human":
                             targets.extend(cursors)
                         continue
                     recipient = team.member(target) or team.member_by_retired_name(target)
@@ -2263,9 +2264,12 @@ class Daemon:
                 team.name, seq, author, json.dumps(rec.get("origin"), ensure_ascii=False)[:120]))
             return
         if author == "system":
-            if rec.get("event") == "charter_updated" and rec.get("urgent"):
+            event = rec.get("event")
+            if rec.get("urgent") and event in ("charter_updated", "member_joined"):
+                # An urgent system broadcast nudges every member; a join spares the newcomer (its briefing covers it).
+                newcomer = rec.get("member") if event == "member_joined" else None
                 for member in team.members():
-                    if member.get("kind") != "human" and member.get("terminal_id"):
+                    if member.get("kind") != "human" and member.get("terminal_id") and member.get("name") != newcomer:
                         self._add_pending(team, str(member["name"]), seq, True, "system", now)
             return
         if kind == "direct":

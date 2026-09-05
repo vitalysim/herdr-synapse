@@ -136,7 +136,9 @@ Errors: `team_name_invalid`, `team_exists` (unless `--reuse`), `role_invalid`,
 
 ### `add <team> <target> [--role <r>] [--as <name>] [--brief "<text>"] [--steal]`
 
-Same join routine for one member. JSON `{"team","member":member,"renamed":bool,"notifier","briefing_job"}`.
+Same join routine for one member. Then posts an urgent `member_joined` system record to `all`
+(`member`, `role`, `member_kind` fields): the daemon nudges every other member to read it, and the newcomer
+gets the briefing instead. JSON `{"team","member":member,"renamed":bool,"notifier","briefing_job","joined_record":seq}`.
 
 ### `remove <team> <name> [--keep-name]`
 
@@ -667,7 +669,8 @@ Board record (plan 6.1), all keys always present:
 `direct` records (`from:"human"`, `to:["<member>"]`, extra `force`) are lines the human typed into
 one member with `say` (section 7): on the board for everyone, never nudged, never a member's mail.
 `system` records set `from:"system"`, `kind:"system"`, and `event` in
-`nudged|toast|retracted|expired|abandoned|member_gone|member_restarted|rotated|reset_detected|charter_updated|renamed|typed`.
+`nudged|toast|retracted|expired|abandoned|member_gone|member_restarted|rotated|reset_detected|charter_updated|renamed|typed|member_joined`.
+`member_joined` (from `add`) is `urgent` and carries `member`, `role`, `member_kind`; like an urgent `charter_updated` it nudges every member, except the newcomer.
 A `typed` record (`to:["human"]`) is the outcome of a `say`: `seqs`, `reply_to`, `member`, `kind_of_member`,
 `result`, `reason`, `detail`, `force`, `force_verified`, `elapsed_ms`.
 Readers render `from:human` without a console/popup/outside/verified-shell

@@ -785,8 +785,19 @@ def _run_add(args: argparse.Namespace) -> int:
     spec = _JoinSpec(args.target, args.role, args.as_name, args.brief)
     validate_join_batch(team, api, [spec], team.naming == "plain", layout=layout, steal=args.steal)
     member, job = perform_join(layout, api, team, spec, args.steal, args.rename, env_of(args), author)
+    # Every other member hears about the newcomer: an urgent system broadcast the daemon nudges for
+    # (the newcomer itself gets the briefing instead, which lists its teammates).
+    joined = _roster.append_system_record(
+        layout.team(team_name), "member_joined",
+        "{} joined team {} as {} ({}, {})".format(member.name, team_name, member.role, member.kind, member.pane_id),
+        to=["all"], extra={"urgent": True, "member": member.name, "role": member.role, "member_kind": member.kind}, socket=os.fspath(layout.socket),
+    )
     _ensure_daemon(layout, env_of(args))
-    payload = {"team": team_name, "member": _member_json(member, spec.renamed), "renamed": spec.renamed, "notifier": notifier_state(layout.session), "briefing_job": job}
+    kind_trusted = _roster.kind_trusted(store.read_json(layout.session.kinds_json, default=None), str(member.kind or ""))
+    if not kind_trusted:
+        # Gate 4 holds every delivery to an untrusted kind; say so now instead of leaving the member "unbriefed".
+        warn(args, "{} is a {} agent and that kind is not trusted for delivery yet: nothing is typed into it (no briefing, no nudges) until you run: herdr-team kinds trust {}".format(member.name, member.kind, member.kind))
+    payload = {"team": team_name, "member": _member_json(member, spec.renamed), "renamed": spec.renamed, "notifier": notifier_state(layout.session), "briefing_job": job, "joined_record": joined, "kind_trusted": kind_trusted}
     return emit(args, payload, "{} joined {} as {} ({})".format(member.name, team_name, member.role, member.pane_id))
 
 
