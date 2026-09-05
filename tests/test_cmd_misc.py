@@ -556,7 +556,7 @@ class NotifierStatsTests(unittest.TestCase):
 
 
 class DocsContractTests(unittest.TestCase):
-    """docs/cli.md documents every command the misc and daemon modules register, with the JSON keys they emit."""
+    """docs/cli.md documents every command the board, misc, and daemon modules register, with the JSON keys they emit."""
 
     def _doc(self):
         from support import PLUGIN_ROOT
@@ -589,10 +589,10 @@ class DocsContractTests(unittest.TestCase):
         self.assertIn("team_not_found", section)
 
     def test_every_registered_command_has_a_heading(self):
-        from herdr_team import cmd_daemon
+        from herdr_team import cmd_board, cmd_daemon
 
         doc = self._doc()
-        for command in list(cmd_misc.COMMANDS) + list(cmd_daemon.COMMANDS):
+        for command in list(cmd_board.COMMANDS) + list(cmd_misc.COMMANDS) + list(cmd_daemon.COMMANDS):
             # Section 8 documents the delivery commands as table rows; everything else has a heading.
             documented = "### `{}".format(command.name) in doc or "| `{} ".format(command.name) in doc or "| `{}`".format(command.name) in doc
             self.assertTrue(documented, "docs/cli.md has no section or table row for {!r}".format(command.name))

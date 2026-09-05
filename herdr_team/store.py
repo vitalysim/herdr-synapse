@@ -266,10 +266,10 @@ ARCHIVE_INDEX_VERSION = 1
 TAILER_STATE_VERSION = 1
 TAILER_ENOENT_LOG_S = 5.0
 
-RECORD_KINDS = ("note", "request", "handoff", "done", "blocked", "question", "answer", "retract", "system")
+RECORD_KINDS = ("note", "request", "handoff", "done", "blocked", "question", "answer", "direct", "retract", "system")
 SYSTEM_EVENTS = (
     "nudged", "toast", "retracted", "expired", "abandoned", "member_gone", "member_restarted",
-    "rotated", "reset_detected", "charter_updated", "renamed",
+    "rotated", "reset_detected", "charter_updated", "renamed", "typed",
 )
 #: Every key of a stored record in file order (docs/cli.md section 10).
 RECORD_KEYS = (
@@ -345,6 +345,21 @@ def valid_record(obj: Any) -> bool:
     if not isinstance(obj.get("text"), str) or not isinstance(obj.get("to"), list):
         return False
     return True
+
+
+def is_direct_line(record: Any) -> bool:
+    """A line the human typed straight into one member (``direct``) or the daemon's ``typed`` outcome for it.
+
+    Neither is mail (docs/cli.md section 7, ``say``): readers never count them
+    as unread, the daemon never nudges for them, and a Stop hook never blocks
+    on them. Both stay on the board for everyone to read.
+    """
+    if not isinstance(record, dict):
+        return False
+    kind = record.get("kind")
+    if kind == "direct":
+        return True
+    return kind == "system" and record.get("event") == "typed"
 
 
 def normalize_record(record: Dict[str, Any]) -> Dict[str, Any]:

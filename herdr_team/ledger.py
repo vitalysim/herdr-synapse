@@ -56,6 +56,15 @@ RESULTS = (
 #: A clean landing: ``landed_working`` and the cursor advanced within 5 min on the first attempt.
 CLEAN_CURSOR_LATENCY_MS = 300000.0
 
+#: Deliveries that are not nudge round trips (a human ``say`` line, docs/cli.md section 7): they never
+#: count for per-kind verification, and an unfinished one is not "sent" nudge work after a restart.
+NON_ROUND_TRIP_DELIVERIES = ("say",)
+
+
+def is_round_trip(entry: Dict[str, Any]) -> bool:
+    """False for attempts whose ``delivery`` is not a nudge round trip (``say``)."""
+    return entry.get("delivery") not in NON_ROUND_TRIP_DELIVERIES
+
 
 def now_iso() -> str:
     t = time.time()
@@ -183,7 +192,7 @@ class Ledger:
 
     def open_intents(self) -> List[Dict[str, Any]]:
         """Intents with no result: treated as sent after a restart."""
-        return [entry for entry in self.attempts().values() if entry.get("result") is None and "member" in entry]
+        return [entry for entry in self.attempts().values() if entry.get("result") is None and "member" in entry and is_round_trip(entry)]
 
     def counts(self) -> Dict[str, int]:
         """Per-result totals including ``wrong_target``; every known result key is present."""
@@ -224,7 +233,7 @@ class Ledger:
         """Share of the last ``window`` completed round trips for ``kind`` that were clean; None below the window."""
         completed = [
             entry for entry in self.attempts().values()
-            if entry.get("kind") == kind and entry.get("result") is not None and entry.get("result") != RESULT_DRY
+            if entry.get("kind") == kind and entry.get("result") is not None and entry.get("result") != RESULT_DRY and is_round_trip(entry)
         ]
         if len(completed) < window:
             return None
@@ -238,7 +247,7 @@ class Ledger:
         kinds: Dict[str, Dict[str, Any]] = {}
         for entry in self.attempts().values():
             kind = entry.get("kind")
-            if not isinstance(kind, str) or entry.get("result") is None:
+            if not isinstance(kind, str) or entry.get("result") is None or not is_round_trip(entry):
                 continue
             bucket = kinds.setdefault(kind, {"round_trips": 0, "clean": 0})
             bucket["round_trips"] += 1

@@ -22,8 +22,8 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 from herdr_team import sanitize
 
-GLYPHS = {"request": "→", "done": "✓", "blocked": "!", "question": "?"}
-ASCII_GLYPHS = {"request": ">", "done": "+", "blocked": "!", "question": "?"}
+GLYPHS = {"request": "→", "done": "✓", "blocked": "!", "question": "?", "direct": "»"}
+ASCII_GLYPHS = {"request": ">", "done": "+", "blocked": "!", "question": "?", "direct": ">>"}
 STATUS_GLYPHS = {"working": "◐", "idle": "○", "blocked": "×", "done": "✓"}
 ASCII_STATUS_GLYPHS = {"working": "W", "idle": "I", "blocked": "B", "done": "D"}
 UNKNOWN_STATUS_GLYPH = "?"
@@ -37,11 +37,11 @@ BODY_MAX = 240
 ONELINE_WIDTH = 120
 HUMAN_ORIGINS = frozenset({"console", "popup", "outside"})
 #: Record kinds of schema v1 (plan 6.1); anything else is a raw append.
-KINDS = frozenset({"note", "request", "handoff", "done", "blocked", "question", "answer", "retract", "system"})
+KINDS = frozenset({"note", "request", "handoff", "done", "blocked", "question", "answer", "direct", "retract", "system"})
 #: Glyph transliteration for ``--ascii`` output of text that may carry glyphs
 #: (token headlines are glyph-prefixed by ``headline_for_token``).
 ASCII_TRANSLATION = str.maketrans({
-    "→": ">", "✓": "+", "◐": "W", "○": "I", "×": "B", "↪": ">", "·": "|",
+    "→": ">", "✓": "+", "◐": "W", "○": "I", "×": "B", "↪": ">", "·": "|", "»": ">>",
 })
 #: Line prefixes escaped inside hook context so a quoted post cannot open a
 #: role turn, forge a board header, or trigger the skill's marker rule.

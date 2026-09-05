@@ -21,6 +21,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from herdr_team import cmd_board as _cmd_board
 from herdr_team import PLUGIN_ID, VERSION
 from herdr_team import api as _api
 from herdr_team import cli as _cli
@@ -764,10 +765,7 @@ def _open_delivery(args: argparse.Namespace, require_server: bool = False) -> Tu
 
 
 def _member_or_raise(doc: Dict[str, Any], name: str, team_name: str) -> Dict[str, Any]:
-    for member in agent_members(doc):
-        if member.get("name") == name:
-            return member
-    raise HerdrTeamError("member_not_found", "{!r} is not an agent member of {!r}".format(name, team_name), EXIT_REFUSED, {"name": name, "roster": [m.get("name") for m in agent_members(doc)]})
+    return _cmd_board.member_or_raise(doc, name, team_name)
 
 
 def _require_daemon(layout: Layout) -> None:

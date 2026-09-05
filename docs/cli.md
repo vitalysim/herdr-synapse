@@ -48,7 +48,7 @@ Environment the CLI reads: `HERDR_SOCKET_PATH`, `HERDR_SESSION`,
 | Code | Meaning | Typical error codes |
 | --- | --- | --- |
 | 0 | ok | |
-| 1 | refused or validation failure | `team_name_invalid`, `name_invalid`, `name_reserved`, `role_invalid`, `agent_name_taken`, `member_claimed`, `team_exists`, `team_not_found`, `member_not_found`, `author_mismatch`, `text_too_long`, `invalid_utf8`, `charter_too_long`, `ref_invalid`, `path_symlink`, `team_session_mismatch`, `team_ambiguous`, `view_foreign`, `plugin_disabled`, `agent_not_found`, `agent_blocked`, `agent_not_ready`, `launch_pending`, `not_an_agent`, `board_write_failed`, `roster_conflict`, `home_unset`, `internal` |
+| 1 | refused or validation failure | `team_name_invalid`, `name_invalid`, `name_reserved`, `role_invalid`, `agent_name_taken`, `member_claimed`, `team_exists`, `team_not_found`, `member_not_found`, `author_mismatch`, `text_too_long`, `invalid_utf8`, `charter_too_long`, `ref_invalid`, `path_symlink`, `team_session_mismatch`, `team_ambiguous`, `view_foreign`, `plugin_disabled`, `agent_not_found`, `agent_blocked`, `agent_not_ready`, `launch_pending`, `not_an_agent`, `board_write_failed`, `roster_conflict`, `home_unset`, `internal`, `say_unverified`, `say_multiline`, `say_too_long`, `say_control_command`, `say_timeout`, `kind_unverified`, `retract_invalid`, `edit_invalid` |
 | 2 | usage | `usage`, `unknown_command` |
 | 3 | not a member, or Herdr unreachable | `not_a_member`, `team_required`, `server_not_running`, `herdr_unreachable`, `herdr_timeout`, `herdr_not_found` |
 | 4 | echo rejected | `echo_rejected` |
@@ -347,6 +347,69 @@ otherwise never produce one and be re-briefed after 90 s (sandbox, 2026-09-05).
 Records the member's cursor at the current max and `charter_seq_acked`.
 JSON `{"team","member","cursor":59,"charter_seq_acked":3}`.
 
+### `say <member> "<text>" [--force] [--wait | --no-wait] [--timeout S]`
+
+```
+say <member> "<text>" [--force] [--wait | --no-wait] [--timeout S]
+```
+
+Type one line into a member's input box right now, with operator authority,
+and record it on the board. The console's `!<member> <text>` runs this;
+`!!<member> <text>` adds `--force`.
+
+- Human only, and only from the verified team console: the author must be
+  `console`, verified, with confirmed pane ancestry. A member pane or a hook
+  is `author_mismatch` (1); a shell pane, the compose popup, a terminal
+  outside Herdr, an unfocused console, or a console whose process ancestry
+  cannot be confirmed is `say_unverified` (1). Both are audited. A shell pane
+  is refused on purpose: any agent can open a pane around a command and
+  mint a verified shell author that way.
+- One agent member; `all`, `human`, `me`, and `role:<r>` are
+  `member_not_found` (1) with a hint. The member's kind must be trusted
+  (`kinds trust <kind>`), else `kind_unverified` (1).
+- Text: sanitized like a post, then tabs become spaces. A newline is
+  `say_multiline` (1), more than 500 characters is `say_too_long` (1), the
+  marker check is `echo_rejected` (4) and a secret is `secret_detected` (1);
+  none of these is bypassable. A first token in `/exit /quit /clear /logout
+  /login /resume exit quit` is `say_control_command` (1) unless `--force`.
+- Needs the daemon: `daemon_down` (5) before anything is written. Then a
+  `direct` record (`from: human`, `to: [<member>]`, `kind: direct`, extra
+  `force`) is appended and a `say` job carrying only its seq is queued. The
+  daemon types the record's text as-is (never a job payload, never a
+  `[herdr-team` header) after checking that the record is the console's own.
+- The daemon refuses in both modes when the member is absent, another
+  process occupies its terminal, the kind is untrusted, the agent is
+  `blocked` or `unknown`, `agent explain` shows a blocker or an overlay
+  (`skip_state_update`), a dialog line is on screen, a draft sits on the
+  prompt line, or another line is still being confirmed (`in_flight`).
+  `--force` bypasses exactly `working` and `muted`. A job older than 10 s
+  (left over from a dead daemon) is `stale`. Every refusal is recorded.
+- The outcome is a `typed` system record addressed to `human` with
+  `seqs:[<seq>]`, `reply_to`, `member`, `kind_of_member`, `result`
+  (`typed|refused|not_submitted|failed`), `reason`, `detail`, `force`,
+  `force_verified`, `elapsed_ms`. Reasons: `typed` carries `null`, `in_turn`
+  (typed into a running turn) or `dry`; `refused` carries `working`, `muted`,
+  `blocked`, `dialog`, `draft`, `skip_state_update`, `unknown`, `not_ready`,
+  `absent`, `wrong_occupant`, `wrong_target`, `in_flight`, `stale`,
+  `unverified_source`, `member_not_found`, `kind_unverified`; `failed`
+  carries `hung`, `transient`, or `unconfirmed` (still idle 5 s after typing
+  with the text gone from the prompt line; `not_submitted` when it is still
+  there). Typing into a running turn is verified for Claude Code only; for
+  other kinds `force_verified` is false and `detail` says so.
+- `--wait` (default) polls for that record up to `--timeout` (10 s) and
+  returns it as `outcome`; a refused or failed outcome is still exit 0.
+  No record in time is `say_timeout` (1) with `seq` and `job`. `--no-wait`
+  returns `outcome: null`; the console uses it and reads the outcome from
+  the board tail.
+- Neither record is mail: a member's `board --new`, `--peek`, `--to me`,
+  unread count, Claude Stop hook, and prompt context never include them, and
+  they never nudge. `board`, `board --kind direct`, `show`, and `--thread
+  <seq>` show both; the human's `board --new` lists the `typed` outcome.
+  `edit` and `retract` refuse a `direct` record (`edit_invalid`,
+  `retract_invalid`, 1): send a correction with another `!` line.
+
+JSON `{"seq":12,"team":"alpha","member":"alpha-worker","job":"3f9a1c0b2d","force":false,"text":"stop and summarize","author":{"name":"human","via":"console","verified":true},"waited":true,"outcome":{"seq":13,"result":"typed","reason":null,"detail":null,"elapsed_ms":812}}`.
+
 ### `inbox --human [--last N] [--since <seq>]`
 
 What the human has not seen (plan 7.2): board posts addressed to `human`
@@ -390,9 +453,11 @@ followed by one indented line per entry, `<ts> <kind> [<reason>] <title>`.
 | `unmute <name> \| --all` | | same shape |
 | `pause` | alias `mute --all` | same shape |
 | `focus <name>` | enqueue `agent.focus` on the member's current pane | `{"team","member","job"}` |
+| `say <name> "<text>" [--force]` | write a `direct` record and enqueue a type-now job (section 7); the daemon types it without waiting for idle and confirms it on the next agent poll | `{"team","member","seq","job","outcome"}` |
 | `read <name> [--lines N]` | `agent read --source visible` directly; `--lines` is refused for every member (`lines_refused`, exit 1), because scrolling an idle alternate screen types keys into the agent and only the daemon may type into a member | `{"team","member","pane_id","lines":[…]}` |
 
-Job files: `notifier/jobs/<ts>-<id>.json` `{"v":1,"kind":"brief|nudge|focus","member","force","requested_by":author,"requested_at"}`.
+Job files: `notifier/jobs/<ts>-<id>.json` `{"v":1,"kind":"brief|nudge|focus|say","member","force","requested_by":author,"requested_at"}`.
+A `say` job adds `"seq"` (its `direct` record) and carries no text: the daemon types the record.
 
 ## 9. Plugin and setup
 
@@ -591,8 +656,13 @@ Board record (plan 6.1), all keys always present:
  "urgent":false,"ttl_ms":null,"truncated":false,"event":null,"relayed_for":null}
 ```
 
+`kind` is one of `note|request|handoff|done|blocked|question|answer|direct|retract|system`.
+`direct` records (`from:"human"`, `to:["<member>"]`, extra `force`) are lines the human typed into
+one member with `say` (section 7): on the board for everyone, never nudged, never a member's mail.
 `system` records set `from:"system"`, `kind:"system"`, and `event` in
-`nudged|toast|retracted|expired|abandoned|member_gone|member_restarted|rotated|reset_detected|charter_updated|renamed`.
+`nudged|toast|retracted|expired|abandoned|member_gone|member_restarted|rotated|reset_detected|charter_updated|renamed|typed`.
+A `typed` record (`to:["human"]`) is the outcome of a `say`: `seqs`, `reply_to`, `member`, `kind_of_member`,
+`result`, `reason`, `detail`, `force`, `force_verified`, `elapsed_ms`.
 Readers render `from:human` without a console/popup/outside/verified-shell
 origin, or `from:system` without `kind:system`, as `(unverified)`.
 

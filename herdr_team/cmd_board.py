@@ -63,12 +63,20 @@ from herdr_team.cli import Command
 # constants
 
 POST_KINDS = ("note", "request", "handoff", "done", "blocked", "question", "answer")
-RECORD_KINDS = POST_KINDS + ("retract", "system")
+RECORD_KINDS = POST_KINDS + ("direct", "retract", "system")
 SYSTEM_EVENTS = (
     "nudged", "toast", "retracted", "expired", "abandoned", "member_gone", "member_restarted",
-    "rotated", "reset_detected", "charter_updated", "renamed",
+    "rotated", "reset_detected", "charter_updated", "renamed", "typed",
 )
 HUMAN_VIAS = (VIA_CONSOLE, VIA_CONSOLE_UNFOCUSED, VIA_POPUP, VIA_OUTSIDE)
+#: ``say`` (docs/cli.md section 7): only the verified team console may type into a member. A shell pane is
+#: refused too, because any agent can mint a "verified cli" author by opening a pane around the command.
+SAY_VIAS = (VIA_CONSOLE,)
+SAY_MAX_CHARS = _sanitize.ADVISED_TEXT_CHARS
+SAY_WAIT_TIMEOUT_S = 10.0
+SAY_POLL_S = 0.1
+#: First tokens a plain ``say`` refuses (``say_control_command``); ``--force`` (the console's ``!!``) types them.
+SAY_CONTROL_WORDS = ("/exit", "/quit", "/clear", "/logout", "/login", "/resume", "exit", "quit")
 BOARD_DEFAULT_LAST = 30
 BOARD_NEW_LIMIT = 100
 BOARD_OUTPUT_CAP_BYTES = 32 * 1024
@@ -209,6 +217,17 @@ def agent_members(doc: Dict[str, Any], include_left: bool = False) -> List[Dict[
             continue
         out.append(member)
     return out
+
+
+def member_or_raise(doc: Dict[str, Any], name: str, team_name: str) -> Dict[str, Any]:
+    """The agent member called ``name`` (not human, not left), else ``member_not_found`` (exit 1)."""
+    for member in agent_members(doc):
+        if member.get("name") == name:
+            return member
+    details: Dict[str, Any] = {"name": name, "roster": [m.get("name") for m in agent_members(doc)]}
+    if name in ("all", AUTHOR_HUMAN, "me") or name.startswith("role:"):
+        details["hint"] = "one agent member at a time; post --to {} addresses a group".format(name)
+    raise HerdrTeamError("member_not_found", "{!r} is not an agent member of {!r}".format(name, team_name), EXIT_REFUSED, details)
 
 
 def find_member(doc: Dict[str, Any], name: str, allow_retired: bool = True) -> Optional[Dict[str, Any]]:
@@ -569,11 +588,23 @@ def addressed_to(record: Dict[str, Any], reader: str, is_human: bool) -> bool:
     return is_human and AUTHOR_HUMAN in to
 
 
+def inbox_record(record: Dict[str, Any], reader: str, is_human: bool) -> bool:
+    """The reader's mail: addressed to it, not its own, and (for a member) not a line the human typed into it.
+
+    A ``direct`` record is already in the member's input box and the daemon's
+    ``typed`` outcome is addressed to the human, so neither is unread mail for
+    a member (docs/cli.md section 7, ``say``); the human's inbox lists both.
+    """
+    if record.get("from") == reader or not addressed_to(record, reader, is_human):
+        return False
+    return is_human or not store.is_direct_line(record)
+
+
 def unread_for(team: TeamPaths, records: Sequence[Dict[str, Any]], reader: str, is_human: bool = False) -> int:
     state = cursor_get(team, reader)
     cursor = int(state.get("seq", 0))
     seen = set(state.get("seen") or [])
-    return sum(1 for r in records if r["seq"] > cursor and r["seq"] not in seen and r.get("from") != reader and addressed_to(r, reader, is_human))
+    return sum(1 for r in records if r["seq"] > cursor and r["seq"] not in seen and inbox_record(r, reader, is_human))
 
 
 # --------------------------------------------------------------------------
@@ -941,6 +972,8 @@ def compute_receipts(team: TeamPaths, doc: Dict[str, Any], records: List[Dict[st
     member_names = [str(m.get("name")) for m in agent_members(doc)]
     out: Dict[str, Dict[str, Any]] = {}
     for record in records:
+        if store.is_direct_line(record):
+            continue  # a typed line has a ``typed`` outcome, not read receipts
         seq = record["seq"]
         nudged = []
         for other in all_records:
@@ -998,7 +1031,7 @@ def _run_board(args: argparse.Namespace) -> int:
     seen_before = set(cursor_state.get("seen") or [])
     inbox = args.new or args.peek or args.to == "me"
     if inbox:
-        selection = [r for r in selection if addressed_to(r, reader, is_human) and r.get("from") != reader]
+        selection = [r for r in selection if inbox_record(r, reader, is_human)]
     if args.new or args.peek:
         selection = [r for r in selection if r["seq"] > cursor_before and r["seq"] not in seen_before]
     if args.since is not None:
@@ -1045,7 +1078,7 @@ def _run_board(args: argparse.Namespace) -> int:
         # Plan 6.2: the cursor advances only to the highest seq printed *without skipping anything unread*.
         # A content filter hides addressed posts, so the cursor stops right before the first unread one
         # not shown; the printed seqs above it are remembered individually (``seen``) and never shown twice.
-        unread = [r["seq"] for r in all_records if r["seq"] > cursor_before and r["seq"] not in seen_before and addressed_to(r, reader, is_human) and r.get("from") != reader and r["seq"] not in shown_seqs]
+        unread = [r["seq"] for r in all_records if r["seq"] > cursor_before and r["seq"] not in seen_before and inbox_record(r, reader, is_human) and r["seq"] not in shown_seqs]
         if unread:
             highest = min(highest, min(unread) - 1)
         seen_now = sorted(s for s in shown_seqs if s > highest)
@@ -1082,6 +1115,115 @@ def _run_board(args: argparse.Namespace) -> int:
     if args.new and shown:
         copy_payloads_for_sandboxed(layout, team, doc, author, shown)
     return 0
+
+
+# --------------------------------------------------------------------------
+# say: type one line into a member now (human only, from the verified console)
+
+
+def require_say_author(layout: Layout, team_name: str, author: Author) -> None:
+    """``say`` is for the verified console only; members, hooks, popups, shells, and unfocused consoles are refused and audited."""
+    _charter.require_human(layout, team_name, author, "say")
+    ancestry = (author.origin or {}).get("ancestry")
+    if author.verified and author.via in SAY_VIAS and ancestry == "confirmed":
+        return
+    details = {"via": author.via, "verified": bool(author.verified), "ancestry": ancestry, "reason": author.reason}
+    _identity.audit(layout, team_name, "say_unverified", author, details)
+    raise HerdrTeamError(
+        "say_unverified",
+        "say types into a member and needs the focused team console (you are human via {}{}); open it with prefix+u and type !<name> <text>".format(
+            author.via, ": " + author.reason if author.reason else ""),
+        EXIT_REFUSED,
+        details,
+    )
+
+
+def prepare_say_text(raw: str, force: bool) -> str:
+    """One typed line: post sanitization, secrets never allowed, tabs to spaces, single line, <= 500 chars.
+
+    ``force`` (the console's ``!!``) lifts only the control-word refusal;
+    ``echo_rejected`` and ``secret_detected`` stand in both modes because the
+    text goes into a live terminal and onto the board.
+    """
+    clean, _truncated, _body = prepare_text(raw, spill=False, force=False)
+    clean = clean.replace("\t", " ").strip()
+    if "\n" in clean:
+        raise HerdrTeamError("say_multiline", "say types one line; a newline would submit several prompts (post multi-line text instead)", EXIT_REFUSED)
+    if len(clean) > SAY_MAX_CHARS:
+        raise HerdrTeamError("say_too_long", "say text is {} characters; the limit is {} (post longer text and nudge instead)".format(len(clean), SAY_MAX_CHARS), EXIT_REFUSED, {"length": len(clean), "max": SAY_MAX_CHARS})
+    head = clean.split(None, 1)[0].lower() if clean else ""
+    if head in SAY_CONTROL_WORDS and not force:
+        raise HerdrTeamError("say_control_command", "{!r} would end, clear, or switch the member's session; --force (the console's !!name) types it anyway".format(head), EXIT_REFUSED, {"word": head})
+    return clean
+
+
+def say_outcome_of(record: Dict[str, Any]) -> Dict[str, Any]:
+    return {"seq": record.get("seq"), "result": record.get("result"), "reason": record.get("reason"), "detail": record.get("detail"), "elapsed_ms": record.get("elapsed_ms")}
+
+
+def wait_for_typed(team: TeamPaths, seq: int, timeout_s: float, poll_s: float = SAY_POLL_S) -> Optional[Dict[str, Any]]:
+    """The daemon's ``typed`` record for the ``direct`` record ``seq``, polled until ``timeout_s``; None on timeout."""
+    deadline = time.monotonic() + max(0.0, timeout_s)
+    while True:
+        for rec in store.BoardStore(team).read(since_seq=seq, kind="system"):
+            if rec.get("event") == "typed" and seq in (rec.get("seqs") or []):
+                return rec
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(poll_s)
+
+
+def say_human_text(payload: Dict[str, Any]) -> str:
+    seq, name = payload["seq"], payload["member"]
+    outcome = payload.get("outcome")
+    if not outcome:
+        return "#{} queued as job {} for {} (not waiting)".format(seq, payload["job"], name)
+    result, reason = outcome.get("result"), outcome.get("reason")
+    if result == "typed":
+        suffix = "'s running turn" if reason == "in_turn" else (" (dry run)" if reason == "dry" else "")
+        return "#{} typed into {}{}".format(seq, name, suffix)
+    if result == "refused":
+        hint = "; --force types anyway" if reason in ("working", "muted") else ""
+        return "#{} not typed into {}: {}{}".format(seq, name, reason, hint)
+    if result == "not_submitted":
+        return "#{} is on {}'s prompt line but was not submitted".format(seq, name)
+    return "typing #{} into {} failed: {}".format(seq, name, outcome.get("detail") or reason or result)
+
+
+def _add_say_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("member", help="one agent member (human only; type it from the team console)")
+    parser.add_argument("text", help="one line typed into the member's input box as-is (<= 500 chars)")
+    parser.add_argument("--force", action="store_true", help="also type into a working or muted member and allow control words like /clear (the console's !!name)")
+    wait = parser.add_mutually_exclusive_group()
+    wait.add_argument("--wait", dest="wait", action="store_true", default=True, help="wait for the daemon's typed outcome (default)")
+    wait.add_argument("--no-wait", dest="wait", action="store_false", help="return as soon as the record and the job are written")
+    parser.add_argument("--timeout", type=float, default=SAY_WAIT_TIMEOUT_S, metavar="S", help="--wait deadline in seconds (default 10)")
+
+
+def _run_say(args: argparse.Namespace) -> int:
+    # require_server: identity needs pane.get; with Herdr down the user must see server_not_running, not say_unverified.
+    layout, api, author, team_name, team, doc = _open_team(args, require_server=True, write=True)
+    require_say_author(layout, team_name, author)
+    member = member_or_raise(doc, args.member, team_name)
+    name = str(member["name"])
+    kind = str(member.get("kind") or "")
+    if not (bool(member.get("verified_kind")) or _roster.kind_trusted(store.read_json(layout.session.kinds_json, default=None), kind)):
+        raise HerdrTeamError("kind_unverified", "{} is a {} agent and that kind is not trusted for delivery yet; run: herdr-team kinds trust {}".format(name, kind, kind), EXIT_REFUSED, {"member": name, "kind": kind})
+    text = prepare_say_text(args.text, args.force)
+    require_daemon(layout.session)
+    record = build_record(author, [name], "direct", text, urgent=False, socket_path=os.fspath(layout.socket), from_gen=member_generation(doc, author))
+    record["force"] = bool(args.force)
+    seq = board_append(team, record)
+    job = enqueue_job(team, "say", name, author, force=args.force, extra={"seq": seq})
+    outcome_record = wait_for_typed(team, seq, args.timeout) if args.wait else None
+    if args.wait and outcome_record is None:
+        raise HerdrTeamError("say_timeout", "#{} was recorded and job {} queued for {}, but no typed outcome arrived within {:g}s (see herdr-team notifier stats)".format(seq, job, name, args.timeout), EXIT_REFUSED, {"seq": seq, "job": job, "member": name, "timeout_s": args.timeout})
+    payload: Dict[str, Any] = {
+        "seq": seq, "team": team_name, "member": name, "job": job, "force": bool(args.force), "text": text,
+        "author": {"name": author.name, "via": author.via, "verified": bool(author.verified)},
+        "waited": bool(args.wait), "outcome": say_outcome_of(outcome_record) if outcome_record else None,
+    }
+    return emit(args, payload, lambda: say_human_text(payload))
 
 
 # --------------------------------------------------------------------------
@@ -1162,6 +1304,8 @@ def _run_retract(args: argparse.Namespace) -> int:
     if original is None:
         raise HerdrTeamError("post_not_found", "no post #{}".format(seq), EXIT_REFUSED, {"seq": seq})
     _own_or_human(original, author, "retract")
+    if original.get("kind") == "direct":
+        raise HerdrTeamError("retract_invalid", "#{} was typed into {}; send a correction with !<name> instead".format(seq, ",".join(original.get("to") or [])), EXIT_REFUSED)
     if original.get("kind") in ("retract", "system"):
         raise HerdrTeamError("retract_invalid", "#{} is a {} record".format(seq, original.get("kind")), EXIT_REFUSED)
     record = build_record(author, list(original.get("to") or ["all"]), "retract", "retracted #{}".format(seq), to_role=original.get("to_role"), retracts=seq, socket_path=os.fspath(layout.socket), from_gen=member_generation(doc, author))
@@ -1182,6 +1326,8 @@ def _run_edit(args: argparse.Namespace) -> int:
     if original is None:
         raise HerdrTeamError("post_not_found", "no post #{}".format(seq), EXIT_REFUSED, {"seq": seq})
     _own_or_human(original, author, "edit")
+    if original.get("kind") == "direct":
+        raise HerdrTeamError("edit_invalid", "#{} was typed into {}; send a correction with !<name> instead".format(seq, ",".join(original.get("to") or [])), EXIT_REFUSED)
     if original.get("kind") in ("retract", "system"):
         raise HerdrTeamError("edit_invalid", "#{} is a {} record".format(seq, original.get("kind")), EXIT_REFUSED)
     text, truncated, body = prepare_text(args.text, False, args.force)
@@ -1275,4 +1421,5 @@ COMMANDS: List[Command] = [
     Command("edit", "supersede one of your posts with new text", _add_edit_arguments, _run_edit),
     Command("task", "set your current task headline", _text_only, _run_task),
     Command("ack", "acknowledge the briefing and charter, move your cursor to the end", _no_arguments, _run_ack),
+    Command("say", "type one line into a member's input box now (human only, from the team console)", _add_say_arguments, _run_say),
 ]

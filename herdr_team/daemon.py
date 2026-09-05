@@ -101,6 +101,16 @@ TRANSIENT_BACKOFF_MAX_S = 60.0
 PANE_STUCK_S = 60.0
 STALLED_READ_DELAY_S = 1.5
 LANDED_FAST_MS = 250.0
+#: ``say`` (a human line typed into a member now, docs/cli.md section 7): the socket timeout of its one
+#: ``agent.prompt`` (sent without ``wait``, so a stall costs at most this per tick), the asynchronous
+#: confirmation window, and the age past which a job left over from a dead daemon is refused as stale.
+SAY_PROMPT_TIMEOUT_S = 5.0
+SAY_CONFIRM_S = 5.0
+SAY_MAX_AGE_S = 10.0
+#: Origins whose ``direct`` records the daemon types: the verified console only (``cmd_board.SAY_VIAS``).
+SAY_VIAS = ("console",)
+#: Kinds verified live to queue text typed into a running turn (``!!``); other kinds are typed but flagged.
+FORCE_VERIFIED_KINDS = ("claude",)
 RENUDGE_AFTER_S = (120.0, 300.0, 600.0)
 # The post TTL (plan 8.3, 30 min of target-active time) is ``gate.POST_TTL_MS``, per team via ``config.gate.post_ttl_ms``.
 BRIEF_ACK_S = 90.0
@@ -726,6 +736,31 @@ def system_record(team_name: str, event: str, text: str, to: Sequence[str], sock
     return rec
 
 
+def say_source_problem(rec: Any, member: str, console_terminal: Optional[str]) -> Optional[str]:
+    """Why the daemon must not type ``rec`` for a ``say`` job, or None when it is the console's own ``direct`` record.
+
+    The job file carries only a seq; the text comes from the board record,
+    and the record must be a verified console author's ``direct`` line to
+    exactly this member (plan: agents must never gain this power).
+    """
+    if not isinstance(rec, dict):
+        return "no board record at that seq"
+    if rec.get("kind") != "direct":
+        return "record #{} is a {} record, not direct".format(rec.get("seq"), rec.get("kind"))
+    if rec.get("from") != "human":
+        return "record is from {!r}, not the human".format(rec.get("from"))
+    if list(rec.get("to") or []) != [member]:
+        return "record is addressed to {}, not {}".format(rec.get("to"), member)
+    origin = rec.get("origin") if isinstance(rec.get("origin"), dict) else {}
+    if origin.get("verified") is not True or origin.get("via") not in SAY_VIAS:
+        return "record origin is {} {}".format(origin.get("via"), "verified" if origin.get("verified") else "unverified")
+    if not console_terminal or rec.get("from_terminal") != console_terminal:
+        return "record terminal {!r} is not the console's {!r}".format(rec.get("from_terminal"), console_terminal)
+    if not isinstance(rec.get("text"), str) or not rec["text"].strip():
+        return "record has no text"
+    return None
+
+
 def append_board_record(team: TeamPaths, record: Dict[str, Any]) -> int:
     """Append one record through ``store.BoardStore`` (plan 6.2 sequence under ``team.lock``)."""
     record = dict(record)
@@ -1010,6 +1045,23 @@ class Stability:
 
 
 @dataclass
+class SayState:
+    """A human line typed into a member, waiting for the next agent poll to confirm it landed."""
+
+    seq: int
+    attempt_id: str
+    sent_ms: float
+    gate_seq: int
+    status_before: str
+    force: bool
+    text: str
+    kind: str
+    pane_id: str
+    requested_by: Any = None
+    prompt_ms: float = 0.0
+
+
+@dataclass
 class TeamState:
     name: str
     paths: TeamPaths
@@ -1022,6 +1074,8 @@ class TeamState:
     human_queue: List[Dict[str, Any]] = field(default_factory=list)
     retracted: Set[int] = field(default_factory=set)
     open_intents: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    #: ``say`` lines typed and awaiting confirmation, by member name (``confirm_says``).
+    say_inflight: Dict[str, SayState] = field(default_factory=dict)
     #: Plan 8.2 tunables from ``team.json`` ``config.gate`` (``gate.DEFAULT_CONFIG`` without overrides).
     gate_config: gate.GateConfig = gate.DEFAULT_CONFIG
     #: The raw ``config.gate`` value the current ``gate_config`` was built from (change detection).
@@ -1136,7 +1190,7 @@ class Daemon:
         self.last_jobs_ms: Optional[float] = None
         self.last_teams_scan_ms: Optional[float] = None
         self.ping_failures = 0
-        self.counters: Dict[str, int] = {"events": 0, "polls": 0, "reconnects": 0, "nudges": 0, "toasts": 0, "wrong_target": 0, "jobs": 0, "unverified_skipped": 0, "phase_errors": 0}
+        self.counters: Dict[str, int] = {"events": 0, "polls": 0, "reconnects": 0, "nudges": 0, "toasts": 0, "wrong_target": 0, "jobs": 0, "unverified_skipped": 0, "phase_errors": 0, "says": 0}
         self.iterations = 0
         self.max_iterations: Optional[int] = None
         self.cli_path = os.fspath(plugin_root() / "bin" / "herdr-team")
@@ -1481,6 +1535,7 @@ class Daemon:
         if self.stop_requested:
             return
         self._phase("poll_agents", self.poll_agents)
+        self._phase("confirm_says", lambda: self.confirm_says(now))
         if self.console_check_due:
             self._phase("console", self._check_console_pane)
         if self.console_reconcile_at_ms is not None and now >= self.console_reconcile_at_ms:
@@ -1642,7 +1697,7 @@ class Daemon:
         added: Dict[str, List[int]] = {}
         for rec in records:
             seq = int(rec["seq"])
-            if seq in retracted or rec.get("kind") == "retract" or isinstance(rec.get("retracts"), int) or not self._counts_for_nudges(rec):
+            if seq in retracted or rec.get("kind") == "retract" or isinstance(rec.get("retracts"), int) or store.is_direct_line(rec) or not self._counts_for_nudges(rec):
                 continue
             author = str(rec.get("from"))
             urgent = bool(rec.get("urgent"))
@@ -1705,6 +1760,8 @@ class Daemon:
 
     def _has_pending(self) -> bool:
         for team in self.teams.values():
+            if team.say_inflight:
+                return True  # a typed line waits for the next poll to confirm it landed
             for name, pending in team.pending.items():
                 member = team.member(name)
                 if member is not None and member.get("terminal_id") and pending.landed_ms is None:
@@ -2211,6 +2268,10 @@ class Daemon:
                     if member.get("kind") != "human" and member.get("terminal_id"):
                         self._add_pending(team, str(member["name"]), seq, True, "system", now)
             return
+        if kind == "direct":
+            # A line the human typed into one member (``say``): already in its input box, never a nudge.
+            self.log("{}: #{} is a line the human typed into {}; recorded, not nudged".format(team.name, seq, ",".join(str(t) for t in rec.get("to") or [])))
+            return
         retracts = rec.get("retracts")
         if kind == "retract" or isinstance(retracts, int):
             if isinstance(retracts, int):
@@ -2340,7 +2401,7 @@ class Daemon:
             pending = team.pending.get(name)
             if pending is None:
                 cursor = read_cursor_seq(team.paths, name)
-                unread = [r["seq"] for r in read_board_records(team.paths, cursor) if name in r.get("to", []) or "all" in r.get("to", [])]
+                unread = [r["seq"] for r in read_board_records(team.paths, cursor) if (name in r.get("to", []) or "all" in r.get("to", [])) and not store.is_direct_line(r)]
                 unread = [s for s in unread if s not in team.retracted]
                 if not unread:
                     self.log("{}: nothing unread for {}; nudge job dropped".format(team.name, name))
@@ -2368,6 +2429,8 @@ class Daemon:
             if member is None or not isinstance(member.get("pane_id"), str):
                 return
             self.api.request("agent.focus", {"target": member["pane_id"]}, timeout=5.0)
+        elif kind == "say":
+            self._run_say(team, job, now)
         elif kind == "mute":
             mute = store.read_json(team.paths.mute_json, default=None)
             if not isinstance(mute, dict):
@@ -3014,6 +3077,201 @@ class Daemon:
             rt.last_nudge_ms = now
             self.global_last_nudge_ms = now
 
+    # -- say: a human line typed into a member now (docs/cli.md section 7) ------------------------
+
+    def _run_say(self, team: TeamState, job: Dict[str, Any], now: float) -> None:
+        """Type the ``direct`` record named by the job into its member right now, or record why not.
+
+        Checks kept in both modes: the record's origin, the roster terminal and
+        occupant, kind trust, a blocked or unknown state, an open dialog or
+        overlay, a draft on the prompt line. ``force`` (the console's ``!!``)
+        bypasses exactly ``working`` and ``muted``. Every refusal is a
+        ``typed`` board record for the human; nothing is dropped silently.
+        The prompt is sent without ``wait`` and confirmed by ``confirm_says``.
+        """
+        force = bool(job.get("force"))
+        requested_name = str(job.get("member") or "")
+        seq = job.get("seq")
+        if not isinstance(seq, int) or isinstance(seq, bool) or seq <= 0:
+            self.log("{}: say job for {} names no board seq; dropped".format(team.name, requested_name))
+            return
+        member = team.member(requested_name) or team.member_by_retired_name(requested_name)
+        name = str(member.get("name")) if member is not None else requested_name
+
+        def refuse(reason: str, detail: Optional[str] = None) -> None:
+            self._say_outcome(team, seq, name, "refused", reason, detail, force, requested_by=job.get("requested_by"))
+
+        requested_at = _parse_iso(job.get("requested_at")) if isinstance(job.get("requested_at"), str) else None
+        if requested_at is None or time.time() - requested_at > SAY_MAX_AGE_S:
+            return refuse("stale", "job requested at {}; older than {:.0f} s".format(job.get("requested_at"), SAY_MAX_AGE_S))
+        try:
+            rec = store.BoardStore(team.paths).get(seq)
+        except HerdrTeamError:
+            rec = None
+        console = store.read_json(self.session.console_json, default=None)
+        console_terminal = console.get("terminal_id") if isinstance(console, dict) and isinstance(console.get("terminal_id"), str) else None
+        problem = say_source_problem(rec, requested_name, console_terminal)
+        if problem is not None and name != requested_name:
+            problem = say_source_problem(rec, name, console_terminal)  # the member was renamed since the CLI wrote both
+        if problem is not None:
+            self.counters["unverified_skipped"] += 1
+            return refuse("unverified_source", problem)
+        assert isinstance(rec, dict)
+        text = str(rec["text"])
+        if member is None or member.get("kind") == "human":
+            return refuse("member_not_found", "{} is not an agent member of {}".format(requested_name, team.name))
+        pane_id = member.get("pane_id")
+        terminal_id = member.get("terminal_id")
+        if not isinstance(pane_id, str) or not terminal_id:
+            return refuse("absent", "{} has no pane or terminal on the roster".format(name))
+        kind = str(member.get("kind") or "")
+        if not (bool(member.get("verified_kind")) or self._kind_trusted(kind)):
+            return refuse("kind_unverified", "kind {} is not trusted; run: herdr-team kinds trust {}".format(kind, kind))
+        rt = team.rt(name)
+        if rt.in_flight or name in team.say_inflight:
+            return refuse("in_flight", "another line is being typed into {}".format(name))
+        fresh = self.fresh_agent(pane_id)
+        if fresh is None:
+            self.reconcile_due = True
+            return refuse("absent", "agent.get found no agent at {}".format(pane_id))
+        if not self._same_occupant(member, fresh):
+            self.reconcile_due = True
+            return refuse("wrong_occupant", "{} now hosts {} {}".format(pane_id, fresh.get("agent"), fresh.get("terminal_id")))
+        if not self._assert_roster_terminal(team, member, fresh):
+            return refuse("wrong_target", "terminal {} is not {}'s roster terminal".format(fresh.get("terminal_id"), name))
+        until = muted_until(read_mute(team.paths), name, time.time())
+        if until is not None and not force:
+            return refuse("muted", "{} is muted{}".format(name, "" if until == float("inf") else " until " + time.strftime("%H:%M:%SZ", time.gmtime(until))))
+        status = str(fresh.get("agent_status") or "unknown")
+        if status == "blocked":
+            return refuse("blocked", "agent status blocked")
+        if status == "unknown":
+            return refuse("unknown", "agent status unknown: detection cannot tell what is on screen")
+        if bool(fresh.get("launch_pending")):
+            return refuse("not_ready", "launch pending")
+        if status not in gate.IDLE_STATUSES and not force:
+            return refuse("working", "agent status {}".format(status))
+        explain = self._explain(pane_id)
+        if isinstance(explain, dict):
+            rule = gate._rule_id(explain) if hasattr(gate, "_rule_id") else (explain.get("rule_id") or explain.get("state"))
+            if explain.get("state") == "blocked" or explain.get("visible_blocker"):
+                return refuse("blocked", "explain: {}".format(rule))
+            skipped_reason = explain.get("skipped_update_reason")
+            if explain.get("skip_state_update") or skipped_reason:
+                return refuse("skip_state_update", str(skipped_reason or rule or "an overlay is open"))
+        detection = self._read_detection(rt, pane_id, now)
+        line = gate_dialog_line(detection, kind)
+        if line is not None:
+            return refuse("dialog", line)
+        draft = self._prompt_line(team, name, pane_id, kind, detection)
+        if draft and draft.strip():
+            return refuse("draft", draft.strip().splitlines()[0][:40])
+        gate_seq = int(fresh.get("state_change_seq") or 0)
+        force_verified: Optional[bool] = (kind in FORCE_VERIFIED_KINDS) if force else None
+        attempt_id = "say-{}-{}".format(name, int(time.time() * 1000))
+        attempt = Attempt(
+            id=attempt_id, member=name, kind=kind, seqs=[seq],
+            hook_authority=bool(fresh.get("screen_detection_skipped")), weak_idle=gate_is_weak_idle(explain), focused=bool(fresh.get("focused")),
+            prompt_line_empty=True, gate_ms=0.0, queue_ms=max(0.0, (time.time() - requested_at) * 1000.0), attempts=1,
+            manifest_source=explain.get("manifest_source") if isinstance(explain, dict) else None,
+            extra={"delivery": "say", "force": force, "requested_by": job.get("requested_by"), "pane_id": pane_id, "terminal_id": terminal_id, "status_before": status},
+        )
+        team.ledger.record_intent(attempt)
+        if self.dry_nudge:
+            self.log("{}: DRY say to {} ({}): {}".format(team.name, name, pane_id, text))
+            self.counters["says"] += 1
+            team.ledger.record_result(attempt_id, RESULT_DRY, {"text": text})
+            self._say_outcome(team, seq, name, "typed", "dry", None, force, attempt_id=attempt_id, kind=kind, force_verified=force_verified, requested_by=job.get("requested_by"))
+            return
+        t0 = time.monotonic()
+        try:
+            self.api.request("agent.prompt", {"target": pane_id, "text": text}, timeout=SAY_PROMPT_TIMEOUT_S)
+        except HerdrTeamError as err:
+            elapsed_ms = (time.monotonic() - t0) * 1000.0
+            result, reason, detail, ledger_result = self._classify_say_error(rt, err, now)
+            team.ledger.record_result(attempt_id, ledger_result, {"elapsed_ms": elapsed_ms, "code": err.code, "message": err.message})
+            self._say_outcome(team, seq, name, result, reason, detail, force, attempt_id=attempt_id, elapsed_ms=elapsed_ms, kind=kind, force_verified=force_verified, requested_by=job.get("requested_by"))
+            return
+        elapsed_ms = (time.monotonic() - t0) * 1000.0
+        self.counters["says"] += 1
+        self.global_last_nudge_ms = now
+        rt.in_flight = True
+        team.say_inflight[name] = SayState(seq=seq, attempt_id=attempt_id, sent_ms=now, gate_seq=gate_seq, status_before=status, force=force, text=text, kind=kind, pane_id=pane_id, requested_by=job.get("requested_by"), prompt_ms=elapsed_ms)
+        self.who_dirty = True
+        self.log("{}: say #{} typed into {} ({}) in {:.0f} ms; confirming".format(team.name, seq, name, pane_id, elapsed_ms))
+
+    def _classify_say_error(self, rt: MemberRuntime, err: HerdrTeamError, now: float) -> Tuple[str, str, str, str]:
+        """``(result, reason, detail, ledger_result)`` for an ``agent.prompt`` error on a say (no wait, so no stall code)."""
+        code = err.code
+        message = (err.message or "").lower()
+        detail = "{}: {}".format(code, err.message)
+        if code == "agent_blocked":
+            return "refused", "blocked", detail, RESULT_REFUSED
+        if code == "agent_not_ready":
+            return "refused", "not_ready", detail, RESULT_TRANSIENT
+        if code in ("agent_not_found", "agent_not_running"):
+            self.reconcile_due = True
+            return "refused", "absent", detail, RESULT_TRANSIENT
+        if code == "herdr_timeout" or (code == "agent_prompt_failed" and "full" in message and "not accepting" not in message):
+            rt.pane_stuck_until_ms = now + PANE_STUCK_S * 1000.0
+            return "failed", "hung", detail, RESULT_HUNG
+        if code in ("server_not_running", "herdr_protocol"):
+            self.ping_failures += 1
+        return "failed", "transient", detail, RESULT_TRANSIENT
+
+    def confirm_says(self, now: float) -> None:
+        """Classify typed lines from the agent poll: working or a new state seq is typed, blocked is typed into a dialog, idle after the window is not."""
+        for team in self.teams.values():
+            for name in list(team.say_inflight):
+                state = team.say_inflight[name]
+                agent = self.agents_by_pane.get(state.pane_id)
+                status = str(agent.get("agent_status") or "unknown") if agent else "unknown"
+                seq_now = int(agent.get("state_change_seq") or 0) if agent else -1
+                if agent is not None and (status == "working" or seq_now > state.gate_seq):
+                    in_turn = state.status_before not in gate.IDLE_STATUSES
+                    self._finish_say(team, name, state, "typed", "in_turn" if in_turn else None, None, RESULT_LANDED_IN_TURN if in_turn else RESULT_LANDED_WORKING, now)
+                elif agent is not None and status == "blocked":
+                    self._finish_say(team, name, state, "typed", None, "{} now shows a dialog".format(name), RESULT_LANDED_WORKING, now)
+                elif now - state.sent_ms >= SAY_CONFIRM_S * 1000.0:
+                    detection = self._detection_text(state.pane_id)
+                    line = gate.prompt_line_text(detection, state.kind)
+                    if line and line.strip() and line.strip()[:20] in state.text:
+                        self._finish_say(team, name, state, "not_submitted", "not_submitted", "the text is on the prompt line; press Enter in the pane", RESULT_NOT_SUBMITTED, now)
+                    else:
+                        self._finish_say(team, name, state, "failed", "unconfirmed", "no transition observed within {:.0f} s".format(SAY_CONFIRM_S), RESULT_TRANSIENT, now)
+
+    def _finish_say(self, team: TeamState, name: str, state: SayState, result: str, reason: Optional[str], detail: Optional[str], ledger_result: str, now: float) -> None:
+        elapsed_ms = max(0.0, now - state.sent_ms) + state.prompt_ms
+        team.ledger.record_result(state.attempt_id, ledger_result, {"elapsed_ms": elapsed_ms, "status_before": state.status_before, "reason": reason, "detail": detail})
+        force_verified: Optional[bool] = (state.kind in FORCE_VERIFIED_KINDS) if state.force else None
+        self._say_outcome(team, state.seq, name, result, reason, detail, state.force, attempt_id=state.attempt_id, elapsed_ms=elapsed_ms, kind=state.kind, force_verified=force_verified, requested_by=state.requested_by)
+        team.rt(name).in_flight = False
+        team.say_inflight.pop(name, None)
+        self.who_dirty = True
+
+    def _say_outcome(self, team: TeamState, seq: int, name: str, result: str, reason: Optional[str], detail: Optional[str], force: bool, attempt_id: Optional[str] = None, elapsed_ms: Optional[float] = None, kind: Optional[str] = None, force_verified: Optional[bool] = None, requested_by: Any = None) -> None:
+        """Append the ``typed`` record (to the human) that the console and ``say --wait`` read as the outcome."""
+        if force and force_verified is False and kind:
+            detail = "{}{}queue behaviour unverified for {}".format(detail or "", "; " if detail else "", kind)
+        if result == "typed":
+            text = "typed #{} into {}{}".format(seq, name, "'s running turn" if reason == "in_turn" else (" (dry run)" if reason == "dry" else ""))
+        elif result == "refused":
+            text = "#{} not typed into {}: {}".format(seq, name, reason)
+        elif result == "not_submitted":
+            text = "#{} is on {}'s prompt line but was not submitted".format(seq, name)
+        else:
+            text = "typing #{} into {} failed: {}".format(seq, name, reason)
+        if detail:
+            text = "{} ({})".format(text, _short_text(detail, 120))
+        extra = {
+            "seqs": [seq], "reply_to": seq, "member": name, "kind_of_member": kind, "result": result, "reason": reason,
+            "detail": detail, "force": bool(force), "force_verified": force_verified, "requested_by": requested_by,
+            "attempt_id": attempt_id, "elapsed_ms": elapsed_ms,
+        }
+        self._append_system(team, "typed", text, ["human"], extra)
+        self.log("{}: say #{} -> {}: {} {}".format(team.name, seq, name, result, reason or ""))
+        self.who_dirty = True
+
     def _finish_pending(self, team: TeamState, name: str, pending: Pending, event: str, text: str) -> None:
         if name in team.pending:
             del team.pending[name]
@@ -3231,6 +3489,7 @@ class Daemon:
                     "last_headline": rt.last_headline,
                     "pending_nudges": len(pending.seqs) if pending and pending.kind == "nudge" else (1 if pending else 0),
                     "hold": pending.hold if pending else None,
+                    "say": "confirming" if name in team.say_inflight else None,
                     "muted_until": None if until is None else ("indefinite" if until == float("inf") else time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(until))),
                     "verified_kind": bool(member.get("verified_kind")) or self._kind_trusted(str(member.get("kind"))),
                     "delivery": member.get("delivery", "nudge"),

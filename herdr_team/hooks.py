@@ -625,7 +625,8 @@ def unread_for(team: TeamPaths, name: str, since_seq: int = 0) -> List[Dict[str,
     """Unread posts for ``name``: to it or ``all``, from someone else, past its cursor (and ``since_seq``).
 
     Retracted posts and retract records are excluded; ``nudged``/``toast``
-    system records never count. Shared by the Stop decision (``stop_decision``)
+    system records never count, nor does a ``direct`` line the human typed
+    into the member or its ``typed`` outcome (``store.is_direct_line``). Shared by the Stop decision (``stop_decision``)
     and the prompt-submit context (``cmd_hooks``) so both see the same mail.
     """
     floor = max(_cursor_seq(team, name), since_seq)
@@ -635,7 +636,7 @@ def unread_for(team: TeamPaths, name: str, since_seq: int = 0) -> List[Dict[str,
         records = []
     out: List[Dict[str, Any]] = []
     for record in records:
-        if record.get("from") == name:
+        if record.get("from") == name or store.is_direct_line(record):
             continue
         if record.get("kind") == "system" and record.get("event") in ("nudged", "toast"):
             continue

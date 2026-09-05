@@ -131,7 +131,7 @@ def _addressed_unread(records: List[Dict[str, Any]], name: str, cursor: int) -> 
         seq = record.get("seq")
         if not isinstance(seq, int) or seq <= cursor or seq in retracted:
             continue
-        if record.get("from") == name or record.get("kind") == "retract":
+        if record.get("from") == name or record.get("kind") == "retract" or store.is_direct_line(record):
             continue
         if record.get("kind") == "system" and record.get("event") in ("nudged", "toast"):
             continue

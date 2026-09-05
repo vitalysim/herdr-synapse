@@ -113,6 +113,9 @@ DIALOG_MARKERS = (
     "allow command?", "do you trust the contents", "run a dynamic workflow?",
     "requests your input", "enter to submit", "tab to amend", "select model",
     "showing detailed transcript",
+    # Kinds whose manifests carry no ``blocked`` rule rely on this list alone (a human ``say`` types
+    # into them without waiting for idle): Claude's folder trust, Codex's continue prompt, Gemini's approvals.
+    "do you trust the files in this folder", "press enter to continue", "allow execution",
 )
 CODEX_VIEWER_MARKERS = ("↑/↓ to scroll", "q to quit")
 

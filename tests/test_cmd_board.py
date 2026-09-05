@@ -569,7 +569,7 @@ class Helpers(unittest.TestCase):
 
     def test_every_board_command_registered(self):
         names = {c.name for c in cli.load_commands()}
-        for name in ("post", "board", "show", "retract", "edit", "task", "ack"):
+        for name in ("post", "board", "show", "retract", "edit", "task", "ack", "say"):
             self.assertIn(name, names)
 
     def test_launcher_module_main_loads_commands(self):

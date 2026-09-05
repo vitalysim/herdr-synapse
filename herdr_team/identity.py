@@ -432,6 +432,8 @@ def _tier_console(env: Dict[str, str], layout: Layout, api: Any, team: Optional[
         author.reason = "console.json records terminal {!r}, this pane is {!r}".format(recorded, author.terminal_id)
         return author
     confirmed, reason = confirm_pane_ancestry(api, author.pane_id)
+    # ``say`` needs a positive answer: ``None`` (no process info, no ``ps``) stays an unfocused-grade author there.
+    author.origin["ancestry"] = "confirmed" if confirmed else ("unconfirmed" if confirmed is False else "unavailable")
     if confirmed is False:
         author.reason = reason
         return author
