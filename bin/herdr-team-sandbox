@@ -40,10 +40,14 @@ die() { printf 'herdr-team-sandbox: %s\n' "$*" >&2; exit 1; }
 # can address the default session) and the sandbox XDG directories set. The
 # plugin's bin dir is prepended to PATH so `herdr-team` works in every pane
 # of the sandbox session (panes inherit the server's environment).
+CLEAN_UNSET="-u HERDR_SOCKET_PATH -u HERDR_CLIENT_SOCKET_PATH -u HERDR_SESSION -u HERDR_WORKSPACE_ID -u HERDR_TAB_ID -u HERDR_PANE_ID -u HERDR_ENV -u HERDR_BIN_PATH"
+# shellcheck disable=SC2086  # CLEAN_UNSET is a flag list and must word-split
 clean_env() {
-  env -u HERDR_SOCKET_PATH -u HERDR_CLIENT_SOCKET_PATH -u HERDR_SESSION \
-      -u HERDR_WORKSPACE_ID -u HERDR_TAB_ID -u HERDR_PANE_ID -u HERDR_ENV -u HERDR_BIN_PATH \
-      XDG_CONFIG_HOME="$CFG" XDG_STATE_HOME="$ST" PATH="$PLUGIN/bin:$PATH" "$@"
+  env $CLEAN_UNSET XDG_CONFIG_HOME="$CFG" XDG_STATE_HOME="$ST" PATH="$PLUGIN/bin:$PATH" "$@"
+}
+# `exec` cannot run a shell function, so the exec variant inlines the env call.
+exec_clean() {
+  exec env $CLEAN_UNSET XDG_CONFIG_HOME="$CFG" XDG_STATE_HOME="$ST" PATH="$PLUGIN/bin:$PATH" "$@"
 }
 # For CLI calls from outside the sandbox panes: select the sandbox session.
 in_session() { clean_env env HERDR_SESSION="$SESSION" "$@"; }
@@ -129,7 +133,7 @@ start() {
   fi
   say "starting the sandbox session; the plugin's startup hook starts the notifier daemon"
   say "inside it: open two panes, start agents, then prefix+t to make a team (see docs/human-testing.md)"
-  exec clean_env herdr --session "$SESSION"
+  exec_clean herdr --session "$SESSION"
 }
 
 status() {
@@ -144,7 +148,7 @@ status() {
 case "${1:-}" in
   prepare) prepare ;;
   start) start ;;
-  attach) exec clean_env herdr session attach "$SESSION" ;;
+  attach) exec_clean herdr session attach "$SESSION" ;;
   status) status ;;
   herdr) shift; in_session herdr "$@" ;;
   team) shift; in_session "$PLUGIN/bin/herdr-team" "$@" ;;
