@@ -339,6 +339,11 @@ Sets the member's current task headline (24 columns, refreshed as the
 
 ### `ack`
 
+Always rewrites the member's cursor file (`touch`), even when the seq does not move: the
+daemon recognises an acknowledgement by a cursor write made after the briefing landed, and
+a member whose cursor already sits at the board max (the join puts it there) would
+otherwise never produce one and be re-briefed after 90 s (sandbox, 2026-09-05).
+
 Records the member's cursor at the current max and `charter_seq_acked`.
 JSON `{"team","member","cursor":59,"charter_seq_acked":3}`.
 

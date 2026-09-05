@@ -554,8 +554,8 @@ def cursor_get(team: TeamPaths, reader: str) -> Dict[str, Any]:
     return store.Cursors(team).get(reader)
 
 
-def cursor_advance(team: TeamPaths, reader: str, seq: int, terminal_id: Optional[str], surfaced_by: str = "cli", seen: Optional[Sequence[int]] = None) -> Dict[str, Any]:
-    return store.Cursors(team).advance(reader, seq, terminal_id, surfaced_by, seen=seen)
+def cursor_advance(team: TeamPaths, reader: str, seq: int, terminal_id: Optional[str], surfaced_by: str = "cli", seen: Optional[Sequence[int]] = None, touch: bool = False) -> Dict[str, Any]:
+    return store.Cursors(team).advance(reader, seq, terminal_id, surfaced_by, seen=seen, touch=touch)
 
 
 def cursors_all(team: TeamPaths) -> Dict[str, Dict[str, Any]]:
@@ -1235,7 +1235,8 @@ def _run_ack(args: argparse.Namespace) -> int:
     if member.get("terminal_id") and author.terminal_id and member.get("terminal_id") != author.terminal_id:
         raise HerdrTeamError("author_mismatch", "ack must come from {}'s own pane".format(author.name), EXIT_REFUSED, {"expected_terminal": member.get("terminal_id"), "actual_terminal": author.terminal_id})
     max_seq = board_max_seq(team)
-    cursor = cursor_advance(team, author.name, max_seq, author.terminal_id, "cli")
+    # touch=True: an ack at an unchanged seq must still be a visible cursor write (see store.Cursors.advance)
+    cursor = cursor_advance(team, author.name, max_seq, author.terminal_id, "cli", touch=True)
     charter = charter_of(doc)
     charter_seq = int(charter.get("seq", 0)) if charter else None
     now = now_iso()

@@ -1128,7 +1128,7 @@ class Cursors:
             out["seq"] = max_seq
         return out
 
-    def advance(self, reader: str, seq: int, terminal_id: Optional[str], surfaced_by: str, seen: Optional[Iterable[int]] = None) -> Dict[str, Any]:
+    def advance(self, reader: str, seq: int, terminal_id: Optional[str], surfaced_by: str, seen: Optional[Iterable[int]] = None, touch: bool = False) -> Dict[str, Any]:
         """Move forward only; never backwards. ``reader`` is a member name or ``human@<label>``.
 
         ``seq`` is the highest seq the caller actually printed; it is clamped
@@ -1137,6 +1137,14 @@ class Cursors:
         filtered ``board --new``); they are excluded from later reads, and the
         cursor slides over them once everything below is read, so nothing
         unread is ever skipped (plan 6.2).
+
+        ``touch`` rewrites the file (fresh ``updated``, ``surfaced_by``,
+        ``terminal_id``) even when nothing moves. ``herdr-team ack`` uses it:
+        the daemon recognises an acknowledgement by a cursor write after the
+        briefing landed, and a member whose cursor was already at the board
+        max (the join sets it there) would otherwise never produce one.
+        Observed in the sandbox on 2026-09-05: a Claude acked at seq 1 = 1,
+        the file kept its join timestamp, and the daemon re-briefed it.
         """
         path = self.path_for(reader)
         target = max(0, int(seq))
@@ -1151,7 +1159,7 @@ class Cursors:
             while new_seq + 1 in new_seen:
                 new_seq += 1
                 new_seen.discard(new_seq)
-            if new_seq <= current["seq"] and new_seen == set(current.get("seen") or []):
+            if new_seq <= current["seq"] and new_seen == set(current.get("seen") or []) and not touch:
                 current["advanced"] = False
                 return current
             doc: Dict[str, Any] = {"v": 1, "seq": new_seq, "terminal_id": terminal_id, "surfaced_by": surfaced_by, "updated": now_iso()}
