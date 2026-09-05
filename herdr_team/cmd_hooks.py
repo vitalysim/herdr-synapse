@@ -729,6 +729,9 @@ def run_hooks(args: argparse.Namespace) -> int:
             payload["warnings"].append("not every event is registered; run `herdr-team hooks install claude`")
         if status["hook_exists"] and not shim_ok:
             payload["warnings"].append("shim differs from this plugin version; run `herdr-team hooks install claude`")
+        if payload["duplicates"]:
+            # M6 SK-06: ``check`` flipped ``ok`` to false on duplicates but said nothing; the install path already warns.
+            payload["warnings"].append("duplicate hook commands found; a hook registered twice runs twice")
         payload["ok"] = bool(status["installed"] and shim_ok and not payload["duplicates"] and not status.get("parse_error"))
     return emit(args, payload, lambda: _human_hooks(payload))
 

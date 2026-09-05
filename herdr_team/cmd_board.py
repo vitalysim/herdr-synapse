@@ -792,7 +792,9 @@ def resolve_recipients(doc: Dict[str, Any], to_args: Optional[List[str]], author
     """Expand ``--to`` against the roster; ``role:<r>`` records ``to_role``."""
     roster_names = [m.get("name") for m in agent_members(doc)]
     if not to_args:
-        return ([AUTHOR_HUMAN] if author.is_member else ["all"]), None
+        # A post with no recipient goes to the whole team, whoever wrote it
+        # (owner decision 2026-09-05; previously a member's post defaulted to human).
+        return ["all"], None
     entries: List[str] = []
     for arg in to_args:
         entries.extend(part.strip() for part in arg.split(",") if part.strip())

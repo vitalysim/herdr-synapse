@@ -95,12 +95,14 @@ class PostReadRoundTrip(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertEqual(payload["notifier"], "alive")
 
-    def test_member_pane_defaults_to_human_and_records_identity(self):
+    def test_member_pane_defaults_to_all_and_records_identity(self):
+        """Owner decision 2026-09-05: a post with no --to goes to the whole team, also from a member."""
         with TempState() as ts:
             env = ts.env_with(HERDR_PANE_ID="w2:p1")
             code, payload, err = json_out(run_cli(["--json", "post", "diff ready", "--kind", "request"], env, pane_api()))
             self.assertEqual(code, 0, err)
-            self.assertEqual(payload["to"], ["human"])
+            self.assertEqual(payload["to"], ["all"])
+            self.assertIsNone(payload["to_role"])
             self.assertEqual(payload["author"]["name"], "alpha-reviewer")
             self.assertTrue(payload["author"]["verified"])
             record = store.BoardStore(ts.team).get(1)

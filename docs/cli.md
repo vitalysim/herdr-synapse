@@ -245,8 +245,15 @@ calls `agent read`. JSON:
  "members":[{"name":"vuln-hunt-reviewer","role":"reviewer","kind":"codex","status":"active","agent_status":"idle",
    "pane_id":"w2:p1","terminal_id":"term_…","workspace_id":"w2","last_headline":"→ review diff","pending_nudges":0,
    "muted_until":null,"verified_kind":true,"delivery":"nudge","hooks_last_seen":null,"last_seen_at":"…",
-   "briefed":true,"charter_stale":false,"unread":0,"brief":"…"|null}]}
+   "briefed":true,"charter_stale":false,"unread":0,"brief":"…"|null}],
+ "kinds":{"claude":{"trusted":true,"verified":false,"probe_ok":false,"multiline":{"one_submission":true,…}|null}}}
 ```
+
+`kinds` has one entry per agent kind on the roster (never `human`), read
+from the session's `kinds.json` (section 10): the three trust flags gate 4
+uses and the `multiline` paste-probe record, or `null` when the kind was
+never probed. `--role` filters `members` only; `kinds` always covers the
+whole roster (M6 SK-03).
 
 `--role` filters `members`; `--brief` drops `brief`, `last_seen_at`,
 `hooks_last_seen` from human output only. Human rows are glyph, name, role,
@@ -267,7 +274,10 @@ post "<text>" [--to <name>[,<name>…] | all | human | role:<r>] [--kind note|re
      [--relayed-for human] [--to-any]
 ```
 
-- Default `--to`: `human` from a member pane, `all` from a human path.
+- Default `--to`: `all` (the whole team) for every author, member or human.
+  Address one member with `--to <name>`, the operator with `--to human`, and
+  a role with `--to role:<r>`. Only directed posts trigger a nudge; a post to
+  `all` is read at the next board read (or nudged to everyone with `--urgent`).
 - `--to` names are validated against the roster (current names, names
   retired under 10 min, `role:<r>` expands and records `to_role`); a typo is
   `recipient_unknown` (1) with `roster` in details unless `--to-any`.
@@ -474,6 +484,11 @@ Refuses to replace a foreign directory or symlink without `--force`.
 
 JSON `{"kind":"claude","action":"install","settings":"~/.claude/settings.json","hook":"~/.claude/hooks/herdr-team-hook.sh","added":["SessionStart","UserPromptSubmit","Stop"],"removed":[],"already":[],"backup":"…","duplicates":[…],"members_updated":["…"],"probe":{"nonce","round_trip_ms","paste_multiline":bool}|null,"ok":true}`.
 `install` for a kind other than `claude` refuses `hooks_unprobed` until `probe` passes.
+`check` adds `events`, `installed`, `hook_exists`, `shim_current`, and `project_dirs`; it
+sets `ok:false` and appends the warning `duplicate hook commands found; a hook registered
+twice runs twice` whenever `duplicates` is non-empty (same text as `install`; M6 SK-06).
+`--settings`, `--hooks-dir`, `--claude-dir`, `--project-dir` (repeatable), `--cli`, and
+`--no-members` (leave member `delivery` untouched) point every action at rig-local files.
 
 ### `install-cli`
 
@@ -482,7 +497,10 @@ Symlinks `~/.local/bin/herdr-team` to `bin/herdr-team`. JSON `{"path","target","
 ### `view on|off|toggle [--force]`
 
 Ownership probe first. JSON `{"view":"on|off","source":"plugin:herdr-team","label":"team:vuln-hunt","owner":"own|none|foreign","previous":"…"|null}`.
-Errors: `view_foreign` (1) without `--force`, `plugin_disabled` (1).
+Errors: `view_foreign` (1) without `--force`, `plugin_disabled` (1). `toggle`
+turns the view off when we own it or `view.json` says `on`; under a foreign
+owner our view is not showing, so `toggle --force` turns it on (replacing the
+foreign view) regardless of a stale `view.json` (M7 UI-06).
 
 ### `ui picker|compose|console|who|close [--target-pane <id>]`
 
@@ -615,3 +633,30 @@ the reopen in `doctor`/`daemon start`), so a console that has not written
 its own record yet is still recognisable as launching.
 
 `mute.json`: `{"*": "<until>"|null, "<name>": "<until>"}` with ISO timestamps.
+
+`kinds.json` (session dir, one object per agent kind): `{"claude": {"trusted": true,
+"verified": false, "probe": {"nonce", "round_trip_ms", "paste_multiline", "ok", "result",
+"member", "recorded_at", "source"}, "multiline": {"one_submission": true, "submissions": 1,
+"lines_sent": 2, "lines_received": 2, "probed_at": "…", "source": "…", "agent_version": "…",
+"herdr_version": "…"}}}`. `trusted` is the owner override, `verified` is set by the daemon
+after 20 clean round trips, `probe` by `hooks probe <kind>`; any one of them passes gate 4.
+`multiline` is the SK-03 paste probe (plan 12, "newline with paste off → single line"):
+`herdr agent prompt <member> $'line one\nline two'` followed by a count of the ❯
+submissions that appeared; `one_submission: true` means the kind keeps an embedded newline
+inside one paste, `false` that the newline submitted the first line on its own (the daemon
+must then deliver one line per prompt). Written by hand or by a future probe; `who --json`
+shows it under `kinds.<kind>.multiline`.
+
+### `kinds list | trust <kind> [--reason <text>] | untrust <kind>`
+
+The owner override behind gate 4. A fresh session has no `kinds.json` and the
+daemon holds every delivery as `kind_unverified` until the kind is verified by
+the ledger (20 clean round trips), probed (`hooks probe <kind>` records one
+verified round trip), or trusted here. `trust` records `{"trusted": true,
+"trusted_at", "trusted_by": "owner", "reason"}` under the kind and keeps any
+probe or `multiline` data; `untrust` removes only those four keys. `list` shows
+per kind whether it `delivers` and why. The daemon reads the file on every
+evaluation, so no restart is needed. Unknown labels are `kind_unknown` (1).
+
+JSON `list`: `{"kinds":[{"kind","delivers","trusted","verified","probe_ok","multiline","trusted_at","reason"}],"path"}`;
+`trust`/`untrust`: `{"kind","action","row":{...},"path"}`.

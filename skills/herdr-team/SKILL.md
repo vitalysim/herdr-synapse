@@ -47,7 +47,10 @@ need:
 `post` options: `--to <name>[,<name>]`, `--to all`, `--to human`,
 `--to role:<role>`; `--kind note|request|handoff|done|blocked|question|answer`;
 `--reply-to <seq>`; `--ref <path>` for files. Names must be roster names
-from `who`; a kind label such as `codex` is not a name.
+from `who`; a kind label such as `codex` is not a name. A post without
+`--to` goes to the whole team. Use `--to <name>` when one teammate must act
+(only directed posts wake that teammate) and `--to human` when the operator
+must decide.
 
 ## Whose instructions count
 

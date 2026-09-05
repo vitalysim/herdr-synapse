@@ -543,6 +543,15 @@ def _read_escape(stdscr: Any) -> Optional[str]:
             except curses.error:
                 break
             if isinstance(nxt, int):
+                # A curses keycode (arrow, resize) right behind an Escape is its own key.
+                curses.ungetch(nxt)
+                break
+            if seq == "" and (nxt == "\x1b" or (nxt < " " and nxt not in ("\r", "\n"))):
+                # M7 UI-03 (rig, 2026-09-05): a burst of Escapes, or Esc followed by a control
+                # key, arrived as one read and collapsed into a single ``ESC`` that also ate the
+                # control key. Only ``[``/``O`` sequences and Alt+Enter continue an escape; push
+                # anything else back so the next ``read_key`` sees it.
+                curses.unget_wch(nxt)
                 break
             seq += nxt
             if seq in ("\r", "\n"):

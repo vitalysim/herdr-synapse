@@ -1107,7 +1107,7 @@ def render_console(model: ConsoleModel, width: Optional[int] = None, height: Opt
         budget -= 1
     feed_height = max(0, budget)
     if model.peek is not None:
-        body = model.peek[:feed_height]
+        body = fit_peek(model.peek, feed_height)
     else:
         body = [e["line"] for e in visible_feed(model, feed_height)]
     body = body + [""] * (feed_height - len(body))
@@ -1117,6 +1117,20 @@ def render_console(model: ConsoleModel, width: Optional[int] = None, height: Opt
     if len(out) > h:
         out = out[:h]
     return out
+
+
+def fit_peek(box_lines: List[str], height: int) -> List[str]:
+    """A ``/peek`` box taller than the feed keeps its title border and the *last* lines.
+
+    M7 UI-02 (rig, 2026-09-05): a 20-row console showed only blank leading rows and the top of
+    a working Claude's screen because the box was cut from the head; the member's spinner,
+    prompt box, and status line live at the bottom of ``agent read --source visible``.
+    """
+    if len(box_lines) <= height:
+        return list(box_lines)
+    if height <= 1:
+        return list(box_lines[:height])
+    return [box_lines[0]] + list(box_lines[-(height - 1):])
 
 
 # --------------------------------------------------------------------------

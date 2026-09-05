@@ -668,7 +668,15 @@ def _run_view(args: argparse.Namespace) -> int:
     owner, owner_source = probe_view_owner(api)
     if owner == "foreign" and not args.force:
         raise HerdrTeamError("view_foreign", "the agent view belongs to {}; pass --force to replace it".format(owner_source or "another source"), EXIT_REFUSED, {"owner": owner_source})
-    want = args.action if args.action != "toggle" else ("off" if (previous == "on" or owner == "own") else "on")
+    if args.action != "toggle":
+        want = args.action
+    elif owner == "foreign":
+        # M7 UI-06 (rig, 2026-09-05): a foreign source had replaced our view while view.json still
+        # said "on", so toggle --force cleared the foreign view instead of replacing it (plan 11:
+        # foreign -> refuse unless --force replaces). Our view is not showing; toggle turns it on.
+        want = "on"
+    else:
+        want = "off" if (previous == "on" or owner == "own") else "on"
     teams = layout.session.list_teams()
     label = view_label(teams)
     if want == "on":
@@ -953,6 +961,66 @@ def _no_arguments(parser: argparse.ArgumentParser) -> None:
     pass
 
 
+def _add_kinds_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("action", choices=("list", "trust", "untrust"), help="list kinds.json, or set/clear the owner trust override for a kind")
+    parser.add_argument("kind", nargs="?", help="agent kind label (claude, codex, ...) for trust/untrust")
+    parser.add_argument("--reason", default="owner override", help="free text recorded with the trust entry")
+
+
+def _kinds_row(kind: str, entry: Any) -> Dict[str, Any]:
+    entry = entry if isinstance(entry, dict) else {}
+    probe = entry.get("probe") if isinstance(entry.get("probe"), dict) else {}
+    return {
+        "kind": kind,
+        "delivers": _roster.kind_entry_trusted(entry),
+        "trusted": bool(entry.get("trusted")),
+        "verified": bool(entry.get("verified")),
+        "probe_ok": bool(probe.get("ok")),
+        "multiline": entry.get("multiline") if isinstance(entry.get("multiline"), dict) else None,
+        "trusted_at": entry.get("trusted_at"),
+        "reason": entry.get("reason"),
+    }
+
+
+def _run_kinds(args: argparse.Namespace) -> int:
+    """``kinds list|trust <kind>|untrust <kind>``: the owner override behind gate 4 (plan 8.2).
+
+    A fresh session has no ``kinds.json`` and delivers nothing until a kind is verified by the
+    ledger, probed with ``hooks probe``, or trusted here (observed live 2026-09-05: every
+    delivery ``held: kind_unverified`` until the override existed). ``trust`` is the human
+    saying "this kind has been verified elsewhere"; it is recorded with a reason and a time.
+    """
+    layout = layout_for(args)
+    path = layout.session.kinds_json
+    doc = store.read_json(path, default=None)
+    if not isinstance(doc, dict):
+        doc = {}
+    if args.action == "list":
+        rows = [_kinds_row(kind, doc.get(kind)) for kind in sorted(doc)]
+        lines = ["{:<12} {:<9} {}".format(r["kind"], "delivers" if r["delivers"] else "held", ", ".join(k for k in ("trusted", "verified", "probe_ok") if r[k]) or "-") for r in rows]
+        return emit(args, {"kinds": rows, "path": os.fspath(path)}, "\n".join(lines) if lines else "no kinds recorded yet: run `herdr-team kinds trust <kind>` for the kinds you have verified")
+    kind = (args.kind or "").strip().lower()
+    if not kind:
+        raise UsageError("kinds {} needs a kind label".format(args.action))
+    if kind not in _roster.KIND_LABELS:
+        raise HerdrTeamError("kind_unknown", "{!r} is not an agent kind the installed Herdr can start".format(kind), EXIT_REFUSED, {"kind": kind, "kinds": sorted(_roster.KIND_LABELS)})
+    entry = doc.get(kind) if isinstance(doc.get(kind), dict) else {}
+    if args.action == "trust":
+        entry["trusted"] = True
+        entry["trusted_at"] = _roster.now_iso()
+        entry["trusted_by"] = "owner"
+        entry["reason"] = args.reason
+        human = "{}: deliveries enabled (owner override)".format(kind)
+    else:
+        for key in ("trusted", "trusted_at", "trusted_by", "reason"):
+            entry.pop(key, None)
+        human = "{}: owner override removed{}".format(kind, "" if _roster.kind_entry_trusted(entry) else "; deliveries held until verified or probed")
+    doc[kind] = entry
+    os.makedirs(os.path.dirname(os.fspath(path)), mode=0o700, exist_ok=True)
+    store.write_json(path, doc)
+    return emit(args, {"kind": kind, "action": args.action, "row": _kinds_row(kind, entry), "path": os.fspath(path)}, human)
+
+
 COMMANDS: List[Command] = [
     Command("doctor", "diagnose sockets, state dirs, plugin state, daemon, and config", _add_doctor_arguments, _run_doctor),
     Command("inbox", "posts addressed to the human plus the notifier's attention file (--human)", _add_inbox_arguments, _run_inbox),
@@ -962,6 +1030,7 @@ COMMANDS: List[Command] = [
     Command("gc", "remove session trees whose socket is gone, lock free, older than 7 days", _no_arguments, _run_gc),
     Command("prune", "archive old board segments into _archive", _add_prune_arguments, _run_prune),
     Command("view", "turn the team Agents view on, off, or toggle it", _add_view_arguments, _run_view),
+    Command("kinds", "list kinds.json or set/clear the owner trust override that lets a kind receive nudges", _add_kinds_arguments, _run_kinds),
     Command("teardown", "dead-daemon cleanup: clear tokens, labels, view, stale console record", _no_arguments, _run_teardown),
     Command("nudge", "ask the notifier to evaluate a nudge for a member now", _add_nudge_arguments, _run_nudge),
     Command("mute", "silence nudges and toasts for a member or everyone", _add_mute_arguments, _run_mute),

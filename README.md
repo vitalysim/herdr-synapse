@@ -34,6 +34,15 @@ docs/cli.md              command contract
 tests/                   unittest suite; tests/support.py has TempState, FakeHerdrServer, FakeApi
 ```
 
+## Try it in your own session
+
+Read `docs/human-testing.md` first. Short form: `herdr plugin link <this dir>`,
+`herdr plugin action invoke herdr-team.daemon-start`, `herdr-team kinds trust
+claude` (and `codex`), paste `herdr-team keys print` and `herdr-team setup
+--print-config` into your config, reload, then `prefix+t` to pick two fresh
+panes into a team. A post with no recipient goes to the whole team; `@name`
+addresses one member and is the only thing that nudges it.
+
 ## Dev loop
 
 ```bash
@@ -150,6 +159,22 @@ Integration pass of 2026-09-04 (fork status log lives in `FORK.md`):
   Herdr's session restore relaunches Claude as `claude --resume <id>`, dropping
   `--model`, `--effort`, `--allowedTools`, and `--settings` (hooks), so a
   restored member runs the owner's default model without the team hooks.
+- Rig M7 UI pass (2026-09-05, `tests/test_m7_findings.py`, 9 tests): the
+  `/peek` box is now cut from the head when taller than the feed, keeping the
+  title border and the bottom of the member's screen (spinner, prompt box,
+  status line) instead of blank leading rows (`tui_model.fit_peek`);
+  `console.read_key` no longer collapses a burst of Escapes, or Esc followed
+  by a control key or curses keycode, into one `ESC` (the extra byte is pushed
+  back with `unget_wch`/`ungetch`), which had made six Escapes in the picker
+  act as one and swallowed the `ctrl+u` behind them; `view toggle` under a
+  foreign owner now means "turn ours on", so `--force` replaces the foreign
+  view instead of clearing it when a stale `view.json` still said `on`. Live
+  facts recorded: the picker's role field is prefilled with `<kind>-dev` and
+  the name with `<team>-<role>`, so a driver must `ctrl+u` before typing;
+  `dissolve` keeps the members' Herdr names (documented; `remove` clears
+  them); `team_task` lands at the daemon's next heartbeat restamp (10 to 20 s
+  after `task`), not at once; the console is a `split` per the manifest even
+  though plan 7.3 says "opened as a tab".
 - Open: `hooks._reconcile_detected` still carries its own per-pane matcher
   rather than `roster.rehydrate_match` (the two now agree on a null live
   kind, ids adopted and status kept on both paths, and on a different

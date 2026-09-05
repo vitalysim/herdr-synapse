@@ -1001,6 +1001,29 @@ def _who_from_roster(layout: Layout, team_name: str, doc: Dict[str, Any], agents
     return members
 
 
+def _who_kinds(layout: Layout, members: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    """``kinds.json`` summarised per agent kind on the roster (M6 SK-03): the trust flags the
+    daemon's gate 4 reads plus the ``multiline`` paste-probe record, so ``who --json`` shows
+    whether a kind keeps a two-line prompt in one submission without opening the state file."""
+    doc = store.read_json(layout.session.kinds_json, default={})
+    doc = doc if isinstance(doc, dict) else {}
+    out: Dict[str, Dict[str, Any]] = {}
+    for member in members:
+        kind = member.get("kind")
+        if not isinstance(kind, str) or not kind or kind == "human" or kind in out:
+            continue
+        entry = doc.get(kind) if isinstance(doc.get(kind), dict) else {}
+        probe = entry.get("probe") if isinstance(entry.get("probe"), dict) else None
+        multiline = entry.get("multiline") if isinstance(entry.get("multiline"), dict) else None
+        out[kind] = {
+            "trusted": bool(entry.get("trusted")),
+            "verified": bool(entry.get("verified")),
+            "probe_ok": bool(probe and probe.get("ok")),
+            "multiline": multiline,
+        }
+    return out
+
+
 def _who_payload(args: argparse.Namespace, layout: Layout, api: Any, team_name: str, human_reader: str) -> Dict[str, Any]:
     team_paths = layout.team(team_name)
     doc = load_doc(team_paths)
@@ -1033,6 +1056,7 @@ def _who_payload(args: argparse.Namespace, layout: Layout, api: Any, team_name: 
                 m["last_headline"] = task.get("headline")
         member_doc = next((x for x in members_of(doc) if x.get("name") == name), {})
         m.setdefault("brief", member_doc.get("brief"))
+    kinds = _who_kinds(layout, members)
     if args.role:
         members = [m for m in members if m.get("role") == args.role]
     charter = charter_of(doc)
@@ -1044,6 +1068,7 @@ def _who_payload(args: argparse.Namespace, layout: Layout, api: Any, team_name: 
         "view": view_state(layout.session), "toasts": toast_delivery(layout.config_dir), "nudges": nudges_state(team_paths),
         "unread_for_you": unread_for(team_paths, records, human_reader, is_human=True),
         "members": members,
+        "kinds": kinds,
     }
     return payload
 
