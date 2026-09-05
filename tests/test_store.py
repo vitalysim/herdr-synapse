@@ -1,6 +1,7 @@
 import json
 import multiprocessing
 import os
+import signal
 import stat
 import subprocess
 import sys
@@ -65,6 +66,7 @@ class AtomicWriteTests(unittest.TestCase):
 
 
 def _hold_lock_in_child(lock_path, hold_s, ready):
+    signal.signal(signal.SIGTERM, signal.SIG_DFL)  # a forked child (Linux) inherits the parent's Python handlers
     lock = store.FileLock(lock_path, timeout=1.0)
     with lock:
         ready.set()

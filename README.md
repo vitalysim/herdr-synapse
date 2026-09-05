@@ -71,13 +71,18 @@ Requirements: Herdr 0.8.2 or newer, Python 3.9 or newer (standard library
 only), macOS or Linux.
 
 ```bash
-herdr plugin install vitalysim/herdr-team
+herdr plugin install vitalysim/herdr-team                              # checks the plugin out under ~/.config/herdr/plugins/github/
+~/.config/herdr/plugins/github/herdr-team-*/bin/herdr-team install-cli --yes   # symlinks ~/.local/bin/herdr-team
 herdr-team setup --print-config      # paste the printed [[keys.command]] block into your Herdr config
 herdr server reload-config
 herdr-team kinds trust claude        # once per session, for every agent kind you use
 herdr-team kinds trust codex
 herdr-team hooks install claude      # optional: Claude Code hooks
 ```
+
+`herdr plugin install` needs a running Herdr server and `git`; it fetches over
+HTTPS with your git credentials. From a plugin checkout of your own,
+`herdr plugin link <path>` registers it instead.
 
 Trusting a kind is the one deliberate step: it tells the daemon the typing
 path for that kind has been checked by you. Until then members of that kind

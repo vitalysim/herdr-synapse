@@ -91,6 +91,10 @@ class SocketClientTests(unittest.TestCase):
         self.server.script_events([{"event": "pane_updated", "data": {}}], hold_open=True)
         gen = self.client.subscribe(["pane.updated"], tick_timeout=0.05)
         first = next(gen)
+        for _ in range(100):  # on a slow runner the scripted event may land after the first 50 ms tick
+            if first is not None:
+                break
+            first = next(gen)
         self.assertEqual(first["event"], "pane_updated")
         self.assertIsNone(next(gen))
         self.assertIsNone(next(gen))

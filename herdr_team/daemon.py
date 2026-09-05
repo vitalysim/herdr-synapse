@@ -1195,6 +1195,7 @@ class Daemon:
         self.max_iterations: Optional[int] = None
         self.cli_path = os.fspath(plugin_root() / "bin" / "herdr-team")
         self._signals_installed = False
+        self._previous_signals: Dict[int, Any] = {}
         #: An ``agent.prompt`` whose wait returns faster than this was already inside a turn (plan 8.3).
         self.landed_fast_ms = LANDED_FAST_MS
         #: Tests may append a callable here to capture log lines.
@@ -1274,13 +1275,31 @@ class Daemon:
         def _stop(signum: int, _frame: Any) -> None:
             self.request_stop("signal {}".format(signum))
 
+        previous: Dict[int, Any] = {}
         try:
-            signal.signal(signal.SIGTERM, _stop)
-            signal.signal(signal.SIGINT, _stop)
-            signal.signal(signal.SIGHUP, _stop)
+            for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+                previous[signum] = signal.signal(signum, _stop)
         except (ValueError, OSError):
+            self._restore_signals(previous)
             return
+        self._previous_signals = previous
         self._signals_installed = True
+
+    def _restore_signals(self, previous: Optional[Dict[int, Any]] = None) -> None:
+        """Put back the handlers ``_install_signals`` replaced.
+
+        The daemon owns its process, so this only matters when ``run`` is
+        called in-process (tests): on Linux a forked child inherits Python-level
+        handlers, and a leftover ``_stop`` would turn its SIGTERM into a no-op.
+        """
+        handlers = self._previous_signals if previous is None else previous
+        for signum, handler in handlers.items():
+            try:
+                signal.signal(signum, signal.SIG_DFL if handler is None else handler)
+            except (ValueError, OSError, TypeError):
+                pass
+        self._previous_signals = {}
+        self._signals_installed = False
 
     def request_stop(self, reason: str) -> None:
         self.stop_requested = True
@@ -1314,7 +1333,10 @@ class Daemon:
                 else:
                     self.log("subscription ended; reconnecting")
         finally:
-            self._shutdown()
+            try:
+                self._shutdown()
+            finally:
+                self._restore_signals()
         return self.exit_code
 
     def _connect_with_backoff(self) -> bool:

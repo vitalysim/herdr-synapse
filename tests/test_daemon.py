@@ -350,8 +350,9 @@ class ReconnectTests(unittest.TestCase):
                 EofApi.rounds += 1
                 self.calls.append(("events.subscribe", {"subscriptions": list(subscriptions)}))
                 if EofApi.rounds == 2:
-                    # the server was replaced while we were subscribed: same path, new inode
-                    os.unlink(socket_file)
+                    # the server was replaced while we were subscribed: same path, new inode.
+                    # Rename instead of unlink: Linux hands a freshly freed inode number straight back.
+                    socket_file.rename(socket_file.with_name(socket_file.name + ".old"))
                     socket_file.write_text("b")
                 yield {"event": "pane_updated", "data": {"pane": {"terminal_id": "term_r1", "agent_status": "working"}}}
                 return
@@ -1204,14 +1205,16 @@ class HeartbeatAndWhoTests(unittest.TestCase):
     def test_who_json_is_coalesced_to_once_per_second(self):
         self.d.on_connected()
         self.d.tick()
-        first = self.ts.session.who_json.stat().st_mtime_ns
+        who_json = self.ts.session.who_json
+        sentinel = 1_000_000_000  # 1970-01-01T00:00:01; a rewrite cannot keep it (kernel mtime ticks are too coarse to compare two writes)
+        os.utime(who_json, ns=(sentinel, sentinel))
         self.d.who_dirty = True
         self.d.tick()
-        self.assertEqual(self.ts.session.who_json.stat().st_mtime_ns, first)
+        self.assertEqual(who_json.stat().st_mtime_ns, sentinel)  # coalesced: not rewritten within the second
         self.clock.advance(1.1)
         self.d.who_dirty = True
         self.d.tick()
-        self.assertGreater(self.ts.session.who_json.stat().st_mtime_ns, first)
+        self.assertNotEqual(who_json.stat().st_mtime_ns, sentinel)  # rewritten
         who = store.read_json(self.ts.session.who_json)
         self.assertEqual(who["v"], 1)
         self.assertEqual(who["default_team"], "alpha")

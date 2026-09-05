@@ -45,7 +45,9 @@ fi
 if [ "$log" != /dev/null ] && [ -L "$log" ]; then
     log=/dev/null
 fi
-if ! { : >>"$log"; } 2>/dev/null; then
+# A subshell, not a brace group: dash treats a failed redirection on the
+# special builtin ":" as fatal and exits 2 with the message swallowed.
+if ! ( : >>"$log" ) 2>/dev/null; then
     log=/dev/null
 fi
 
