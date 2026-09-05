@@ -16,7 +16,7 @@ default session.
 
 ```bash
 # from a terminal window that is NOT inside Herdr:
-~/MyPlace/projects/herdr-fork/plugins/herdr-team/bin/herdr-team-sandbox start ~/MyPlace/projects/<your-project>
+<plugin checkout>/bin/herdr-team-sandbox start ~/projects/<your-project>
 ```
 
 `start` creates `~/herdr-teamtest/`, copies your `config.toml` into it and
@@ -56,11 +56,11 @@ manual setup in your real session later.
 ## 1. Link the plugin (once)
 
 ```bash
-herdr plugin link ~/MyPlace/projects/herdr-fork/plugins/herdr-team
+herdr plugin link <plugin checkout>
 herdr plugin list --json | jq '.result.plugins[] | {plugin_id, enabled, warnings}'
 herdr plugin action invoke herdr-team.daemon-start
-~/MyPlace/projects/herdr-fork/plugins/herdr-team/bin/herdr-team daemon status --json
-~/MyPlace/projects/herdr-fork/plugins/herdr-team/bin/herdr-team install-cli --yes   # puts herdr-team on PATH via ~/.local/bin
+<plugin checkout>/bin/herdr-team daemon status --json
+<plugin checkout>/bin/herdr-team install-cli --yes   # puts herdr-team on PATH via ~/.local/bin
 herdr-team doctor
 ```
 

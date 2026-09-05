@@ -1,0 +1,9 @@
+herdr-team
+Copyright 2026 Vitaly Simonovich
+
+Licensed under the Apache License, Version 2.0.
+
+This plugin talks to Herdr (https://github.com/herdrdev/herdr, Apache-2.0)
+over its socket API and bundles one file from that project for its tests:
+tests/fixtures/herdr-api-0.8.2.schema.json, the published JSON schema of the
+Herdr 0.8.2 socket API.
