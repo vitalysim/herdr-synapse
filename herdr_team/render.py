@@ -645,7 +645,8 @@ def render_who(
         tags: List[str] = []
         pending = member.get("pending_nudges")
         if isinstance(pending, int) and pending > 0:
-            tags.append(("nudges:{}" if ascii_only else "↪{}").format(pending))
+            hold = member.get("hold")
+            tags.append(("nudges:{}" if ascii_only else "↪{}").format(pending) + (" ({})".format(_safe_token(str(hold), 24)) if hold else ""))
         if member.get("muted_until"):
             tags.append("muted")
         if roster_status not in ("active", "starting") and not is_human:

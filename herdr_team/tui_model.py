@@ -389,7 +389,10 @@ def roster_line(
         fields.append('"{}"'.format(headline(str(head), HEADLINE_COLUMNS)))
     pending = member.get("pending_nudges") or 0
     if pending:
-        fields.append("{}{}".format("^" if ascii_only else "↪", pending))
+        hold = member.get("hold")
+        # Show why a queued nudge is waiting (daemon.log has the detail); observed live 2026-09-05:
+        # a bare ↪3 next to an idle member read as "nothing happens" when the hold was `focused`.
+        fields.append("{}{}{}".format("^" if ascii_only else "↪", pending, " ({})".format(hold) if hold else ""))
     if member_muted(member, mutes, now):
         fields.append("muted")
     if roster_status in ("missing", "left", "unbound", "kind_changed", "name_conflict", "failed", "starting"):

@@ -298,10 +298,14 @@ a popup on the roster box.
 
 - **Header**: team, members, view on/off, nudges on/paused with countdown,
   toast mode, your unread count; second line `charter #<seq>: <headline>`.
-- **Roster rows**: glyph and name, kind, pane, status, "headline", `↪N`
-  pending nudges, `muted`, `gone <age>`, `unbriefed`, `charter: stale`,
-  `hooks: silent`, `kind unverified` (no role column here; roles are in the
-  CLI `who`). Narrow panes drop the kind, pane, and headline columns.
+- **Roster rows**: glyph and name, kind, pane, status, "headline", `↪N
+  (reason)` for queued nudges with why they are waiting (`focused` means you
+  have that pane focused and the daemon will not type into it; `not_idle`,
+  `done_hold`, `dialog`, `draft_present`, `muted`, `stop_blocked`, …; the
+  full list is in section 6), `muted`, `gone <age>`, `unbriefed`,
+  `charter: stale`, `hooks: silent`, `kind unverified` (no role column here;
+  roles are in the CLI `who`). Narrow panes drop the kind, pane, and headline
+  columns.
 - **Feed**: the board tail with receipts, struck retractions, system
   records, and warnings such as a refused `--as human`. Long posts wrap
   over as many rows as they need: the header (`#seq time from → to kind`)
