@@ -97,6 +97,9 @@ Open two fresh panes in a Space, start an agent in each (`claude`, `codex`,
 or `herdr agent start <name> --kind <kind> --pane <id>`), let them reach
 idle, then either:
 
+- **UI** (later, to add an agent to a team that exists: `prefix+t`, Space on
+  the new agent, Enter, type the existing team's name, then its role, name,
+  and brief; the confirm screen says `Add 1 agent to team <t>?`)
 - **UI**: `prefix+t`, Space on the two rows, Enter, team name, charter, then
   per member a role, a name, an optional brief, confirm; or
 - **CLI**: `herdr-team create demo --charter "Try the team board end to end" --member <pane1>:reviewer --member <pane2>:worker`.

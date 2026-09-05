@@ -5,6 +5,9 @@
 ``a`` selects all; then team name, charter (multi-line, ``Ctrl-O`` loads a
 file), per member role, name, and brief; confirm screen; the popup exits
 and the action performs create, rename, label, tokens, briefing jobs, view.
+Typing the name of an existing team at the name stage switches to ``add``
+mode: the charter stage is skipped and the selected agents join that team
+through one ``herdr-team add`` each.
 Esc and Ctrl-C exit; 10 min idle watchdog; refreshes on ``who.json``.
 
 The state machine lives in ``tui_model`` (``PickerModel``,
@@ -142,6 +145,14 @@ def create_args(spec: Dict[str, Any]) -> List[str]:
     return args
 
 
+def add_args(spec: Dict[str, Any], member: Dict[str, Any]) -> List[str]:
+    """``herdr-team add`` argv for one member of a picker spec in ``add`` mode (an existing team)."""
+    args: List[str] = ["add", str(spec["team"]), str(member["target"]), "--role", str(member["role"]), "--as", str(member["name"])]
+    if member.get("brief"):
+        args += ["--brief", str(member["brief"])]
+    return args
+
+
 def _loop(stdscr: Any, model: PickerModel, api: Any, layout: Optional[Layout]) -> Optional[Dict[str, Any]]:
     import curses
 
@@ -208,7 +219,27 @@ def run(layout: Layout, api: Any, env: Dict[str, str]) -> Optional[Dict[str, Any
     return curses.wrapper(_loop, model, api, layout)
 
 
+def execute_add(spec: Dict[str, Any], env: Dict[str, str]) -> int:
+    """One ``herdr-team add`` per selected agent (the join routine briefs each); stops at the first refusal."""
+    from herdr_team.console import run_cli
+
+    added: List[Dict[str, Any]] = []
+    for member in spec.get("members") or []:
+        rc, out, err = run_cli(add_args(spec, member), env)
+        if err:
+            err = dict(err)
+            err["added_before_failure"] = [m.get("member", {}).get("name") if isinstance(m.get("member"), dict) else m.get("name") for m in added]
+            sys.stderr.write(json.dumps(err, ensure_ascii=False) + "\n")
+            return rc or EXIT_REFUSED
+        added.append(out if isinstance(out, dict) else {"name": member.get("name")})
+    sys.stdout.write(json.dumps({"team": spec.get("team"), "mode": "add", "added": added}, ensure_ascii=False) + "\n")
+    return EXIT_OK
+
+
 def execute_create(spec: Dict[str, Any], env: Dict[str, str]) -> int:
+    """Run the picker's result: ``create`` for a new team, ``add`` per member for an existing one."""
+    if spec.get("mode") == "add":
+        return execute_add(spec, env)
     from herdr_team.console import run_cli
 
     rc, out, err = run_cli(create_args(spec), env)

@@ -1859,6 +1859,8 @@ class PickerModel:
     team_name: str = ""
     charter: str = ""
     error: Optional[str] = None
+    #: ``create`` a new team, or ``add`` the selected agents to the existing team named at the name stage.
+    mode: str = "create"
     # -- extra state owned by this module
     focused_workspace: Optional[str] = None
     live_names: Set[str] = field(default_factory=set)
@@ -2067,7 +2069,7 @@ def create_spec(model: PickerModel) -> Dict[str, Any]:
                 "renamed": bool(row.name and row.name != row.member_name),
             }
         )
-    return {"team": model.team_name, "charter": model.charter or None, "naming": "prefixed", "members": members}
+    return {"team": model.team_name, "charter": model.charter or None, "naming": "prefixed", "members": members, "mode": model.mode}
 
 
 def _set_input(model: PickerModel, text: str) -> None:
@@ -2192,8 +2194,19 @@ def _name_key(model: PickerModel, key: str) -> Optional[Intent]:
             model.error = err
             return None
         if name in model.existing_teams:
-            model.error = "team {} already exists".format(name)
+            # An existing team: the selected agents join it; its charter stays as it is.
+            model.team_name = name
+            model.mode = "add"
+            model.charter = ""
+            model.charter_lines = []
+            model.error = None
+            model.status = "adding to team {} (its charter is kept; Esc goes back)".format(name)
+            model.stage = "members"
+            model.member_index = 0
+            model.member_field = "role"
+            _begin_member_field(model)
             return None
+        model.mode = "create"
         model.team_name = name
         model.error = None
         model.stage = "charter"
@@ -2260,6 +2273,11 @@ def _members_key(model: PickerModel, key: str) -> Optional[Intent]:
         elif model.member_index > 0:
             model.member_index -= 1
             model.member_field = "brief"
+        elif model.mode == "add":
+            model.stage = "name"
+            model.status = None
+            _set_input(model, model.team_name)
+            return None
         else:
             model.stage = "charter"
             _set_input(model, "")
@@ -2326,6 +2344,8 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
             lines.append("  no agents in scope")
     elif model.stage == "name":
         lines.append("Team name ([a-z][a-z0-9_-]{0,14}; normalized on Enter, Esc back)")
+        if model.existing_teams:
+            lines.append("existing: {}  (type one to add the selected agents to it)".format(", ".join(model.existing_teams)))
         lines.append(INPUT_PROMPT + model.input)
     elif model.stage == "charter":
         lines.append("Charter for {} (Enter adds a line, empty line or Alt+Enter finishes, Tab skips, Ctrl-O loads a file)".format(model.team_name))
@@ -2335,13 +2355,19 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
     elif model.stage == "members":
         rows = selected_rows(model)
         row = rows[min(model.member_index, len(rows) - 1)]
-        lines.append("Member {}/{}: {} {} {}".format(model.member_index + 1, len(rows), row.pane_id, row.kind or "?", row.name or "(unnamed)"))
+        joining = " (adding to team {})".format(model.team_name) if model.mode == "add" else ""
+        lines.append("Member {}/{}: {} {} {}{}".format(model.member_index + 1, len(rows), row.pane_id, row.kind or "?", row.name or "(unnamed)", joining))
         prompt = {"role": "role", "name": "name (default {}-<role>)".format(model.team_name), "brief": "brief (optional, Enter to skip)"}[model.member_field]
         lines.append(prompt + ":")
         lines.append(INPUT_PROMPT + model.input)
     elif model.stage == "confirm":
-        lines.append("Create team {}? (Enter creates, Esc back)".format(model.team_name))
-        lines.append("charter: {}".format(headline(model.charter, 60) if model.charter else "(none, set later with charter set)"))
+        if model.mode == "add":
+            count = len(selected_rows(model))
+            lines.append("Add {} agent{} to team {}? (Enter adds, Esc back)".format(count, "" if count == 1 else "s", model.team_name))
+            lines.append("charter: kept as it is; each new member is briefed once idle")
+        else:
+            lines.append("Create team {}? (Enter creates, Esc back)".format(model.team_name))
+            lines.append("charter: {}".format(headline(model.charter, 60) if model.charter else "(none, set later with charter set)"))
         for row in selected_rows(model):
             lines.append("  {:<8} {:<10} {:<14} {}{}".format(row.pane_id, row.kind or "?", row.role, row.member_name, "  brief: " + headline(row.brief, 30) if row.brief else ""))
     if model.error:

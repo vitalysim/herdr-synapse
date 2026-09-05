@@ -33,6 +33,7 @@ holds `daemon.json`, `daemon.log`, `who.json`, `kinds.json`, `view.json`,
 | --- | --- | --- |
 | Create from live agents | `prefix+t` picker (section 7) | `herdr-team create <team> --member <pane\|name>[:<role>[:<name>]] … [--charter "…"\|--charter-file p] [--ref p] [--brief NAME=TEXT]… [--names plain] [--rename] [--reuse] [--use]` |
 | Create from every agent in a Space | picker: `w` then `a` | `create <team> --from-workspace <ws-id>`: waits up to 60 s for agents still launching and warns about the rest |
+| Add agents to an existing team | picker: select the agents, then type the existing team's name at the name stage (the stage lists them); the charter stage is skipped, role, name, and brief are asked per agent, the confirm screen reads `Add N agents to team <t>?` | `herdr-team add <team> <pane\|name> [--role <r>] [--as <name>] [--brief "…"]`, one per agent; each new member is briefed once idle |
 | Create from scratch | | `create <team> --new [--workspace ID] --spawn <role>:<kind>[:<cwd>] …` lays out the panes and starts the agents |
 | Add a member later | | `add <team> <pane\|name> [--role r] [--as name] [--brief TEXT] [--rename] [--steal]` |
 | Remove, leave | console `/remove name` (asks y/n) | `remove <team> <name> [--keep-name]` (clears tokens and label, clears the Herdr name unless `--keep-name`, keeps a tombstone); `leave` from the member's own pane |

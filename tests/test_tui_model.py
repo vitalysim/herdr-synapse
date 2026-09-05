@@ -841,7 +841,11 @@ class PickerWizardTests(unittest.TestCase):
         self.assertIn("must match", model.error)
         type_line(model, "alpha")
         picker_apply_key(model, "ENTER")
-        self.assertIn("already exists", model.error)
+        # an existing team is not refused any more: the selected agents join it (add mode); Esc comes back
+        self.assertEqual((model.stage, model.mode), ("members", "add"))
+        self.assertIn("adding to team alpha", model.status)
+        picker_apply_key(model, "ESC")
+        self.assertEqual((model.stage, model.input), ("name", "alpha"))
         type_line(model, "human")
         picker_apply_key(model, "ENTER")
         self.assertIn("reserved", model.error)
