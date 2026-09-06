@@ -1,6 +1,6 @@
 id = "herdr-team"
 name = "Herdr Team"
-version = "0.1.1"
+version = "0.1.2"
 min_herdr_version = "0.8.2"
 description = "Teams of agents in one Herdr session: roster, charter, shared board, idle-gated nudges"
 platforms = ["macos", "linux"]
@@ -10,7 +10,7 @@ command = ["./bin/herdr-team", "daemon", "start"]
 
 [[actions]]
 id = "team-up"
-title = "Team up: pick agents"
+title = "Teams: manage agents and teams"
 contexts = ["global"]
 command = ["./bin/herdr-team", "ui", "picker"]
 
@@ -78,10 +78,10 @@ command = ["./bin/herdr-team", "compose"]
 
 [[panes]]
 id = "picker"
-title = "Team up"
+title = "Teams"
 placement = "popup"
-width = "70%"
-height = 24
+width = "80%"
+height = 28
 command = ["./bin/herdr-team", "picker"]
 
 [[panes]]

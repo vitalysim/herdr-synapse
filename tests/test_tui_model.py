@@ -632,6 +632,9 @@ def picker_model(rosters: Optional[Dict[str, List[Dict[str, Any]]]] = None, focu
     model = PickerModel(rows=rows, focused_workspace=focused)
     model.live_names = {"alpha-worker", "alpha-reviewer", "gem"}
     model.existing_teams = sorted(rosters or {})
+    # The tree reads the rosters the way ``picker.build_model`` stores them.
+    model.rosters = {team: [dict(m) for m in members] for team, members in (rosters or {}).items()}
+    model.existing_team_sizes = {team: len([m for m in members if m.get("kind") != "human" and m.get("status") != "left"]) for team, members in model.rosters.items()}
     return model
 
 
@@ -687,13 +690,16 @@ class PickerRowTests(unittest.TestCase):
         self.assertTrue(any("(launching)" in line for line in lines))
         self.assertTrue(any("(blocked)" in line for line in lines))
 
-    def test_claimed_row_refuses_selection(self):
+    def test_a_claimed_agent_is_a_team_member_not_a_pickable_row(self):
+        """It used to sit in the flat list marked ``in team alpha``; now it lives under its team."""
         model = picker_model({"alpha": [dict(m) for m in FAKE_MEMBERS]}, focused=None)
-        idx = [r.pane_id for r in model.rows].index("w2:p1")
-        for _ in range(idx):
-            picker_apply_key(model, "DOWN")
+        keys = [n.key for n in tui_model.picker_tree(model)]
+        self.assertEqual(keys[:3], ["team:alpha", "member:alpha/alpha-reviewer", "member:alpha/alpha-worker"])
+        self.assertIn("section:unassigned", keys)
+        self.assertNotIn("pane:w2:p1", keys)  # the claimed pane is not offered for selection
+        self.assertTrue(tui_model.focus_node(model, "member:alpha/alpha-reviewer"))
         picker_apply_key(model, " ")
-        self.assertIn("already in team alpha", model.error)
+        self.assertIn("alpha-reviewer is in team alpha; Enter opens its actions", model.error)
         self.assertEqual(tui_model.selected_rows(model), [])
 
 
@@ -732,7 +738,7 @@ class NameSuggestionTests(unittest.TestCase):
 class PickerWizardTests(unittest.TestCase):
     def select(self, model: PickerModel, *pane_ids: str) -> None:
         for pane in pane_ids:
-            model.cursor = [r.pane_id for r in tui_model.visible_rows(model)].index(pane)
+            self.assertTrue(tui_model.focus_node(model, "pane:" + pane), pane)
             picker_apply_key(model, " ")
 
     def test_full_wizard_to_create_spec(self):

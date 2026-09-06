@@ -53,16 +53,21 @@ def load_context(env: Dict[str, str]) -> Dict[str, Any]:
     return doc
 
 
-def session_rosters(layout: Optional[Layout]) -> Dict[str, List[Dict[str, Any]]]:
-    """``{team: members}`` for every team in the session (read-only, no locks)."""
-    out: Dict[str, List[Dict[str, Any]]] = {}
+def session_teams(layout: Optional[Layout]) -> Dict[str, Dict[str, Any]]:
+    """``{team: team.json}`` for every team in the session (read-only, no locks)."""
+    out: Dict[str, Dict[str, Any]] = {}
     if layout is None:
         return out
     for name in layout.session.list_teams():
         doc = store.read_json(layout.team(name).team_json, None)
         if isinstance(doc, dict) and isinstance(doc.get("members"), list):
-            out[name] = [m for m in doc["members"] if isinstance(m, dict)]
+            out[name] = doc
     return out
+
+
+def session_rosters(layout: Optional[Layout]) -> Dict[str, List[Dict[str, Any]]]:
+    """``{team: members}`` for every team in the session (read-only, no locks)."""
+    return {name: [m for m in doc["members"] if isinstance(m, dict)] for name, doc in session_teams(layout).items()}
 
 
 def fetch_agents(api: Any) -> List[Dict[str, Any]]:
@@ -76,9 +81,12 @@ def build_model(api: Any, context: Dict[str, Any], layout: Optional[Layout] = No
     agents = fetch_agents(api)
     focused = context.get("workspace_id") or (context.get("focused_pane_id") or "").split(":")[0] or None
     rows = tui_model.picker_rows_from_agent_list(agents, focused)
-    rosters = session_rosters(layout)
+    teams = session_teams(layout)
+    rosters = {name: [m for m in doc["members"] if isinstance(m, dict)] for name, doc in teams.items()}
     tui_model.mark_claimed(rows, rosters)
     model = PickerModel(rows=rows, focused_workspace=focused)
+    model.rosters = rosters
+    model.charters = {name: doc["charter"] for name, doc in teams.items() if isinstance(doc.get("charter"), dict)}
     model.live_names = {str(a.get("name")) for a in agents if a.get("name")}
     model.existing_teams = sorted(rosters)
     model.existing_team_sizes = {team: len([m for m in members if m.get("kind") != "human" and m.get("status") != "left"]) for team, members in rosters.items()}
@@ -100,11 +108,17 @@ def trusted_kinds(layout: Optional[Layout]) -> Optional[Set[str]]:
 
 
 def refresh_rows(model: PickerModel, api: Any, layout: Optional[Layout]) -> None:
-    """Re-read ``agent.list`` (on ``r``), keeping selections and wizard input by pane id."""
-    keep = {r.pane_id: r for r in model.rows}
+    """Re-read ``agent.list`` (on ``r`` and after every action), keeping selections and the cursor."""
+    # Herdr recycles pane numbers, so a typed role or name must follow the terminal, not the pane.
+    by_terminal = {r.terminal_id: r for r in model.rows if r.terminal_id}
+    by_pane = {r.pane_id: r for r in model.rows if r.pane_id}
+    node = tui_model.node_at(model)
+    keep_key = node.key if node is not None else ""
     fresh = build_model(api, {"workspace_id": model.focused_workspace}, layout)
     for row in fresh.rows:
-        old = keep.get(row.pane_id)
+        old = by_terminal.get(row.terminal_id) if row.terminal_id else None
+        if old is None:
+            old = by_pane.get(row.pane_id)
         if old is not None:
             row.selected = old.selected and tui_model.selectable(row)
             row.role, row.member_name, row.brief = old.role, old.member_name, old.brief
@@ -112,7 +126,11 @@ def refresh_rows(model: PickerModel, api: Any, layout: Optional[Layout]) -> None
     model.live_names = fresh.live_names
     model.existing_teams = fresh.existing_teams
     model.existing_team_sizes = fresh.existing_team_sizes
-    model.cursor = min(model.cursor, max(0, len(tui_model.visible_rows(model)) - 1))
+    model.rosters = fresh.rosters
+    model.charters = fresh.charters
+    model.collapsed &= set(model.rosters)
+    if not tui_model.focus_node(model, keep_key):
+        model.cursor = min(model.cursor, max(0, len(tui_model.picker_tree(model)) - 1))
 
 
 def refresh_status_from_who(model: PickerModel, layout: Optional[Layout]) -> None:
@@ -123,10 +141,16 @@ def refresh_status_from_who(model: PickerModel, layout: Optional[Layout]) -> Non
     if not isinstance(who, dict):
         return
     by_pane: Dict[str, str] = {}
-    for team_doc in (who.get("teams") or {}).values():
+    who_members: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    for team_name, team_doc in (who.get("teams") or {}).items():
         for m in (team_doc or {}).get("members") or []:
-            if isinstance(m, dict) and m.get("pane_id") and m.get("agent_status"):
+            if not isinstance(m, dict):
+                continue
+            if m.get("pane_id") and m.get("agent_status"):
                 by_pane[str(m["pane_id"])] = str(m["agent_status"])
+            if m.get("name"):
+                who_members.setdefault(str(team_name), {})[str(m["name"])] = m
+    model.who_members = who_members
     for row in model.rows:
         if row.pane_id in by_pane:
             row.agent_status = by_pane[row.pane_id]
@@ -168,7 +192,7 @@ def add_args(spec: Dict[str, Any], member: Dict[str, Any]) -> List[str]:
     return args
 
 
-def _loop(stdscr: Any, model: PickerModel, api: Any, layout: Optional[Layout]) -> Optional[Dict[str, Any]]:
+def _loop(stdscr: Any, model: PickerModel, api: Any, layout: Optional[Layout], env: Optional[Dict[str, str]] = None, actions: bool = True) -> Optional[Dict[str, Any]]:
     import curses
 
     from herdr_team.console import draw_lines, enable_bracketed_paste, disable_bracketed_paste, read_key
@@ -226,18 +250,166 @@ def _loop(stdscr: Any, model: PickerModel, api: Any, layout: Optional[Layout]) -
             if intent.kind == "load_file":
                 pending_path = ""
                 continue
+            if intent.kind in ACTION_INTENTS:
+                if not actions:
+                    model.error = "--dry-run: member actions are disabled"
+                    continue
+                # ``run_cli`` blocks for up to ACTION_TIMEOUT_S with no redraw, so say what is happening
+                # before it starts, and drop whatever was typed into the frozen popup afterwards.
+                model.status = ACTION_LABELS.get(intent.kind, "working").format(**{k: intent.args.get(k) for k in ("member", "team")}) + "…"
+                model.error = None
+                height, width = stdscr.getmaxyx()
+                draw_lines(stdscr, tui_model.picker_lines(model, width, height), None)
+                keep_open = execute_action(intent, model, api, layout, dict(env or {}))
+                try:
+                    curses.flushinp()
+                except curses.error:
+                    pass
+                last_key = time.monotonic()
+                if not keep_open:
+                    return None
+                continue
             if intent.kind == "create":
                 return intent.args
     finally:
         disable_bracketed_paste()
 
 
-def run(layout: Layout, api: Any, env: Dict[str, str]) -> Optional[Dict[str, Any]]:
-    """Returns the create request the action executes, or None when cancelled."""
+def run(layout: Layout, api: Any, env: Dict[str, str], actions: bool = True) -> Optional[Dict[str, Any]]:
+    """Returns the create request the action executes, or None when cancelled or when an action ran."""
     import curses
 
     model = build_model(api, load_context(env), layout)
-    return curses.wrapper(_loop, model, api, layout)
+    model.ascii_only = bool(env.get("HERDR_TEAM_ASCII"))
+    return curses.wrapper(_loop, model, api, layout, env, actions)
+
+
+#: Member actions the tree can run while the popup stays open.
+ACTION_INTENTS = ("member_rename", "member_goal", "member_send_goal", "member_remove", "member_focus")
+#: ``remove`` and ``rename`` do several socket round trips plus a lock wait; the console's 20 s is too
+#: tight for them, and a timeout kills the CLI mid-change (M8 review).
+ACTION_TIMEOUT_S = 45.0
+
+ACTION_LABELS = {
+    "member_rename": "renaming {member}",
+    "member_goal": "saving the goal for {member}",
+    "member_send_goal": "sending the goal to {member}",
+    "member_remove": "removing {member} from {team}",
+    "member_focus": "going to {member}",
+}
+
+
+def action_args(intent: Any) -> List[str]:
+    """The CLI argv for one member action (``remove`` takes the team twice: global flag and positional)."""
+    args = intent.args
+    team = str(args["team"])
+    member = str(args["member"])
+    if intent.kind == "member_remove":
+        argv = ["--team", team, "remove", team, member]
+        if args.get("keep_name"):
+            argv.append("--keep-name")
+        return argv
+    if intent.kind == "member_rename":
+        return ["--team", team, "rename", member, str(args["new"])]
+    if intent.kind == "member_goal":
+        return ["--team", team, "brief", member, "--set", str(args.get("text") or "")]
+    if intent.kind == "member_send_goal":
+        return ["--team", team, "brief", member]
+    return ["--team", team, "focus", member]
+
+
+def action_failure_status(intent: Any, err: Dict[str, Any]) -> str:
+    """One line naming what failed and what to do about it."""
+    code = str(err.get("code") or "error")
+    message = str(err.get("message") or code)
+    member = str(intent.args.get("member"))
+    if code == "daemon_down":
+        tail = "the goal is saved; only sending it needs the notifier" if intent.kind == "member_send_goal" else "start it with: herdr-team daemon start"
+        return "the team notifier is not running ({})".format(tail)
+    if code == "agent_name_taken":
+        candidates = err.get("candidates")
+        hint = "; try {}".format(", ".join(str(c) for c in candidates[:3])) if isinstance(candidates, list) and candidates else ""
+        return "Herdr already has an agent called {}{}".format(intent.args.get("new"), hint)
+    if code in ("name_taken", "name_invalid", "name_reserved", "text_too_long"):
+        return message
+    if code == "member_not_found":
+        return "{} is not in {} any more; press r to refresh".format(member, intent.args.get("team"))
+    if code in ("team_not_found", "team_session_mismatch"):
+        return "team {} is not in this session; press r".format(intent.args.get("team"))
+    if code in ("lock_timeout", "board_locked"):
+        return "the roster is busy; try again"
+    if code == "author_mismatch":
+        return "changing a goal is human only"
+    if code == "cli_timeout":
+        return "{} took too long; press r to see what happened".format(intent.kind.replace("member_", ""))
+    return "{}: {}".format(code, message)
+
+
+def action_success_status(intent: Any, out: Any) -> str:
+    args = intent.args
+    member = str(args.get("member"))
+    if intent.kind == "member_rename":
+        return "{} is now {} (the old name still resolves for 10 min)".format(member, args.get("new"))
+    if intent.kind == "member_goal":
+        saved = (out or {}).get("brief") if isinstance(out, dict) else None
+        if not saved:
+            return "goal cleared for {}; it keeps the old one until you send a new briefing".format(member)
+        return "goal saved for {}; it does not reach the agent until you send it (action 3)".format(member)
+    if intent.kind == "member_send_goal":
+        return "briefing queued for {}; it lands once the agent is idle".format(member)
+    if intent.kind == "member_remove":
+        kept = " (its Herdr agent name was kept)" if args.get("keep_name") else ""
+        return "{} removed from {}{}".format(member, args.get("team"), kept)
+    return "focusing {}".format(member)
+
+
+def member_still_matches(layout: Optional[Layout], intent: Any) -> bool:
+    """Guard against a roster that changed while the tree sat on screen or a call blocked."""
+    if layout is None:
+        return True
+    doc = store.read_json(layout.team(str(intent.args["team"])).team_json, None)
+    if not isinstance(doc, dict):
+        return False
+    expected = intent.args.get("terminal_id")
+    for member in doc.get("members") or []:
+        if not isinstance(member, dict) or member.get("name") != intent.args.get("member"):
+            continue
+        if member.get("status") == "left":
+            return False
+        return expected is None or member.get("terminal_id") == expected
+    return False
+
+
+def execute_action(intent: Any, model: PickerModel, api: Any, layout: Optional[Layout], env: Dict[str, str]) -> bool:
+    """Run one member action through the CLI. Returns False when the popup should close."""
+    from herdr_team.console import run_cli
+
+    if not member_still_matches(layout, intent):
+        model.error = "{} changed while this was open; press r to refresh".format(intent.args.get("member"))
+        model.stage = "select"
+        return True
+    rc, out, err = run_cli(action_args(intent), env, timeout=ACTION_TIMEOUT_S)
+    if err:
+        model.error = action_failure_status(intent, err)
+        if intent.kind not in ("member_rename", "member_goal"):
+            model.stage = "select"  # a text stage keeps what was typed so it can be corrected
+        return True
+    model.error = None
+    model.status = action_success_status(intent, out)
+    if intent.kind == "member_focus":
+        return False
+    try:
+        refresh_rows(model, api, layout)
+    except HerdrTeamError as err_obj:
+        model.status = "{} (refresh failed: {})".format(model.status, err_obj.message)
+    model.stage = "select"
+    if intent.kind == "member_rename":
+        tui_model.focus_node(model, "member:{}/{}".format(intent.args["team"], intent.args["new"]))
+    elif intent.kind == "member_remove":
+        tui_model.focus_node(model, "team:{}".format(intent.args["team"]))
+    else:
+        tui_model.focus_node(model, "member:{}/{}".format(intent.args["team"], intent.args["member"]))
+    return True
 
 
 def execute_add(spec: Dict[str, Any], env: Dict[str, str]) -> int:
@@ -294,7 +466,7 @@ def run_args(args: argparse.Namespace) -> int:
     if not sys.stdout.isatty():
         raise HerdrTeamError("no_tty", "picker needs a terminal", EXIT_REFUSED)
     api = _cli.api_for(args, layout)
-    spec = run(layout, api, env)
+    spec = run(layout, api, env, actions=not getattr(args, "dry_run", False))
     if spec is None:
         return EXIT_OK
     if getattr(args, "dry_run", False):

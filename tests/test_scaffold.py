@@ -88,7 +88,7 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(doc["panes"][0]["command"], ["sh", "console.sh"])
         self.assertEqual(doc["panes"][1]["width"], "80%")
         self.assertEqual(doc["panes"][1]["height"], 12)
-        self.assertEqual(doc["panes"][2]["height"], 24)
+        self.assertEqual(doc["panes"][2]["height"], 28)
         self.assertEqual((doc["panes"][3]["id"], doc["panes"][3]["command"]), ("usage", ["./bin/herdr-team", "usage-pane"]))
         for pane in doc["panes"][1:]:
             self.assertEqual(pane["placement"], "popup")

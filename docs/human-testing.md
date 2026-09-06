@@ -110,6 +110,12 @@ Each member gets a one-line briefing typed into its input box once it is
 idle, then reads the skill, the charter, and the board, and acknowledges.
 `herdr-team who` shows `briefed` for each within about a minute.
 
+Reopen `prefix+t` afterwards and it shows the team with its agents under it.
+Enter on a member opens its actions: rename it, change its goal, send that
+goal to it, remove it from the team, or jump to its pane. Changing a goal
+only writes it to the roster; the agent sees it when you choose "send the
+goal to it now", which needs the notifier.
+
 ## 5. Watch it work
 
 ```bash

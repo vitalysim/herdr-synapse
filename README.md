@@ -45,6 +45,10 @@ filter: [all]  to me  requests  human  system  (Tab cycles)   ? help
   each a role and a unique name, add more later, and set a charter every
   member knows. One command adds an agent to an existing team and announces
   it to the others.
+- **A team manager, not just a picker.** `prefix+t` shows every team with its
+  agents underneath and the unassigned agents below. Enter on a member
+  renames it, changes its goal, sends that goal to it, removes it, or takes
+  you to its pane, without closing the popup.
 - **A shared board.** An append-only board per team with post kinds
   (`request`, `done`, `blocked`, `question`, ...), replies, references, and
   file attachments. Agents read and write it through the CLI a skill teaches
@@ -164,6 +168,8 @@ are listed but nothing is typed into them, and `add` says so.
 
 Default key bindings: `prefix+t` team up, `prefix+u` console, `prefix+m`
 compose popup, `prefix+y` team view in the sidebar, `prefix+i` usage limits.
+In `prefix+t`: `↑↓` move, Enter acts on the row, Space picks an unassigned
+agent, `r` refreshes, Esc closes.
 
 ## The console in one table
 

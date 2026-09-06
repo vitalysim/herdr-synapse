@@ -32,7 +32,7 @@ Global flags are accepted before or after the command name.
 | `--session NAME` | Named session, mirrors `herdr --session`. `default` means the default session. |
 | `--socket PATH` | Socket override. Wins over `--session`, `HERDR_SOCKET_PATH`, `HERDR_SESSION`. |
 | `--session-mismatch-ok` | Allow a write (`post`, `retract`, `edit`, `task`, `ack`, `charter set|edit`, `brief --set`, `use`, `rename`, `remove`, `bind`, `dissolve`) to a team whose `team.json` socket differs from the resolved socket. Without it such a write is refused with `team_session_mismatch` (plan 12, RS-08) whenever the socket was resolved explicitly (`HERDR_SOCKET_PATH`, `HERDR_SESSION`, `--session`); `--socket` counts as consent; the default-socket fallback outside Herdr (`--team <path>`, nothing configured) is not checked so the offline append of HP-05 keeps working. `add` checks always (as before). Reads never check. |
-| `--version` | `herdr-team 0.1.1`; JSON `{"version","skill_version","plugin_id"}`. |
+| `--version` | `herdr-team 0.1.2`; JSON `{"version","skill_version","plugin_id"}`. |
 | `--skill` | Prints `skills/herdr-team/SKILL.md`; JSON `{"skill","skill_version"}`. |
 
 Environment the CLI reads: `HERDR_SOCKET_PATH`, `HERDR_SESSION`,
@@ -636,9 +636,27 @@ entrypoint as a popup started on its roster box (`HERDR_TEAM_CONSOLE_VIEW=who`
 in the pane env). `ui picker` runs `ensure_daemon()` first unless
 `HERDR_TEAM_NO_DAEMON=1`. JSON `{"ui":"picker","opened":true,"placement":"popup|split|tab","pane_id":"…"|null,"fallback":"console"|null,"retried":bool}`;
 `ui close` → `{"ui":"close","closed":true}`. Registered by `cmd_ui.py`
-together with the pane entrypoints below. In the picker, when teams already
-exist, a numbered choice follows the selection: `add it to team <t>` per team
-(one `add` per agent, the charter untouched) or `create a new team`.
+together with the pane entrypoints below.
+
+`ui picker` is the team manager. Its first screen is a tree: every team in
+the session with its agent members underneath (the `human` member and `left`
+tombstones are never listed), then the agents that belong to no team. Member
+rows are rendered by the same `who` renderer the console uses, plus the
+role; live status comes from `agent.list`, and headlines, holds and mutes
+from `who.json` when the notifier is running. Enter folds a team, Space
+picks an unassigned agent, and the list scrolls with the cursor.
+
+Enter on a member opens a numbered action menu; each action shells out to
+this CLI and the popup stays open: `rename <old> <new>`, `brief <name>
+--set`, `brief <name>`, `remove <team> <name> [--keep-name]`, and `focus
+<name>` (which closes the popup). Rename and goal validate locally first,
+`remove` asks `y` (Enter is not yes), and every action re-checks the
+member's name and `terminal_id` against `team.json` immediately before the
+call, so a roster that changed while the popup was open refuses rather than
+acting on the wrong agent. `--dry-run` disables the actions.
+
+With agents selected, a numbered choice follows: `add it to team <t>` per
+team (one `add` per agent, the charter untouched) or `create a new team`.
 
 Opening the console entrypoint stamps `launched_at` in `console.json`
 (section 10). `doctor` and `daemon start` close a pane labelled `Team

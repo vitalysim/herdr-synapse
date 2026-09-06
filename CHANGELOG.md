@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2 (2026-09-06)
+
+- `prefix+t` is a team manager: it shows every team with its agents underneath and the agents that belong to no team below them, folds a team away with Enter, and scrolls when the list outgrows the popup. Enter on a member opens a numbered menu that renames it (the team name and the Herdr agent name together), changes its goal, sends that goal to it, removes it from the team (with or without keeping its Herdr name), or jumps to its pane. Actions run without closing the popup.
+- A removed member stays removed: `Team.find` no longer resolves a tombstone ahead of a live member that re-used its name, `remove`, `rename` and `brief --set` refuse a member that already left, and the notifier drops a removed member's queued work instead of keeping it for ever (it could still be delivered).
+- A rename carries the member's read position to its new name, so it no longer replays the whole board.
+
 ## 0.1.1 (2026-09-06)
 
 - Usage limits across agents: `herdr-team usage` and the `prefix+i` popup (`ui usage`) show the session, weekly, and per-model windows of every provider account the session's agents draw on (Anthropic, OpenAI Codex, GitHub Copilot, Google Gemini), grouped with the agents behind each; tokens never leave the process.

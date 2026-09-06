@@ -45,6 +45,10 @@ REQUEST_KINDS = ("request", "question", "blocked", "handoff")
 MAX_TEXT_CHARS = 2000
 MAX_CHARTER_CHARS = 2000
 MAX_BRIEF_CHARS = 300
+#: What ``brief --set`` stores (``charter.MAX_BRIEF_TOTAL_CHARS``); only the first ``MAX_BRIEF_CHARS``
+#: reach the briefing line, so the picker's goal editor uses this cap or a longer CLI-set brief
+#: could not be edited at all.
+MAX_BRIEF_TOTAL_CHARS = 2000
 MAX_MEMBER_NAME_CHARS = 32
 MAX_NAME_SUFFIX = 99
 HEADLINE_COLUMNS = 24
@@ -464,8 +468,14 @@ def roster_line(
     ascii_only: bool = False,
     mutes: Optional[Dict[str, Any]] = None,
     now: Optional[datetime] = None,
+    show_role: bool = False,
 ) -> str:
-    """One ``who`` line (plan 11): glyph name kind pane status "headline" ↪N muted gone <age> ..."""
+    """One ``who`` line (plan 11): glyph name kind pane status "headline" ↪N muted gone <age> ...
+
+    ``show_role`` adds the member's role after its name. The console's roster
+    box leaves it out (roles live in the CLI ``who``), but the picker's team
+    tree is where roles are chosen and changed, so it asks for them.
+    """
     level = degrade_level(width)
     name = str(member.get("name") or "?")
     kind = str(member.get("kind") or "?")
@@ -473,6 +483,8 @@ def roster_line(
     status = str(member.get("agent_status") or "unknown")
     roster_status = member.get("status") or "active"
     fields = [status_glyph(status, ascii_only) + " " + name]
+    if show_role and level < 2 and member.get("role"):
+        fields.append(str(member["role"]))
     if level < 2:
         fields.append(kind)
         fields.append(pane)
@@ -2037,6 +2049,26 @@ class PickerModel:
     member_field: str = "role"  # role | name | brief
     status: Optional[str] = None
     paste_mode: bool = False
+    # -- the team tree (the select stage) and the member actions on it
+    #: ``{team: [member dicts]}`` straight from every ``team.json`` in the session.
+    rosters: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
+    #: ``{team: charter}`` from the same read, so a team row can show its goal with the daemon down.
+    charters: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    #: ``{team: {name: who member}}``: the live extras only the daemon knows (headline, holds, mutes).
+    who_members: Dict[str, Dict[str, Dict[str, Any]]] = field(default_factory=dict)
+    #: Team names folded away in the tree.
+    collapsed: Set[str] = field(default_factory=set)
+    ascii_only: bool = False
+    #: First visible tree row; owned by ``picker_lines`` the way ``feed_window`` owns the console scroll.
+    top: int = 0
+    #: Body height of the last render, so PgUp/PgDn can step a real page.
+    page_rows: int = 10
+    #: The member the action menu is about, and the highlighted action.
+    action_team: str = ""
+    action_member: str = ""
+    action_index: int = 0
+    #: A destructive action waiting for ``y``; mirrors ``ConsoleModel.pending_confirm``.
+    pending_action: Optional["Intent"] = None
 
     # ``edit_key`` expects ``cursor``; the picker's list cursor already uses
     # that name, so the text cursor is ``cursor_pos`` and this shim maps it.
@@ -2122,6 +2154,127 @@ def mark_claimed(rows: List[PickerRow], rosters: Dict[str, List[Dict[str, Any]]]
                 by_pane[str(m["pane_id"])] = team
     for row in rows:
         row.claimed_by = by_terminal.get(row.terminal_id) or by_pane.get(row.pane_id) or ""
+
+
+@dataclass
+class PickerNode:
+    """One line of the team tree: a team header, one of its members, the unassigned header, or an agent."""
+
+    kind: str  # team | member | section | agent
+    key: str
+    team: str = ""
+    label: str = ""
+    member: Optional[Dict[str, Any]] = None
+    row: Optional[PickerRow] = None
+
+
+#: Roster statuses whose ``pane_id`` is stale, so renaming or removing would act on the wrong pane.
+UNSETTLED_STATUSES = ("missing", "unbound", "kind_changed", "name_conflict", "failed", "starting")
+
+
+def tree_member(member: Dict[str, Any], charter: Optional[Dict[str, Any]] = None, who: Optional[Dict[str, Any]] = None, row: Optional[PickerRow] = None) -> Dict[str, Any]:
+    """A ``roster_line``-shaped dict: ``team.json`` for identity, the live row for state, ``who.json`` for extras."""
+    out: Dict[str, Any] = {
+        "name": member.get("name"),
+        "role": member.get("role"),
+        "kind": member.get("kind"),
+        "status": member.get("status") or "active",
+        "brief": member.get("brief"),
+        "terminal_id": member.get("terminal_id"),
+        "pane_id": member.get("pane_id"),
+        "workspace_id": member.get("workspace_id"),
+        "last_seen_at": member.get("last_seen_at"),
+        "briefed": member.get("briefed_at") is not None,
+        "agent_status": None,
+    }
+    if isinstance(charter, dict) and charter.get("seq") is not None:
+        try:
+            out["charter_stale"] = int(member.get("charter_seq_acked") or 0) < int(charter["seq"])
+        except (TypeError, ValueError):
+            out["charter_stale"] = False
+    if isinstance(who, dict):
+        for key in ("agent_status", "pane_id", "workspace_id", "last_headline", "pending_nudges", "hold",
+                    "say", "interrupt", "muted_until", "verified_kind", "delivery", "hooks_last_seen"):
+            if who.get(key) is not None:
+                out[key] = who[key]
+    if row is not None:
+        # ``agent.list`` is the freshest source for what the pane is doing right now.
+        out["agent_status"] = row.agent_status
+        out["pane_id"] = row.pane_id
+        out["workspace_id"] = row.workspace_id
+    if not out.get("agent_status"):
+        out["agent_status"] = "unknown"
+    return out
+
+
+def live_rows_by_id(rows: List[PickerRow]) -> Tuple[Dict[str, PickerRow], Dict[str, PickerRow]]:
+    """``(by terminal_id, by pane_id)``; the terminal survives a pane move, so it is tried first."""
+    by_terminal = {r.terminal_id: r for r in rows if r.terminal_id}
+    by_pane = {r.pane_id: r for r in rows if r.pane_id}
+    return by_terminal, by_pane
+
+
+def picker_tree(model: PickerModel) -> List[PickerNode]:
+    """Teams with their members, then the agents that belong to no team.
+
+    With no team at all the tree is exactly today's flat agent list, so a
+    first run looks unchanged. ``left`` tombstones and the ``human`` member
+    are never listed: no action applies to either.
+    """
+    nodes: List[PickerNode] = []
+    by_terminal, by_pane = live_rows_by_id(model.rows)
+    for team in sorted(model.rosters):
+        members = [m for m in model.rosters[team] if isinstance(m, dict) and m.get("kind") != "human" and m.get("status") != "left"]
+        nodes.append(PickerNode(kind="team", key="team:" + team, team=team, label=team))
+        if team in model.collapsed:
+            continue
+        who = model.who_members.get(team) or {}
+        charter = model.charters.get(team)
+        for member in members:
+            row = by_terminal.get(str(member.get("terminal_id") or "")) or by_pane.get(str(member.get("pane_id") or ""))
+            name = str(member.get("name") or "?")
+            nodes.append(PickerNode(
+                kind="member",
+                key="member:{}/{}".format(team, name),
+                team=team,
+                label=name,
+                member=tree_member(member, charter, who.get(name), row),
+                row=row,
+            ))
+    free = [r for r in visible_rows(model) if not r.claimed_by]
+    if model.rosters:
+        nodes.append(PickerNode(kind="section", key="section:unassigned", label="not in a team"))
+    for row in free:
+        nodes.append(PickerNode(kind="agent", key="pane:" + row.pane_id, label=row.name or row.pane_id, row=row))
+    return nodes
+
+
+def node_at(model: PickerModel, nodes: Optional[List[PickerNode]] = None) -> Optional[PickerNode]:
+    nodes = picker_tree(model) if nodes is None else nodes
+    if not nodes:
+        return None
+    return nodes[min(max(0, model.cursor), len(nodes) - 1)]
+
+
+def focus_node(model: PickerModel, key: str) -> bool:
+    """Put the cursor on ``key``; False when it is gone (the caller keeps its old position)."""
+    for index, node in enumerate(picker_tree(model)):
+        if node.key == key:
+            model.cursor = index
+            return True
+    return False
+
+
+def scroll_window(top: int, cursor: int, count: int, height: int) -> int:
+    """Smallest move of ``top`` that keeps ``cursor`` on screen."""
+    if height <= 0 or count <= 0:
+        return 0
+    top = min(max(0, top), max(0, count - height))
+    if cursor < top:
+        top = cursor
+    elif cursor >= top + height:
+        top = cursor - height + 1
+    return min(max(0, top), max(0, count - height))
 
 
 def visible_rows(model: PickerModel) -> List[PickerRow]:
@@ -2276,8 +2429,28 @@ def picker_apply_key(model: PickerModel, key: str) -> Optional[Intent]:
         return Intent("quit")
     if key == "RESIZE":
         return None
+    if model.pending_action is not None:
+        # A destructive action waiting for confirmation. Unlike the console's ``pending_confirm``,
+        # ENTER is NOT yes: Enter opens the menu and picks the action, so a third Enter (or one held
+        # key) would remove a member nobody meant to remove.
+        pending = model.pending_action
+        if key in ("y", "Y"):
+            model.pending_action = None
+            model.status = None
+            return pending
+        if key in ("n", "N", "ESC"):
+            model.pending_action = None
+            model.status = "cancelled"
+            return None
+        return None
     if model.stage == "select":
         return _select_key(model, key)
+    if model.stage == "actions":
+        return _actions_key(model, key)
+    if model.stage == "rename":
+        return _rename_key(model, key)
+    if model.stage == "goal":
+        return _goal_key(model, key)
     if model.stage == "target":
         return _target_key(model, key)
     if model.stage == "name":
@@ -2301,57 +2474,140 @@ def picker_apply_key(model: PickerModel, key: str) -> Optional[Intent]:
 
 
 def _select_key(model: PickerModel, key: str) -> Optional[Intent]:
-    rows = visible_rows(model)
+    """The team tree: move, fold, pick unassigned agents, or open a member's actions."""
+    nodes = picker_tree(model)
     model.error = None
+    if nodes:
+        model.cursor = min(max(0, model.cursor), len(nodes) - 1)
+    node = nodes[model.cursor] if nodes else None
+    if key in ("PASTE_START", "PASTE_END"):
+        # A paste in a list stage would otherwise arrive as keystrokes and fire actions.
+        model.paste_mode = key == "PASTE_START"
+        return None
+    if model.paste_mode:
+        return None
     if key in ("ESC", "q"):
         return Intent("quit")
     if key in ("UP", "k"):
         model.cursor = max(0, model.cursor - 1)
         return None
     if key in ("DOWN", "j"):
-        model.cursor = min(max(0, len(rows) - 1), model.cursor + 1)
+        model.cursor = min(max(0, len(nodes) - 1), model.cursor + 1)
+        return None
+    if key == "PGUP":
+        model.cursor = max(0, model.cursor - max(1, model.page_rows))
+        return None
+    if key == "PGDN":
+        model.cursor = min(max(0, len(nodes) - 1), model.cursor + max(1, model.page_rows))
+        return None
+    if key == "HOME":
+        model.cursor = 0
+        return None
+    if key == "END":
+        model.cursor = max(0, len(nodes) - 1)
         return None
     if key == "r":
         return Intent("refresh")
     if key == "w":
+        keep = node.key if node is not None else ""
         if model.scope_workspace is None and model.focused_workspace:
             model.scope_workspace = model.focused_workspace
         else:
             model.scope_workspace = None
-        model.cursor = 0
+        if not focus_node(model, keep):
+            model.cursor = 0
         return None
     if key == "a":
-        candidates = [r for r in rows if selectable(r)]
+        candidates = [r for r in visible_rows(model) if selectable(r) and not r.claimed_by]
         all_selected = bool(candidates) and all(r.selected for r in candidates)
         for r in candidates:
             r.selected = not all_selected
         return None
+    if node is None:
+        return None
+    if key in ("LEFT", "h"):
+        if node.kind == "member":
+            focus_node(model, "team:" + node.team)
+        elif node.kind == "team":
+            model.collapsed.add(node.team)
+        return None
+    if key in ("RIGHT", "l"):
+        if node.kind == "team":
+            model.collapsed.discard(node.team)
+        return None
     if key in (" ", "SPACE"):
-        if not rows:
+        if node.kind in ("team", "section"):
+            return _toggle_collapse(model, node)
+        if node.kind == "member":
+            model.error = "{} is in team {}; Enter opens its actions".format(node.label, node.team)
             return None
-        row = rows[min(model.cursor, len(rows) - 1)]
-        if row.launch_pending:
-            model.error = "{} is still launching; wait for it to settle".format(row.pane_id)
-        elif row.claimed_by:
-            model.error = "{} is already in team {} (use the CLI with --steal)".format(row.name or row.pane_id, row.claimed_by)
-        elif row.agent_status == "blocked":
-            model.error = "{} is blocked at a dialog; settle it first".format(row.name or row.pane_id)
-        else:
-            row.selected = not row.selected
-        return None
+        return _toggle_agent(model, node.row)
     if key == "ENTER":
-        if not selected_rows(model):
-            model.error = "select at least one agent (Space toggles, a selects all)"
-            return None
-        if model.existing_teams:
-            model.stage = "target"
-            model.target_index = 0
-            model.status = None
-            return None
-        model.mode = "create"
-        model.stage = "name"
-        _set_input(model, model.team_name)
+        if node.kind == "member":
+            return _open_actions(model, node)
+        if node.kind == "team":
+            if selected_rows(model):
+                _enter_add_mode(model, node.team)
+                return None
+            return _toggle_collapse(model, node)
+        if node.kind == "section":
+            return _toggle_collapse(model, node)
+        if node.kind == "agent" and node.row is not None and not selected_rows(model) and selectable(node.row):
+            node.row.selected = True  # Enter on a single agent means "this one"
+        return _advance_from_select(model)
+    return None
+
+
+def _toggle_collapse(model: PickerModel, node: PickerNode) -> None:
+    if node.kind == "team":
+        if node.team in model.collapsed:
+            model.collapsed.discard(node.team)
+        else:
+            model.collapsed.add(node.team)
+    else:  # the unassigned section folds every team away, or brings them all back
+        if model.collapsed >= set(model.rosters):
+            model.collapsed.clear()
+        else:
+            model.collapsed.update(model.rosters)
+    return None
+
+
+def _toggle_agent(model: PickerModel, row: Optional[PickerRow]) -> None:
+    if row is None:
         return None
+    if row.launch_pending:
+        model.error = "{} is still launching; wait for it to settle".format(row.pane_id)
+    elif row.claimed_by:
+        model.error = "{} is already in team {} (use the CLI with --steal)".format(row.name or row.pane_id, row.claimed_by)
+    elif row.agent_status == "blocked":
+        model.error = "{} is blocked at a dialog; settle it first".format(row.name or row.pane_id)
+    else:
+        row.selected = not row.selected
+    return None
+
+
+def _advance_from_select(model: PickerModel) -> Optional[Intent]:
+    if not selected_rows(model):
+        model.error = "select at least one agent (Space toggles, a selects all)"
+        return None
+    if model.existing_teams:
+        model.stage = "target"
+        model.target_index = 0
+        model.status = None
+        return None
+    model.mode = "create"
+    model.stage = "name"
+    _set_input(model, model.team_name)
+    return None
+
+
+def _open_actions(model: PickerModel, node: PickerNode) -> None:
+    model.stage = "actions"
+    model.action_team = node.team
+    model.action_member = node.label
+    model.action_index = 0
+    model.status = None
+    model.pending_action = None
     return None
 
 
@@ -2541,7 +2797,174 @@ def _members_key(model: PickerModel, key: str) -> Optional[Intent]:
     return None
 
 
-PICKER_TEXT_STAGES = ("name", "charter", "members")
+PICKER_TEXT_STAGES = ("name", "charter", "members", "rename", "goal")
+
+#: The member action menu, in the order it is shown. ``{team}`` is filled in per member.
+ACTION_OPTIONS = (
+    ("rename", "rename it (the team name and the Herdr agent name)"),
+    ("goal", "change its goal"),
+    ("send_goal", "send the goal to it now"),
+    ("remove", "remove it from {team}"),
+    ("remove_keep", "remove it from {team}, keep its Herdr agent name"),
+    ("focus", "go to its pane (closes this popup)"),
+)
+
+
+def action_member(model: PickerModel) -> Optional[Dict[str, Any]]:
+    """The tree's dict for the member the action menu is about, or None when it is gone."""
+    for node in picker_tree(model):
+        if node.kind == "member" and node.team == model.action_team and node.label == model.action_member:
+            return node.member
+    return None
+
+
+def action_options(model: PickerModel) -> List[Tuple[str, str]]:
+    return [(key, label.format(team=model.action_team)) for key, label in ACTION_OPTIONS]
+
+
+def _action_refusal(action: str, member: Dict[str, Any]) -> Optional[str]:
+    """Why an action cannot run against this member right now, or None."""
+    status = str(member.get("status") or "active")
+    if status in UNSETTLED_STATUSES and action in ("rename", "send_goal", "focus"):
+        if status == "missing":
+            return "{} has no live agent right now; bind it first (herdr-team bind)".format(member.get("name"))
+        return "{} is {}; settle it first".format(member.get("name"), status.replace("_", " "))
+    return None
+
+
+def _confirm_question(intent: "Intent") -> str:
+    args = intent.args
+    if intent.kind == "member_remove":
+        tail = "its team tokens and pane label are cleared" if args.get("keep_name") else "its team tokens, pane label and Herdr agent name are cleared"
+        return "remove {} from {}? {} - y removes, n cancels".format(args.get("member"), args.get("team"), tail)
+    return "{}? y/n".format(intent.kind)
+
+
+def _start_action(model: PickerModel, action: str) -> Optional[Intent]:
+    member = action_member(model)
+    if member is None:
+        model.stage = "select"
+        model.error = "{} is not in {} any more; press r to refresh".format(model.action_member, model.action_team)
+        return None
+    refusal = _action_refusal(action, member)
+    if refusal:
+        model.error = refusal
+        return None
+    name = str(member.get("name"))
+    base = {"team": model.action_team, "member": name, "terminal_id": member.get("terminal_id")}
+    if action == "rename":
+        model.stage = "rename"
+        model.error = None
+        _set_input(model, name)
+        return None
+    if action == "goal":
+        model.stage = "goal"
+        model.error = None
+        _set_input(model, str(member.get("brief") or ""))
+        return None
+    if action == "send_goal":
+        return Intent("member_send_goal", dict(base))
+    if action in ("remove", "remove_keep"):
+        intent = Intent("member_remove", dict(base, keep_name=action == "remove_keep"))
+        model.pending_action = intent
+        model.status = _confirm_question(intent)
+        return None
+    return Intent("member_focus", dict(base))
+
+
+def _actions_key(model: PickerModel, key: str) -> Optional[Intent]:
+    options = action_options(model)
+    model.error = None
+    if key in ("PASTE_START", "PASTE_END"):
+        model.paste_mode = key == "PASTE_START"
+        return None
+    if model.paste_mode:
+        return None
+    if key in ("ESC", "q"):
+        model.stage = "select"
+        model.status = None
+        return None
+    if key in ("UP", "k"):
+        model.action_index = max(0, model.action_index - 1)
+        return None
+    if key in ("DOWN", "j"):
+        model.action_index = min(len(options) - 1, model.action_index + 1)
+        return None
+    if len(key) == 1 and key.isdigit():
+        number = int(key)
+        if 1 <= number <= len(options):
+            model.action_index = number - 1
+            return _start_action(model, options[number - 1][0])
+        model.error = "type a number between 1 and {}".format(len(options))
+        return None
+    if key == "ENTER":
+        return _start_action(model, options[min(model.action_index, len(options) - 1)][0])
+    return None
+
+
+def _rename_key(model: PickerModel, key: str) -> Optional[Intent]:
+    if key == "ESC":
+        model.stage = "actions"
+        model.error = None
+        return None
+    if key == "ENTER":
+        member = action_member(model)
+        if member is None:
+            model.stage = "select"
+            model.error = "{} is not in {} any more; press r to refresh".format(model.action_member, model.action_team)
+            return None
+        new = model.input.strip().lower()
+        current = str(member.get("name"))
+        if new == current:
+            model.stage = "actions"
+            model.status = "name unchanged"
+            return None
+        err = validate_member_name_local(new)
+        if err:
+            model.error = err
+            return None
+        if new in rename_taken_names(model, current):
+            model.error = "{} is taken (a member or a live agent already answers to it)".format(new)
+            return None
+        return Intent("member_rename", {"team": model.action_team, "member": current, "new": new, "terminal_id": member.get("terminal_id")})
+    edit_key(_TextView(model), key)
+    return None
+
+
+def rename_taken_names(model: PickerModel, current: str) -> Set[str]:
+    """Every member name in the session plus every live agent name, minus the member's own."""
+    taken = set(model.live_names)
+    for members in model.rosters.values():
+        for member in members:
+            if isinstance(member, dict) and member.get("status") != "left" and member.get("name"):
+                taken.add(str(member["name"]))
+    taken.discard(current)
+    return taken
+
+
+def _goal_key(model: PickerModel, key: str) -> Optional[Intent]:
+    if key == "ESC":
+        model.stage = "actions"
+        model.error = None
+        return None
+    if key == "ENTER":
+        member = action_member(model)
+        if member is None:
+            model.stage = "select"
+            model.error = "{} is not in {} any more; press r to refresh".format(model.action_member, model.action_team)
+            return None
+        text = model.input.strip()
+        if len(text) > MAX_BRIEF_TOTAL_CHARS:
+            model.error = "goal is {} chars; max {}".format(len(text), MAX_BRIEF_TOTAL_CHARS)
+            return None
+        if text == str(member.get("brief") or ""):
+            model.stage = "actions"
+            model.status = "goal unchanged"
+            return None
+        return Intent("member_goal", {"team": model.action_team, "member": str(member.get("name")), "text": text, "terminal_id": member.get("terminal_id")})
+    edit_key(_TextView(model), key)
+    return None
+
 
 
 def picker_cursor(model: PickerModel, lines: List[str], width: int) -> Optional[Tuple[int, int]]:
@@ -2559,27 +2982,125 @@ def picker_cursor(model: PickerModel, lines: List[str], width: int) -> Optional[
     return rows[-1], min(max(0, width - 1), col)
 
 
+def _team_header(model: PickerModel, node: PickerNode, width: int) -> str:
+    size = len([m for m in model.rosters.get(node.team, []) if isinstance(m, dict) and m.get("kind") != "human" and m.get("status") != "left"])
+    if model.ascii_only:
+        glyph = "+" if node.team in model.collapsed else "-"
+    else:
+        glyph = "▸" if node.team in model.collapsed else "▾"
+    text = "{} {}  ({} member{})".format(glyph, node.team, size, "" if size == 1 else "s")
+    charter = model.charters.get(node.team) or {}
+    if degrade_level(width) == 0 and charter.get("text"):
+        text += '  "{}"'.format(headline(str(charter["text"]), 40))
+    return text
+
+
+def _tree_lines(model: PickerModel, width: int, height: int) -> List[str]:
+    """The team tree: a pinned header, a scrolled body, and a detail line for the row under the cursor."""
+    nodes = picker_tree(model)
+    if nodes:
+        model.cursor = min(max(0, model.cursor), len(nodes) - 1)
+    teams = len(model.rosters)
+    agents = len([n for n in nodes if n.kind in ("member", "agent")])
+    scope = ""
+    if model.scope_workspace:
+        scope = "  unassigned: {}".format(model.scope_workspace)
+    picked = len(selected_rows(model))
+    if degrade_level(width) == 0:
+        keys = "Enter acts · Space picks · w scope · a all · r refresh · Esc quit"
+    else:
+        keys = "Enter acts · Space picks · Esc quit"
+    head = "{} team{} · {} agent{}{}".format(teams, "" if teams == 1 else "s", agents, "" if agents == 1 else "s", scope)
+    if picked:
+        head += " · {} selected".format(picked)
+    lines = [truncate_columns("{}    {}".format(head, keys), width)]
+    # Always leave room for the detail line and for the error or status the caller appends.
+    body = max(1, height - 3)
+    if len(nodes) > body:
+        body = max(1, body - 1)  # the "more" footer
+    model.page_rows = body
+    model.top = scroll_window(model.top, model.cursor, len(nodes), body)
+    for index in range(model.top, min(len(nodes), model.top + body)):
+        node = nodes[index]
+        pointer = "> " if index == model.cursor else "  "
+        if node.kind == "team":
+            lines.append(truncate_columns(pointer + _team_header(model, node, width - 2), width))
+        elif node.kind == "member":
+            lines.append(truncate_columns(pointer + "  " + roster_line(node.member or {}, max(20, width - 4), model.ascii_only, None, None, show_role=True), width))
+        elif node.kind == "section":
+            free = len([n for n in nodes if n.kind == "agent"])
+            lines.append(truncate_columns("{}{} ({})".format(pointer, node.label, free), width))
+        else:
+            row = node.row
+            mark = "[x]" if row is not None and row.selected else "[ ]"
+            note = ""
+            if row is not None and row.launch_pending:
+                note = "  (launching)"
+            elif row is not None and row.agent_status == "blocked":
+                note = "  (blocked)"
+            lines.append(truncate_columns("{}{} {:<8} {:<10} {:<20} {}{}".format(
+                pointer, mark, row.pane_id if row else "?", (row.kind if row else None) or "?",
+                (row.name if row else None) or "(unnamed)", row.agent_status if row else "unknown", note), width))
+    if not nodes:
+        lines.append("  no agents in scope")
+    if len(nodes) > body:
+        above, below = model.top, max(0, len(nodes) - model.top - body)
+        arrows = "^{} v{}".format(above, below) if model.ascii_only else "↑{} ↓{}".format(above, below)
+        lines.append(truncate_columns("  {}  (PgUp/PgDn)".format(arrows), width))
+    lines.append(truncate_columns(_tree_detail(model, nodes), width))
+    return lines
+
+
+def _tree_detail(model: PickerModel, nodes: List[PickerNode]) -> str:
+    """The line under the list: what Enter would do to the row under the cursor."""
+    node = nodes[model.cursor] if nodes else None
+    if node is None:
+        return "no agents; start one in a pane, then press r"
+    if node.kind == "team":
+        if selected_rows(model):
+            return "Enter adds the selected agents to {}".format(node.team)
+        return "Enter folds {} open or shut".format(node.team)
+    if node.kind == "member":
+        goal = str((node.member or {}).get("brief") or "")
+        return "Enter opens actions for {} · goal: {}".format(node.label, headline(goal, 40) if goal else "(none yet)")
+    if node.kind == "section":
+        return "agents that belong to no team; Space picks them, Enter continues"
+    return "Space picks it, Enter continues with the agents you picked"
+
+
 def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[str]:
     """Screen lines for the picker popup at its current stage: prompt, then the input line, then any error or status."""
     lines: List[str] = []
     has_input = False
     if model.stage == "select":
-        scope = "Space {}".format(model.scope_workspace) if model.scope_workspace else "all Spaces"
-        lines.append("Team up: pick agents  ({}; w scope, a all, Space toggle, Enter next, Esc quit)".format(scope))
-        rows = visible_rows(model)
-        for i, row in enumerate(rows):
-            mark = "[x]" if row.selected else "[ ]"
-            note = ""
-            if row.launch_pending:
-                note = "  (launching)"
-            elif row.claimed_by:
-                note = "  in team {}".format(row.claimed_by)
-            elif row.agent_status == "blocked":
-                note = "  (blocked)"
-            pointer = ">" if i == model.cursor else " "
-            lines.append("{} {} {:<8} {:<10} {:<24} {}{}".format(pointer, mark, row.pane_id, row.kind or "?", row.name or "(unnamed)", row.agent_status, note))
-        if not rows:
-            lines.append("  no agents in scope")
+        lines.extend(_tree_lines(model, width, height))
+    elif model.stage == "actions":
+        member = action_member(model)
+        if member is None:
+            lines.append("{} is not in {} any more (Esc back, r refreshes)".format(model.action_member, model.action_team))
+        else:
+            lines.append(truncate_columns(" · ".join(str(p) for p in (
+                member.get("name"), member.get("role"), member.get("kind"), member.get("pane_id") or "-", member.get("agent_status") or "unknown") if p), width))
+            goal = str(member.get("brief") or "")
+            lines.append("goal: {}".format(headline(goal, max(20, width - 8))) if goal else "goal: (none yet)")
+            lines.append("")
+            for i, (_key, label) in enumerate(action_options(model)):
+                pointer = ">" if i == model.action_index else " "
+                lines.append("{} {}  {}".format(pointer, i + 1, label))
+            lines.append("")
+            lines.append("type a number, or ↑/↓ and Enter; Esc goes back" if not model.ascii_only else "type a number, or up/down and Enter; Esc goes back")
+    elif model.stage == "rename":
+        lines.append("Rename {} (lowercase letters, digits, - and _, up to {} characters)".format(model.action_member, MAX_MEMBER_NAME_CHARS))
+        lines.append("Enter renames the member and its Herdr agent; the old name still resolves for 10 min")
+        lines.append("name:")
+        lines.append(INPUT_PROMPT + model.input)
+        has_input = True
+    elif model.stage == "goal":
+        lines.append("Goal for {} (its brief; up to {} characters, Ctrl-U clears, Esc goes back)".format(model.action_member, MAX_BRIEF_TOTAL_CHARS))
+        lines.append("Enter saves it to the roster; the agent only sees it when you send it (action 3)")
+        lines.append("goal:")
+        lines.append(INPUT_PROMPT + model.input)
+        has_input = True
     elif model.stage == "target":
         count = len(selected_rows(model))
         lines.append("{} agent{} selected. What now? (type a number, or ↑/↓ and Enter; Esc back)".format(count, "" if count == 1 else "s"))

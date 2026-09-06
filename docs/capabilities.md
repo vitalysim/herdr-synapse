@@ -36,7 +36,9 @@ holds `daemon.json`, `daemon.log`, `who.json`, `kinds.json`, `view.json`,
 | Add agents to an existing team | picker: select the agents, Enter; when teams exist a numbered choice follows (`1  add it to team <t>  (N members)`, last number `create a new team`; type the number or move with the arrows); adding skips the charter stage, asks role, name, and brief per agent, and confirms with `Add N agents to team <t>?`; every other member is nudged with a `member_joined` record and the newcomer is briefed. A kind that is not trusted yet (`kinds list`) is flagged on the confirm screen and by `add` (`kind_trusted: false`, a warning): nothing is typed into it until `herdr-team kinds trust <kind>` | `herdr-team add <team> <pane\|name> [--role <r>] [--as <name>] [--brief "…"]`, one per agent; each new member is briefed once idle |
 | Create from scratch | | `create <team> --new [--workspace ID] --spawn <role>:<kind>[:<cwd>] …` lays out the panes and starts the agents |
 | Add a member later | | `add <team> <pane\|name> [--role r] [--as name] [--brief TEXT] [--rename] [--steal]` |
-| Remove, leave | console `/remove name` (asks y/n) | `remove <team> <name> [--keep-name]` (clears tokens and label, clears the Herdr name unless `--keep-name`, keeps a tombstone); `leave` from the member's own pane |
+| See who is on which team | `prefix+t`: teams with their agents underneath, then the agents in no team; Enter folds a team, `↑↓`/PgUp/PgDn move, the list scrolls | `who`, `teams` |
+| Manage one member | `prefix+t`, Enter on a member: a numbered menu with rename, change its goal, send the goal now, remove it (with or without keeping its Herdr agent name), and go to its pane. Rename and goal are pre-filled and validated before anything is written; remove asks `y` (Enter is deliberately not yes). A member whose agent is missing or unsettled refuses rename, send and focus, because its pane is stale | `rename`, `brief <name> --set`, `brief <name>`, `remove`, `focus` |
+| Remove, leave | `prefix+t` → Enter on the member → 4, or console `/remove name` (asks y/n) | `remove <team> <name> [--keep-name]` (clears tokens and label, clears the Herdr name unless `--keep-name`, keeps a tombstone); `leave` from the member's own pane |
 | Re-attach a missing member | | `bind <team> <name> <target>`: refuses a kind mismatch unless the member is `kind_changed`, refuses a terminal another team claims, bumps the generation, re-applies name, label, tokens, clears the stale label on the old pane, posts `member_restarted` |
 | Dissolve | | `dissolve <team> --yes` (mandatory flag; human only; archives the team, clears tokens and labels, keeps the agents' Herdr names) |
 | Several teams | console `/use team` | `use <team>` sets the default team for human posts; `teams` lists teams and whether their session runs (works offline); `create --use` makes a second team the default at creation |
@@ -425,7 +427,7 @@ UI-01, UI-02 (peek never makes the console look like an agent).
 
 | Capability | How | Notes |
 | --- | --- | --- |
-| Key bindings | `herdr-team keys print` → paste → `herdr server reload-config`; `keys check` reports collisions | `prefix+t` team-up, `prefix+m` compose, `prefix+u` console, `prefix+y` view toggle, `prefix+i` usage limits; all unbound in Herdr's defaults |
+| Key bindings | `herdr-team keys print` → paste → `herdr server reload-config`; `keys check` reports collisions | `prefix+t` teams, `prefix+m` compose, `prefix+u` console, `prefix+y` view toggle, `prefix+i` usage limits; all unbound in Herdr's defaults |
 | Plugin actions | `herdr plugin action invoke herdr-team.<team-up\|compose\|console\|who\|usage\|toggle-view\|daemon-start>` | same entrypoints as the keys |
 | Usage limits | `prefix+i`, `herdr-team ui usage`, or `herdr-team usage [--json]` | the session, weekly, and per-model windows of every provider account the session's agents draw on (Anthropic, OpenAI Codex, GitHub Copilot, Google Gemini; OpenCode Zen listed as billed per token), grouped with the agents behind each, bars with `⚠`/`‼` at 75/90 %, reset times; the popup refreshes every minute, `r` now, `q` closes; kinds with no known source are listed as not tracked |
 | Sidebar rows | `herdr-team setup --print-config` → paste the required block → reload | `$team_role` and `$team_task` per member; the optional block switches status glyphs to symbols for every agent |
@@ -529,6 +531,11 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
 
 ## 12. Not built or not verified yet
 
+- Removing a member is not human-only in the CLI (`remove` and `rename` have
+  no `require_human` guard, unlike `dissolve` and `brief --set`), so an agent
+  pane can remove or rename a teammate today. The skill forbids it and
+  nothing observed has done it, but it is not enforced; the picker adds no
+  authority, only a faster path for the operator.
 - Delivery verified end to end only for Claude and Codex. opencode, gemini,
   cursor-agent, kimi, agy need one `hooks probe` each (or `kinds trust`)
   before they receive nudges.

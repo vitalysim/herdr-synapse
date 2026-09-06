@@ -16,7 +16,7 @@ from test_tui_model import picker_model, type_line
 class PickerAddModeTests(unittest.TestCase):
     def model(self):
         model = picker_model(rosters={"alpha": [dict(m) for m in FAKE_MEMBERS]}, focused=None)
-        model.cursor = [r.pane_id for r in tui_model.visible_rows(model)].index("w1:p3")
+        tui_model.focus_node(model, "pane:w1:p3")
         picker_apply_key(model, " ")
         picker_apply_key(model, "ENTER")
         return model
@@ -82,7 +82,7 @@ class PickerAddModeTests(unittest.TestCase):
         self.assertEqual((model.stage, model.mode, model.team_name), ("members", "add", "alpha"))
         # without any existing team the selection goes straight to the name stage
         fresh = picker_model(focused=None)
-        fresh.cursor = [r.pane_id for r in tui_model.visible_rows(fresh)].index("w1:p3")
+        tui_model.focus_node(fresh, "pane:w1:p3")
         picker_apply_key(fresh, " ")
         picker_apply_key(fresh, "ENTER")
         self.assertEqual(fresh.stage, "name")
