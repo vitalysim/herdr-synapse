@@ -222,7 +222,9 @@ Esc closes.
 | `/export [path] [--format md\|json\|jsonl\|text]` | saves the whole board to a file, archive included |
 | `?` on an empty line, `/help` | every sign, command, and key |
 
-`@`, `@@`, and `!` open lists; Up/Down move, Tab or Enter pick, Esc hides.
+`/`, `@`, `@@`, and `!` open lists — commands, names, files, members. Up/Down
+move, Tab picks, Esc hides. Every command in the `/` menu shows its
+placeholder, so you do not have to remember the arguments.
 
 The feed follows the newest post. Scrolling back with Up or PgUp stops it and
 shows how many entries are below; End or Esc returns to the latest, and

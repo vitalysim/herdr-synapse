@@ -26,7 +26,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from herdr_team import roster, sanitize
 from herdr_team.errors import HerdrTeamError
@@ -37,6 +37,36 @@ SLASH_COMMANDS = (
     "/all", "/human", "/kind", "/reply", "/urgent", "/interrupt", "/interrupts", "/ref", "/retract", "/mute", "/unmute", "/pause",
     "/nudge", "/focus", "/peek", "/who", "/filter", "/as", "/use", "/charter", "/remove", "/export", "/help", "/quit",
 )
+#: ``/`` menu rows: command -> (placeholder, what it does). Every entry in
+#: ``SLASH_COMMANDS`` must appear here; a test keeps the two in step, so a new
+#: command cannot be added without telling the operator how to type it.
+SLASH_USAGE = {
+    "/all": ("text", "post to the whole team"),
+    "/human": ("text", "a note to yourself"),
+    "/kind": ("note|request|handoff|done|blocked|question|answer", "set the post kind"),
+    "/reply": ("N", "reply to post #N"),
+    "/urgent": ("", "nudge everyone, not just on their next read"),
+    "/interrupt": ("@name text", "type into a working teammate's turn"),
+    "/interrupts": ("[off|on|claude,codex] [--cooldown 10m]", "which kinds interrupts may reach"),
+    "/ref": ("path", "attach a file by reference"),
+    "/retract": ("N", "retract post #N"),
+    "/mute": ("[name] [10m]", "stop nudging a member"),
+    "/unmute": ("[name]", "resume nudging a member"),
+    "/pause": ("[10m]", "stop all delivery for a while"),
+    "/nudge": ("name [--force]", "nudge one member now"),
+    "/focus": ("name", "jump to that member's pane"),
+    "/peek": ("name", "look at that member's screen"),
+    "/who": ("", "the roster with roles, states and tasks"),
+    "/filter": ("[all|to me|requests|human|system]", "filter the feed"),
+    "/as": ("label", "change the label your posts carry"),
+    "/use": ("team", "switch to another team"),
+    "/charter": ("[set [--urgent] text]", "show or change the team charter"),
+    "/remove": ("name", "remove a member from the team"),
+    "/export": ("[path] [--format md|json|jsonl|text]", "save the whole board to a file"),
+    "/help": ("", "every sign, command and key"),
+    "/quit": ("", "close the console"),
+}
+
 #: Directives that turn a line into a post rather than a command.
 POST_DIRECTIVES = ("/all", "/human", "/kind", "/reply", "/urgent", "/interrupt", "/ref")
 POST_KINDS = ("note", "request", "handoff", "done", "blocked", "question", "answer")
@@ -1192,6 +1222,9 @@ def mention_context(text: str, cursor: int) -> Optional[Tuple[int, int, str, str
         return start, cursor, token[2:], "@@"
     if token.startswith("@"):
         return start, cursor, token[1:], "@"
+    if token.startswith("/") and text[:start].strip() == "":
+        # Only as the head of the line: ``a/b`` and ``see /tmp`` are post text.
+        return start, cursor, token[1:], "/"
     if token.startswith("!") and text[:start].strip() == "":
         sigil = "!!" if token.startswith("!!") else "!"
         prefix = token[len(sigil):]
@@ -1420,6 +1453,31 @@ def mention_candidates(members: Iterable[Dict[str, Any]], prefix: str = "", memb
     return [row for _, _, row in rows]
 
 
+def slash_candidates(prefix: str = "", commands: Optional[Sequence[str]] = None) -> List[Dict[str, str]]:
+    """Menu rows for ``/<prefix>``: every console command with its placeholder.
+
+    A prefix match sorts before a substring match, so ``/ex`` puts ``/export``
+    first while ``/port`` still finds it.
+    """
+    needle = prefix.lower()
+    rows: List[Tuple[int, int, Dict[str, str]]] = []
+    for order, command in enumerate(commands if commands is not None else SLASH_COMMANDS):
+        name = command[1:]
+        placeholder, description = SLASH_USAGE.get(command, ("", ""))
+        if needle and not name.lower().startswith(needle):
+            if needle not in name.lower():
+                continue
+            rank = 1
+        else:
+            rank = 0
+        label = name + (" " + placeholder if placeholder else "")
+        if description:
+            label = "{}   {}".format(label, description)
+        rows.append((rank, order, {"insert": name, "label": label}))
+    rows.sort(key=lambda item: (item[0], item[1]))
+    return [row for _rank, _order, row in rows]
+
+
 def _mention_rank(needle: str, insert: str, role: str) -> Optional[int]:
     if not needle:
         return 1
@@ -1441,6 +1499,11 @@ def mention_menu(model: Any) -> List[Dict[str, str]]:
         return []
     if ctx[3] == "@@":
         return file_candidates(ctx[2], getattr(model, "file_roots", None) or None, getattr(model, "file_base", None))
+    if ctx[3] == "/":
+        # The compose popup only understands the post directives, so it offers
+        # those rather than the whole console vocabulary.
+        allowed = getattr(model, "slash_commands", None)
+        return slash_candidates(ctx[2], allowed) if getattr(model, "slash_menu", True) else []
     if ctx[3] != "@" and not getattr(model, "bang_menu", True):
         return []  # the compose popup refuses ! lines, so it does not offer names for them
     return mention_candidates(model.members, ctx[2], members_only=ctx[3] != "@")
@@ -1462,7 +1525,10 @@ def mention_lines(model: Any, width: int, ascii_only: bool = False) -> List[str]
         lead = (marker if i == index else " ") + " " + sigil
         out.append(truncate_columns(lead + row["label"], width))
     if len(rows) > MENTION_MENU_ROWS:
-        out.append(truncate_columns("  {} of {}  (↑/↓ move, Tab or Enter picks, Esc hides)".format(index + 1, len(rows)) if not ascii_only else "  {} of {}  (up/down move, Tab or Enter picks, Esc hides)".format(index + 1, len(rows)), width))
+        # Enter picks in the name/file menus, but runs the line in the command menu.
+        picks = "Tab picks" if sigil == "/" else "Tab or Enter picks"
+        arrows = "up/down move" if ascii_only else "↑/↓ move"
+        out.append(truncate_columns("  {} of {}  ({}, {}, Esc hides)".format(index + 1, len(rows), arrows, picks), width))
     if sigil == "@@":
         roots = [r for r in (getattr(model, "file_roots", None) or []) if r] or [getattr(model, "file_base", None) or os.getcwd()]
         where = roots[0] + ("  (then {} other project{})".format(len(roots) - 1, "" if len(roots) == 2 else "s") if len(roots) > 1 else "")
@@ -1477,6 +1543,7 @@ def accept_mention(model: Any, row: Dict[str, str]) -> None:
         return
     start, end, _, sigil = ctx
     # A completed directory keeps the menu open on its contents; a file or a name closes it with a space.
+    # A command inserts its name only, never the placeholder, which the operator would have to delete.
     replacement = sigil + row["insert"] + ("" if sigil == "@@" and row["insert"].endswith("/") else " ")
     model.input = model.input[:start] + replacement + model.input[end:]
     model.cursor = start + len(replacement)
@@ -1496,6 +1563,11 @@ def mention_key(model: Any, key: str) -> bool:
     if key == "DOWN":
         model.mention_index = (index + 1) % len(rows)
         return True
+    if key == "ENTER" and mention_sigil(model) == "/":
+        # The command menu is a hint, not a gate: Enter runs the line you typed,
+        # Tab completes from the menu. Consuming Enter here would make every
+        # fully typed command need a second press.
+        return False
     if key in ("TAB", "ENTER"):
         accept_mention(model, rows[index])
         return True
@@ -1708,7 +1780,7 @@ HELP_LINES = (
     "           /kind k  /reply N  /urgent (nudges everyone)  /ref path  @@path attaches a file (@@ lists files)",
     "type now:  !name text types into that member's input box right now (recorded as a direct line)",
     "           !!name text also while it works or is muted; ! lists members; the entry shows the outcome",
-    "menus:     @ names   @@ files   ! members   (up/down move, Tab or Enter picks, Esc hides)",
+    "menus:     / commands   @ names   @@ files   ! members   (up/down move, Tab picks, Esc hides)",
     "board:     /retract N   /filter [all|to me|requests|human|system]   Tab cycles the filter",
     "members:   /who   /peek name   /focus name   /nudge name [--force]   /remove name",
     "delivery:  /mute [name] [10m]   /unmute [name]   /pause [10m]",
@@ -3390,6 +3462,8 @@ class ComposeModel:
     mention_hidden_for: Optional[str] = None
     #: The popup cannot be verified as the human (no pane id on 0.8.2), so it refuses ``!`` lines and offers no names for them.
     bang_menu: bool = False
+    #: The popup parses only the post directives, so the ``/`` menu offers those.
+    slash_commands: Tuple[str, ...] = POST_DIRECTIVES
     #: Project roots the ``@@`` finder searches (the members' cwds), like ``ConsoleModel.file_roots``.
     file_roots: List[str] = field(default_factory=list)
 

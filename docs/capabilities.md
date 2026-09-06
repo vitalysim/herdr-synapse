@@ -146,6 +146,15 @@ with the charter. Findings do not: they are attributed, escaped so one can
 never open a fence or forge a role prefix, and pointed at rather than
 inlined, so a peer's note can never reach another member as an instruction.
 
+### The command menu
+
+Typing `/` at the start of a line opens a menu of every console command with
+its placeholder and a one-line description, filtered as you type. Arrows move,
+Tab completes the command (never the placeholder, which you would have to
+delete), Esc hides it. Enter is deliberately not consumed by the menu: it runs
+the line, so a fully typed command does not need a second press. The compose
+popup shows only the post directives it parses.
+
 ### Saving the board
 
 `herdr-team export` writes the whole board, archived segments included, to a
