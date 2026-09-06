@@ -106,12 +106,19 @@ with its own config directory. Before the commands above, the machine needs:
    `herdr plugin install`, or the clone step fails.
 4. **A running Herdr.** Start `herdr` first; the install registers the
    plugin through the server socket, and the plugin's startup hook launches
-   the notifier on every server start from then on.
+   the notifier on every server start from then on. Right after the install
+   itself, start it once by hand: `herdr-team daemon start`.
 
 Then run the Install block. `install-cli` puts `herdr-team` on PATH through
 `~/.local/bin`; the launcher follows that symlink. The printed
-`[[keys.command]]` block goes into `~/.config/herdr/config.toml`
-(`herdr-team keys check` reports collisions with your own bindings).
+`[[keys.command]]` block goes into `~/.config/herdr/config.toml`; check it
+with `herdr config check` and `herdr-team keys check` (an invalid snippet
+rejects the whole config on reload), then `herdr server reload-config`.
+
+Adding the plugin to a session that is already running agents loses
+nothing: the install, the notifier start, and the config reload all talk to
+the running server, no pane is restarted, and nothing is typed into any
+agent until you create a team and trust a kind.
 
 What does not carry over from another machine:
 
@@ -124,9 +131,21 @@ What does not carry over from another machine:
   and are not synced. The plugin creates fresh ones.
 - **Claude hooks.** Optional and per machine: `herdr-team hooks install claude`.
 
-To update later: `herdr plugin uninstall herdr-team` followed by
-`herdr plugin install vitalysim/herdr-team`, then `herdr server reload-config`;
-the `install-cli` link keeps working because the checkout path is stable.
+### Updating
+
+Run the install again; it replaces the checkout in place:
+
+```bash
+herdr plugin install vitalysim/herdr-team
+herdr-team daemon start --replace   # the running notifier keeps the old code until restarted
+```
+
+Then `/quit` and reopen the console (`prefix+u`) if it is open. Verified on
+2026-09-06: teams, boards, the state pointer, and the `install-cli` link all
+survive, because the checkout path is stable and the plugin's state lives
+outside it. Even `herdr plugin uninstall herdr-team` removes only the
+checkout and leaves teams and boards on disk. Agents are never touched by
+an update.
 
 Trusting a kind is the one deliberate step: it tells the daemon the typing
 path for that kind has been checked by you. Until then members of that kind
