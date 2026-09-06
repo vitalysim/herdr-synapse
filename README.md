@@ -92,6 +92,42 @@ herdr-team hooks install claude      # optional: Claude Code hooks
 HTTPS with your git credentials. From a plugin checkout of your own,
 `herdr plugin link <path>` registers it instead.
 
+### Setting up a new machine
+
+Verified on 2026-09-06 by installing from GitHub into a fresh Herdr server
+with its own config directory. Before the commands above, the machine needs:
+
+1. **Herdr 0.8.2 or newer**, on macOS or Linux (Windows is not supported).
+2. **Python 3.9 or newer on PATH.** macOS ships 3.9 at `/usr/bin/python3`;
+   most Linux distributions ship a newer one. Nothing else to install: the
+   plugin is standard library only.
+3. **Access to this repository.** While it is private, run `gh auth login`
+   (or configure any git credential helper for github.com) before
+   `herdr plugin install`, or the clone step fails.
+4. **A running Herdr.** Start `herdr` first; the install registers the
+   plugin through the server socket, and the plugin's startup hook launches
+   the notifier on every server start from then on.
+
+Then run the Install block. `install-cli` puts `herdr-team` on PATH through
+`~/.local/bin`; the launcher follows that symlink. The printed
+`[[keys.command]]` block goes into `~/.config/herdr/config.toml`
+(`herdr-team keys check` reports collisions with your own bindings).
+
+What does not carry over from another machine:
+
+- **Logins.** The usage popup shows a provider only when that agent's own
+  CLI is logged in on this machine: sign in to Claude Code, Codex, `gh`,
+  or Gemini there and it appears.
+- **Kind trust.** `herdr-team kinds trust <kind>` is per Herdr session;
+  repeat it for every kind you use.
+- **Teams and boards.** They live under the machine's Herdr state directory
+  and are not synced. The plugin creates fresh ones.
+- **Claude hooks.** Optional and per machine: `herdr-team hooks install claude`.
+
+To update later: `herdr plugin uninstall herdr-team` followed by
+`herdr plugin install vitalysim/herdr-team`, then `herdr server reload-config`;
+the `install-cli` link keeps working because the checkout path is stable.
+
 Trusting a kind is the one deliberate step: it tells the daemon the typing
 path for that kind has been checked by you. Until then members of that kind
 are listed but nothing is typed into them, and `add` says so.
