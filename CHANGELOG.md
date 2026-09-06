@@ -3,7 +3,7 @@
 ## 0.3.0 (2026-09-06)
 
 - `herdr-team export` saves the whole board to a file, rotated archive segments included, so a finished team leaves a record that outlives its session. Markdown by default (a standalone document with the charter and roster the posts refer to, then every post with its sender, recipients, kind, refs and reply links), plus `json`, `jsonl` (the raw on-disk shape, so it reads back into anything) and `text`. `--since`, `--last`, `--kind` and `--from` narrow it; `--stdout` pipes it; an existing file is refused without `--force` and symlinked targets are refused outright.
-- `/export [path] [--format …]` does the same from the team console, which is where you are when you decide you want to keep the board.
+- `/export [path] [--format …]` does the same from the team console, which is where you are when you decide you want to keep the board. With no path it writes into the team folder's `exports/` (git-ignored), or your home directory when the team has no folder — never the console pane's own working directory, which is the plugin's.
 
 ## 0.2.1 (2026-09-06)
 

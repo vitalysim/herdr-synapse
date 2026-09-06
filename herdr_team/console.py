@@ -286,6 +286,26 @@ def input_signature(layout: Layout, team: str, width: int, height: int) -> Tuple
     return (width, height) + tuple(_stat_key(p) for p in watch_paths(layout, team))
 
 
+def default_export_dir(layout: Layout, team: str) -> Path:
+    """Where a console ``/export`` with no path writes: the team folder's
+    ``exports/`` when the team has a project directory, else the user's home."""
+    from herdr_team import workdir as _workdir
+
+    try:
+        doc = store.read_json(layout.team(team).team_json, None)
+        project = _workdir.project_dir_of(doc if isinstance(doc, dict) else {})
+    except (HerdrTeamError, OSError, ValueError):
+        project = None
+    if project:
+        target = _workdir.paths_for(project, team)["exports"]
+        try:
+            _paths.ensure_dir(target)
+            return target
+        except (HerdrTeamError, OSError):
+            pass
+    return Path(os.path.expanduser("~"))
+
+
 def build_model(layout: Layout, team: str, state: Optional[ConsoleState] = None, previous: Optional[ConsoleModel] = None, env: Optional[Dict[str, str]] = None) -> ConsoleModel:
     env = env if env is not None else {}
     if state is None:
@@ -600,6 +620,11 @@ def execute_intent(intent: Intent, model: ConsoleModel, state: ConsoleState, api
         path = intent.args.get("path")
         if path:
             argv.append(os.path.expanduser(str(path)))
+        else:
+            # The console pane's cwd is the plugin directory, so an unqualified
+            # export would land inside the plugin itself. Put it where the team
+            # keeps things, or in the operator's home when it has no folder.
+            argv.append(os.fspath(default_export_dir(state.layout, model.team)))
         rc, out, err = run_cli(argv, state.env)
         if err:
             model.status = "export failed: {}".format(err.get("message") or err.get("code") or "error")

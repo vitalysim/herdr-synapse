@@ -210,3 +210,51 @@ class ConsoleExportTests(unittest.TestCase):
         from herdr_team import tui_model
 
         self.assertIn("/export", "\n".join(tui_model.help_lines()))
+
+
+class ConsoleExportDestinationTests(unittest.TestCase):
+    """The console pane's cwd is the plugin directory, so a bare /export needs a home."""
+
+    def setUp(self):
+        from herdr_team import roster
+
+        self.state = TempState()
+        self.addCleanup(self.state.cleanup)
+        self.project = Path(tempfile.mkdtemp(prefix="ht-proj-")).resolve()
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.project, ignore_errors=True))
+        self.roster = roster
+
+    def set_project(self):
+        def apply(doc):
+            doc.config["project_dir"] = os.fspath(self.project)
+
+        self.roster.update_team(self.state.team, apply)
+
+    def test_it_uses_the_team_folder_when_there_is_one(self):
+        from herdr_team import console
+
+        self.set_project()
+        target = console.default_export_dir(self.state.layout, self.state.team_name)
+        self.assertEqual(target, self.project / ".herdr-team" / self.state.team_name / "exports")
+        self.assertTrue(target.is_dir())
+
+    def test_it_never_writes_into_the_plugin_directory(self):
+        from herdr_team import console, paths
+
+        self.set_project()
+        target = console.default_export_dir(self.state.layout, self.state.team_name)
+        self.assertNotIn(os.fspath(paths.plugin_root()), os.fspath(target))
+
+    def test_it_falls_back_to_home_without_a_project(self):
+        from herdr_team import console
+
+        target = console.default_export_dir(self.state.layout, self.state.team_name)
+        self.assertEqual(target, Path(os.path.expanduser("~")))
+
+    def test_exports_are_git_ignored(self):
+        from herdr_team import workdir
+
+        body = workdir.gitignore_body(["alpha", "beta"])
+        self.assertIn("alpha/exports/", body)
+        self.assertIn("beta/exports/", body)
+        self.assertIn("alpha/artifacts/", body)

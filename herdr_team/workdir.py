@@ -140,6 +140,7 @@ def paths_for(project_dir: str, team_name: str) -> Dict[str, Path]:
         "knowledge": root / "knowledge.md",
         "members": root / "members",
         "artifacts": root / "artifacts",
+        "exports": root / "exports",
     }
 
 
@@ -241,13 +242,16 @@ prints who you are and where these files are.
 
 def gitignore_body(teams: List[str]) -> str:
     lines = [
-        "# Artifacts are working files, not source. The documents above them are kept",
-        "# so a checkout carries the team's rules and each member's instructions.",
+        "# Artifacts and board exports are working files, not source. The documents",
+        "# above them are kept so a checkout carries the team's rules and each",
+        "# member's instructions.",
     ]
     for team in sorted(teams):
         lines.append("{}/artifacts/".format(team))
+        lines.append("{}/exports/".format(team))
     if not teams:
         lines.append("*/artifacts/")
+        lines.append("*/exports/")
     return "\n".join(lines) + "\n"
 
 

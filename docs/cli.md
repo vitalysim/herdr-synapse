@@ -497,6 +497,11 @@ is written `0600` through the usual atomic write.
 | `jsonl` | the raw records, one per line, exactly the on-disk shape, so an export reads back into anything that reads a board file |
 | `text` | the same plain rendering `board --format text` prints |
 
+From the console, `/export [path] [--format …]` runs the same command. With no
+path it writes into `<project>/.herdr-team/<team>/exports/` (generated and
+git-ignored), falling back to your home directory when the team has no project
+folder, because the console pane's own working directory is the plugin's.
+
 `--since <seq>`, `--last <n>`, `--kind <k>` and `--from <name>` narrow the
 selection; `--no-archive` limits it to the active file; `--stdout` writes to
 standard output instead of a file, so an export can be piped.
