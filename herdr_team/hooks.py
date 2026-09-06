@@ -650,6 +650,10 @@ def _cursor_seq(team: TeamPaths, name: str) -> int:
         return 0
 
 
+#: System events that never hold a Stop open on their own (see ``stop_decision``).
+NON_BLOCKING_STOP_EVENTS = ("artifacts_changed",)
+
+
 def unread_for(team: TeamPaths, name: str, since_seq: int = 0) -> List[Dict[str, Any]]:
     """Unread posts for ``name``: to it or ``all``, from someone else, past its cursor (and ``since_seq``).
 
@@ -710,6 +714,12 @@ def stop_decision(layout: Layout, team: str, member: str, stdin_payload: Dict[st
     last_seq = state.get("seq", 0)
     last_seq = int(last_seq) if isinstance(last_seq, int) and not isinstance(last_seq, bool) else 0
     unread = unread_for(team_paths, member, last_seq)
+    # Awareness records are not mail: they still reach the member through
+    # ``board --new`` and the prompt-submit context, but they must not hold a
+    # finished turn open. ``artifacts_changed`` fires on its own schedule, so
+    # letting it block meant a member could be sent back to the board because
+    # a teammate happened to save a file.
+    unread = [r for r in unread if r.get("event") not in NON_BLOCKING_STOP_EVENTS]
     if not unread:
         return 0, ""
     blocks = [t for t in (_parse_iso(x) for x in (state.get("blocks") or [])) if t is not None and now - t < STOP_WINDOW_S]

@@ -40,6 +40,11 @@ from herdr_team.paths import Layout, TeamPaths
 from herdr_team.tui_model import ConsoleModel, Intent
 
 REFRESH_S = 0.25
+#: The curses input timeout, re-armed every loop pass (see ``_read_escape``).
+TICK_MS = int(REFRESH_S * 1000)
+#: ncurses waits ESCDELAY ms for a sequence after a bare Esc; its default 1000
+#: is a visible stall in a feed that refreshes four times a second.
+ESCDELAY_MS = 25
 CLI_TIMEOUT_S = 20.0
 PEEK_TIMEOUT_S = 5.0
 FOCUS_CHECK_TIMEOUT_S = 2.0
@@ -241,6 +246,44 @@ class ConsoleState:
         self.width = 80
         self.height = 24
         self.ascii_only = env.get("HERDR_TEAM_ASCII", "") == "1"
+        #: Last ``input_signature`` and when the model was last rebuilt.
+        self.signature: Optional[Tuple[Any, ...]] = None
+        self.last_build = 0.0
+
+
+#: Rebuild at least this often even when nothing on disk moved, so relative age
+#: labels ("3m ago") and mute countdowns keep moving.
+STALE_REBUILD_S = 5.0
+
+
+def _stat_key(path: Any) -> Optional[Tuple[int, int, int]]:
+    try:
+        st = os.stat(os.fspath(path))
+    except OSError:
+        return None
+    # The inode matters: ``store.atomic_write`` renames a fresh file into place,
+    # so a same-second rewrite is invisible to mtime alone.
+    return (int(st.st_mtime_ns), int(st.st_size), int(st.st_ino))
+
+
+def watch_paths(layout: Layout, team: str) -> List[Any]:
+    """Every file ``build_model`` reads. A reader added without a path here is
+    exactly how a console goes stale, so ``test_console_live`` asserts they match."""
+    team_paths = layout.team(team)
+    paths: List[Any] = [
+        team_paths.board_jsonl, team_paths.team_json, team_paths.mute_json, team_paths.audit_jsonl,
+        layout.session.who_json, layout.session.console_json, layout.session.view_json, layout.session.daemon_json,
+    ]
+    try:
+        paths.extend(sorted(team_paths.cursors_dir.iterdir()))
+    except OSError:
+        pass
+    return paths
+
+
+def input_signature(layout: Layout, team: str, width: int, height: int) -> Tuple[Any, ...]:
+    """A cheap fingerprint of everything the model is built from (~12 stats)."""
+    return (width, height) + tuple(_stat_key(p) for p in watch_paths(layout, team))
 
 
 def build_model(layout: Layout, team: str, state: Optional[ConsoleState] = None, previous: Optional[ConsoleModel] = None, env: Optional[Dict[str, str]] = None) -> ConsoleModel:
@@ -280,6 +323,15 @@ def refresh(model: ConsoleModel, layout: Layout, state: Optional[ConsoleState] =
         state = ConsoleState(layout, model.team, {})
     state.width = model.width
     state.height = model.height
+    # Formatting the feed costs ~18% CPU at 4 Hz on a 300-record board, and a
+    # stat is ~10,000x cheaper, so skip the rebuild when nothing it reads moved.
+    now = time.monotonic()
+    signature = input_signature(layout, model.team, state.width, state.height)
+    if signature == state.signature and now - state.last_build < STALE_REBUILD_S:
+        if model.watching_say:
+            tui_model.settle_say_watch(model, state.tail.records, now)
+        return
+    state.signature, state.last_build = signature, now
     fresh = build_model(layout, model.team, state, previous=model)
     model.header = fresh.header
     model.roster_lines = fresh.roster_lines
@@ -578,8 +630,13 @@ def disable_bracketed_paste() -> None:
         pass
 
 
-def read_key(stdscr: Any) -> Optional[str]:
-    """One key in the ``tui_model`` vocabulary, or None on the tick timeout."""
+def read_key(stdscr: Any, tick_ms: Optional[int] = None) -> Optional[str]:
+    """One key in the ``tui_model`` vocabulary, or None on the tick timeout.
+
+    ``tick_ms`` is the caller's input timeout, restored after an escape
+    sequence is drained. ``None`` means the caller reads blocking and wants to
+    stay that way (``cmd_knowledge``'s viewer).
+    """
     import curses
 
     try:
@@ -596,7 +653,7 @@ def read_key(stdscr: Any) -> Optional[str]:
         }
         return table.get(ch, None)
     if ch == "\x1b":
-        return _read_escape(stdscr)
+        return _read_escape(stdscr, tick_ms)
     control = {
         "\r": "ENTER", "\n": "ENTER", "\t": "TAB", "\x7f": "BACKSPACE", "\x08": "BACKSPACE", "\x03": "CTRL_C",
         "\x01": "CTRL_A", "\x05": "CTRL_E", "\x0b": "CTRL_K", "\x15": "CTRL_U", "\x04": "CTRL_D", "\x0f": "CTRL_O",
@@ -606,10 +663,19 @@ def read_key(stdscr: Any) -> Optional[str]:
     return ch if isinstance(ch, str) else None
 
 
-def _read_escape(stdscr: Any) -> Optional[str]:
+def _read_escape(stdscr: Any, tick_ms: Optional[int] = None) -> Optional[str]:
+    """Drain the rest of an escape sequence without losing the caller's tick.
+
+    ``nodelay(win, False)`` sets ncurses' fully-blocking mode; it does **not**
+    restore a ``wtimeout()`` set earlier. Draining with ``nodelay(True)`` and
+    restoring with ``nodelay(False)`` therefore destroyed the console's 250 ms
+    tick on the first Esc or paste, and the refresh loop, which only ticks
+    when ``read_key`` returns None, stopped for good. Use ``timeout()`` for
+    both halves so the restore is explicit.
+    """
     import curses
 
-    stdscr.nodelay(True)
+    stdscr.timeout(0)
     try:
         seq = ""
         for _ in range(16):
@@ -634,7 +700,7 @@ def _read_escape(stdscr: Any) -> Optional[str]:
             if seq.startswith("[") and len(seq) > 1 and "@" <= seq[-1] <= "~":
                 break
     finally:
-        stdscr.nodelay(False)
+        stdscr.timeout(tick_ms if tick_ms is not None else -1)
     if seq in ("", None):
         return "ESC"
     if seq == "[200~":
@@ -753,7 +819,12 @@ def _loop(stdscr: Any, state: ConsoleState, api: Any) -> int:
         curses.curs_set(1)
     except curses.error:
         pass
-    stdscr.timeout(int(REFRESH_S * 1000))
+    # ncurses' default is a full second before a bare Esc is delivered, which
+    # stalls the refresh for that whole second.
+    try:
+        curses.set_escdelay(ESCDELAY_MS)
+    except (AttributeError, curses.error):
+        pass
     enable_bracketed_paste()
     has_colors = init_colors()
     state.height, state.width = stdscr.getmaxyx()
@@ -772,11 +843,16 @@ def _loop(stdscr: Any, state: ConsoleState, api: Any) -> int:
             input_count = len(tui_model.input_lines(model, state.width))
             y, x = input_cursor_position(model, len(lines) - input_count, state.width)
             draw_lines(stdscr, lines, (y, x), attrs)
-            key = read_key(stdscr)
+            # Re-armed every pass: a timeout lost by anything at all self-heals
+            # on the next iteration instead of parking the loop in get_wch.
+            stdscr.timeout(TICK_MS)
+            key = read_key(stdscr, TICK_MS)
+            # Wall-clock driven, not ``key is None`` driven: a missed tick can
+            # now delay the feed only until the next keypress, never for ever.
+            if time.monotonic() - last_refresh >= REFRESH_S:
+                refresh(model, state.layout, state)
+                last_refresh = time.monotonic()
             if key is None or key == "RESIZE":
-                if time.monotonic() - last_refresh >= REFRESH_S:
-                    refresh(model, state.layout, state)
-                    last_refresh = time.monotonic()
                 continue
             intent = tui_model.apply_key(model, key)
             if intent is not None and not execute_intent(intent, model, state, api):

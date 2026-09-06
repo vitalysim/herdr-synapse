@@ -132,12 +132,14 @@ are `system` records addressed to `all`, so they deliberately do **not** nudge:
 a rules edit cannot interrupt four agents mid-turn. `--urgent` is the opt-in
 that does wake everyone, exactly as on the charter.
 
-The `artifacts/` watch runs on the notifier's reconcile tick. It fingerprints
-the tree, posts one batched record naming what was added, changed, or removed,
-and does so whoever made the change: a member, the operator by hand, or any
-other tool. The first scan after a daemon start only seeds the fingerprint, so
-a restart never re-announces existing files. The walk is capped at 500 files
-per scan and 8 names per record.
+The `artifacts/` watch runs on the notifier's tick. It fingerprints the tree
+and posts one record naming what was added, changed, or removed, whoever made
+the change: a member, the operator by hand, or any other tool. Records are
+summarised by directory and capped at 220 characters, and are posted only once
+the tree has settled, so a data dump is one short line rather than a stream of
+long ones. The first scan after a daemon start only seeds the fingerprint.
+Deep or wide subtrees collapse to one entry, which also means a big drop can
+never evict a real artifact from the fingerprint and make it look deleted.
 
 Rules carry operator authority and are injected into Claude members' context
 with the charter. Findings do not: they are attributed, escaped so one can
@@ -433,10 +435,17 @@ a popup on the roster box.
   `/who` and `/charter` (boxes, Esc or `q` closes); `/filter [all|to me|
   requests|human|system]`; `/as label`; `/use team`; `/charter set [--urgent]
   text`; `/help`; `/quit`.
-- **Keys**: Up/Down scroll the feed by one line, PgUp/PgDn by ten; Tab cycles
+- **Following the feed**: the console follows the newest post. Up/PgUp scroll
+  back, which stops it following and shows a `N newer below · End returns to
+  the latest` rule on the bottom feed row; End or Esc jumps back, scrolling
+  down to the bottom resumes following, and posting snaps to the latest. While
+  scrolled, what you are reading holds still and the count below grows.
+- **Keys**: Up/Down scroll the feed by one entry, PgUp/PgDn by ten; End
+  returns to the latest while scrolled and is end-of-line otherwise (Ctrl-E is
+  always end-of-line); Tab cycles
   the filter; Enter posts; Alt+Enter inserts a newline; Left/Right, Home/End,
   Ctrl-A/Ctrl-E, Backspace/Delete edit the input line; Ctrl-U clears it,
-  Ctrl-K kills to the end; Esc clears the status line or closes a box;
+  Ctrl-K kills to the end; Esc returns to the latest, clears the status line or closes a box;
   Ctrl-C clears a non-empty line and quits when the line is empty. Text over
   2000 characters spills to a file.
 - Your post is `verified` when the console is the focused pane at Enter;

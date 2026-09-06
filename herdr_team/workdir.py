@@ -402,42 +402,103 @@ def _existing_team_dirs(shared: Path, current: str) -> List[str]:
 
 #: Files walked per scan. A bigger drop is reported as "and N more", never walked twice.
 MAX_WATCHED_FILES = 500
-#: Names listed in one board record; the rest are counted.
-MAX_NAMED_IN_RECORD = 8
+#: Hard budget for one record's text. The skill asks *agents* for under 500; a
+#: machine-generated record gets well under half of that, and this is close to
+#: one record's fair share of the 4096-byte context block every member shares.
+#: Listing 8 deep paths per category produced 1003-character records.
+MAX_RECORD_CHARS = 220
+#: Longest path printed verbatim before the middle is elided.
+MAX_PATH_CHARS = 56
+#: Places named in one record; the rest are counted.
+MAX_GROUPS_IN_RECORD = 3
 
 
-def fingerprint_artifacts(project_dir: Optional[str], team_name: str) -> Dict[str, Tuple[int, int]]:
-    """``{relative path: (mtime_ns, size)}`` for the team's ``artifacts/`` tree.
+#: Below this depth a directory is fingerprinted as one aggregate entry.
+MAX_WATCHED_DEPTH = 5
+#: A directory holding more than this many files is data, not deliverables.
+MAX_DIR_FILES = 32
+#: Directory names never walked; generated trees, not work products.
+IGNORED_DIR_NAMES = frozenset({
+    ".git", "node_modules", "__pycache__", ".venv", "venv", "site-packages", "dist", "build",
+    "target", ".cache", "cache", ".tox", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+    "coverage", ".next", ".gradle", ".terraform",
+})
 
-    Bounded on purpose: this runs on the daemon's reconcile tick, which is a
-    per-team loop, so an agent dumping a build tree here must not stall it.
+
+def fingerprint_artifacts(project_dir: Optional[str], team_name: str) -> Dict[str, Tuple[int, int, int]]:
+    """``{relative path: (newest mtime_ns, total size, file count)}`` for ``artifacts/``.
+
+    Prunes rather than truncates. The old version stopped mid-walk once it had
+    ``MAX_WATCHED_FILES`` entries, so dumping 600 files into ``aaa-data/``
+    pushed ``zzz-report.md`` out of the fingerprint and the next diff announced
+    it as *removed* although nothing was deleted. Collapsing a deep or wide
+    subtree into one aggregate entry keeps the entry count bounded by the shape
+    of the tree instead of by where the walk happened to stop.
     """
-    out: Dict[str, Tuple[int, int]] = {}
+    out: Dict[str, Tuple[int, int, int]] = {}
     if not project_dir:
         return out
     root = paths_for(project_dir, team_name)["artifacts"]
+    root_str = os.fspath(root)
     try:
-        walker = os.walk(os.fspath(root))
+        walker = os.walk(root_str, topdown=True)
     except OSError:
         return out
     for dirpath, dirnames, filenames in walker:
         dirnames.sort()
-        for filename in sorted(filenames):
-            if filename.startswith("."):
-                continue
+        try:
+            rel_dir = os.path.relpath(dirpath, root_str)
+        except ValueError:
+            dirnames[:] = []
+            continue
+        rel_dir = "" if rel_dir == "." else rel_dir
+        depth = len(rel_dir.split(os.sep)) if rel_dir else 0
+        names = [f for f in sorted(filenames) if not f.startswith(".")]
+        dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in IGNORED_DIR_NAMES]
+
+        too_deep = depth >= MAX_WATCHED_DEPTH
+        too_wide = len(names) > MAX_DIR_FILES
+        if rel_dir and (too_deep or too_wide):
+            # One entry for the whole subtree; do not descend into it.
+            aggregate = _aggregate_dir(dirpath)
+            if aggregate is not None:
+                out[rel_dir.replace(os.sep, "/") + "/"] = aggregate
+            dirnames[:] = []
+            continue
+        for filename in names:
             full = os.path.join(dirpath, filename)
             try:
                 st = os.stat(full)
             except OSError:
                 continue
-            try:
-                key = os.path.relpath(full, os.fspath(root))
-            except ValueError:
-                continue
-            out[key] = (int(st.st_mtime_ns), int(st.st_size))
+            key = os.path.join(rel_dir, filename) if rel_dir else filename
+            out[key.replace(os.sep, "/")] = (int(st.st_mtime_ns), int(st.st_size), 1)
             if len(out) >= MAX_WATCHED_FILES:
                 return out
     return out
+
+
+def _aggregate_dir(dirpath: str) -> Optional[Tuple[int, int, int]]:
+    """One fingerprint for a whole subtree: newest mtime, total size, file count."""
+    newest = 0
+    total = 0
+    files = 0
+    try:
+        for sub_dir, sub_dirs, sub_files in os.walk(dirpath):
+            sub_dirs[:] = [d for d in sub_dirs if not d.startswith(".") and d not in IGNORED_DIR_NAMES]
+            for name in sub_files:
+                if name.startswith("."):
+                    continue
+                try:
+                    st = os.stat(os.path.join(sub_dir, name))
+                except OSError:
+                    continue
+                newest = max(newest, int(st.st_mtime_ns))
+                total += int(st.st_size)
+                files += 1
+    except OSError:
+        return None
+    return (newest, total, max(1, files))
 
 
 def diff_artifacts(before: Dict[str, Tuple[int, int]], after: Dict[str, Tuple[int, int]]) -> Dict[str, List[str]]:
@@ -445,29 +506,149 @@ def diff_artifacts(before: Dict[str, Tuple[int, int]], after: Dict[str, Tuple[in
     added = sorted(set(after) - set(before))
     removed = sorted(set(before) - set(after))
     changed = sorted(name for name in set(before) & set(after) if before[name] != after[name])
-    return {"added": added, "changed": changed, "removed": removed}
+    # How many real files each entry stands for; a collapsed subtree stands for many.
+    counts: Dict[str, int] = {}
+    for name in added + changed:
+        counts[name] = _entry_files(after.get(name))
+    for name in removed:
+        counts[name] = _entry_files(before.get(name))
+    return {"added": added, "changed": changed, "removed": removed, "counts": counts}
 
 
-def describe_change(team_name: str, diff: Dict[str, List[str]]) -> Optional[str]:
-    """One board-record line naming what changed, or None when nothing did.
+def _entry_files(value: Any) -> int:
+    """How many files a fingerprint entry represents (1 for a plain file)."""
+    if isinstance(value, tuple) and len(value) >= 3:
+        try:
+            return max(1, int(value[2]))
+        except (TypeError, ValueError):
+            return 1
+    return 1
 
-    Deliberately says where the files are and not what is in them: the record
-    is an awareness signal, and reading the file is the member's own decision.
+
+def shorten_path(rel: str, limit: int = MAX_PATH_CHARS) -> str:
+    """Elide the middle of a long path, keeping the first and last segments.
+
+    The first segment is usually the owning member, so it is the one part that
+    must survive: a record has to say *whose* work changed.
     """
-    parts: List[str] = []
-    for label, names in (("new", diff.get("added") or []), ("updated", diff.get("changed") or []), ("removed", diff.get("removed") or [])):
-        if not names:
-            continue
-        shown = names[:MAX_NAMED_IN_RECORD]
-        more = len(names) - len(shown)
-        text = "{} {}".format(label, ", ".join(shown))
-        if more > 0:
-            parts.append("{} and {} more".format(text, more))
+    text = str(rel or "")
+    if len(text) <= limit:
+        return text
+    trailing = "/" if text.endswith("/") else ""
+    parts = [p for p in text.strip("/").split("/") if p]
+    if len(parts) <= 1:
+        return text[: max(1, limit - 1)].rstrip("/") + "\u2026" + trailing
+    first, last = parts[0], parts[-1]
+    candidate = "{}/\u2026/{}{}".format(first, last, trailing)
+    if len(candidate) <= limit:
+        return candidate
+    candidate = "{}/\u2026{}".format(first, trailing)
+    if len(candidate) <= limit:
+        return candidate
+    return first[: max(1, limit - 2)] + "\u2026"
+
+
+def group_paths(names: List[str], counts: Dict[str, int], max_groups: int) -> Tuple[List[Tuple[str, int, bool]], int]:
+    """Roll paths up into at most ``max_groups`` (directory, files, sole) buckets.
+
+    Returns the buckets, biggest first, plus how many were left over. Grouping
+    by place rather than listing leaves is what bounds a record's length by the
+    number of directories that changed instead of the number of files.
+    """
+    buckets: Dict[str, int] = {}
+    sole: Dict[str, str] = {}
+    for name in names:
+        weight = int(counts.get(name, 1) or 1)
+        if name.endswith("/"):
+            key = name
         else:
-            parts.append(text)
-    if not parts:
+            head, _, _tail = name.rpartition("/")
+            key = (head + "/") if head else ""
+        buckets[key] = buckets.get(key, 0) + weight
+        if buckets[key] == weight:
+            sole[key] = name
+        else:
+            sole.pop(key, None)
+
+    # Collapse the deepest buckets into their parents until few enough remain.
+    while len(buckets) > max_groups:
+        deepest = max(buckets, key=lambda k: (k.count("/"), k))
+        if deepest.count("/") <= 1:
+            break
+        parent = deepest.rstrip("/").rpartition("/")[0]
+        parent = (parent + "/") if parent else ""
+        buckets[parent] = buckets.get(parent, 0) + buckets.pop(deepest)
+        sole.pop(parent, None)
+        sole.pop(deepest, None)
+
+    # Fold a bucket that lives under another so siblings do not repeat a prefix.
+    for key in sorted(buckets, key=lambda k: -k.count("/")):
+        if key not in buckets:
+            continue
+        for other in list(buckets):
+            if other != key and other and key.startswith(other):
+                buckets[other] += buckets.pop(key)
+                sole.pop(other, None)
+                break
+
+    ordered = sorted(buckets.items(), key=lambda kv: (-kv[1], kv[0]))
+    kept = ordered[:max_groups]
+    remainder = sum(count for _key, count in ordered[max_groups:])
+    return [(key, count, key in sole and count == 1) for key, count in kept], remainder
+
+
+def _clause(label: str, names: List[str], counts: Dict[str, int], max_groups: int, path_limit: int) -> str:
+    groups, remainder = group_paths(names, counts, max_groups)
+    pieces: List[str] = []
+    for key, count, is_sole in groups:
+        if is_sole:
+            pieces.append(shorten_path(_sole_name(names, key), path_limit))
+        elif count == 1 and key:
+            pieces.append("1 file under " + shorten_path(key, path_limit))
+        else:
+            pieces.append("{} files under {}".format(count, shorten_path(key or "artifacts/", path_limit)))
+    text = "{} {}".format(label, ", ".join(pieces))
+    if remainder > 0:
+        text += " +{} more".format(remainder)
+    return text
+
+
+def _sole_name(names: List[str], key: str) -> str:
+    for name in names:
+        head, _, _tail = name.rpartition("/")
+        if ((head + "/") if head else "") == key or name == key:
+            return name
+    return key
+
+
+def describe_change(team_name: str, diff: Dict[str, List[str]], limit: int = MAX_RECORD_CHARS) -> Optional[str]:
+    """One short board-record line naming what changed, or None when nothing did.
+
+    Says *where* work appeared, never what is in it: the record is an awareness
+    signal, and reading the file is the member's own decision. Summarised by
+    directory rather than listed leaf by leaf, because a member generating a
+    data tree otherwise produced a record longer than the whole context block
+    its teammates share.
+    """
+    categories = [
+        ("new", list(diff.get("added") or [])),
+        ("updated", list(diff.get("changed") or [])),
+        ("removed", list(diff.get("removed") or [])),
+    ]
+    categories = [(label, names) for label, names in categories if names]
+    if not categories:
         return None
-    return "team artifacts: {} (in .herdr-team/{}/artifacts/)".format("; ".join(parts), team_name)
+    counts = dict(diff.get("counts") or {})
+
+    for max_groups in (MAX_GROUPS_IN_RECORD, 2, 1):
+        for path_limit in (MAX_PATH_CHARS, 36, 24):
+            text = "artifacts: " + "; ".join(_clause(label, names, counts, max_groups, path_limit) for label, names in categories)
+            if len(text) <= limit:
+                return text
+    # Counts only: structurally short whatever the input looks like.
+    totals = ", ".join("{} {}".format(sum(int(counts.get(n, 1) or 1) for n in names), label) for label, names in categories)
+    text = "artifacts: {} under artifacts/".format(totals)
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "\u2026"
 
 
 # --------------------------------------------------------------------------
@@ -518,7 +699,7 @@ def status(layout: Any, team_name: str) -> Dict[str, Any]:
         return out
     if not os.access(project, os.W_OK):
         out["issues"].append("project directory {} is not writable".format(project))
-    out["artifacts"] = len(fingerprint_artifacts(project, team_name))
+    out["artifacts"] = sum(_entry_files(v) for v in fingerprint_artifacts(project, team_name).values())
     targets = paths_for(project, team_name)
     for label, path_ in (("README.md", targets["readme"]), ("knowledge.md", targets["knowledge"])):
         if path_.exists() and not _is_ours(path_):

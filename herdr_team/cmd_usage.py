@@ -158,7 +158,6 @@ def _loop(stdscr: Any, args: argparse.Namespace, timeout: float, ascii_only: boo
     curses.raw()
     curses.noecho()
     stdscr.keypad(True)
-    stdscr.timeout(int(TICK_S * 1000))
     try:
         curses.curs_set(0)
     except curses.error:
@@ -171,7 +170,10 @@ def _loop(stdscr: Any, args: argparse.Namespace, timeout: float, ascii_only: boo
         height, width = stdscr.getmaxyx()
         lines, styles = pane_lines(state, width, height, ascii_only)
         draw_lines(stdscr, lines, None, [attrs.get(s, 0) for s in styles])
-        key = read_key(stdscr)
+        # Re-armed every pass: ``_read_escape`` used to clear this, which left
+        # the loop blocking for ever with no tick and no idle watchdog.
+        stdscr.timeout(int(TICK_S * 1000))
+        key = read_key(stdscr, int(TICK_S * 1000))
         now = time.monotonic()
         with state.lock:
             due = not state.refreshing and now - state.last_refresh >= REFRESH_S and state.report is not None

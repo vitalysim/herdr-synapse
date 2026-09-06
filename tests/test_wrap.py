@@ -109,7 +109,7 @@ class VisibleFeedRowsTests(unittest.TestCase):
 
     def test_scroll_moves_by_entries_and_clamps_to_the_first(self):
         model = self.make()
-        model.scroll = 1
+        model.follow, model.scroll = False, 1  # scroll only applies while not following
         rows = tm.visible_feed_rows(model, 2)
         self.assertEqual({e["seq"] for _, e in rows}, {2})
         model.scroll = 99

@@ -309,7 +309,7 @@ class FeedTests(unittest.TestCase):
         self.assertEqual([e["seq"] for e in visible_feed(model, 10)], [4])
         model.filter_index = 0
         self.assertEqual([e["seq"] for e in visible_feed(model, 2)], [3, 4])
-        model.scroll = 1
+        model.follow, model.scroll = False, 1  # scroll only applies while not following
         self.assertEqual([e["seq"] for e in visible_feed(model, 2)], [2, 3])
         model.scroll = 99
         self.assertEqual([e["seq"] for e in visible_feed(model, 2)], [1, 2])
@@ -604,11 +604,29 @@ class RenderConsoleTests(unittest.TestCase):
         model = model_with([record(1)])
         drive(model, "draft")
         model.filter_index = 2
-        model.scroll = 1
+        model.follow, model.scroll = False, 1
         model.default_recipient = "alpha-worker"
         fresh = build_console_model("alpha", who_doc(), [record(1), record(2)], now=NOW, previous=model)
+        # Under this filter the new record is not visible, so the count below is unchanged.
         self.assertEqual((fresh.input, fresh.cursor, fresh.filter_index, fresh.scroll, fresh.default_recipient), ("draft", 5, 2, 1, "alpha-worker"))
+        self.assertFalse(fresh.follow)
         self.assertEqual(len(fresh.feed), 2)
+
+    def test_a_scrolled_feed_does_not_drift_when_records_arrive(self):
+        """The #64-vs-#68 shape: the view must hold still and the count grow."""
+        model = model_with([record(1), record(2), record(3)])
+        model.follow, model.scroll = False, 1
+        bottom_before = tui_model.visible_feed(model, 1)[-1]["seq"]
+        fresh = build_console_model("alpha", who_doc(), [record(n) for n in range(1, 6)], now=NOW, previous=model)
+        self.assertEqual(fresh.scroll, 3)  # 1 + the two that arrived
+        self.assertFalse(fresh.follow)
+        self.assertEqual(tui_model.visible_feed(fresh, 1)[-1]["seq"], bottom_before)
+
+    def test_a_following_rebuild_stays_on_the_tail(self):
+        model = model_with([record(1)])
+        self.assertTrue(model.follow)
+        fresh = build_console_model("alpha", who_doc(), [record(1), record(2)], now=NOW, previous=model)
+        self.assertEqual((fresh.follow, fresh.scroll), (True, 0))
 
 
 # --------------------------------------------------------------------------

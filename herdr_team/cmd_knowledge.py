@@ -365,7 +365,7 @@ def _pane_loop(stdscr: Any, layout: Any, ascii_only: bool) -> int:
     from herdr_team.console import read_key
 
     curses.curs_set(0)
-    stdscr.nodelay(False)
+    stdscr.nodelay(False)  # blocking by design: this viewer has nothing to poll
     scroll = 0
     report = session_status(layout)
     while True:

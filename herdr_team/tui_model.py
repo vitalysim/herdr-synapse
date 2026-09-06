@@ -237,7 +237,13 @@ class ConsoleModel:
     filter_index: int = 0
     input: str = ""
     cursor: int = 0
+    #: Entries hidden *below* the window. Only meaningful while ``follow`` is False.
     scroll: int = 0
+    #: True while the feed is pinned to the newest entry. Scrolling back clears it;
+    #: reaching the bottom, End, Esc, posting and a filter change set it again.
+    #: Without this, one Up press left the reader permanently N entries behind the
+    #: tail with nothing on screen saying so.
+    follow: bool = True
     status: Optional[str] = None
     focused: bool = True
     default_recipient: Optional[str] = None
@@ -891,6 +897,27 @@ def entry_rows(entry: Dict[str, Any], width: int) -> List[str]:
     return [truncate_columns(row, width) for row in rows]
 
 
+def _follow_tail(model: ConsoleModel) -> None:
+    """Pin the feed back to the newest entry."""
+    model.follow = True
+    model.scroll = 0
+
+
+def feed_gap_line(below: int, width: int, ascii_only: bool = False) -> str:
+    """The rule that says the feed is not following, and how to get back.
+
+    Rendered only while scrolled, so an unscrolled screen is unchanged.
+    """
+    dash = "-" if ascii_only else "\u2500"
+    label = "{} newer below".format(below) if below != 1 else "1 newer below"
+    if width >= 46:
+        text = "{} {} {} End returns to the latest ".format(dash * 2, label, "-" if ascii_only else "\u00b7")
+    else:
+        text = "{} {} (End) ".format(dash * 2, label)
+    pad = max(0, width - display_width(text))
+    return truncate_columns(text + dash * pad, width)
+
+
 def visible_feed_rows(model: ConsoleModel, height: int) -> List[Tuple[str, Dict[str, Any]]]:
     """The last ``height`` screen rows of the filtered feed, ``model.scroll`` entries above the tail.
 
@@ -902,8 +929,10 @@ def visible_feed_rows(model: ConsoleModel, height: int) -> List[Tuple[str, Dict[
     if height <= 0 or not entries:
         return []
     max_scroll = max(0, len(entries) - 1)
-    scroll = min(max(0, model.scroll), max_scroll)
+    scroll = 0 if model.follow else min(max(0, model.scroll), max_scroll)
     model.scroll = scroll
+    if scroll == 0:
+        model.follow = True  # clamped to the tail means following again, never a phantom offset
     end = len(entries) - scroll
     width = max(1, model.width)
     rows: List[Tuple[str, Dict[str, Any]]] = []
@@ -1018,7 +1047,15 @@ def build_console_model(
         model.filter_index = previous.filter_index
         model.input = previous.input
         model.cursor = previous.cursor
-        model.scroll = previous.scroll
+        model.follow = previous.follow
+        if previous.follow:
+            model.scroll = 0
+        else:
+            # Keep what the reader is looking at still and grow the count below.
+            # Copying ``scroll`` verbatim made the window advance with every new
+            # record, which is how the console sat on #64 while the board was at #68.
+            grew = len(filtered_feed(model)) - len(filtered_feed(previous))
+            model.scroll = previous.scroll + max(0, grew)
         model.status = previous.status
         model.focused = previous.focused
         model.paste_mode = previous.paste_mode
@@ -1053,8 +1090,10 @@ def visible_feed(model: ConsoleModel, height: int) -> List[Dict[str, Any]]:
     if height <= 0 or not entries:
         return []
     max_scroll = max(0, len(entries) - height)
-    scroll = min(max(0, model.scroll), max_scroll)
+    scroll = 0 if model.follow else min(max(0, model.scroll), max_scroll)
     model.scroll = scroll
+    if scroll == 0:
+        model.follow = True
     end = len(entries) - scroll
     start = max(0, end - height)
     return entries[start:end]
@@ -1659,7 +1698,8 @@ HELP_LINES = (
     "delivery:  /mute [name] [10m]   /unmute [name]   /pause [10m]",
     "interrupt: /interrupt @name text (into a working turn)   /interrupts [off|on|claude,codex] [--cooldown 10m]",
     "team:      /charter   /charter set [--urgent] text   /use team   /as label",
-    "keys:      Up/Down and PgUp/PgDn scroll   Alt+Enter newline   Ctrl-U clear   Ctrl-K kill to end",
+    "keys:      Up/Down and PgUp/PgDn scroll back; End (or Esc) returns to the latest and follows again",
+    "           Alt+Enter newline   Ctrl-U clear   Ctrl-K kill to end   Ctrl-A/Ctrl-E line start/end",
     "           Esc clears the status or closes a box   Ctrl-C clears the line, quits when empty   /quit",
     "signs:     a line starting with ! never posts; text that starts with ! goes as /all !text",
 )
@@ -1699,21 +1739,28 @@ def apply_key(model: ConsoleModel, key: str) -> Optional[Intent]:
         return Intent("help", {"commands": list(SLASH_COMMANDS)})
     if key == "TAB" and not model.paste_mode:
         model.filter_index = (model.filter_index + 1) % len(FILTERS)
-        model.scroll = 0
+        _follow_tail(model)
         return Intent("filter", {"name": FILTERS[model.filter_index]})
-    if key == "UP":
-        model.scroll += 1
+    if key in ("UP", "PGUP"):
+        if model.follow:
+            model.follow = False
+            model.status = "scrolled back; End returns to the latest"
+        model.scroll += 1 if key == "UP" else 10
         return None
-    if key == "DOWN":
-        model.scroll = max(0, model.scroll - 1)
+    if key in ("DOWN", "PGDN"):
+        model.scroll = max(0, model.scroll - (1 if key == "DOWN" else 10))
+        if model.scroll == 0:
+            model.follow = True
+            model.status = None
         return None
-    if key == "PGUP":
-        model.scroll += 10
-        return None
-    if key == "PGDN":
-        model.scroll = max(0, model.scroll - 10)
+    if key == "END" and not model.follow:
+        # Only while scrolled: otherwise End stays end-of-line (and Ctrl-E always is).
+        _follow_tail(model)
+        model.status = "following the latest"
         return None
     if key == "ESC":
+        if not model.follow:
+            _follow_tail(model)
         model.status = None
         return None
     if key == "CTRL_C":
@@ -1736,6 +1783,9 @@ def apply_key(model: ConsoleModel, key: str) -> Optional[Intent]:
 
 
 def _after_parse(model: ConsoleModel, intent: Intent) -> Intent:
+    if intent.kind in ("post", "say"):
+        # You post in order to watch it land, so sending returns to the tail.
+        _follow_tail(model)
     if intent.kind == "post":
         if not intent.args.get("to"):
             reply_to = intent.args.get("reply_to")
@@ -1775,7 +1825,7 @@ def _after_parse(model: ConsoleModel, intent: Intent) -> Intent:
             model.filter_index = (model.filter_index + 1) % len(FILTERS)
         else:
             model.filter_index = FILTERS.index(name)
-        model.scroll = 0
+        _follow_tail(model)
         intent.args["name"] = FILTERS[model.filter_index]
         return intent
     if intent.kind == "as":
@@ -1950,6 +2000,12 @@ def render_console_styled(model: ConsoleModel, width: Optional[int] = None, heig
     feed_height = max(0, budget)
     if model.peek is not None:
         body: List[Tuple[str, str]] = [(line, STYLE_PEEK) for line in fit_peek(model.peek, feed_height)]
+    elif not model.follow and feed_height >= 1:
+        # Scrolled back: give the bottom row to the indicator, so the reader can
+        # see that the feed is not following and how to get back.
+        rows = visible_feed_rows(model, feed_height - 1)
+        body = [(row, entry_style(e)) for row, e in rows]
+        body.append((feed_gap_line(model.scroll, w, model.ascii_only), STYLE_STATUS))
     else:
         body = [(row, entry_style(e)) for row, e in visible_feed_rows(model, feed_height)]
     body = body + [("", STYLE_PLAIN)] * (feed_height - len(body))

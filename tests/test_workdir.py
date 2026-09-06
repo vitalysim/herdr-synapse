@@ -703,8 +703,8 @@ class ArtifactWatchTests(unittest.TestCase):
     def test_a_large_drop_is_summarised_not_listed(self):
         diff = {"added": ["f{}.md".format(i) for i in range(30)], "changed": [], "removed": []}
         line = workdir.describe_change("alpha", diff)
-        self.assertIn("and 22 more", line)
-        self.assertLess(len(line), 300)
+        self.assertIn("30 files under artifacts/", line)
+        self.assertLessEqual(len(line), workdir.MAX_RECORD_CHARS)
 
     def test_no_project_means_no_watching(self):
         self.assertEqual(workdir.fingerprint_artifacts(None, "alpha"), {})
@@ -737,6 +737,10 @@ class DaemonWatchTests(unittest.TestCase):
             self.assertEqual(events, [])
 
             (art / "new-report.md").write_text("findings\n", encoding="utf-8")
+            team.artifacts_scanned_ms = None
+            daemon._watch_artifacts(team)
+            # Nothing yet: the tree has to stop moving for a whole poll first.
+            self.assertEqual(roster.read_board_records(ts.team, event="artifacts_changed"), [])
             team.artifacts_scanned_ms = None
             daemon._watch_artifacts(team)
             events = [r for r in roster.read_board_records(ts.team, event="artifacts_changed")]
@@ -1161,3 +1165,323 @@ class TreeFolderTests(unittest.TestCase):
         state = TempState()
         self.addCleanup(state.cleanup)
         self.assertTrue(_picker.member_still_matches(state.layout, FakeIntent()))
+
+
+class ArtifactRecordSizeTests(unittest.TestCase):
+    """A record must stay short enough to share a board and a context block."""
+
+    def test_the_1003_char_data_dump_becomes_one_short_line(self):
+        """Live regression: an agent generated a data tree and the watcher
+        posted 1003 characters listing every leaf — twice what the skill asks
+        agents for, and a quarter of the 4096-byte block every member shares."""
+        base = ("codex-hunt-researcher/backup-source-bypass/lab-data/backups/"
+                "seed_backup/data/seed/victim/")
+        leaves = ["checksums.txt", "columns.txt", "count.txt", "data.bin",
+                  "default_compression_codec.txt", "metadata_version.txt",
+                  "minmax_id.idx", "partition.dat"]
+        added = [base + "all_{n}_{n}_0/".format(n=n) + leaf for n in range(1, 6) for leaf in leaves]
+        self.assertEqual(len(added), 40)
+        # The input really is the reported case: a flat list of 8 is already ~1000 chars.
+        self.assertGreater(len("team artifacts: new " + ", ".join(added[:8])), 900)
+
+        line = workdir.describe_change("clickhouse-hunt", {"added": added, "changed": [], "removed": []})
+        self.assertLessEqual(len(line), workdir.MAX_RECORD_CHARS)
+        self.assertNotIn("checksums.txt", line)
+        self.assertNotIn("data.bin", line)
+        self.assertIn("40 files under", line)
+        self.assertIn("codex-hunt-researcher", line)  # the owning member survives
+        self.assertEqual(line.count(";"), 0)
+
+    def test_a_single_report_is_still_named_in_full(self):
+        line = workdir.describe_change("t", {"added": ["codex-hunt-researcher/findings/backup-bypass.md"], "changed": [], "removed": []})
+        self.assertIn("codex-hunt-researcher/findings/backup-bypass.md", line)
+        self.assertNotIn("…", line)
+
+    def test_the_owning_member_survives_elision(self):
+        deep = "red-dev-claude/" + "/".join("seg{}".format(i) for i in range(20)) + "/leaf.md"
+        line = workdir.describe_change("t", {"added": [deep], "changed": [], "removed": []})
+        self.assertLessEqual(len(line), workdir.MAX_RECORD_CHARS)
+        self.assertTrue(line.split("artifacts: new ")[1].startswith("red-dev-claude"))
+
+    def test_all_three_categories_together_stay_in_budget(self):
+        diff = {
+            "added": ["m1/deep/tree/a{}.md".format(i) for i in range(300)],
+            "changed": ["m2/other/b{}.md".format(i) for i in range(300)],
+            "removed": ["m3/gone/c{}.md".format(i) for i in range(200)],
+        }
+        line = workdir.describe_change("t", diff)
+        self.assertLessEqual(len(line), workdir.MAX_RECORD_CHARS)
+        for label in ("new", "updated", "removed"):
+            self.assertIn(label, line)
+
+    def test_no_input_can_exceed_the_budget(self):
+        cases = [
+            {"added": ["a" * 300 + ".md"], "changed": [], "removed": []},
+            {"added": ["f{}.md".format(i) for i in range(500)], "changed": [], "removed": []},
+            {"added": ["/".join("d{}".format(i) for i in range(30)) + "/x.md"], "changed": [], "removed": []},
+            {"added": ["ünïcödé/" + "ø" * 80 + ".md"], "changed": [], "removed": []},
+            {"added": ["m{}/x/y/z/f{}.md".format(i, j) for i in range(20) for j in range(20)], "changed": [], "removed": []},
+            {"added": [], "changed": ["only.md"], "removed": []},
+            {"added": ["dir/"], "changed": [], "removed": []},
+        ]
+        for index, diff in enumerate(cases):
+            line = workdir.describe_change("team-name-here", diff)
+            self.assertIsNotNone(line, index)
+            self.assertLessEqual(len(line), workdir.MAX_RECORD_CHARS, (index, len(line), line))
+
+    def test_a_collapsed_subtree_counts_its_files(self):
+        before = {}
+        after = {"m1/data/": (1, 1, 40)}
+        diff = workdir.diff_artifacts(before, after)
+        self.assertEqual(diff["counts"]["m1/data/"], 40)
+        self.assertIn("40 files under m1/data/", workdir.describe_change("t", diff))
+
+    def test_nothing_changed_is_still_none(self):
+        self.assertIsNone(workdir.describe_change("t", {"added": [], "changed": [], "removed": []}))
+
+    def test_grouping_is_deterministic(self):
+        import random
+
+        names = ["m{}/x/f{}.md".format(i % 3, i) for i in range(60)]
+        first = workdir.describe_change("t", {"added": list(names), "changed": [], "removed": []})
+        shuffled = list(names)
+        random.Random(7).shuffle(shuffled)
+        self.assertEqual(workdir.describe_change("t", {"added": shuffled, "changed": [], "removed": []}), first)
+
+
+class StopHookTests(unittest.TestCase):
+    """An artifacts record is awareness, not mail: it must not hold a turn open."""
+
+    def setUp(self):
+        self.state = TempState()
+        self.addCleanup(self.state.cleanup)
+        self.member = [m["name"] for m in self.state.members if m.get("kind") != "human"][0]
+
+    def post(self, **fields):
+        record = {
+            "from": "system", "from_kind": None, "from_pane": None, "from_terminal": None, "from_gen": None,
+            "to": ["all"], "to_role": None, "kind": "system", "text": "x", "refs": [], "reply_to": None,
+        }
+        record.update(fields)
+        return store.BoardStore(self.state.team).append(record)
+
+    def decide(self):
+        from herdr_team import hooks as _hooks
+
+        return _hooks.stop_decision(self.state.layout, self.state.team_name, self.member, {})
+
+    def test_an_artifacts_record_alone_does_not_block(self):
+        self.post(event="artifacts_changed", text="artifacts: new a.md")
+        code, _message = self.decide()
+        self.assertEqual(code, 0)
+
+    def test_a_real_post_beside_it_still_blocks(self):
+        self.post(event="artifacts_changed", text="artifacts: new a.md")
+        self.post(**{"from": "alpha-worker", "from_kind": "claude", "kind": "request", "to": [self.member], "text": "please review"})
+        code, _message = self.decide()
+        self.assertNotEqual(code, 0)
+
+    def test_it_still_reaches_the_prompt_context(self):
+        from herdr_team import hooks as _hooks
+
+        self.post(event="artifacts_changed", text="artifacts: new a.md")
+        unread = _hooks.unread_for(self.state.team, self.member, 0)
+        self.assertTrue(any(r.get("event") == "artifacts_changed" for r in unread))
+
+
+class FingerprintPruningTests(unittest.TestCase):
+    """The walk must be bounded by the tree's shape, not by where it stopped."""
+
+    def setUp(self):
+        self.project = Path(tempfile.mkdtemp(prefix="ht-proj-")).resolve()
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.project, ignore_errors=True))
+        self.art = self.project / ".herdr-team" / "alpha" / "artifacts"
+        self.art.mkdir(parents=True)
+
+    def fingerprint(self):
+        return workdir.fingerprint_artifacts(os.fspath(self.project), "alpha")
+
+    def test_a_big_dump_no_longer_evicts_a_real_artifact(self):
+        """The old walk stopped at 500 entries, so a dump made a report look deleted."""
+        (self.art / "zzz-report.md").write_text("the report\n", encoding="utf-8")
+        before = self.fingerprint()
+        self.assertIn("zzz-report.md", before)
+
+        dump = self.art / "aaa-data"
+        dump.mkdir()
+        for index in range(600):
+            (dump / "f{:04d}.bin".format(index)).write_text("x", encoding="utf-8")
+
+        after = self.fingerprint()
+        self.assertIn("zzz-report.md", after)
+        diff = workdir.diff_artifacts(before, after)
+        self.assertNotIn("zzz-report.md", diff["removed"])
+        self.assertEqual(diff["removed"], [])
+
+    def test_a_wide_directory_becomes_one_entry(self):
+        wide = self.art / "data"
+        wide.mkdir()
+        for index in range(workdir.MAX_DIR_FILES + 20):
+            (wide / "f{}.bin".format(index)).write_text("x", encoding="utf-8")
+        seen = self.fingerprint()
+        self.assertIn("data/", seen)
+        self.assertEqual(seen["data/"][2], workdir.MAX_DIR_FILES + 20)
+
+    def test_a_deep_tree_becomes_one_entry(self):
+        deep = self.art
+        for level in range(8):
+            deep = deep / "d{}".format(level)
+        deep.mkdir(parents=True)
+        (deep / "leaf.md").write_text("x", encoding="utf-8")
+        seen = self.fingerprint()
+        self.assertTrue(any(k.endswith("/") for k in seen), seen)
+        self.assertTrue(all(k.count("/") <= workdir.MAX_WATCHED_DEPTH for k in seen), seen)
+
+    def test_a_collapsed_subtree_is_stable_when_nothing_changes(self):
+        """The anti-flood invariant: an unchanged tree must diff to nothing."""
+        wide = self.art / "data"
+        wide.mkdir()
+        for index in range(50):
+            (wide / "f{}.bin".format(index)).write_text("x", encoding="utf-8")
+        first = self.fingerprint()
+        second = self.fingerprint()
+        diff = workdir.diff_artifacts(first, second)
+        self.assertEqual((diff["added"], diff["changed"], diff["removed"]), ([], [], []))
+
+    def test_a_change_inside_a_collapsed_subtree_is_noticed(self):
+        wide = self.art / "data"
+        wide.mkdir()
+        for index in range(50):
+            (wide / "f{}.bin".format(index)).write_text("x", encoding="utf-8")
+        before = self.fingerprint()
+        (wide / "f0.bin").write_text("much longer content\n", encoding="utf-8")
+        after = self.fingerprint()
+        self.assertEqual(workdir.diff_artifacts(before, after)["changed"], ["data/"])
+
+    def test_generated_directories_are_not_walked(self):
+        for name in ("node_modules", ".git", "__pycache__"):
+            junk = self.art / name
+            junk.mkdir()
+            (junk / "x.bin").write_text("x", encoding="utf-8")
+        (self.art / "real.md").write_text("x", encoding="utf-8")
+        seen = self.fingerprint()
+        self.assertEqual(sorted(seen), ["real.md"])
+
+    def test_status_counts_files_not_entries(self):
+        wide = self.art / "data"
+        wide.mkdir()
+        for index in range(40):
+            (wide / "f{}.bin".format(index)).write_text("x", encoding="utf-8")
+        state = TempState()
+        self.addCleanup(state.cleanup)
+
+        def apply(doc: roster.Team) -> None:
+            doc.config["project_dir"] = os.fspath(self.project)
+
+        roster.update_team(state.team, apply)
+        # The team dir in this fixture is "alpha", matching self.art.
+        info = workdir.status(state.layout, state.team_name)
+        self.assertEqual(info["artifacts"], 40)
+
+
+class ArtifactCoalescingTests(unittest.TestCase):
+    """A dump must be one record, and deferring must never lose a change."""
+
+    def setUp(self):
+        from support import TempState as TS
+        from test_daemon import FakeClock, make_daemon
+
+        self.clock = FakeClock()
+        self.state = TS()
+        self.addCleanup(self.state.cleanup)
+        self.project = Path(tempfile.mkdtemp(prefix="ht-proj-")).resolve()
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.project, ignore_errors=True))
+        self.art = self.project / ".herdr-team" / self.state.team_name / "artifacts"
+        self.art.mkdir(parents=True)
+
+        def apply(doc: roster.Team) -> None:
+            doc.config["project_dir"] = os.fspath(self.project)
+
+        roster.update_team(self.state.team, apply)
+        self.daemon, _, _ = make_daemon(self.state, clock=self.clock)
+        self.daemon.scan_teams(force=True)
+        self.team = self.daemon.teams[self.state.team_name]
+
+    def poll(self):
+        self.team.artifacts_scanned_ms = None
+        self.daemon._watch_artifacts(self.team)
+
+    def records(self):
+        return roster.read_board_records(self.state.team, event="artifacts_changed")
+
+    def test_a_tree_written_across_several_polls_yields_one_record(self):
+        for round_index in range(5):
+            (self.art / "f{}.bin".format(round_index)).write_text("x", encoding="utf-8")
+            self.poll()
+        self.assertEqual(self.records(), [])  # still moving
+        self.poll()  # quiet
+        events = self.records()
+        self.assertEqual(len(events), 1)
+        # Lossless: the single record covers everything written while it waited.
+        self.assertIn("5 files", events[0]["text"])
+
+    def test_a_never_settling_tree_is_still_announced(self):
+        """A long build must not make the team blind for ever."""
+        from herdr_team import daemon as D
+
+        rounds = int(2 + D.ARTIFACTS_MAX_WAIT_S / D.ARTIFACTS_POLL_S)
+        for round_index in range(rounds):
+            (self.art / "f{}.bin".format(round_index)).write_text("x", encoding="utf-8")
+            self.poll()
+            if round_index == 0:
+                self.assertEqual(self.records(), [], "not announced while still moving")
+            self.clock.advance(D.ARTIFACTS_POLL_S)
+            if self.clock.t < 1000.0 + D.ARTIFACTS_MAX_WAIT_S:
+                self.assertEqual(self.records(), [], "held until max wait")
+        self.assertEqual(len(self.records()), 1, "announced once max wait elapsed")
+
+    def test_a_second_change_inside_the_floor_waits_but_is_not_lost(self):
+        (self.art / "first.md").write_text("x", encoding="utf-8")
+        self.poll()
+        self.poll()
+        self.assertEqual(len(self.records()), 1)
+        (self.art / "second.md").write_text("x", encoding="utf-8")
+        self.poll()
+        self.poll()
+        self.assertEqual(len(self.records()), 1, "the rate floor holds the second record")
+        self.team.artifacts_posted_ms = None  # floor elapsed
+        self.poll()
+        events = self.records()
+        self.assertEqual(len(events), 2)
+        self.assertIn("second.md", events[-1]["text"])
+
+    def test_watch_false_posts_nothing(self):
+        def apply(doc: roster.Team) -> None:
+            doc.config["artifacts"] = {"watch": False}
+
+        roster.update_team(self.state.team, apply)
+        self.daemon._reload_roster(self.team)
+        (self.art / "ignored.md").write_text("x", encoding="utf-8")
+        self.poll()
+        self.poll()
+        self.assertEqual(self.records(), [])
+
+    def test_the_record_carries_structured_counts(self):
+        (self.art / "a.md").write_text("x", encoding="utf-8")
+        self.poll()
+        self.poll()
+        record = self.records()[0]
+        self.assertEqual(record["added"], 1)
+        self.assertEqual(record["root"], ".herdr-team/{}/artifacts/".format(self.state.team_name))
+
+    def test_no_record_ever_exceeds_the_budget(self):
+        base = self.art / "codex-hunt-researcher" / "backup-source-bypass" / "lab-data"
+        for n in range(1, 6):
+            part = base / "all_{n}_{n}_0".format(n=n)
+            part.mkdir(parents=True)
+            for leaf in ("checksums.txt", "columns.txt", "count.txt", "data.bin"):
+                (part / leaf).write_text("x", encoding="utf-8")
+        self.poll()
+        self.poll()
+        for record in self.records():
+            self.assertLessEqual(len(record["text"]), workdir.MAX_RECORD_CHARS, record["text"])

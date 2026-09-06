@@ -138,7 +138,6 @@ def _loop(stdscr: Any, model: ComposeModel, team: str, env: Dict[str, str]) -> i
     curses.raw()
     curses.noecho()
     stdscr.keypad(True)
-    stdscr.timeout(int(TICK_S * 1000))
     enable_bracketed_paste()
     last_key = time.monotonic()
     try:
@@ -147,7 +146,10 @@ def _loop(stdscr: Any, model: ComposeModel, team: str, env: Dict[str, str]) -> i
             lines = tui_model.compose_lines(model, width)
             x = tui_model.display_width(tui_model.INPUT_PROMPT) + tui_model.display_width(model.input[: model.cursor])
             draw_lines(stdscr, lines[:height], (min(1, height - 1), min(x, max(0, width - 1))))
-            key = read_key(stdscr)
+            # Re-armed every pass: ``_read_escape`` used to clear this, which left
+            # the loop blocking for ever with no tick and no idle watchdog.
+            stdscr.timeout(int(TICK_S * 1000))
+            key = read_key(stdscr, int(TICK_S * 1000))
             if key is None:
                 if time.monotonic() - last_key > IDLE_WATCHDOG_S:
                     return EXIT_OK

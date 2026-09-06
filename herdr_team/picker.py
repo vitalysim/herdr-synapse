@@ -219,7 +219,6 @@ def _loop(stdscr: Any, model: PickerModel, api: Any, layout: Optional[Layout], e
     curses.raw()
     curses.noecho()
     stdscr.keypad(True)
-    stdscr.timeout(int(TICK_S * 1000))
     enable_bracketed_paste()
     last_key = time.monotonic()
     pending_path: Optional[str] = None
@@ -236,7 +235,10 @@ def _loop(stdscr: Any, model: PickerModel, api: Any, layout: Optional[Layout], e
             except curses.error:
                 pass
             draw_lines(stdscr, lines, cursor)
-            key = read_key(stdscr)
+            # Re-armed every pass: ``_read_escape`` used to clear this, which left
+            # the loop blocking for ever with no tick and no idle watchdog.
+            stdscr.timeout(int(TICK_S * 1000))
+            key = read_key(stdscr, int(TICK_S * 1000))
             if key is None:
                 if time.monotonic() - last_key > IDLE_WATCHDOG_S:
                     return None

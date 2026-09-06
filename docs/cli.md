@@ -317,12 +317,28 @@ a scrollable popup (`ui knowledge`, or `knowledge-pane` inside it), the way
 
 ### Watching `artifacts/`
 
-The notifier fingerprints `<team>/artifacts/` on each reconcile (every 10s)
-and appends one batched `artifacts_changed` system record when files are
-added, changed, or removed, whoever did it: a member, you, or another tool.
+The notifier fingerprints `<team>/artifacts/` every 10s and appends one
+`artifacts_changed` system record when files are added, changed, or removed,
+whoever did it: a member, you, or another tool.
+
+The record is summarised by directory and capped at 220 characters, so a
+40-file data dump reads `artifacts: new 40 files under
+codex-hunt-researcher/…/victim/` while a single report is still named in
+full. It is posted only once the tree has stopped changing for a whole poll,
+so a build is one record rather than one every ten seconds; a tree that never
+settles is announced every five minutes, and there is a one-minute floor
+between records for a team. Deferring never loses a change: the diff baseline
+is the last state the board was told about, not the last scan.
+
 The first scan after the daemon starts only seeds the fingerprint, so a
-restart does not re-announce a folder full of existing files. At most 500
-files are walked per scan and 8 named per record, the rest counted.
+restart does not re-announce an existing folder. Deep (over 5 levels) or wide
+(over 32 files) subtrees are collapsed to one entry rather than walked, and
+generated directories (`.git`, `node_modules`, `__pycache__`, `dist`, …) are
+skipped. `artifacts_changed` deliberately does not hold Claude's Stop hook
+open; it still reaches `board --new` and the prompt-submit context.
+
+Set `config.artifacts = {"watch": false}` in `team.json` to turn the watcher
+off for one team.
 
 ## 6. Self and roster views
 

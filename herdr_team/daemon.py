@@ -96,6 +96,15 @@ RECONCILE_POLL_S = 10.0
 #: The team artifacts walk is filesystem work on a per-team loop, so it runs on
 #: its own slow cadence rather than with every ``scan_teams`` (every 2 s).
 ARTIFACTS_POLL_S = 10.0
+#: A change is announced only once the tree has stopped moving for one whole
+#: poll, so a build or a data dump yields one record instead of one every ten
+#: seconds. That costs a single drop up to ``2 * ARTIFACTS_POLL_S`` of latency,
+#: which is free in practice: a member reads the board at its next turn anyway.
+#: A tree that never settles is still announced this often.
+ARTIFACTS_MAX_WAIT_S = 300.0
+#: Floor between two records for one team, applied only after one has posted,
+#: so the first drop is never delayed.
+ARTIFACTS_MIN_INTERVAL_S = 60.0
 RECONCILE_POLL_BOUND_S = 300.0
 JOBS_POLL_S = 0.5
 WHO_COALESCE_S = 1.0
@@ -698,6 +707,15 @@ def ensure_daemon(layout: Layout, env: Mapping[str, str]) -> bool:
 # fallbacks for modules owned by other implementers
 
 
+def _artifacts_watch_enabled(doc: Dict[str, Any]) -> bool:
+    """``config.artifacts.watch``: an operator can turn the watcher off per team."""
+    config = doc.get("config") if isinstance(doc, dict) else None
+    artifacts = config.get("artifacts") if isinstance(config, dict) else None
+    if not isinstance(artifacts, dict):
+        return True
+    return artifacts.get("watch") is not False
+
+
 def _load_roster_doc(team: TeamPaths) -> Optional[Dict[str, Any]]:
     doc = store.read_json(team.team_json, default=None)
     if not isinstance(doc, dict) or not isinstance(doc.get("members"), list):
@@ -1101,9 +1119,15 @@ class TeamState:
     retracted: Set[int] = field(default_factory=set)
     open_intents: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     #: Last seen ``artifacts/`` fingerprint, or None before the first scan (which only seeds it).
-    artifacts_seen: Optional[Dict[str, Tuple[int, int]]] = None
+    artifacts_seen: Optional[Dict[str, Tuple[int, int, int]]] = None
     #: When that scan last ran; the walk is throttled to ``ARTIFACTS_POLL_S``.
     artifacts_scanned_ms: Optional[float] = None
+    #: The state the board was last told about; the diff baseline, so deferring is lossless.
+    artifacts_announced: Optional[Dict[str, Tuple[int, int, int]]] = None
+    #: When the currently pending change was first seen.
+    artifacts_pending_since_ms: Optional[float] = None
+    #: When a record was last posted for this team.
+    artifacts_posted_ms: Optional[float] = None
     #: ``say`` lines typed and awaiting confirmation, by member name (``confirm_says``).
     say_inflight: Dict[str, SayState] = field(default_factory=dict)
     #: Monotonic ms of the last interrupt typed per ``(sender, target)``: the ``interrupt_cooldown_ms`` clock.
@@ -1698,7 +1722,7 @@ class Daemon:
             self._refresh_workdir(team)
             self._watch_artifacts(team)
 
-    def _watch_artifacts(self, team: TeamState) -> None:
+    def _watch_artifacts(self, team: TeamState) -> None:  # noqa: C901 - one linear gate sequence
         """Post one board record when the team's ``artifacts/`` tree changes.
 
         This is what makes the folder a shared surface rather than a drop box:
@@ -1711,8 +1735,10 @@ class Daemon:
         fingerprint. Without that a restart would re-announce every file.
         """
         project = _workdir.project_dir_of(team.roster)
-        if not project:
+        if not project or not _artifacts_watch_enabled(team.roster):
             team.artifacts_seen = None
+            team.artifacts_announced = None
+            team.artifacts_pending_since_ms = None
             return
         now = self.now_ms()
         if team.artifacts_scanned_ms is not None and now - team.artifacts_scanned_ms < ARTIFACTS_POLL_S * 1000.0:
@@ -1723,15 +1749,42 @@ class Daemon:
         except OSError as err:
             self.log("{}: cannot read the team artifacts: {}".format(team.name, err))
             return
-        previous = team.artifacts_seen
+        previous_scan = team.artifacts_seen
         team.artifacts_seen = current
-        if previous is None:
+        if previous_scan is None or team.artifacts_announced is None:
+            # First sight of this folder: seed both baselines, announce nothing,
+            # so a daemon restart never re-announces a folder full of files.
+            team.artifacts_announced = current
+            team.artifacts_pending_since_ms = None
             return
-        line = _workdir.describe_change(team.name, _workdir.diff_artifacts(previous, current))
+
+        # The diff is against what the board was last told, not the last scan,
+        # so deferring an announcement can never lose a change.
+        diff = _workdir.diff_artifacts(team.artifacts_announced, current)
+        line = _workdir.describe_change(team.name, diff)
         if line is None:
+            team.artifacts_pending_since_ms = None
             return
+        if team.artifacts_pending_since_ms is None:
+            team.artifacts_pending_since_ms = now
+
+        settled = current == previous_scan
+        waited_ms = now - team.artifacts_pending_since_ms
+        if not settled and waited_ms < ARTIFACTS_MAX_WAIT_S * 1000.0:
+            # A tree still being written: wait for it, so one dump is one record.
+            return
+        if team.artifacts_posted_ms is not None and now - team.artifacts_posted_ms < ARTIFACTS_MIN_INTERVAL_S * 1000.0:
+            return
+
         self.log("{}: {}".format(team.name, line))
-        self._append_system(team, "artifacts_changed", line, ["all"])
+        self._append_system(team, "artifacts_changed", line, ["all"], extra={
+            "added": len(diff.get("added") or []), "changed": len(diff.get("changed") or []),
+            "removed": len(diff.get("removed") or []),
+            "root": ".herdr-team/{}/artifacts/".format(team.name),
+        })
+        team.artifacts_announced = current
+        team.artifacts_pending_since_ms = None
+        team.artifacts_posted_ms = now
 
     def _refresh_workdir(self, team: TeamState) -> None:
         """Keep the project mirror current after a roster change.

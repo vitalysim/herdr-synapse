@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import curses
 import unittest
-from typing import List, Union
+from typing import List, Tuple, Union
 
 from herdr_team import console, store, tui_model
 from herdr_team.tui_model import ConsoleHeader, ConsoleModel
@@ -28,14 +28,24 @@ class FakeScreen:
     def __init__(self, keys: List[Union[str, int]]) -> None:
         self.queue = list(keys)
         self.delay = True
+        #: ("timeout", ms) or "blocking" — the input mode curses would be in.
+        self.mode: Union[Tuple[str, int], str] = "blocking"
+        self.timeout_calls: List[int] = []
+        self.nodelay_calls: List[bool] = []
 
     def get_wch(self) -> Union[str, int]:
         if not self.queue:
             raise curses.error("no input")
         return self.queue.pop(0)
 
+    def timeout(self, ms: int) -> None:
+        self.timeout_calls.append(int(ms))
+        self.mode = "blocking" if int(ms) < 0 else ("timeout", int(ms))
+
     def nodelay(self, flag: bool) -> None:
+        self.nodelay_calls.append(bool(flag))
         self.delay = not flag
+        self.mode = ("timeout", 0) if flag else "blocking"
 
     def push_back(self, key: Union[str, int]) -> None:
         self.queue.insert(0, key)

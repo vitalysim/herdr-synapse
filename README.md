@@ -220,6 +220,10 @@ Esc closes.
 
 `@`, `@@`, and `!` open lists; Up/Down move, Tab or Enter pick, Esc hides.
 
+The feed follows the newest post. Scrolling back with Up or PgUp stops it and
+shows how many entries are below; End or Esc returns to the latest, and
+posting snaps you there too.
+
 ## The team folder
 
 Agents in one checkout all read the same `CLAUDE.md`, so nothing on disk tells
@@ -316,7 +320,7 @@ platform; Linux is supported and covered by CI; Windows is not.
 ```bash
 git clone https://github.com/vitalysim/herdr-team.git
 cd herdr-team
-python3 -m unittest discover -s tests        # 1336 tests, no dependencies
+python3 -m unittest discover -s tests        # 1389 tests, no dependencies
 bin/herdr-team-sandbox start ~/your/project  # an isolated Herdr session for live testing
 ```
 
