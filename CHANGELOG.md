@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1 (2026-09-07)
+
+- An idle agent no longer sits on mail nothing will ever wake it for. A post addressed to `all` creates no pending unless it is urgent or you wrote it, and every agent-side read path is turn-triggered, so an idle member holding only a teammate's broadcast stayed asleep indefinitely: measured on a live team, a member's broadcast took a **median of 42 minutes** to reach everyone and 11 of 47 never reached someone at all. The notifier now sweeps for members that are idle with unread posts and creates an ordinary pending, at most once per member every three minutes. Broadcasts still do not interrupt: the swept nudge is not urgent, so every gate (done_hold, focus, dialogs, drafts) still applies, and a chatty team costs one nudge per member per interval rather than one per post.
+- The sweep applies the same reader rule as the ingest path, so a record that renders `(unverified)` can never be laundered into a nudge through it.
+- `knowledge set --urgent` and `instructions --set --urgent` now nudge, as `docs/cli.md` always claimed they did. The daemon whitelisted only `charter_updated` and `member_joined`, so both flags set the record field and did nothing. Shipped broken in 0.2.0.
+
 ## 0.3.0 (2026-09-06)
 
 - Typing `/` in the console opens a menu of every command with its placeholder and what it does, the way `@`, `@@` and `!` already did for names, files and members. Type to narrow it, arrows move, Tab completes the command without the placeholder, Esc hides it. Enter still runs the line you typed, so a fully typed command never needs a second press. The compose popup offers only the post directives it can actually parse.

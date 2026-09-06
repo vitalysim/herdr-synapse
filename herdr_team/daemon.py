@@ -96,6 +96,17 @@ RECONCILE_POLL_S = 10.0
 #: The team artifacts walk is filesystem work on a per-team loop, so it runs on
 #: its own slow cadence rather than with every ``scan_teams`` (every 2 s).
 ARTIFACTS_POLL_S = 10.0
+#: How often the unread sweep looks for an idle member holding mail nothing woke it for.
+IDLE_SWEEP_POLL_S = 10.0
+#: Minimum gap between two swept nudges for one member. A broadcast never
+#: interrupts on its own, so this is the pace at which a chatty team's
+#: announcements reach an idle teammate: one nudge, not one per post.
+IDLE_SWEEP_AFTER_S = 180.0
+#: System events whose ``--urgent`` form nudges every member. ``knowledge_updated``
+#: and ``instructions_updated`` were missing, so the ``--urgent`` flag on
+#: ``knowledge set`` and ``instructions --set`` set the record flag and did
+#: nothing, while the CLI docs promised a nudge.
+URGENT_SYSTEM_EVENTS = ("charter_updated", "member_joined", "knowledge_updated", "instructions_updated")
 #: A change is announced only once the tree has stopped moving for one whole
 #: poll, so a build or a data dump yields one record instead of one every ten
 #: seconds. That costs a single drop up to ``2 * ARTIFACTS_POLL_S`` of latency,
@@ -1128,6 +1139,10 @@ class TeamState:
     artifacts_pending_since_ms: Optional[float] = None
     #: When a record was last posted for this team.
     artifacts_posted_ms: Optional[float] = None
+    #: When the unread sweep last created a pending for each member.
+    swept_ms: Dict[str, float] = field(default_factory=dict)
+    #: When the sweep last ran for this team.
+    sweep_scanned_ms: Optional[float] = None
     #: ``say`` lines typed and awaiting confirmation, by member name (``confirm_says``).
     say_inflight: Dict[str, SayState] = field(default_factory=dict)
     #: Monotonic ms of the last interrupt typed per ``(sender, target)``: the ``interrupt_cooldown_ms`` clock.
@@ -1622,6 +1637,9 @@ class Daemon:
             self._phase("reconcile", self.reconcile)
         self._phase("tail_boards", self.tail_boards)
         self._phase("consume_jobs", lambda: self.consume_jobs(now))
+        # After the tail, so a post ingested this tick is already counted, and
+        # before the evaluator, so a swept pending is acted on in the same pass.
+        self._phase("sweep_unread", lambda: self.sweep_all_unread(now))
         self._phase("evaluate_pending", self.evaluate_pending)
         self._phase("heartbeat", lambda: self.heartbeat_if_due(now))
         self._phase("notifications", self.process_notifications)
@@ -2463,7 +2481,7 @@ class Daemon:
             return
         if author == "system":
             event = rec.get("event")
-            if rec.get("urgent") and event in ("charter_updated", "member_joined"):
+            if rec.get("urgent") and event in URGENT_SYSTEM_EVENTS:
                 # An urgent system broadcast nudges every member; a join spares the newcomer (its briefing covers it).
                 newcomer = rec.get("member") if event == "member_joined" else None
                 for member in team.members():
@@ -2529,6 +2547,76 @@ class Daemon:
         team.pending[name] = pending
         self.who_dirty = True
         self.log("{}: {} briefing done; nudging for {} deferred during the briefing".format(team.name, name, ", ".join("#{}".format(s) for s in pending.seqs)))
+
+    def sweep_all_unread(self, now: float) -> None:
+        """Run the unread sweep for every team; one bad team never stops the rest."""
+        for name, team in list(self.teams.items()):
+            try:
+                self.sweep_unread(team, now)
+            except Exception as err:  # noqa: BLE001 - F-07: the daemon must outlive one bad file/event
+                # The dict key, not ``team.name``: a team object broken enough to
+                # raise here is broken enough to have no usable name either.
+                self.log("{}: unread sweep failed: {}: {}".format(name, type(err).__name__, err))
+
+    def sweep_unread(self, team: TeamState, now: float) -> None:
+        """Nudge an idle member holding mail that nothing else will ever wake it for.
+
+        A post addressed to ``all`` creates no pending entry unless it is urgent
+        or the operator wrote it, and every agent-side read path is
+        turn-triggered: the Claude hooks need a session event, a submitted
+        prompt, or a turn ending, and other kinds have no hooks at all. So an
+        idle agent whose only unread mail was a teammate's broadcast stayed
+        asleep indefinitely. Measured on a live team: a member's broadcast took
+        a median of 42 minutes to reach everyone, and 11 of 47 never did.
+
+        The sweep does not make broadcasts interrupt. It creates an ordinary
+        non-urgent pending, so every gate still applies, and it does so at most
+        once per ``IDLE_SWEEP_AFTER_S`` per member, so a chatty team costs one
+        nudge per member per interval rather than one per post.
+        """
+        if team.sweep_scanned_ms is not None and now - team.sweep_scanned_ms < IDLE_SWEEP_POLL_S * 1000.0:
+            return
+        team.sweep_scanned_ms = now
+        for member in team.members():
+            if member.get("kind") == "human" or member.get("status") == "left":
+                continue
+            name = str(member.get("name") or "")
+            terminal = member.get("terminal_id")
+            if not name or not terminal or name in team.pending:
+                continue  # the normal path owns a member that already has work
+            last = team.swept_ms.get(name)
+            if last is not None and now - last < IDLE_SWEEP_AFTER_S * 1000.0:
+                continue
+            if not member.get("briefed_at"):
+                continue  # a newcomer's briefing covers the backlog; do not double up
+            runtime = team.runtime.get(name)
+            last_nudge = getattr(runtime, "last_nudge_ms", None) if runtime is not None else None
+            if last_nudge is not None and now - last_nudge < IDLE_SWEEP_AFTER_S * 1000.0:
+                continue  # it heard from us recently through the normal path
+            agent = self.agents.get(str(terminal)) or {}
+            if agent.get("agent_status") not in ("idle", "done"):
+                continue  # a working member reads the board at its own turn boundary
+            try:
+                cursor = read_cursor_seq(team.paths, name)
+                unread = [
+                    r for r in read_board_records(team.paths, cursor)
+                    if (name in (r.get("to") or []) or "all" in (r.get("to") or []))
+                    and r.get("from") != name and not store.is_direct_line(r)
+                ]
+            except (HerdrTeamError, OSError):
+                continue
+            # The same reader rule the ingest path applies: a record that renders
+            # ``(unverified)`` never counts for a nudge, so the sweep cannot be used
+            # to launder a forged post into one.
+            unread = [r["seq"] for r in unread if self._counts_for_nudges(r)]
+            unread = [seq for seq in unread if seq not in team.retracted]
+            if not unread:
+                continue
+            team.swept_ms[name] = now
+            team.pending[name] = Pending(seqs=unread, first_ms=now)
+            self.who_dirty = True
+            self.log("{}: {} is idle with {} unread post(s) nothing woke it for; sweeping {}".format(
+                team.name, name, len(unread), unread[:6]))
 
     def _add_pending(self, team: TeamState, name: str, seq: int, urgent: bool, author: str, now: float, interrupt: bool = False) -> None:
         pending = team.pending.get(name)

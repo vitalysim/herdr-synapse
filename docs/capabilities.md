@@ -301,7 +301,7 @@ once that member is safe to interrupt:
 ```
 
 Posts arriving within 1 s of each other (`burst_window_ms`) become one
-nudge covering the range. A broadcast to `all` from the human nudges every member (normal holds apply); an agent's broadcast is not nudged, members see it on their next board read unless it is urgent.
+nudge covering the range. A broadcast to `all` from the human nudges every member (normal holds apply); an agent's broadcast is not nudged directly, but an idle member holding it is swept into one within three minutes (see the safety section); `--urgent` nudges immediately.
 `--urgent` on a post nudges every recipient. Posts to `human` become toasts.
 
 ### The gate, in order (defaults; per-team overrides in `team.json` `config.gate`)
@@ -599,6 +599,13 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
   never inlined.
 - The plugin writes into a project directory only after a human has run
   `project set`, and never deletes anything under one.
+- An idle member holding unread posts is swept into an ordinary nudge at most
+  once every three minutes, so a teammate's broadcast reaches it without
+  waiting for it to take a turn for some other reason. The sweep creates a
+  non-urgent pending, so it interrupts nothing that the normal gates would
+  not, skips a member that is working, already has work, was nudged recently,
+  or has not been briefed, and applies the same reader rule as the ingest
+  path, so an unverified record can never become a nudge through it.
 - Only the daemon types into an agent, one line at a time, only into panes
   that are in a team roster. `herdr-team notifier stats` reports
   `wrong_target`; it must stay 0. The one exception to *waiting for idle* is
