@@ -595,6 +595,19 @@ def execute_intent(intent: Intent, model: ConsoleModel, state: ConsoleState, api
             model.peek = tui_model.box(lines, model.width, "charter #{}".format(charter.get("seq")))
         model.status = "Esc closes"
         return True
+    if kind == "export":
+        argv = ["export", "--format", str(intent.args.get("format") or "md")]
+        path = intent.args.get("path")
+        if path:
+            argv.append(os.path.expanduser(str(path)))
+        rc, out, err = run_cli(argv, state.env)
+        if err:
+            model.status = "export failed: {}".format(err.get("message") or err.get("code") or "error")
+            return True
+        written = (out or {}).get("path") if isinstance(out, dict) else None
+        count = (out or {}).get("records") if isinstance(out, dict) else None
+        model.status = "exported {} post{} to {}".format(count, "" if count == 1 else "s", written) if written else "exported"
+        return True
     if kind == "who":
         model.peek = tui_model.box(tui_model.roster_lines_for(model.members, model.width - 4, model.ascii_only), model.width, "who")
         model.status = "Esc closes"

@@ -81,6 +81,9 @@ filter: [all]  to me  requests  human  system  (Tab cycles)   ? help
   holds your DOs and DON'Ts and carries your authority; any agent can append
   what it learned with `herdr-team knowledge add`, attributed and clearly
   marked as a peer note rather than a rule.
+- **A board you can keep.** `herdr-team export` (or `/export` in the console)
+  saves the whole board, archived posts included, as a standalone markdown
+  document, or as JSON/JSONL for anything that wants to read it back.
 - **Attribution and an audit trail.** Peer posts arrive framed as requests,
   not orders. Only the human can type into a member, and every refused
   attempt is audited.
@@ -216,6 +219,7 @@ Esc closes.
 | `/interrupts off`, `/interrupts claude,codex --cooldown 5m` | which kinds interrupts may reach mid-turn, and how often |
 | `/nudge name`, `/mute name 10m`, `/pause`, `/focus name`, `/peek name` | delivery and pane controls |
 | `/who`, `/charter`, `/charter set text`, `/use team`, `/retract N`, `/remove name` | roster, charter, teams, board |
+| `/export [path] [--format md\|json\|jsonl\|text]` | saves the whole board to a file, archive included |
 | `?` on an empty line, `/help` | every sign, command, and key |
 
 `@`, `@@`, and `!` open lists; Up/Down move, Tab or Enter pick, Esc hides.
@@ -320,7 +324,7 @@ platform; Linux is supported and covered by CI; Windows is not.
 ```bash
 git clone https://github.com/vitalysim/herdr-team.git
 cd herdr-team
-python3 -m unittest discover -s tests        # 1389 tests, no dependencies
+python3 -m unittest discover -s tests        # 1409 tests, no dependencies
 bin/herdr-team-sandbox start ~/your/project  # an isolated Herdr session for live testing
 ```
 

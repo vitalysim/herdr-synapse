@@ -146,6 +146,16 @@ with the charter. Findings do not: they are attributed, escaped so one can
 never open a fence or forge a role prefix, and pointed at rather than
 inlined, so a peer's note can never reach another member as an instruction.
 
+### Saving the board
+
+`herdr-team export` writes the whole board, archived segments included, to a
+file: markdown by default, or `json`, `jsonl` and `text`. The markdown form is
+a standalone document carrying the charter and roster the posts refer to, so
+it still reads correctly long after the session is gone; `jsonl` is the raw
+record shape, so an export goes back into any tool that reads a board file.
+`/export` does the same from the console. An existing file is refused without
+`--force`, symlinked targets are refused, and the file is written `0600`.
+
 ## 3. Names
 
 - Every member has a unique name, enforced by Herdr's own `agent.rename`.

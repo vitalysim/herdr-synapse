@@ -35,7 +35,7 @@ from herdr_team.paths import ROLE_NAME_RE, TEAM_NAME_RE
 FILTERS = ("all", "to me", "requests", "human", "system")
 SLASH_COMMANDS = (
     "/all", "/human", "/kind", "/reply", "/urgent", "/interrupt", "/interrupts", "/ref", "/retract", "/mute", "/unmute", "/pause",
-    "/nudge", "/focus", "/peek", "/who", "/filter", "/as", "/use", "/charter", "/remove", "/help", "/quit",
+    "/nudge", "/focus", "/peek", "/who", "/filter", "/as", "/use", "/charter", "/remove", "/export", "/help", "/quit",
 )
 #: Directives that turn a line into a post rather than a command.
 POST_DIRECTIVES = ("/all", "/human", "/kind", "/reply", "/urgent", "/interrupt", "/ref")
@@ -1643,6 +1643,22 @@ def _parse_slash(head: str, rest: str, default_team: str) -> Intent:
         return Intent("interrupts", {"mode": mode, "cooldown": cooldown, "team": default_team})
     if head == "/who":
         return Intent("who", {"team": default_team})
+    if head == "/export":
+        # Optional path and format: ``/export``, ``/export ~/board.md``, ``/export --format json``.
+        fmt = "md"
+        words = [w for w in args if w]
+        path_words = []
+        index = 0
+        while index < len(words):
+            if words[index] == "--format" and index + 1 < len(words):
+                fmt = words[index + 1]
+                index += 2
+                continue
+            path_words.append(words[index])
+            index += 1
+        if fmt not in ("md", "json", "jsonl", "text"):
+            return Intent("error", {"message": "format must be md, json, jsonl or text"})
+        return Intent("export", {"team": default_team, "path": " ".join(path_words) or None, "format": fmt})
     if head == "/filter":
         if args:
             name = " ".join(args).lower()
@@ -1683,7 +1699,7 @@ HELP_TEXT = (
     "!name text types into that member now (!!name also while it works; ! lists members) | @@path attaches a file (@@ lists files) | "
     "@name text | @role:r text | /all text | /human text | /kind k | /reply N | /urgent | /interrupt | /ref path | "
     "/retract N | /mute [name] [10m] | /unmute [name] | /pause | /nudge name [--force] | /focus name | "
-    "/peek name | /who | /filter [name] | /as label | /use team | /charter [set [--urgent] text] | /remove name | /quit"
+    "/peek name | /who | /filter [name] | /as label | /use team | /charter [set [--urgent] text] | /remove name | /export | /quit"
 )
 
 
@@ -1697,7 +1713,7 @@ HELP_LINES = (
     "members:   /who   /peek name   /focus name   /nudge name [--force]   /remove name",
     "delivery:  /mute [name] [10m]   /unmute [name]   /pause [10m]",
     "interrupt: /interrupt @name text (into a working turn)   /interrupts [off|on|claude,codex] [--cooldown 10m]",
-    "team:      /charter   /charter set [--urgent] text   /use team   /as label",
+    "team:      /charter   /charter set [--urgent] text   /use team   /as label   /export [path]",
     "keys:      Up/Down and PgUp/PgDn scroll back; End (or Esc) returns to the latest and follows again",
     "           Alt+Enter newline   Ctrl-U clear   Ctrl-K kill to end   Ctrl-A/Ctrl-E line start/end",
     "           Esc clears the status or closes a box   Ctrl-C clears the line, quits when empty   /quit",

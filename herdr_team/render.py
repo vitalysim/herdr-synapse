@@ -758,3 +758,98 @@ def render_charter(charter: Optional[Dict[str, Any]]) -> str:
         lines.append("refs:")
         lines.extend("  - {}".format(_safe_token(ref, 200)) for ref in refs)
     return "\n".join(lines)
+
+
+# --- export ------------------------------------------------------------------
+
+
+#: Longest single post body written into an export before it is marked truncated.
+EXPORT_MAX_TEXT_CHARS = 20000
+
+
+def _export_recipients(record: Dict[str, Any]) -> str:
+    to = record.get("to")
+    names = [str(t) for t in to if isinstance(t, str)] if isinstance(to, list) else []
+    if record.get("to_role"):
+        names.append("role:{}".format(_safe_token(record.get("to_role"), 32)))
+    return ", ".join(_safe_token(n, 40) for n in names) or "all"
+
+
+def render_export_markdown(
+    records: Iterable[Dict[str, Any]],
+    team: str,
+    charter: Optional[Dict[str, Any]] = None,
+    members: Optional[Iterable[Dict[str, Any]]] = None,
+    exported_at: Optional[str] = None,
+    exported_by: Optional[str] = None,
+) -> str:
+    """The whole board as a standalone document a human can keep or share.
+
+    Unlike ``render_markdown``, which is one member's unread view, this is an
+    archive: it carries the charter and roster the posts refer to, so the file
+    still makes sense long after the session is gone.
+    """
+    ordered = sorted((r for r in records if isinstance(r, dict)), key=_seq_key)
+    seqs = [r.get("seq") for r in ordered if isinstance(r.get("seq"), int)]
+    out: List[str] = ["# Team board: {}".format(_safe_token(team, 64)), ""]
+    span = "posts {}-{}".format(seqs[0], seqs[-1]) if len(seqs) > 1 else ("post {}".format(seqs[0]) if seqs else "no posts")
+    out.append("{} record{}, {}.".format(len(ordered), "" if len(ordered) == 1 else "s", span))
+    if exported_at:
+        out.append("Exported {}{}.".format(_safe_token(exported_at, 40), " by {}".format(_safe_token(exported_by, 40)) if exported_by else ""))
+    out.append("")
+
+    text = (charter or {}).get("text") if isinstance(charter, dict) else None
+    if text:
+        out.append("## Charter")
+        out.append("")
+        out.append("Version {}. {}".format(_safe_token((charter or {}).get("seq"), 12), _safe_text(str(text))))
+        out.append("")
+
+    roster = [m for m in (members or []) if isinstance(m, dict)]
+    if roster:
+        out.append("## Members")
+        out.append("")
+        out.append("| Name | Role | Kind | Status |")
+        out.append("| --- | --- | --- | --- |")
+        for member in roster:
+            out.append("| {} | {} | {} | {} |".format(
+                _safe_token(member.get("name"), 40), _safe_token(member.get("role"), 32),
+                _safe_token(member.get("kind"), 24), _safe_token(member.get("status") or "active", 16)))
+        out.append("")
+
+    out.append("## Posts")
+    out.append("")
+    if not ordered:
+        out.append("_No posts._")
+        return "\n".join(out) + "\n"
+
+    for record in ordered:
+        sender = _safe_token(record.get("from"), 40)
+        kind = _safe_token(record.get("kind"), 20)
+        event = _safe_token(record.get("event"), 32) if record.get("event") else ""
+        heading = "### #{} · {} · {} → {} · {}{}".format(
+            _safe_token(record.get("seq"), 12), _safe_token(record.get("ts"), 30),
+            sender, _export_recipients(record), kind, " {}".format(event) if event else "")
+        out.append(heading)
+        out.append("")
+        body = _safe_text(str(record.get("text") or ""))
+        if len(body) > EXPORT_MAX_TEXT_CHARS:
+            body = body[:EXPORT_MAX_TEXT_CHARS] + "\n\n_[truncated at {} characters]_".format(EXPORT_MAX_TEXT_CHARS)
+        out.append(body or "_(no text)_")
+        details: List[str] = []
+        if record.get("urgent"):
+            details.append("urgent")
+        if record.get("reply_to") is not None:
+            details.append("reply to #{}".format(_safe_token(record.get("reply_to"), 12)))
+        if record.get("retracts") is not None:
+            details.append("retracts #{}".format(_safe_token(record.get("retracts"), 12)))
+        if record.get("supersedes") is not None:
+            details.append("supersedes #{}".format(_safe_token(record.get("supersedes"), 12)))
+        refs = record.get("refs")
+        if isinstance(refs, list) and refs:
+            details.append("refs: {}".format(", ".join(_safe_token(str(r), 120) for r in refs)))
+        if details:
+            out.append("")
+            out.append("_{}_".format(" · ".join(details)))
+        out.append("")
+    return "\n".join(out).rstrip() + "\n"

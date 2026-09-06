@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.0 (2026-09-06)
+
+- `herdr-team export` saves the whole board to a file, rotated archive segments included, so a finished team leaves a record that outlives its session. Markdown by default (a standalone document with the charter and roster the posts refer to, then every post with its sender, recipients, kind, refs and reply links), plus `json`, `jsonl` (the raw on-disk shape, so it reads back into anything) and `text`. `--since`, `--last`, `--kind` and `--from` narrow it; `--stdout` pipes it; an existing file is refused without `--force` and symlinked targets are refused outright.
+- `/export [path] [--format …]` does the same from the team console, which is where you are when you decide you want to keep the board.
+
 ## 0.2.1 (2026-09-06)
 
 - The console feed follows the newest post again, and says so when it does not. `Up` scrolled the feed and the offset was carried across every refresh for ever, so one keypress left you permanently behind the tail with nothing on screen explaining it — on a live team the console sat on record #64 while the board was at #68. Scrolling back now shows a `4 newer below · End returns to the latest` rule, `End` or `Esc` jumps back, reaching the bottom resumes following, and posting snaps to the latest.

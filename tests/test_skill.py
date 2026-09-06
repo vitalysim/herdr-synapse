@@ -55,8 +55,12 @@ class SkillFileTests(unittest.TestCase):
         assert found is not None
         self.assertEqual(int(found.group(1)), SKILL_VERSION)
         self.assertEqual(cmd_skill.skill_version_of(self.text), SKILL_VERSION)
-        # The floor the marker advertises must be a CLI that actually exists.
-        self.assertTrue(VERSION.startswith(found.group(2)), "the marker's cli floor matches the plugin version line")
+        # The marker states the *minimum* CLI this skill needs, so it must be at
+        # or below the current version, not equal to it: skill v2 keeps working
+        # as the CLI moves on, and is only bumped when the skill body changes.
+        floor = tuple(int(part) for part in found.group(2).split("."))
+        current = tuple(int(part) for part in VERSION.split(".")[: len(floor)])
+        self.assertLessEqual(floor, current, "the marker's cli floor is newer than the plugin version")
 
     def test_gate_and_commands(self):
         self.assertIn('test "${HERDR_ENV:-}" = 1 && herdr-team me', self.text)

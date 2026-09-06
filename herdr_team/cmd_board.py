@@ -1510,6 +1510,105 @@ def _no_arguments(parser: argparse.ArgumentParser) -> None:
     pass
 
 
+# --------------------------------------------------------------------------
+# export
+
+
+#: Formats ``export`` can write. ``jsonl`` is the on-disk shape, so an export
+#: round-trips back into any tool that reads the board file.
+EXPORT_FORMATS = ("md", "json", "jsonl", "text")
+EXPORT_MAX_BYTES = 64 * 1024 * 1024
+
+
+def export_filename(team_name: str, fmt: str, now: Optional[str] = None) -> str:
+    """``board-<team>-<YYYYmmdd-HHMMSS>.<ext>``, safe to use as a file name."""
+    stamp = (now or now_iso()).replace("-", "").replace(":", "").replace("T", "-")[:15]
+    stem = re.sub(r"[^A-Za-z0-9._-]", "-", str(team_name))[:40] or "team"
+    ext = "md" if fmt == "md" else ("txt" if fmt == "text" else fmt)
+    return "board-{}-{}.{}".format(stem, stamp, ext)
+
+
+def render_export(fmt: str, records: List[Dict[str, Any]], team_name: str, doc: Dict[str, Any], author: Any) -> str:
+    """One board in the requested format."""
+    charter = charter_of(doc)
+    members = [m for m in members_of(doc) if isinstance(m, dict)]
+    stamp = now_iso()
+    if fmt == "jsonl":
+        return "".join(json.dumps(r, sort_keys=True, separators=(",", ":")) + "\n" for r in records)
+    if fmt == "json":
+        payload = {
+            "schema": 1, "team": team_name, "exported_at": stamp,
+            "exported_by": getattr(author, "name", None),
+            "charter": charter, "members": members, "records": records,
+        }
+        return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    if fmt == "text":
+        return _render.render_board(records) + "\n"
+    return _render.render_export_markdown(
+        records, team_name, charter=charter, members=members,
+        exported_at=stamp, exported_by=getattr(author, "name", None),
+    )
+
+
+def _add_export_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("out", nargs="?", metavar="PATH", help="file to write (default: ./board-<team>-<timestamp>.<ext>)")
+    parser.add_argument("--format", dest="fmt", choices=EXPORT_FORMATS, default="md", help="md (default), json, jsonl, or text")
+    parser.add_argument("--since", metavar="SEQ", type=int, help="only posts after this seq")
+    parser.add_argument("--last", metavar="N", type=int, help="only the newest N posts")
+    parser.add_argument("--kind", choices=RECORD_KINDS, help="only this post kind")
+    parser.add_argument("--from", dest="from_name", metavar="NAME", help="only posts from this member")
+    parser.add_argument("--no-archive", dest="no_archive", action="store_true", help="skip rotated segments; the active file only")
+    # dest is not ``stdout``: ``cli.main`` puts the output *stream* on ``args.stdout``,
+    # so that name is always truthy and every export would take this branch.
+    parser.add_argument("--stdout", dest="to_stdout", action="store_true", help="write to stdout instead of a file")
+    parser.add_argument("--force", action="store_true", help="overwrite an existing file")
+
+
+def _run_export(args: argparse.Namespace) -> int:
+    layout, _api, author, team_name, team, doc = _open_team(args, require_server=False)
+    records = store.BoardStore(team).read(
+        since_seq=int(args.since or 0),
+        from_name=args.from_name,
+        kind=args.kind,
+        last=args.last,
+        include_archive=not args.no_archive,
+        include_retracted=True,
+    )
+    body = render_export(args.fmt, records, team_name, doc, author)
+
+    if args.to_stdout:
+        payload = {"team": team_name, "records": len(records), "format": args.fmt, "path": None}
+        return emit(args, payload, body.rstrip("\n"))
+
+    if args.out:
+        # Checked before canonicalize, which would resolve the link away and
+        # leave the guard below inspecting the real file instead.
+        _paths.check_not_symlink(Path(os.path.expanduser(str(args.out))))
+        target = _paths.canonicalize(args.out)
+    else:
+        target = Path(os.getcwd()) / export_filename(team_name, args.fmt)
+    if target.is_dir():
+        target = target / export_filename(team_name, args.fmt)
+    if target.exists() and not args.force:
+        raise HerdrTeamError(
+            "path_exists", "{} already exists; pass --force to overwrite".format(target),
+            EXIT_REFUSED, {"path": os.fspath(target)},
+        )
+    encoded = body.encode("utf-8")
+    if len(encoded) > EXPORT_MAX_BYTES:
+        raise HerdrTeamError("export_too_large", "the export is {} bytes; narrow it with --last or --since".format(len(encoded)), EXIT_REFUSED, {"bytes": len(encoded)})
+    try:
+        _paths.check_not_symlink(target)
+        _paths.ensure_dir(target.parent)
+        store.atomic_write(target, encoded, mode=0o600)
+    except OSError as err:
+        raise HerdrTeamError("write_failed", "cannot write {}: {}".format(target, err), EXIT_REFUSED, {"path": os.fspath(target)}) from err
+
+    payload = {"team": team_name, "records": len(records), "format": args.fmt, "path": os.fspath(target), "bytes": len(encoded)}
+    return emit(args, payload, "exported {} post{} to {} ({} bytes)".format(
+        len(records), "" if len(records) == 1 else "s", target, len(encoded)))
+
+
 COMMANDS: List[Command] = [
     Command("post", "append a post to the team board", _add_post_arguments, _run_post),
     Command("board", "read the board (--new advances your cursor)", _add_board_arguments, _run_board),
@@ -1517,6 +1616,7 @@ COMMANDS: List[Command] = [
     Command("retract", "retract one of your posts", _seq_only, _run_retract),
     Command("edit", "supersede one of your posts with new text", _add_edit_arguments, _run_edit),
     Command("task", "set your current task headline", _text_only, _run_task),
+    Command("export", "save the whole board to a file (md, json, jsonl, text)", _add_export_arguments, _run_export),
     Command("ack", "acknowledge the briefing and charter, move your cursor to the end", _no_arguments, _run_ack),
     Command("say", "type one line into a member's input box now (human only, from the team console)", _add_say_arguments, _run_say),
 ]

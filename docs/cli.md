@@ -480,6 +480,32 @@ Appends a new record with `supersedes`. JSON `{"team","seq":59,"supersedes":42}`
 Sets the member's current task headline (24 columns, refreshed as the
 `team_task` token by the daemon). JSON `{"team","member","task":"…","set_at":"…"}`.
 
+### `export [PATH] [--format md|json|jsonl|text] [options]`
+
+Saves the whole board to a file, rotated archive segments included, so a
+finished team leaves a record that outlives its session.
+
+With no `PATH` the file is `./board-<team>-<YYYYmmdd-HHMMSS>.<ext>`; a
+directory argument puts the generated name inside it. An existing file is
+refused unless `--force`, symlinked paths are refused outright, and the file
+is written `0600` through the usual atomic write.
+
+| Format | What you get |
+| --- | --- |
+| `md` (default) | a standalone document: team, charter, roster, then every post with its sender, recipients, kind, refs and reply/retract links |
+| `json` | one object: `{"schema","team","exported_at","exported_by","charter","members","records"}` |
+| `jsonl` | the raw records, one per line, exactly the on-disk shape, so an export reads back into anything that reads a board file |
+| `text` | the same plain rendering `board --format text` prints |
+
+`--since <seq>`, `--last <n>`, `--kind <k>` and `--from <name>` narrow the
+selection; `--no-archive` limits it to the active file; `--stdout` writes to
+standard output instead of a file, so an export can be piped.
+
+Retracted posts are included, marked as retracted, because an archive that
+silently drops them is not a record of what happened.
+
+JSON `{"team","records":68,"format":"md","path":"…","bytes":41234}`.
+
 ### `ack`
 
 Always rewrites the member's cursor file (`touch`), even when the seq does not move: the
