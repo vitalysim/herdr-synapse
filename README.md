@@ -82,80 +82,85 @@ filter: [all]  to me  requests  human  system  (Tab cycles)   ? help
 ## Install
 
 Requirements: Herdr 0.8.2 or newer, Python 3.9 or newer (standard library
-only), macOS or Linux.
+only), macOS or Linux. Windows is not supported.
+
+Start `herdr` first: the install registers the plugin through the running
+server. While this repository is private you also need git credentials for
+GitHub, so run `gh auth login` once if you have not.
 
 ```bash
-herdr plugin install vitalysim/herdr-team                              # checks the plugin out under ~/.config/herdr/plugins/github/
-~/.config/herdr/plugins/github/herdr-team-*/bin/herdr-team install-cli --yes   # symlinks ~/.local/bin/herdr-team
-herdr-team setup --print-config      # paste the printed [[keys.command]] block into your Herdr config
-herdr server reload-config
-herdr-team kinds trust claude        # once per session, for every agent kind you use
+herdr plugin install vitalysim/herdr-team                                      # checks out under ~/.config/herdr/plugins/github/
+~/.config/herdr/plugins/github/herdr-team-*/bin/herdr-team install-cli --yes   # puts herdr-team on PATH via ~/.local/bin
+herdr-team daemon start              # the startup hook only fires on a server start, so start it once by hand
+herdr-team skill install             # teaches the agents the board commands
+herdr-team kinds trust claude        # per Herdr session, for every agent kind you use
 herdr-team kinds trust codex
 herdr-team hooks install claude      # optional: Claude Code hooks
 ```
 
-`herdr plugin install` needs a running Herdr server and `git`; it fetches over
-HTTPS with your git credentials. From a plugin checkout of your own,
-`herdr plugin link <path>` registers it instead.
+Trusting a kind is the one deliberate step: it tells the notifier that you
+have checked the typing path for that kind. Until then members of that kind
+are listed but nothing is typed into them.
 
-### Setting up a new machine
+Adding the plugin to a session that is already running agents loses nothing.
+The install, the notifier, and the config reload all talk to the running
+server; no pane restarts, and nothing is typed into any agent until you
+create a team.
 
-Verified on 2026-09-06 by installing from GitHub into a fresh Herdr server
-with its own config directory. Before the commands above, the machine needs:
+### Configure the UI once
 
-1. **Herdr 0.8.2 or newer**, on macOS or Linux (Windows is not supported).
-2. **Python 3.9 or newer on PATH.** macOS ships 3.9 at `/usr/bin/python3`;
-   most Linux distributions ship a newer one. Nothing else to install: the
-   plugin is standard library only.
-3. **Access to this repository.** While it is private, run `gh auth login`
-   (or configure any git credential helper for github.com) before
-   `herdr plugin install`, or the clone step fails.
-4. **A running Herdr.** Start `herdr` first; the install registers the
-   plugin through the server socket, and the plugin's startup hook launches
-   the notifier on every server start from then on. Right after the install
-   itself, start it once by hand: `herdr-team daemon start`.
+`setup --print-config` prints a TOML block. **Paste the printed block** into
+`~/.config/herdr/config.toml`, not the command itself:
 
-Then run the Install block. `install-cli` puts `herdr-team` on PATH through
-`~/.local/bin`; the launcher follows that symlink. The printed
-`[[keys.command]]` block goes into `~/.config/herdr/config.toml`; check it
-with `herdr config check` and `herdr-team keys check` (an invalid snippet
-rejects the whole config on reload), then `herdr server reload-config`.
+```bash
+herdr-team setup --print-config          # then paste its output into your config
+herdr config check && herdr-team keys check
+herdr server reload-config               # live, no restart
+```
 
-Adding the plugin to a session that is already running agents loses
-nothing: the install, the notifier start, and the config reload all talk to
-the running server, no pane is restarted, and nothing is typed into any
-agent until you create a team and trust a kind.
+This is the one careful step. Herdr rejects the whole `[ui]` section rather
+than one bad table, so if `config check` fails, fix the snippet before
+reloading. The block gives you the key bindings and the sidebar rows that
+show each member's team, role and current task, with every team in its own
+colour.
 
-What does not carry over from another machine:
+### Verify
 
-- **Logins.** The usage popup shows a provider only when that agent's own
-  CLI is logged in on this machine: sign in to Claude Code, Codex, `gh`,
-  or Gemini there and it appears.
-- **Kind trust.** `herdr-team kinds trust <kind>` is per Herdr session;
-  repeat it for every kind you use.
-- **Teams and boards.** They live under the machine's Herdr state directory
-  and are not synced. The plugin creates fresh ones.
-- **Claude hooks.** Optional and per machine: `herdr-team hooks install claude`.
+```bash
+herdr plugin list                # herdr-team, enabled
+herdr-team skill check           # the skill is installed and current
+herdr-team daemon status         # notifier alive, socket, teams
+herdr-team doctor                # warns about anything missing, including stale sidebar rows
+```
+
+Then end to end, with two agents running:
+
+1. `prefix+t` and put them in a team.
+2. `prefix+u` opens the board console.
+3. Post `@<member> run herdr-team board --new, ack the charter, and reply with your status`.
+4. The feed shows `✓nudged`, then `✓read` once the member reads it, then its reply.
+5. `herdr-team notifier stats` for delivery health; `wrong_target` must be 0.
 
 ### Updating
 
-Run the install again; it replaces the checkout in place:
+Run the install again; it replaces the checkout in place, so the
+`install-cli` link keeps working:
 
 ```bash
 herdr plugin install vitalysim/herdr-team
-herdr-team daemon start --replace   # the running notifier keeps the old code until restarted
+herdr-team daemon start --replace   # a same-version update keeps the old code running otherwise
+herdr-team skill install --force    # when the skill version changed
 ```
 
-Then `/quit` and reopen the console (`prefix+u`) if it is open. Verified on
-2026-09-06: teams, boards, the state pointer, and the `install-cli` link all
-survive, because the checkout path is stable and the plugin's state lives
-outside it. Even `herdr plugin uninstall herdr-team` removes only the
-checkout and leaves teams and boards on disk. Agents are never touched by
-an update.
+Then `/quit` and reopen the console if it is open. Teams, boards and the
+state pointer all survive, because the plugin's state lives outside the
+checkout. Even `herdr plugin uninstall herdr-team` removes only the checkout
+and leaves teams and boards on disk, so there is no data-loss path in either
+direction. Agents are never touched by an update.
 
-Trusting a kind is the one deliberate step: it tells the daemon the typing
-path for that kind has been checked by you. Until then members of that kind
-are listed but nothing is typed into them, and `add` says so.
+What never carries over from another machine: agent logins (the usage popup
+shows a provider only when that agent's own CLI is logged in locally), kind
+trust, teams and boards, and the Claude hooks.
 
 ## Quick start
 
