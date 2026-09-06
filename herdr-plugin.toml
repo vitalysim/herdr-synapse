@@ -1,6 +1,6 @@
 id = "herdr-team"
 name = "Herdr Team"
-version = "0.1.3"
+version = "0.2.0"
 min_herdr_version = "0.8.2"
 description = "Teams of agents in one Herdr session: roster, charter, shared board, idle-gated nudges"
 platforms = ["macos", "linux"]
@@ -37,6 +37,12 @@ id = "usage"
 title = "Usage limits across agents"
 contexts = ["global"]
 command = ["./bin/herdr-team", "ui", "usage"]
+
+[[actions]]
+id = "knowledge"
+title = "Team knowledge bases"
+contexts = ["global"]
+command = ["./bin/herdr-team", "ui", "knowledge"]
 
 [[actions]]
 id = "toggle-view"
@@ -91,3 +97,11 @@ placement = "popup"
 width = "90%"
 height = 28
 command = ["./bin/herdr-team", "usage-pane"]
+
+[[panes]]
+id = "knowledge"
+title = "Team knowledge"
+placement = "popup"
+width = "90%"
+height = 28
+command = ["./bin/herdr-team", "knowledge-pane"]

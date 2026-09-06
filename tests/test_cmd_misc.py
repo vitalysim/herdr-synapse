@@ -150,10 +150,10 @@ class SetupAndKeys(unittest.TestCase):
     def test_keys_print(self):
         with TempState() as ts:
             code, payload, _ = json_out(run_cli(["--json", "keys", "print"], ts.env))
-            self.assertEqual(payload["keys"], {"team-up": "prefix+t", "compose": "prefix+m", "console": "prefix+u", "toggle-view": "prefix+y", "usage": "prefix+i"})
+            self.assertEqual(payload["keys"], {"team-up": "prefix+t", "compose": "prefix+m", "console": "prefix+u", "toggle-view": "prefix+y", "usage": "prefix+i", "knowledge": "prefix+f"})
             snippet = payload["snippet"]
-            self.assertEqual(snippet.count("[[keys.command]]"), 5)
-            self.assertEqual(snippet.count('type = "plugin_action"'), 5)
+            self.assertEqual(snippet.count("[[keys.command]]"), 6)
+            self.assertEqual(snippet.count('type = "plugin_action"'), 6)
             for action in ("herdr-team.team-up", "herdr-team.compose", "herdr-team.console", "herdr-team.toggle-view", "herdr-team.usage"):
                 self.assertIn('command = "{}"'.format(action), snippet)
             code, out, _ = run_cli(["keys", "print"], ts.env)

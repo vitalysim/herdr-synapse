@@ -62,6 +62,25 @@ filter: [all]  to me  requests  human  system  (Tab cycles)   ? help
 - **Direct typing when you need it.** `!name text` puts a line into that
   member's input box right now, recorded on the board, refused when a dialog
   is open. `!!name text` reaches a member mid-turn.
+- **A folder the team shares.** `herdr-team project set <path>` gives the
+  team `.herdr-team/<team>/` in your project: the team's rules, one
+  instructions file per member, and an `artifacts/` directory the agents own.
+- **Agents in one folder told apart.** Everyone in a checkout reads the same
+  `CLAUDE.md`. `herdr-team instructions <name> --set "…"` gives one member
+  its own standing orders, delivered by name to every agent kind and injected
+  into Claude's context at session start.
+- **Knowledge at a glance.** `prefix+f` shows every team's folder, rules,
+  which members have their own instructions, findings and artifacts, and names
+  the command to fix whatever is missing. The `prefix+t` tree marks teams with
+  no folder, and `f` on a team row creates one.
+- **Everyone stays current.** A rules change, a new instruction, a finding, or
+  a file dropped in `artifacts/` by any agent or by you becomes a board post,
+  so Claude sees it on its next prompt and every other kind on its next board
+  read. Broadcasts do not interrupt anyone mid-turn unless you say `--urgent`.
+- **A knowledge base that outlives the session.** `herdr-team knowledge set`
+  holds your DOs and DON'Ts and carries your authority; any agent can append
+  what it learned with `herdr-team knowledge add`, attributed and clearly
+  marked as a peer note rather than a rule.
 - **Attribution and an audit trail.** Peer posts arrive framed as requests,
   not orders. Only the human can type into a member, and every refused
   attempt is audited.
@@ -172,11 +191,15 @@ trust, teams and boards, and the Claude hooks.
 4. Ask for something: `@red-dev-claude-dev post a summary of the repo layout`.
    The member is nudged when idle, reads the board, and replies; the feed
    shows `✓nudged` and `✓read`.
+5. Give the team a folder when the wizard offers one (it prefills the
+   directory your agents already share). Then `prefix+f` shows what the team
+   knows and what is still missing.
 
 Default key bindings: `prefix+t` team up, `prefix+u` console, `prefix+m`
-compose popup, `prefix+y` team view in the sidebar, `prefix+i` usage limits.
-In `prefix+t`: `↑↓` move, Enter acts on the row, Space picks an unassigned
-agent, `r` refreshes, Esc closes.
+compose popup, `prefix+y` team view in the sidebar, `prefix+i` usage limits,
+`prefix+f` team knowledge. In `prefix+t`: `↑↓` move, Enter acts on the row,
+Space picks an unassigned agent, `f` sets a team's folder, `r` refreshes,
+Esc closes.
 
 ## The console in one table
 
@@ -196,6 +219,42 @@ agent, `r` refreshes, Esc closes.
 | `?` on an empty line, `/help` | every sign, command, and key |
 
 `@`, `@@`, and `!` open lists; Up/Down move, Tab or Enter pick, Esc hides.
+
+## The team folder
+
+Agents in one checkout all read the same `CLAUDE.md`, so nothing on disk tells
+them apart. Give the team a directory and it gets one:
+
+```
+<your project>/.herdr-team/<team>/
+  knowledge.md         the team's rules, and what its members have learned
+  members/<name>.md    what this member in particular is here to do
+  artifacts/           work products; the only part git ignores
+```
+
+| Command | What it does | Who |
+| --- | --- | --- |
+| `project set <path>` | records the directory and creates the folder | you |
+| `instructions <name> --set "…"` | that member's standing orders | you |
+| `knowledge set "…"` | the team's DOs and DON'Ts | you |
+| `knowledge add "…"` | one attributed finding | any member |
+| `knowledge-status`, `prefix+f` | what every team has, and what is missing | anyone |
+
+Three things make this safe to keep in a repository agents can write to. The
+files in your project are a **mirror**: the authoritative copies live outside
+it, behind commands only you can run, so an agent cannot edit a file and have
+it read back to its teammates as your instruction. The plugin writes nothing
+until you name a directory, and it **never deletes** anything inside one.
+
+Rules and instructions carry your authority and reach Claude in its session
+context. Findings do not: they are attributed peer notes, escaped so one can
+never pose as a rule.
+
+Everything that changes here reaches the team through the board, so a new
+rule, a changed instruction, a finding, or a file dropped in `artifacts/` by
+anyone shows up for Claude on its next prompt and for every other kind on its
+next board read. Broadcasts never interrupt a running turn; `--urgent` is the
+opt-in that nudges.
 
 ## How delivery works
 
@@ -227,8 +286,10 @@ team through `config.gate` in `team.json`.
 - Authorship is stamped from the pane and process, never claimed by text.
   `--as human` from an agent pane is refused and audited; `say` accepts only
   the verified console.
-- Every board line the agents see is quoted under a system header; the
-  charter and a member's brief are the only text with operator authority.
+- Every board line the agents see is quoted under a system header. The only
+  text carrying your authority is the charter, a member's brief and
+  instructions, and the team rules, all four written by commands an agent
+  cannot run. Nothing an agent can write is ever injected as your word.
 - Emergency stop: `herdr-team daemon stop`. Nothing is typed anywhere after
   that. `herdr plugin disable herdr-team` removes the plugin's sidebar tokens
   and view within seconds.
@@ -255,7 +316,7 @@ platform; Linux is supported and covered by CI; Windows is not.
 ```bash
 git clone https://github.com/vitalysim/herdr-team.git
 cd herdr-team
-python3 -m unittest discover -s tests        # 1168 tests, no dependencies
+python3 -m unittest discover -s tests        # 1336 tests, no dependencies
 bin/herdr-team-sandbox start ~/your/project  # an isolated Herdr session for live testing
 ```
 

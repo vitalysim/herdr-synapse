@@ -78,6 +78,72 @@ nothing else on the board does.
 
 **Verified**: RS-12, SK-11, SK-12.
 
+## 2a. The working directory, instructions, and the knowledge base
+
+Agents in one checkout read the same `CLAUDE.md` or `AGENTS.md`, so nothing
+on disk tells them apart. Three additions close that:
+
+| Capability | CLI | Who |
+| --- | --- | --- |
+| Choose where the folder goes | `project set <path>`, `project clear`, `project render`; `create --project`; a `prefix+t` wizard stage that prefills the shared directory | human only |
+| See what every team has | `knowledge-status`, the `prefix+f` popup, and a per-team marker in the `prefix+t` tree | anyone |
+| Set it all up at creation | `create --project … --rules … --instructions NAME=TEXT` | human only |
+| Long-form per-member instructions | `instructions <name> --set "…" \| --file p \| --clear` | human to set, anyone to read |
+| Team rules, the DOs and DON'Ts | `knowledge set "…" \| --file p`, `knowledge clear` | human only |
+| What the team has learned | `knowledge add "<text>"` | any member |
+| Read both | `knowledge` | anyone |
+
+The folder is `<project>/.herdr-team/<team>/`, namespaced so two teams can
+share one project. It holds `knowledge.md`, `members/<name>.md` per member,
+and `artifacts/`. `README.md` and `.gitignore` sit above it. Members reach it
+by the absolute path `herdr-team me` prints, which matters because members of
+one team routinely sit in different checkouts.
+
+Three properties make it safe to put in a repository agents can write to:
+
+- **The mirror is never truth.** The authoritative copies live in the team
+  state dir behind human-only commands, and every read that feeds an agent's
+  context comes from there. A hand-edited mirror is reported as drifted and
+  regenerated, never imported. Without this an agent could edit a file and
+  have it read back to a teammate as the operator's instruction.
+- **Consent is explicit.** `config.project_dir` is empty until a human runs
+  `project set`. Nothing is inferred from member cwds, so the plugin cannot
+  write into the wrong repository or into two of them.
+- **Nothing is deleted.** Removing a member writes a tombstone over its file;
+  renaming one writes a forwarding note under the old name. A file without
+  the plugin's marker on its first line is never overwritten without
+  `--force`, the rule `skill install` already used.
+
+**How a change reaches an agent.** Writing a file is not telling anyone, so
+every change becomes a board record and rides the delivery model that already
+exists:
+
+| Change | Record | Who learns, and when |
+| --- | --- | --- |
+| `knowledge set` | `knowledge_updated` | everyone, next board read |
+| `instructions --set` | `instructions_updated` | everyone, next board read |
+| `knowledge add` | `knowledge_finding` | everyone, next board read |
+| a file in `artifacts/` | `artifacts_changed` | everyone, next board read |
+
+For Claude with hooks that means the next *prompt*, through the prompt-submit
+hook, not the next session. For every other kind it means its next
+`herdr-team board --new`, which the skill tells it to run every turn. These
+are `system` records addressed to `all`, so they deliberately do **not** nudge:
+a rules edit cannot interrupt four agents mid-turn. `--urgent` is the opt-in
+that does wake everyone, exactly as on the charter.
+
+The `artifacts/` watch runs on the notifier's reconcile tick. It fingerprints
+the tree, posts one batched record naming what was added, changed, or removed,
+and does so whoever made the change: a member, the operator by hand, or any
+other tool. The first scan after a daemon start only seeds the fingerprint, so
+a restart never re-announces existing files. The walk is capped at 500 files
+per scan and 8 names per record.
+
+Rules carry operator authority and are injected into Claude members' context
+with the charter. Findings do not: they are attributed, escaped so one can
+never open a fence or forge a role prefix, and pointed at rather than
+inlined, so a peer's note can never reach another member as an instruction.
+
 ## 3. Names
 
 - Every member has a unique name, enforced by Herdr's own `agent.rename`.
@@ -497,6 +563,14 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
 
 ## 11. Safety properties you can check
 
+- Nothing an agent can write is ever injected into another agent's context as
+  the operator's word. The Claude session-start block carries only the
+  charter, the member's brief and instructions, and the team rules, all four
+  written by human-only commands; every line is escaped and the block is
+  capped. Findings, which any member may append, are counted and pointed at,
+  never inlined.
+- The plugin writes into a project directory only after a human has run
+  `project set`, and never deletes anything under one.
 - Only the daemon types into an agent, one line at a time, only into panes
   that are in a team roster. `herdr-team notifier stats` reports
   `wrong_target`; it must stay 0. The one exception to *waiting for idle* is

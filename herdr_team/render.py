@@ -703,6 +703,13 @@ def render_me(member: Dict[str, Any], team_doc: Dict[str, Any]) -> str:
         lines.append("charter: none yet, ask human")
     if member.get("brief"):
         lines.append("your brief: {}".format(" ".join(_safe_text(member.get("brief")).split())))
+    # Absolute, because a member whose cwd is a different checkout still has to
+    # reach the team folder. This is the only channel every agent kind shares.
+    if member.get("instructions_path"):
+        lines.append("your instructions: {}".format(_safe_token(member.get("instructions_path"), 300)))
+    if member.get("team_dir"):
+        lines.append("team folder: {}".format(_safe_token(member.get("team_dir"), 300)))
+        lines.append("  knowledge.md = team rules and findings; artifacts/ = where your work products go")
     teammates = member.get("teammates")
     if teammates is None:
         teammates = [m for m in (team_doc.get("members") or []) if m.get("name") != member.get("name")]

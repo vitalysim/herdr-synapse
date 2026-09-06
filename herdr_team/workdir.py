@@ -1,0 +1,543 @@
+"""The team's working directory inside the project: ``.herdr-team/<team>/``.
+
+Agents in one folder all read the same ``CLAUDE.md`` or ``AGENTS.md``, so
+nothing on disk tells them apart. This module is the agent-facing half of the
+team: a folder people and agents can both reach with plain relative paths,
+holding a rendered mirror of the knowledge base and of each member's
+instructions, plus an ``artifacts/`` directory agents own outright.
+
+Four rules make it safe to put in a repository agents can write to:
+
+1. **The mirror is never truth.** The authoritative copies live in the team's
+   state dir, where only the CLI writes them and authorship is stamped from
+   the pane. Every read that feeds an agent's context comes from there. A
+   hand-edited mirror is reported as drifted and overwritten on the next
+   render, never imported. Without this an agent could edit a file and have
+   it read back to its teammates as the operator's instruction.
+2. **Consent is explicit.** ``config.project_dir`` is empty until a human runs
+   ``project set``. The directory is never inferred from member cwds, so the
+   plugin cannot pick the wrong repository or write into two of them.
+3. **Nothing here is ever deleted.** Removing or renaming a member rewrites
+   its file as a tombstone. ``project clear`` stops the plugin writing and
+   leaves every file in place.
+4. **Foreign files are left alone.** Every generated file carries the marker
+   below on its first line; a file without it is somebody else's and is never
+   overwritten without ``--force``, the same rule ``cmd_skill`` uses.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import os
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+from . import store
+from .errors import EXIT_REFUSED, HerdrTeamError
+from . import paths as _paths
+
+#: Bumped when a generated file's layout changes; the renderer rewrites older ones.
+WORKDIR_VERSION = 1
+
+#: What every generated file starts with. Its absence means the file is not ours.
+MARKER_TEXT = "herdr-team:workdir v{} generated file, edits are overwritten".format(WORKDIR_VERSION)
+#: Markdown files get an HTML comment so the marker does not render.
+MARKER = "<!-- {} -->".format(MARKER_TEXT)
+#: ``.gitignore`` has no HTML comments: an ``<!-- ... -->`` line there is a *pattern*.
+MARKER_HASH = "# {}".format(MARKER_TEXT)
+#: Either form identifies a file as ours.
+MARKER_PREFIXES = ("<!-- herdr-team:workdir ", "# herdr-team:workdir ")
+
+
+def marker_for(path: Path) -> str:
+    """The comment syntax the file at ``path`` actually understands."""
+    return MARKER_HASH if Path(path).name in (".gitignore", ".gitattributes") else MARKER
+
+#: The one directory name the plugin claims inside a project.
+DIR_NAME = ".herdr-team"
+
+#: Cap on one rendered mirror, so a pathological instructions file cannot fill a repo.
+MAX_RENDER_BYTES = 64 * 1024
+
+
+class ForeignFileError(HerdrTeamError):
+    """A path we would generate exists and was not written by this plugin."""
+
+    def __init__(self, path: Path) -> None:
+        super().__init__(
+            "workdir_foreign_file",
+            "{} exists and was not written by herdr-team; move it aside or pass --force".format(path),
+            EXIT_REFUSED,
+            {"path": os.fspath(path)},
+        )
+
+
+# --------------------------------------------------------------------------
+# where the project is
+
+
+def project_dir_of(doc: Dict[str, Any]) -> Optional[str]:
+    """``config.project_dir`` of a ``team.json`` document, when it holds a usable path."""
+    if not isinstance(doc, dict):
+        return None
+    config = doc.get("config")
+    if not isinstance(config, dict):
+        return None
+    value = config.get("project_dir")
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return value
+
+
+def resolve_project_dir(raw: str, state_root: Optional[Path] = None) -> Path:
+    """Validate a human-supplied project directory.
+
+    Refuses anything that is not an existing directory, plus the handful of
+    paths that would make the folder useless or dangerous: the filesystem
+    root, ``$HOME`` itself, and anywhere inside the plugin's own state dir.
+    The path is resolved first, so a symlinked component cannot smuggle the
+    folder somewhere else.
+    """
+    text = str(raw or "").strip()
+    if not text:
+        raise HerdrTeamError("path_invalid", "a project directory is required", EXIT_REFUSED, {"path": raw})
+    candidate = Path(os.path.expanduser(text))
+    try:
+        resolved = candidate.resolve()
+    except OSError as err:
+        raise HerdrTeamError("path_invalid", "cannot resolve {}: {}".format(text, err), EXIT_REFUSED, {"path": text}) from err
+    if not resolved.is_dir():
+        raise HerdrTeamError("path_invalid", "{} is not an existing directory".format(resolved), EXIT_REFUSED, {"path": os.fspath(resolved)})
+    if resolved.parent == resolved:
+        raise HerdrTeamError("path_invalid", "refusing to use the filesystem root as a project directory", EXIT_REFUSED, {"path": os.fspath(resolved)})
+    home = Path(os.path.expanduser("~")).resolve()
+    if resolved == home:
+        raise HerdrTeamError("path_invalid", "refusing to use your home directory as a project directory", EXIT_REFUSED, {"path": os.fspath(resolved)})
+    if state_root is not None:
+        try:
+            state = Path(state_root).resolve()
+        except OSError:
+            state = Path(state_root)
+        if resolved == state or state in resolved.parents:
+            raise HerdrTeamError("path_invalid", "refusing a project directory inside herdr-team's own state dir", EXIT_REFUSED, {"path": os.fspath(resolved)})
+    return resolved
+
+
+def team_root(project_dir: str, team_name: str) -> Path:
+    """``<project>/.herdr-team/<team>``. Namespaced so two teams can share one project."""
+    return Path(project_dir) / DIR_NAME / _paths.validate_team_name(team_name)
+
+
+def paths_for(project_dir: str, team_name: str) -> Dict[str, Path]:
+    """Every path this module generates, for one team in one project."""
+    shared = Path(project_dir) / DIR_NAME
+    root = team_root(project_dir, team_name)
+    return {
+        "shared": shared,
+        "readme": shared / "README.md",
+        "gitignore": shared / ".gitignore",
+        "root": root,
+        "knowledge": root / "knowledge.md",
+        "members": root / "members",
+        "artifacts": root / "artifacts",
+    }
+
+
+def is_inside(candidate: Path, project_dir: Optional[str]) -> bool:
+    """True when ``candidate`` resolves to something inside ``<project>/.herdr-team/``.
+
+    Both sides are resolved, because ``paths.check_not_symlink`` lstats only
+    the final component: an intermediate symlink would otherwise walk a
+    ``--ref`` out of the project while still looking like a plain relative
+    path.
+    """
+    if not project_dir:
+        return False
+    try:
+        shared = (Path(project_dir) / DIR_NAME).resolve()
+        target = Path(candidate).resolve()
+    except OSError:
+        return False
+    return target == shared or shared in target.parents
+
+
+# --------------------------------------------------------------------------
+# writing
+
+
+def _is_ours(path: Path) -> bool:
+    """True when ``path`` is absent or carries our marker on its first line."""
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            first = handle.readline()
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    return first.startswith(MARKER_PREFIXES)
+
+
+def digest(text: str) -> str:
+    """Short content hash, used to report a mirror the human edited by hand."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+def write_generated(path: Path, body: str, force: bool = False) -> bool:
+    """Write one generated file. Returns True when the file changed.
+
+    Refuses a file that exists without our marker unless ``force``. Never
+    deletes: callers that need a file to stop meaning something write a
+    tombstone over it instead.
+    """
+    text = marker_for(path) + "\n" + body
+    if len(text.encode("utf-8")) > MAX_RENDER_BYTES:
+        suffix = "\n…\n"
+        keep = MAX_RENDER_BYTES - len(suffix.encode("utf-8"))
+        text = text.encode("utf-8")[:keep].decode("utf-8", "ignore") + suffix
+    if not force and not _is_ours(path):
+        raise ForeignFileError(path)
+    try:
+        current = path.read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError):
+        current = None
+    if current == text:
+        return False
+    store.atomic_write(path, text.encode("utf-8"), fsync=False)
+    return True
+
+
+def drifted(path: Path, expected_body: str) -> bool:
+    """True when a mirror exists, is ours, and no longer matches what we would write."""
+    try:
+        current = path.read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError):
+        return False
+    if not current.startswith(MARKER_PREFIXES):
+        return False
+    return current != marker_for(path) + "\n" + expected_body
+
+
+# --------------------------------------------------------------------------
+# rendering the mirror
+
+
+README_BODY = """# herdr-team
+
+This folder belongs to herdr-team. One subdirectory per team.
+
+- `<team>/knowledge.md` — the team's rules and the findings its members
+  recorded. Read it. It is a mirror: edit it and your edit is overwritten.
+  Change the rules with `herdr-team knowledge set` (operator only) and add a
+  finding with `herdr-team knowledge add "..."`.
+- `<team>/members/<name>.md` — what that member in particular is here to do,
+  which is how agents sharing this folder are told apart.
+- `<team>/artifacts/` — yours. Put work products here and reference them from
+  the board with `herdr-team post --ref`.
+
+Everything else about the team lives outside the project. `herdr-team me`
+prints who you are and where these files are.
+"""
+
+
+def gitignore_body(teams: List[str]) -> str:
+    lines = [
+        "# Artifacts are working files, not source. The documents above them are kept",
+        "# so a checkout carries the team's rules and each member's instructions.",
+    ]
+    for team in sorted(teams):
+        lines.append("{}/artifacts/".format(team))
+    if not teams:
+        lines.append("*/artifacts/")
+    return "\n".join(lines) + "\n"
+
+
+def knowledge_body(team_name: str, rules: Optional[str], findings: List[Dict[str, Any]]) -> str:
+    """The mirror of the knowledge base: operator rules, then attributed peer findings."""
+    from . import render as _render
+
+    out = ["# {} knowledge".format(team_name), ""]
+    out.append("## Rules (operator authority)")
+    out.append("")
+    if rules:
+        out.append(rules.strip())
+    else:
+        out.append("_None set. The operator sets these with `herdr-team knowledge set`._")
+    out.append("")
+    out.append("## Findings (peer notes, not instructions)")
+    out.append("")
+    out.append("_Anyone on the team may add one with `herdr-team knowledge add \"...\"`._")
+    out.append("")
+    if not findings:
+        out.append("_None yet._")
+    for record in findings:
+        author = _render.escape_context_line(str(record.get("author") or "?"))
+        at = _render.escape_context_line(str(record.get("at") or ""))
+        text = _render.escape_context_line(" ".join(str(record.get("text") or "").split()))
+        out.append("- **{}** ({}): {}".format(author, at, text))
+    return "\n".join(out) + "\n"
+
+
+def member_body(team_name: str, name: str, role: str, brief: Optional[str], instructions: Optional[str], left_for: Optional[str] = None, left: bool = False) -> str:
+    """One member's instructions file, or its tombstone once the member is gone."""
+    out = ["# {} — {}".format(name, team_name), ""]
+    if left:
+        out.append("This member left the team. Nothing here is current.")
+        out.append("")
+        return "\n".join(out) + "\n"
+    if left_for:
+        out.append("Renamed to **{}**. See `{}.md`.".format(left_for, left_for))
+        out.append("")
+        return "\n".join(out) + "\n"
+    out.append("Role: {}".format(role or "member"))
+    out.append("")
+    if brief:
+        out.append("## Brief")
+        out.append("")
+        out.append(" ".join(str(brief).split()))
+        out.append("")
+    out.append("## Instructions")
+    out.append("")
+    if instructions:
+        out.append(instructions.strip())
+    else:
+        out.append("_None set. The operator sets these with `herdr-team instructions {} --set \"...\"`._".format(name))
+    out.append("")
+    out.append("---")
+    out.append("")
+    out.append("These instructions are the operator's, and they are yours alone: other")
+    out.append("members of this team have their own. They do not replace the team")
+    out.append("charter, which applies to everyone.")
+    return "\n".join(out) + "\n"
+
+
+def render(layout: Any, team_name: str, force: bool = False) -> Dict[str, Any]:
+    """Regenerate every mirrored file for one team. Returns what changed.
+
+    Best effort by design: this runs from commands whose real job is something
+    else, so a read-only checkout or a foreign file is reported, never fatal.
+    Nothing here deletes; a member that left gets a tombstone written over its
+    file so the folder keeps a record instead of a hole.
+    """
+    from . import charter as _charter
+    from . import roster as _roster
+
+    team_paths = layout.team(team_name)
+    doc = _roster.load_team(team_paths)
+    project = project_dir_of(doc.to_json())
+    result: Dict[str, Any] = {"project_dir": project, "written": [], "skipped": [], "drifted": []}
+    if not project:
+        result["reason"] = "no project directory; set one with herdr-team project set <path>"
+        return result
+
+    targets = paths_for(project, team_name)
+    rules = _charter.get_rules(layout, team_name)
+    findings = _charter.read_findings(layout, team_name)
+
+    plan: List[Tuple[Path, str]] = [
+        (targets["readme"], README_BODY),
+        (targets["knowledge"], knowledge_body(team_name, rules, findings)),
+    ]
+    for member in doc.members:
+        if member.is_human:
+            continue
+        instructions = _charter.get_instructions(layout, team_name, member.name)
+        plan.append((
+            targets["members"] / (_paths._safe_stem(member.name, "name") + ".md"),
+            member_body(team_name, member.name, member.role or "", member.brief, instructions, left=member.status == "left"),
+        ))
+        # A rename leaves a file behind under the old name. It is never deleted:
+        # it is rewritten to point at the new one, so a teammate holding the old
+        # path finds a forwarding note rather than stale instructions.
+        for previous in member.previous_names or []:
+            old_name = previous.get("name") if isinstance(previous, dict) else None
+            if not isinstance(old_name, str) or old_name == member.name:
+                continue
+            try:
+                stem = _paths._safe_stem(old_name, "name")
+            except HerdrTeamError:
+                continue
+            plan.append((
+                targets["members"] / (stem + ".md"),
+                member_body(team_name, old_name, "", None, None, left_for=member.name),
+            ))
+
+    try:
+        _paths.ensure_dir(targets["members"])
+        _paths.ensure_dir(targets["artifacts"])
+        existing_teams = _existing_team_dirs(targets["shared"], team_name)
+        plan.append((targets["gitignore"], gitignore_body(existing_teams)))
+    except (HerdrTeamError, OSError) as err:
+        result["reason"] = "cannot create {}: {}".format(targets["root"], err)
+        return result
+
+    for path, body in plan:
+        if drifted(path, body):
+            result["drifted"].append(os.fspath(path))
+        try:
+            if write_generated(path, body, force=force):
+                result["written"].append(os.fspath(path))
+        except ForeignFileError:
+            result["skipped"].append(os.fspath(path))
+        except (HerdrTeamError, OSError) as err:
+            result["skipped"].append(os.fspath(path))
+            result.setdefault("errors", []).append("{}: {}".format(path, err))
+    return result
+
+
+def _existing_team_dirs(shared: Path, current: str) -> List[str]:
+    """Team subdirectories already in ``.herdr-team/``, so one .gitignore covers them all."""
+    names = {current}
+    try:
+        for entry in shared.iterdir():
+            if entry.is_dir() and not entry.name.startswith("."):
+                names.add(entry.name)
+    except OSError:
+        pass
+    return sorted(names)
+
+
+# --------------------------------------------------------------------------
+# noticing what changed in the folder
+
+
+#: Files walked per scan. A bigger drop is reported as "and N more", never walked twice.
+MAX_WATCHED_FILES = 500
+#: Names listed in one board record; the rest are counted.
+MAX_NAMED_IN_RECORD = 8
+
+
+def fingerprint_artifacts(project_dir: Optional[str], team_name: str) -> Dict[str, Tuple[int, int]]:
+    """``{relative path: (mtime_ns, size)}`` for the team's ``artifacts/`` tree.
+
+    Bounded on purpose: this runs on the daemon's reconcile tick, which is a
+    per-team loop, so an agent dumping a build tree here must not stall it.
+    """
+    out: Dict[str, Tuple[int, int]] = {}
+    if not project_dir:
+        return out
+    root = paths_for(project_dir, team_name)["artifacts"]
+    try:
+        walker = os.walk(os.fspath(root))
+    except OSError:
+        return out
+    for dirpath, dirnames, filenames in walker:
+        dirnames.sort()
+        for filename in sorted(filenames):
+            if filename.startswith("."):
+                continue
+            full = os.path.join(dirpath, filename)
+            try:
+                st = os.stat(full)
+            except OSError:
+                continue
+            try:
+                key = os.path.relpath(full, os.fspath(root))
+            except ValueError:
+                continue
+            out[key] = (int(st.st_mtime_ns), int(st.st_size))
+            if len(out) >= MAX_WATCHED_FILES:
+                return out
+    return out
+
+
+def diff_artifacts(before: Dict[str, Tuple[int, int]], after: Dict[str, Tuple[int, int]]) -> Dict[str, List[str]]:
+    """What changed between two fingerprints, each list sorted."""
+    added = sorted(set(after) - set(before))
+    removed = sorted(set(before) - set(after))
+    changed = sorted(name for name in set(before) & set(after) if before[name] != after[name])
+    return {"added": added, "changed": changed, "removed": removed}
+
+
+def describe_change(team_name: str, diff: Dict[str, List[str]]) -> Optional[str]:
+    """One board-record line naming what changed, or None when nothing did.
+
+    Deliberately says where the files are and not what is in them: the record
+    is an awareness signal, and reading the file is the member's own decision.
+    """
+    parts: List[str] = []
+    for label, names in (("new", diff.get("added") or []), ("updated", diff.get("changed") or []), ("removed", diff.get("removed") or [])):
+        if not names:
+            continue
+        shown = names[:MAX_NAMED_IN_RECORD]
+        more = len(names) - len(shown)
+        text = "{} {}".format(label, ", ".join(shown))
+        if more > 0:
+            parts.append("{} and {} more".format(text, more))
+        else:
+            parts.append(text)
+    if not parts:
+        return None
+    return "team artifacts: {} (in .herdr-team/{}/artifacts/)".format("; ".join(parts), team_name)
+
+
+# --------------------------------------------------------------------------
+# status
+
+
+def status(layout: Any, team_name: str) -> Dict[str, Any]:
+    """What the team's knowledge base looks like right now.
+
+    One function behind the ``prefix+t`` tree, the ``prefix+k`` view and
+    ``doctor``, so the three can never disagree about whether a team has a
+    folder. Reads only; safe to call from a render loop.
+    """
+    from . import charter as _charter
+    from . import roster as _roster
+
+    team_paths = layout.team(team_name)
+    doc = _roster.load_team(team_paths)
+    project = project_dir_of(doc.to_json())
+    rules = _charter.get_rules(layout, team_name) or ""
+    findings = _charter.read_findings(layout, team_name)
+    members: List[Dict[str, Any]] = []
+    for member in doc.members:
+        if member.is_human or member.status == "left":
+            continue
+        text = _charter.get_instructions(layout, team_name, member.name) or ""
+        members.append({"name": member.name, "role": member.role or "", "kind": member.kind or "",
+                        "instructions": bool(text), "chars": len(text)})
+    out: Dict[str, Any] = {
+        "team": team_name,
+        "project_dir": project,
+        "folder": os.fspath(team_root(project, team_name)) if project else None,
+        "exists": bool(project) and team_root(project, team_name).is_dir(),
+        "rules": bool(rules),
+        "rules_chars": len(rules),
+        "findings": len(findings),
+        "last_finding": findings[-1] if findings else None,
+        "members": members,
+        "with_instructions": sum(1 for m in members if m["instructions"]),
+        "artifacts": 0,
+        "issues": [],
+    }
+    if not project:
+        return out
+    path = Path(project)
+    if not path.is_dir():
+        out["issues"].append("project directory {} is gone".format(project))
+        return out
+    if not os.access(project, os.W_OK):
+        out["issues"].append("project directory {} is not writable".format(project))
+    out["artifacts"] = len(fingerprint_artifacts(project, team_name))
+    targets = paths_for(project, team_name)
+    for label, path_ in (("README.md", targets["readme"]), ("knowledge.md", targets["knowledge"])):
+        if path_.exists() and not _is_ours(path_):
+            out["issues"].append("{} was not written by herdr-team".format(label))
+    return out
+
+
+def status_summary(info: Dict[str, Any]) -> str:
+    """One short line for a list: what this team's knowledge base amounts to."""
+    if not info.get("project_dir"):
+        return "no folder"
+    if info.get("issues"):
+        return info["issues"][0]
+    if not info.get("exists"):
+        return "folder not created yet"
+    parts = ["rules" if info.get("rules") else "no rules"]
+    total = len(info.get("members") or [])
+    parts.append("{}/{} briefed".format(info.get("with_instructions", 0), total))
+    parts.append("{} finding{}".format(info.get("findings", 0), "" if info.get("findings") == 1 else "s"))
+    if info.get("artifacts"):
+        parts.append("{} artifact{}".format(info["artifacts"], "" if info["artifacts"] == 1 else "s"))
+    return ", ".join(parts)

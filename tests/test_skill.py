@@ -48,10 +48,15 @@ class SkillFileTests(unittest.TestCase):
 
     def test_body_length_and_version_marker(self):
         self.assertLessEqual(len(self.lines), 150, "SKILL.md body must stay at or under 150 lines")
-        marker = "<!-- herdr-team skill v{}, cli >= 0.1 -->".format(SKILL_VERSION)
-        self.assertIn(marker, self.text)
+        import re
+
+        found = re.search(r"<!-- herdr-team skill v(\d+), cli >= ([0-9]+\.[0-9]+) -->", self.text)
+        self.assertIsNotNone(found, "SKILL.md must carry the version marker")
+        assert found is not None
+        self.assertEqual(int(found.group(1)), SKILL_VERSION)
         self.assertEqual(cmd_skill.skill_version_of(self.text), SKILL_VERSION)
-        self.assertTrue(VERSION.startswith("0.1"), "the marker's cli floor matches the plugin version line")
+        # The floor the marker advertises must be a CLI that actually exists.
+        self.assertTrue(VERSION.startswith(found.group(2)), "the marker's cli floor matches the plugin version line")
 
     def test_gate_and_commands(self):
         self.assertIn('test "${HERDR_ENV:-}" = 1 && herdr-team me', self.text)

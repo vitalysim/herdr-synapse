@@ -145,6 +145,7 @@ AUTO_BIND_FINGERPRINT = False
 SYSTEM_EVENTS = (
     "nudged", "toast", "retracted", "expired", "abandoned", "member_gone",
     "member_restarted", "rotated", "reset_detected", "charter_updated", "renamed", "typed", "member_joined",
+    "knowledge_updated", "instructions_updated", "knowledge_finding", "artifacts_changed",
 )
 
 _SAVE_RETRIES = 3

@@ -18,6 +18,7 @@ and read by ``who`` to show ``charter: stale``.
 
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -29,6 +30,7 @@ from herdr_team.errors import EXIT_REFUSED, HerdrTeamError
 from herdr_team.identity import Author, audit
 from herdr_team.paths import Layout, TeamPaths, canonicalize, check_not_symlink, ensure_team_dirs
 from herdr_team import roster as _roster
+from herdr_team import workdir as _workdir
 
 MAX_CHARTER_CHARS = 2000
 HEADLINE_CHARS = 120
@@ -198,6 +200,12 @@ def validate_refs(layout: Layout, team: str, refs: List[str], env: Optional[Dict
     team_paths = layout.team(team)
     team_root = canonicalize(team_paths.root)
     roots = safe_roots(roster_roots(layout, team), env)
+    # ``.herdr-team/`` is a dot-directory the plugin itself created, and
+    # ``artifacts/`` inside it is where members are told to put work products.
+    # Refusing it would make the folder useless for the one thing it is for.
+    # Decided on the *resolved* path: ``check_not_symlink`` lstats only the
+    # final component, so an intermediate symlink could otherwise point out.
+    project_dir = _workdir.project_dir_of(_roster.load_team(team_paths).to_json())
     out: List[str] = []
     for ref in refs:
         if not isinstance(ref, str) or not ref.strip():
@@ -212,7 +220,7 @@ def validate_refs(layout: Layout, team: str, refs: List[str], env: Optional[Dict
         root = next((r for r in roots if _under(resolved, r)), None)
         if root is None:
             raise HerdrTeamError("ref_invalid", "ref must live under the team dir or a member's cwd: {}".format(ref), EXIT_REFUSED, {"ref": ref, "roots": [os.fspath(r) for r in roots]})
-        if _hidden_under(resolved, root):
+        if _hidden_under(resolved, root) and not _workdir.is_inside(resolved, project_dir):
             raise HerdrTeamError("ref_invalid", "ref sits under a dot-directory (.ssh, .aws, .config ...): {}".format(ref), EXIT_REFUSED, {"ref": ref, "root": os.fspath(root)})
         if _under(resolved, team_root):
             normalized = os.fspath(resolved.relative_to(team_root))
@@ -358,3 +366,189 @@ def charter_stale(member: _roster.Member, charter: Optional[Charter]) -> bool:
     if charter is None or member.is_human:
         return False
     return member.charter_seq_acked is None or int(member.charter_seq_acked) < charter.seq
+
+
+# --------------------------------------------------------------------------
+# knowledge base and per-member instructions
+#
+# Two authorities in one place. The rules are the operator's DOs and DON'Ts:
+# human only, like the charter, which is what makes them safe to inject into
+# an agent's context under operator authority. Findings are peer notes any
+# member may append; they are attributed, escaped, and never injected as
+# instructions. Instructions are the long form of a brief, also human only.
+# Every one of these lives in the team state dir, not in the project folder,
+# so no agent can edit what is later read back to its teammates as authority.
+
+MAX_INSTRUCTIONS_CHARS = 4000
+MAX_RULES_CHARS = 4000
+MAX_FINDING_CHARS = 400
+#: Findings kept in the rendered mirror and in reads; the file itself stays append-only.
+MAX_FINDINGS_SHOWN = 200
+
+
+def get_instructions(layout: Layout, team: str, member_name: str) -> Optional[str]:
+    """The authoritative long-form instructions for one member, or None."""
+    team_paths = layout.team(team)
+    try:
+        text = team_paths.instructions(member_name).read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return None
+    text = text.strip()
+    return text or None
+
+
+def set_instructions(layout: Layout, team: str, author: Author, member_name: str, text: Optional[str], file_path: Optional[str] = None, urgent: bool = False) -> Dict[str, Any]:
+    """Set one member's long-form instructions (human only)."""
+    require_human(layout, team, author, "instructions set")
+    team_paths = layout.team(team)
+    doc = _roster.load_team(team_paths)
+    member = doc.find(member_name)
+    if member is None or member.is_human or member.status == "left":
+        raise HerdrTeamError("member_not_found", "{!r} is not an agent member of team {!r}".format(member_name, team), EXIT_REFUSED, {"name": member_name, "team": team, "roster": doc.names()})
+    if file_path:
+        body = _read_text_file(file_path, MAX_INSTRUCTIONS_CHARS, "instructions_too_long")
+    else:
+        body = sanitize(str(text or ""), MAX_INSTRUCTIONS_CHARS, code="instructions_too_long")
+    ensure_team_dirs(team_paths)
+    target = team_paths.instructions(member.name)
+    if body:
+        store.atomic_write(target, (body + "\n").encode("utf-8"))
+    else:
+        store.atomic_write(target, b"")
+    # Addressed to ``all``: the member learns its job changed, and teammates
+    # learn who owns what, which is the thing a shared folder cannot tell them.
+    what = _one_line(body, 200) if body else "cleared"
+    seq = _roster.append_system_record(
+        team_paths, "instructions_updated",
+        "{}'s instructions updated: {} (read them: herdr-team instructions {})".format(member.name, what, member.name),
+        to=["all"], extra={"urgent": bool(urgent), "member": member.name, "chars": len(body)}, socket=os.fspath(layout.socket),
+    )
+    audit(layout, team, "instructions_set", author, {"member": member.name, "chars": len(body), "urgent": bool(urgent)})
+    return {"team": team, "member": member.name, "chars": len(body), "path": os.fspath(target), "record_seq": seq}
+
+
+def get_rules(layout: Layout, team: str) -> Optional[str]:
+    """The operator's DOs and DON'Ts for this team, or None."""
+    try:
+        text = layout.team(team).knowledge_md.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return None
+    text = text.strip()
+    return text or None
+
+
+def set_rules(layout: Layout, team: str, author: Author, text: Optional[str], file_path: Optional[str] = None, urgent: bool = False) -> Dict[str, Any]:
+    """Set the team's rules (human only; carries operator authority)."""
+    require_human(layout, team, author, "knowledge set")
+    team_paths = layout.team(team)
+    if file_path:
+        body = _read_text_file(file_path, MAX_RULES_CHARS, "rules_too_long")
+    else:
+        body = sanitize(str(text or ""), MAX_RULES_CHARS, code="rules_too_long")
+    ensure_team_dirs(team_paths)
+    store.atomic_write(team_paths.knowledge_md, ((body + "\n") if body else "").encode("utf-8"))
+    # The board is how a member learns anything changed. A ``system`` record to
+    # ``all`` is seen on the next board read (and by Claude on its next prompt)
+    # without waking anyone; ``--urgent`` nudges, exactly as the charter does.
+    headline = _one_line(body, 200) if body else "the team rules were cleared"
+    seq = _roster.append_system_record(
+        team_paths, "knowledge_updated",
+        "team rules updated: {} (full text: herdr-team knowledge)".format(headline),
+        to=["all"], extra={"urgent": bool(urgent), "chars": len(body)}, socket=os.fspath(layout.socket),
+    )
+    audit(layout, team, "knowledge_set", author, {"chars": len(body), "urgent": bool(urgent)})
+    return {"team": team, "chars": len(body), "path": os.fspath(team_paths.knowledge_md), "record_seq": seq}
+
+
+def read_findings(layout: Layout, team: str, limit: int = MAX_FINDINGS_SHOWN) -> List[Dict[str, Any]]:
+    """The newest findings, oldest first. A malformed line is skipped, never fatal."""
+    path = layout.team(team).knowledge_jsonl
+    out: List[Dict[str, Any]] = []
+    raw = store.read_bytes(path, b"") or b""
+    for line in raw.decode("utf-8", "replace").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue  # a half-written or hand-edited line is skipped, never fatal
+        if isinstance(record, dict) and isinstance(record.get("text"), str):
+            out.append(record)
+    if limit and len(out) > limit:
+        out = out[-limit:]
+    return out
+
+
+def add_finding(layout: Layout, team: str, author: Author, text: str) -> Dict[str, Any]:
+    """Append one attributed finding. Any member may do this; it is a peer note, not a rule."""
+    if not author.is_member and not author.is_human:
+        raise HerdrTeamError("not_a_member", "this pane is not a member of team {!r}".format(team), EXIT_REFUSED, {"team": team, "author": author.name})
+    body = sanitize(str(text or ""), MAX_FINDING_CHARS, code="finding_too_long")
+    if not body:
+        raise HerdrTeamError("usage", "a finding needs text", EXIT_REFUSED, {"team": team})
+    body = " ".join(body.split())
+    team_paths = layout.team(team)
+    ensure_team_dirs(team_paths)
+    record = {
+        "at": store.now_iso(),
+        "author": author.name,
+        "kind": author.kind or ("human" if author.is_human else "?"),
+        "text": body,
+    }
+    _append_finding(team_paths.knowledge_jsonl, record)
+    # A finding is a peer note, so it goes on the board as one: attributed to the
+    # member, addressed to everyone, and never phrased as an instruction.
+    seq = _roster.append_system_record(
+        team_paths, "knowledge_finding",
+        "{} recorded a finding: {} (all of them: herdr-team knowledge)".format(author.name, body),
+        # Not a "text" key: ``extra`` is merged into the record and would clobber it.
+        to=["all"], extra={"author": author.name, "finding": body}, socket=os.fspath(layout.socket),
+    )
+    audit(layout, team, "knowledge_finding", author, {"chars": len(body)})
+    return {"team": team, "finding": record, "record_seq": seq}
+
+
+def _one_line(text: str, limit: int) -> str:
+    """One line of at most ``limit`` chars, for a board record's summary."""
+    flat = " ".join(str(text or "").split())
+    return flat if len(flat) <= limit else flat[: limit - 1].rstrip() + "…"
+
+
+def _append_finding(path: Path, record: Dict[str, Any]) -> None:
+    """One ``O_APPEND`` write of one line, so concurrent members cannot interleave."""
+    payload = (json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+    check_not_symlink(path)
+    fd = store.secure_open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT)
+    try:
+        written = os.write(fd, payload)
+        if written != len(payload):
+            raise HerdrTeamError("write_failed", "short write appending a finding", EXIT_REFUSED, {"path": os.fspath(path), "written": written, "expected": len(payload)})
+    except OSError as err:
+        raise HerdrTeamError("write_failed", "cannot append a finding: {}".format(err), EXIT_REFUSED, {"path": os.fspath(path)}) from err
+    finally:
+        os.close(fd)
+
+
+def _read_text_file(file_path: str, max_chars: int, code: str) -> str:
+    """Read a ``--file`` argument the way ``set_charter`` reads ``--charter-file``."""
+    resolved = canonicalize(file_path)
+    check_not_symlink(resolved)
+    try:
+        st = os.stat(resolved)
+    except OSError as err:
+        raise HerdrTeamError("path_invalid", "cannot read {}: {}".format(file_path, err), EXIT_REFUSED, {"path": file_path}) from err
+    if st.st_size > MAX_CHARTER_FILE_BYTES:
+        raise HerdrTeamError(code, "file exceeds {} bytes".format(MAX_CHARTER_FILE_BYTES), EXIT_REFUSED, {"path": file_path, "bytes": st.st_size})
+    try:
+        raw = resolved.read_text(encoding="utf-8", errors="replace")
+    except OSError as err:
+        raise HerdrTeamError("path_invalid", "cannot read {}: {}".format(file_path, err), EXIT_REFUSED, {"path": file_path}) from err
+    body = sanitize(raw, MAX_CHARTER_FILE_BYTES, code=code)
+    if len(body) > max_chars:
+        body = body[:max_chars].rstrip()
+    return body

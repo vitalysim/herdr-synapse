@@ -50,6 +50,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 from herdr_team import PLUGIN_ID, VERSION, gate, nudge, render, roster, sanitize, store
+from herdr_team import workdir as _workdir
 from herdr_team.api import HerdrApi, IDENTITY_ENV_VARS, PROMPT_TIMEOUT_S, read_text, scrub_env
 from herdr_team.errors import EXIT_DAEMON_DOWN, EXIT_OK, EXIT_REFUSED, EXIT_UNREACHABLE, HerdrTeamError, LockTimeout
 from herdr_team.ledger import (
@@ -92,6 +93,9 @@ SUBSCRIPTIONS = ("pane.agent_detected", "pane.closed", "pane.exited", "pane.move
 SUPPORTED_HERDR_MAJOR_MINOR = "0.8"
 VERSION_WATCH_S = 5.0
 RECONCILE_POLL_S = 10.0
+#: The team artifacts walk is filesystem work on a per-team loop, so it runs on
+#: its own slow cadence rather than with every ``scan_teams`` (every 2 s).
+ARTIFACTS_POLL_S = 10.0
 RECONCILE_POLL_BOUND_S = 300.0
 JOBS_POLL_S = 0.5
 WHO_COALESCE_S = 1.0
@@ -1096,6 +1100,10 @@ class TeamState:
     human_queue: List[Dict[str, Any]] = field(default_factory=list)
     retracted: Set[int] = field(default_factory=set)
     open_intents: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    #: Last seen ``artifacts/`` fingerprint, or None before the first scan (which only seeds it).
+    artifacts_seen: Optional[Dict[str, Tuple[int, int]]] = None
+    #: When that scan last ran; the walk is throttled to ``ARTIFACTS_POLL_S``.
+    artifacts_scanned_ms: Optional[float] = None
     #: ``say`` lines typed and awaiting confirmation, by member name (``confirm_says``).
     say_inflight: Dict[str, SayState] = field(default_factory=dict)
     #: Monotonic ms of the last interrupt typed per ``(sender, target)``: the ``interrupt_cooldown_ms`` clock.
@@ -1687,6 +1695,60 @@ class Daemon:
             team.roster = doc
             self._reload_gate_config(team)
             self._assign_color_slot(team)
+            self._refresh_workdir(team)
+            self._watch_artifacts(team)
+
+    def _watch_artifacts(self, team: TeamState) -> None:
+        """Post one board record when the team's ``artifacts/`` tree changes.
+
+        This is what makes the folder a shared surface rather than a drop box:
+        a file any member writes, or the operator drops in by hand, becomes
+        something the whole team can see. The record is a ``system`` record
+        addressed to everyone, so it is picked up on the next board read (and
+        by Claude on its next prompt) without waking anyone mid-turn.
+
+        The first scan after the daemon sees a folder only seeds the
+        fingerprint. Without that a restart would re-announce every file.
+        """
+        project = _workdir.project_dir_of(team.roster)
+        if not project:
+            team.artifacts_seen = None
+            return
+        now = self.now_ms()
+        if team.artifacts_scanned_ms is not None and now - team.artifacts_scanned_ms < ARTIFACTS_POLL_S * 1000.0:
+            return
+        team.artifacts_scanned_ms = now
+        try:
+            current = _workdir.fingerprint_artifacts(project, team.name)
+        except OSError as err:
+            self.log("{}: cannot read the team artifacts: {}".format(team.name, err))
+            return
+        previous = team.artifacts_seen
+        team.artifacts_seen = current
+        if previous is None:
+            return
+        line = _workdir.describe_change(team.name, _workdir.diff_artifacts(previous, current))
+        if line is None:
+            return
+        self.log("{}: {}".format(team.name, line))
+        self._append_system(team, "artifacts_changed", line, ["all"])
+
+    def _refresh_workdir(self, team: TeamState) -> None:
+        """Keep the project mirror current after a roster change.
+
+        Only ever runs once a human has set ``project_dir``, and never fails a
+        tick: the folder is a convenience, and the checkout may be read-only,
+        on a full disk, or hold a file somebody else wrote.
+        """
+        if not _workdir.project_dir_of(team.roster):
+            return
+        try:
+            result = _workdir.render(self.layout, team.name)
+        except Exception as err:  # noqa: BLE001 - F-07: the daemon must outlive one bad file
+            self.log("{}: team folder not refreshed: {}: {}".format(team.name, type(err).__name__, err))
+            return
+        for path in result.get("skipped") or []:
+            self.log("{}: team folder left {} alone; it is not ours".format(team.name, path))
 
     def _assign_color_slot(self, team: TeamState) -> None:
         """Give a team the lowest sidebar colour slot no other team holds, once, and persist it.
@@ -2546,7 +2608,20 @@ class Daemon:
         if charter and isinstance(charter.get("text"), str):
             headline = " ".join(charter["text"].split())
         teammates = [(str(m.get("name")), str(m.get("role") or "")) for m in team.members() if m.get("name") != name and m.get("kind") != "human"]
-        lines = briefing_lines_for(name, str(member.get("role") or ""), team.name, headline, teammates, member.get("brief") if isinstance(member.get("brief"), str) else None, self.cli_path)
+        brief = member.get("brief") if isinstance(member.get("brief"), str) else None
+        try:
+            lines = briefing_lines_for(name, str(member.get("role") or ""), team.name, headline, teammates, brief, self.cli_path)
+        except (HerdrTeamError, ValueError) as err:
+            # ``NudgeTextError`` is a ``ValueError``, not a ``HerdrTeamError``, and the
+            # 400-char budget can genuinely overflow on long names with many teammates.
+            # Dropping the optional parts still gets the member briefed; raising here
+            # left it silently unbriefed forever.
+            self.log("{}: full briefing for {} did not fit ({}); falling back to the minimal one".format(team.name, name, err))
+            try:
+                lines = briefing_lines_for(name, str(member.get("role") or ""), team.name, None, [], None, self.cli_path)
+            except (HerdrTeamError, ValueError) as inner:
+                self.log("{}: cannot brief {} at all: {}".format(team.name, name, inner))
+                return
         pending = Pending(first_ms=now, kind="brief", lines=lines)
         existing = team.pending.get(name)
         if existing is not None and existing.kind == "nudge":

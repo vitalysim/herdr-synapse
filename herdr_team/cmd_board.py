@@ -34,6 +34,7 @@ from herdr_team import render as _render
 from herdr_team import roster as _roster
 from herdr_team import sanitize as _sanitize
 from herdr_team import store
+from herdr_team import workdir as _workdir
 from herdr_team.cli import api_for, emit, layout_for
 from herdr_team.errors import (
     EXIT_DAEMON_DOWN,
@@ -68,6 +69,7 @@ RECORD_KINDS = POST_KINDS + ("direct", "retract", "system")
 SYSTEM_EVENTS = (
     "nudged", "toast", "retracted", "expired", "abandoned", "member_gone", "member_restarted",
     "rotated", "reset_detected", "charter_updated", "renamed", "typed", "member_joined",
+    "knowledge_updated", "instructions_updated", "knowledge_finding", "artifacts_changed",
 )
 HUMAN_VIAS = (VIA_CONSOLE, VIA_CONSOLE_UNFOCUSED, VIA_POPUP, VIA_OUTSIDE)
 #: ``say`` (docs/cli.md section 7): only the verified team console may type into a member. A shell pane is
@@ -727,7 +729,10 @@ def resolve_files(layout: Layout, team_name: str, files: Sequence[str], doc: Opt
             source = next((root / source for root in roots if (root / source).is_file()), roots[0] / source)
         if not source.is_file():
             raise HerdrTeamError("ref_invalid", "file does not exist under your directory or any member's: {}".format(raw), EXIT_REFUSED, {"ref": raw, "searched": [os.fspath(r) for r in roots]})
-        if any(part.startswith(".") and part not in (".", "..") for part in source.resolve().parts[1:]):
+        project_dir = _workdir.project_dir_of(doc)
+        if any(part.startswith(".") and part not in (".", "..") for part in source.resolve().parts[1:]) and not _workdir.is_inside(source, project_dir):
+            # The team's own ``.herdr-team/artifacts/`` is the exception: it is
+            # where members are told to leave work products, and it is ours.
             raise HerdrTeamError("ref_invalid", "file sits under a dot-directory (.ssh, .aws, .config ...): {}".format(raw), EXIT_REFUSED, {"ref": raw, "path": os.fspath(source)})
         try:
             for ref in validate_refs(layout, team_name, [os.fspath(source)], doc, env=env):
@@ -1344,8 +1349,9 @@ def _ref_entry(layout: Layout, team_name: str, team: TeamPaths, doc: Dict[str, A
     if root is None:
         entry["skipped"] = "outside payloads/ and roster roots"
         return entry
-    if _hidden_parts(resolved, root) and not force:
+    if _hidden_parts(resolved, root) and not force and not _workdir.is_inside(resolved, _workdir.project_dir_of(doc)):
         # A cwd recorded as HOME after a restart is never a root; a dot-directory under a real root still is not cat-able by default.
+        # The team's own .herdr-team/ is the exception: the plugin created it and tells members to write there.
         entry["skipped"] = "under a dot-directory (pass --force)"
         return entry
     raw = store.read_bytes(resolved, b"") or b""

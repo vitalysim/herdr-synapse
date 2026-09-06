@@ -414,6 +414,24 @@ class TeamPaths:
         return self.root / "charter.md"
 
     @property
+    def knowledge_md(self) -> Path:
+        """The team's knowledge base: operator rules plus attributed member findings."""
+        return self.root / "knowledge.md"
+
+    @property
+    def knowledge_jsonl(self) -> Path:
+        """Append-only member findings, attributed; the rules live in ``knowledge_md``."""
+        return self.root / "knowledge.jsonl"
+
+    @property
+    def instructions_dir(self) -> Path:
+        return self.root / "instructions"
+
+    def instructions(self, member_name: str) -> Path:
+        """The authoritative copy of one member's long-form instructions."""
+        return self.instructions_dir / (_safe_stem(member_name, "name") + ".md")
+
+    @property
     def archive_dir(self) -> Path:
         return self.root / "archive"
 
@@ -483,6 +501,7 @@ class TeamPaths:
             self.briefings_dir,
             self.notifier_dir,
             self.jobs_dir,
+            self.instructions_dir,
         ]
 
 

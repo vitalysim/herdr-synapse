@@ -36,6 +36,7 @@ from herdr_team import paths as _paths
 from herdr_team import render as _render
 from herdr_team import roster as _roster
 from herdr_team import store
+from herdr_team import workdir as _workdir
 from herdr_team.cli import api_for, emit, layout_for
 from herdr_team.cmd_board import (
     AUTHOR_HUMAN,
@@ -206,12 +207,12 @@ def settle_workspace_agents(api: Any, workspace_id: str, timeout_s: Optional[flo
         _sleep(FROM_WORKSPACE_POLL_S)
 
 
-def _parse_brief_args(values: Optional[List[str]]) -> Dict[str, str]:
+def _parse_brief_args(values: Optional[List[str]], flag: str = "--brief") -> Dict[str, str]:
     out: Dict[str, str] = {}
     for value in values or []:
         name, sep, text = value.partition("=")
         if not sep or not name.strip() or not text.strip():
-            raise UsageError("--brief expects <name>=\"<text>\"")
+            raise UsageError("{} expects <name>=\"<text>\"".format(flag))
         out[name.strip()] = text
     return out
 
@@ -611,6 +612,10 @@ def _add_create_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--ref", action="append", default=[], metavar="PATH")
     parser.add_argument("--member", action="append", default=[], metavar="TARGET[:ROLE[:NAME]]")
     parser.add_argument("--brief", action="append", default=[], metavar="NAME=TEXT")
+    parser.add_argument("--project", metavar="PATH", help="the team's project directory; creates <path>/.herdr-team/<team>/")
+    parser.add_argument("--rules", metavar="TEXT", help="the team's DOs and DON'Ts (human only)")
+    parser.add_argument("--rules-file", dest="rules_file", metavar="PATH", help="read the rules from a file (human only)")
+    parser.add_argument("--instructions", action="append", default=[], metavar="NAME=TEXT", help="long-form instructions for one member, repeatable (human only)")
     parser.add_argument("--from-workspace", dest="from_workspace", metavar="ID")
     parser.add_argument("--names", choices=("prefixed", "plain"), default="prefixed")
     parser.add_argument("--rename", action="store_true", help="rename targets that already carry a name")
@@ -632,6 +637,13 @@ def _run_create(args: argparse.Namespace) -> int:
         raise UsageError("pass --charter or --charter-file, not both")
     if args.charter is not None or args.charter_file is not None:
         _human_only(layout, team_name, author, "create --charter")
+    if args.rules is not None and args.rules_file is not None:
+        raise UsageError("pass --rules or --rules-file, not both")
+    if args.rules is not None or args.rules_file is not None or args.instructions or args.project is not None:
+        _human_only(layout, team_name, author, "create --project/--rules/--instructions")
+    # Resolved before any write, so a bad path fails before the team exists.
+    project_dir = _workdir.resolve_project_dir(args.project, state_root=layout.state_root.path) if args.project is not None else None
+    instructions = _parse_brief_args(args.instructions, flag="--instructions")
     if args.new and (args.member or args.from_workspace):
         raise UsageError("--new takes --spawn, not --member or --from-workspace")
     if not args.new and not args.member and not args.from_workspace:
@@ -690,14 +702,59 @@ def _run_create(args: argparse.Namespace) -> int:
     team = _roster.create_team(layout, team_name, naming="plain" if names_plain else "prefixed", charter=None, reuse=args.reuse)
     team_paths = layout.team(team_name)
     try:
-        return _create_members(args, layout, api, env, author, team, team_paths, specs, spawn, briefs, names_plain, charter_body, known_before)
+        return _create_members(args, layout, api, env, author, team, team_paths, specs, spawn, briefs, names_plain, charter_body, known_before, project_dir, instructions)
     except BaseException:
         if fresh and not agent_members(load_doc(team_paths)):
             shutil.rmtree(team_paths.root, ignore_errors=True)
         raise
 
 
-def _create_members(args: argparse.Namespace, layout: Layout, api: Any, env: Dict[str, str], author: Author, team: _roster.Team, team_paths: TeamPaths, specs: List[_JoinSpec], spawn: List[Dict[str, Any]], briefs: Dict[str, str], names_plain: bool, charter_body: Optional[str], known_before: List[str]) -> int:
+def _apply_workdir_setup(
+    args: argparse.Namespace, layout: Layout, team_name: str, team_paths: TeamPaths, author: Author,
+    project_dir: Optional[Path], instructions: Optional[Dict[str, str]], members_out: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """``create --project/--rules/--instructions``, applied once the roster exists.
+
+    Returns what to show. When no project directory was asked for, this only
+    *suggests* one: the plugin never writes into a repository the operator did
+    not name, so the hint carries the exact command rather than acting on it.
+    """
+    out: Dict[str, Any] = {"project_dir": None, "folder": None, "hints": [], "warnings": []}
+    if project_dir is not None:
+        def apply(doc: _roster.Team) -> None:
+            doc.config["project_dir"] = os.fspath(project_dir)
+
+        _roster.update_team(team_paths, apply)
+        out["project_dir"] = os.fspath(project_dir)
+        out["folder"] = os.fspath(_workdir.team_root(os.fspath(project_dir), team_name))
+
+    if args.rules is not None or args.rules_file is not None:
+        _charter.set_rules(layout, team_name, author, args.rules, args.rules_file)
+
+    live = {str(m.get("name")) for m in members_out}
+    for name, text in (instructions or {}).items():
+        if name not in live:
+            out["warnings"].append("--instructions {}=…: no member of that name joined; skipped".format(name))
+            continue
+        _charter.set_instructions(layout, team_name, author, name, text, None)
+
+    if project_dir is not None:
+        result = _workdir.render(layout, team_name)
+        for path in result.get("skipped") or []:
+            out["warnings"].append("left {} alone; it is not ours (pass --force to project render)".format(path))
+        return out
+
+    # No folder asked for. Name the directory the members share, if they share one.
+    # ``member_roots`` reads dicts, not ``Member`` objects: it silently sees no
+    # cwd on a dataclass, so the roster document is what has to go in.
+    shared = _roster.member_roots(members_of(load_doc(team_paths)))
+    if shared:
+        out["hints"].append("team folder: none. All members are in {}; to give the team one, run:".format(shared[0]))
+        out["hints"].append("  herdr-team project set {} --team {}".format(shared[0], team_name))
+    return out
+
+
+def _create_members(args: argparse.Namespace, layout: Layout, api: Any, env: Dict[str, str], author: Author, team: _roster.Team, team_paths: TeamPaths, specs: List[_JoinSpec], spawn: List[Dict[str, Any]], briefs: Dict[str, str], names_plain: bool, charter_body: Optional[str], known_before: List[str], project_dir: Optional[Path] = None, instructions: Optional[Dict[str, str]] = None) -> int:
     team_name = team.team
     charter_doc: Optional[Dict[str, Any]] = None
     if charter_body is not None or args.charter_file is not None:
@@ -740,11 +797,14 @@ def _create_members(args: argparse.Namespace, layout: Layout, api: Any, env: Dic
         set_default = True
     elif default_team != team_name:
         warn(args, "default team stays {!r}; run: herdr-team use {}".format(default_team or (others[0] if others else "?"), team_name))
+    # After the roster exists, so the folder renders one file per member.
+    workdir_result = _apply_workdir_setup(args, layout, team_name, team_paths, author, project_dir, instructions, members_out)
     payload = {
         "team": team_name, "team_dir": os.fspath(team_paths.root), "created": True, "members": members_out,
         "charter": {"seq": charter_doc["seq"], "headline": charter_headline(charter_doc)} if charter_doc else None,
         "notifier": notifier_state(layout.session), "default_team": set_default, "briefing_jobs": jobs,
         "pending": list(getattr(args, "_still_pending", []) or []), "failed": [m["name"] for m in failed],
+        "project_dir": workdir_result.get("project_dir"), "team_folder": workdir_result.get("folder"),
     }
 
     def human() -> str:
@@ -755,9 +815,15 @@ def _create_members(args: argparse.Namespace, layout: Layout, api: Any, env: Dic
             lines.append("  {} still starting; add it later".format(pane_id))
         if charter_doc:
             lines.append("charter #{}: {}".format(charter_doc["seq"], charter_headline(charter_doc)))
+        if payload.get("team_folder"):
+            lines.append("team folder: {}".format(payload["team_folder"]))
+        for hint in workdir_result.get("hints") or []:
+            lines.append(hint)
         lines.append("notifier: {}".format(payload["notifier"]))
         return "\n".join(lines)
 
+    for hint in workdir_result.get("warnings") or []:
+        warn(args, hint)
     return emit(args, payload, human)
 
 
@@ -988,6 +1054,13 @@ def _run_me(args: argparse.Namespace) -> int:
         "skill_version": SKILL_VERSION, "skill_installed": installed, "skill_ok": installed == SKILL_VERSION,
         "cli": cli_path(), "notifier": notifier_state(layout.session),
     }
+    # The team folder is how an agent differentiated only by a file finds that
+    # file. Both paths are absolute so a member outside the project can read them.
+    project = _workdir.project_dir_of(doc)
+    if project:
+        payload["project_dir"] = project
+        payload["team_dir"] = os.fspath(_workdir.team_root(project, team_name))
+        payload["instructions_path"] = os.fspath(_workdir.team_root(project, team_name) / "members" / (author.name + ".md"))
     if installed is not None and installed != SKILL_VERSION:
         warn(args, "installed skill v{} differs from v{}; run: herdr-team skill install".format(installed, SKILL_VERSION))
     return emit(args, payload, lambda: _render.render_me(payload, doc))

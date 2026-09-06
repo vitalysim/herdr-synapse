@@ -134,6 +134,21 @@ Errors: `team_name_invalid`, `team_exists` (unless `--reuse`), `role_invalid`,
 `member_claimed` (details `owner_team`), `agent_not_found`, `not_an_agent`,
 `launch_pending`, `charter_too_long`, `server_not_running` (3).
 
+`create` also takes the working-directory setup, so a team can be complete in
+one command (all four are human only):
+
+| Flag | Effect |
+| --- | --- |
+| `--project <path>` | records the project directory and creates the folder |
+| `--rules "<text>"` / `--rules-file <path>` | the team's DOs and DON'Ts |
+| `--instructions NAME=TEXT` | long-form instructions for one member, repeatable |
+
+The path is resolved before any write, so a bad one fails before the team
+exists. `--instructions` for a name that did not join warns and is skipped
+rather than failing the create. When `--project` is not given and the members
+share one existing directory, `create` prints that directory and the exact
+`project set` command; it never acts on the suggestion itself.
+
 ### `add <team> <target> [--role <r>] [--as <name>] [--brief "<text>"] [--steal]`
 
 Same join routine for one member. Then posts an urgent `member_joined` system record to `all`
@@ -218,6 +233,96 @@ JSON `{"team","history":[{"seq":57,"ts":"…","charter_seq":3,"text":"…","refs
 
 Sets the member's role brief (≤ 300 chars delivered in the briefing line;
 the rest via `me`). JSON `{"team","member":"<name>","brief":"…"}`.
+
+### `instructions [<name>] [--set "<text>" | --file <path> | --clear]`
+
+The long form of a brief: what this member in particular is here to do, up
+to 4000 characters. Reading is open to anyone; setting is human only. The
+authoritative copy lives in the team state dir. When the team has a project
+directory, a mirror is rendered to `members/<name>.md` inside it, and Claude
+members also receive the text in their session context.
+
+Appends an `instructions_updated` system record addressed to everyone, so the
+member learns its job changed and teammates learn who owns what; `--urgent`
+nudges. With no name, shows your own.
+JSON `{"team","member","chars","path","record_seq"}`.
+
+### `knowledge [--limit N]`
+
+Prints the team's rules and its findings.
+
+### `knowledge set "<text>" | --file <path>` (human only)
+
+The team's DOs and DON'Ts, up to 4000 characters. These carry operator
+authority: they are injected into Claude members' context alongside the
+charter, so only a human may set them. Appends a `knowledge_updated` system
+record so members see the change on their next board read; `--urgent` nudges
+them instead of waiting. JSON `{"team","chars","path","record_seq"}`.
+
+### `knowledge add "<text>"`
+
+Appends one finding, up to 400 characters, attributed to the pane that ran
+it. Any member may do this. Findings are peer notes: they are escaped, they
+are never injected as instructions, and no finding can turn into a rule.
+Appends a `knowledge_finding` system record so the team sees it.
+JSON `{"team","finding":{"at","author","kind","text"},"record_seq"}`.
+
+### `knowledge clear` (human only)
+
+Clears the rules. Findings are append-only and are not affected.
+
+## 5a. The team working directory
+
+### `project`
+
+Shows the team's project directory and the folder inside it, or `none`.
+
+### `project set <path>` (human only)
+
+Also available at team creation as `create --project <path>`, and as a stage
+in the `prefix+t` wizard, which prefills the directory the selected agents
+already share (Tab skips it). Records the directory and creates `<path>/.herdr-team/<team>/`. This is the
+consent gate: the plugin never infers a project directory and never writes
+into a repository until a human runs this. The path must be an existing
+directory, and the filesystem root, `$HOME`, and the plugin's own state dir
+are refused.
+
+The folder holds a generated `README.md` and `.gitignore` at the top level,
+and per team a `knowledge.md`, a `members/<name>.md` per member, and an
+`artifacts/` directory members own outright. Everything except `artifacts/`
+is a rendered mirror of state that lives elsewhere: edits to it are reported
+as drift and overwritten, never imported. A file without the plugin's marker
+on its first line is somebody else's and is left alone unless `--force`.
+
+### `project clear` (human only)
+
+Stops the plugin writing to the folder. Nothing is deleted; the plugin never
+deletes anything under a project directory, including when a member is
+removed or renamed. Those get a tombstone written over their file instead.
+
+### `project render [--force]`
+
+Regenerates the mirror. Runs automatically after a roster change and after
+any write to the knowledge base or a member's instructions.
+
+### `knowledge-status`
+
+Every team in the session at a glance: which have a working folder, their
+rules, how many members have instructions, findings, artifacts, and any
+issue (a project directory that is gone, unwritable, or holds a file the
+plugin did not write). A team with no folder is printed with the exact
+`project set` command that gives it one. `prefix+f` opens the same report as
+a scrollable popup (`ui knowledge`, or `knowledge-pane` inside it), the way
+`prefix+i` shows usage.
+
+### Watching `artifacts/`
+
+The notifier fingerprints `<team>/artifacts/` on each reconcile (every 10s)
+and appends one batched `artifacts_changed` system record when files are
+added, changed, or removed, whoever did it: a member, you, or another tool.
+The first scan after the daemon starts only seeds the fingerprint, so a
+restart does not re-announce a folder full of existing files. At most 500
+files are walked per scan and 8 named per record, the rest counted.
 
 ## 6. Self and roster views
 
@@ -586,6 +691,10 @@ Never fails on warnings; `ok:false` only on hard problems. JSON:
  "teams":[{"team","members","missing":n}],"console":{"open":bool,"pane_id"},
  "warnings":["…"],"errors":["…"]}
 ```
+
+Among the warnings: a team whose `project_dir` has been deleted or has become
+read-only. The mirror is refreshed best effort, so without this the folder
+would just stop updating with nothing on screen to say why.
 
 ### `setup --print-config`
 

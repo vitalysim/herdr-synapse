@@ -76,6 +76,21 @@ def fetch_agents(api: Any) -> List[Dict[str, Any]]:
     return [a for a in (agents or []) if isinstance(a, dict)]
 
 
+def _folder_status(layout: Optional[Layout], teams: List[str]) -> Dict[str, Dict[str, Any]]:
+    """``workdir.status`` per team, for the tree. A broken team is skipped, never fatal."""
+    from herdr_team import workdir as _workdir
+
+    out: Dict[str, Dict[str, Any]] = {}
+    if layout is None:
+        return out
+    for name in teams:
+        try:
+            out[name] = _workdir.status(layout, name)
+        except Exception:  # noqa: BLE001 - the picker must open even when one team is unreadable
+            continue
+    return out
+
+
 def build_model(api: Any, context: Dict[str, Any], layout: Optional[Layout] = None) -> PickerModel:
     """Rows from ``agent.list``, claimed rows from the session rosters, scope from the context."""
     agents = fetch_agents(api)
@@ -87,6 +102,7 @@ def build_model(api: Any, context: Dict[str, Any], layout: Optional[Layout] = No
     model = PickerModel(rows=rows, focused_workspace=focused)
     model.rosters = rosters
     model.charters = {name: doc["charter"] for name, doc in teams.items() if isinstance(doc.get("charter"), dict)}
+    model.folders = _folder_status(layout, sorted(teams))
     model.live_names = {str(a.get("name")) for a in agents if a.get("name")}
     model.existing_teams = sorted(rosters)
     model.existing_team_sizes = {team: len([m for m in members if m.get("kind") != "human" and m.get("status") != "left"]) for team, members in rosters.items()}
@@ -128,6 +144,7 @@ def refresh_rows(model: PickerModel, api: Any, layout: Optional[Layout]) -> None
     model.existing_team_sizes = fresh.existing_team_sizes
     model.rosters = fresh.rosters
     model.charters = fresh.charters
+    model.folders = fresh.folders
     model.collapsed &= set(model.rosters)
     if not tui_model.focus_node(model, keep_key):
         model.cursor = min(model.cursor, max(0, len(tui_model.picker_tree(model)) - 1))
@@ -176,6 +193,8 @@ def create_args(spec: Dict[str, Any]) -> List[str]:
     args: List[str] = ["create", str(spec["team"])]
     if spec.get("charter"):
         args += ["--charter", str(spec["charter"])]
+    if spec.get("project"):
+        args += ["--project", str(spec["project"])]
     for member in spec.get("members") or []:
         target = "{}:{}:{}".format(member["target"], member["role"], member["name"])
         args += ["--member", target]
@@ -285,7 +304,7 @@ def run(layout: Layout, api: Any, env: Dict[str, str], actions: bool = True) -> 
 
 
 #: Member actions the tree can run while the popup stays open.
-ACTION_INTENTS = ("member_rename", "member_goal", "member_send_goal", "member_remove", "member_focus")
+ACTION_INTENTS = ("member_rename", "member_goal", "member_send_goal", "member_remove", "member_focus", "team_folder_set")
 #: ``remove`` and ``rename`` do several socket round trips plus a lock wait; the console's 20 s is too
 #: tight for them, and a timeout kills the CLI mid-change (M8 review).
 ACTION_TIMEOUT_S = 45.0
@@ -296,6 +315,7 @@ ACTION_LABELS = {
     "member_send_goal": "sending the goal to {member}",
     "member_remove": "removing {member} from {team}",
     "member_focus": "going to {member}",
+    "team_folder_set": "setting the folder for {team}",
 }
 
 
@@ -303,7 +323,7 @@ def action_args(intent: Any) -> List[str]:
     """The CLI argv for one member action (``remove`` takes the team twice: global flag and positional)."""
     args = intent.args
     team = str(args["team"])
-    member = str(args["member"])
+    member = str(args.get("member") or "")
     if intent.kind == "member_remove":
         argv = ["--team", team, "remove", team, member]
         if args.get("keep_name"):
@@ -311,6 +331,8 @@ def action_args(intent: Any) -> List[str]:
         return argv
     if intent.kind == "member_rename":
         return ["--team", team, "rename", member, str(args["new"])]
+    if intent.kind == "team_folder_set":
+        return ["--team", team, "project", "set", str(args.get("path") or "")]
     if intent.kind == "member_goal":
         return ["--team", team, "brief", member, "--set", str(args.get("text") or "")]
     if intent.kind == "member_send_goal":
@@ -322,7 +344,12 @@ def action_failure_status(intent: Any, err: Dict[str, Any]) -> str:
     """One line naming what failed and what to do about it."""
     code = str(err.get("code") or "error")
     message = str(err.get("message") or code)
-    member = str(intent.args.get("member"))
+    member = str(intent.args.get("member") or "")
+    if intent.kind == "team_folder_set":
+        if code in ("path_invalid", "workdir_foreign_file"):
+            return message
+        if code == "author_mismatch":
+            return "setting a team folder is human only"
     if code == "daemon_down":
         tail = "the goal is saved; only sending it needs the notifier" if intent.kind == "member_send_goal" else "start it with: herdr-team daemon start"
         return "the team notifier is not running ({})".format(tail)
@@ -347,7 +374,11 @@ def action_failure_status(intent: Any, err: Dict[str, Any]) -> str:
 
 def action_success_status(intent: Any, out: Any) -> str:
     args = intent.args
-    member = str(args.get("member"))
+    member = str(args.get("member") or "")
+    if intent.kind == "team_folder_set":
+        written = len((out or {}).get("written") or []) if isinstance(out, dict) else 0
+        return "{} now has a folder at {} ({} file{} written)".format(
+            args.get("team"), args.get("path"), written, "" if written == 1 else "s")
     if intent.kind == "member_rename":
         return "{} is now {} (the old name still resolves for 10 min)".format(member, args.get("new"))
     if intent.kind == "member_goal":
@@ -367,6 +398,8 @@ def member_still_matches(layout: Optional[Layout], intent: Any) -> bool:
     """Guard against a roster that changed while the tree sat on screen or a call blocked."""
     if layout is None:
         return True
+    if not intent.args.get("member"):
+        return True  # a team-level action (the folder) is not about one member
     doc = store.read_json(layout.team(str(intent.args["team"])).team_json, None)
     if not isinstance(doc, dict):
         return False
@@ -391,7 +424,7 @@ def execute_action(intent: Any, model: PickerModel, api: Any, layout: Optional[L
     rc, out, err = run_cli(action_args(intent), env, timeout=ACTION_TIMEOUT_S)
     if err:
         model.error = action_failure_status(intent, err)
-        if intent.kind not in ("member_rename", "member_goal"):
+        if intent.kind not in ("member_rename", "member_goal", "team_folder_set"):
             model.stage = "select"  # a text stage keeps what was typed so it can be corrected
         return True
     model.error = None
@@ -405,7 +438,7 @@ def execute_action(intent: Any, model: PickerModel, api: Any, layout: Optional[L
     model.stage = "select"
     if intent.kind == "member_rename":
         tui_model.focus_node(model, "member:{}/{}".format(intent.args["team"], intent.args["new"]))
-    elif intent.kind == "member_remove":
+    elif intent.kind in ("member_remove", "team_folder_set"):
         tui_model.focus_node(model, "team:{}".format(intent.args["team"]))
     else:
         tui_model.focus_node(model, "member:{}/{}".format(intent.args["team"], intent.args["member"]))

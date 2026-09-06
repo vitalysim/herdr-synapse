@@ -32,9 +32,9 @@ from herdr_team.api import plugin_pane_id
 from herdr_team.cli import Command, api_for, emit, layout_for
 from herdr_team.errors import HerdrTeamError
 
-UI_TARGETS = ("picker", "compose", "console", "who", "usage", "close")
+UI_TARGETS = ("picker", "compose", "console", "who", "usage", "knowledge", "close")
 #: Manifest placement per entrypoint (herdr-plugin.toml ``[[panes]]``).
-PLACEMENTS = {"picker": "popup", "compose": "popup", "console": "split", "who": "popup", "usage": "popup"}
+PLACEMENTS = {"picker": "popup", "compose": "popup", "console": "split", "who": "popup", "usage": "popup", "knowledge": "popup"}
 #: ``ui who`` opens the console entrypoint as a popup started on its roster
 #: box (``console.START_VIEW_ENV``).
 WHO_ENV = console.START_VIEW_ENV

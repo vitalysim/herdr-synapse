@@ -2019,6 +2019,8 @@ class PickerRow:
     brief: str = ""
     claimed_by: str = ""  # team that already owns this agent, if any
     terminal_id: str = ""
+    #: The agent's working directory, used to prefill the project stage.
+    cwd: str = ""
 
 
 @dataclass
@@ -2026,9 +2028,15 @@ class PickerModel:
     rows: List[PickerRow]
     cursor: int = 0
     scope_workspace: Optional[str] = None
-    stage: str = "select"  # select | target | name | charter | members | confirm
+    stage: str = "select"  # select | target | name | charter | project | members | confirm
     team_name: str = ""
     charter: str = ""
+    #: The team's project directory; "" means the team gets no working folder.
+    project: str = ""
+    #: ``workdir.status`` per existing team, for the tree's folder column (filled by the runtime).
+    folders: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    #: The team whose folder the ``team_folder`` stage is setting.
+    folder_team: str = ""
     error: Optional[str] = None
     #: ``create`` a new team, or ``add`` the selected agents to an existing team (the target stage).
     mode: str = "create"
@@ -2134,6 +2142,7 @@ def picker_rows_from_agent_list(agents: List[Dict[str, Any]], focused_workspace:
                 agent_status=str(agent.get("agent_status") or "unknown"),
                 launch_pending=bool(agent.get("launch_pending")),
                 terminal_id=str(agent.get("terminal_id") or ""),
+                cwd=str(agent.get("cwd") or ""),
             )
         )
     rows.sort(key=lambda r: (_id_sort_key(r.workspace_id), _pane_sort_key(r.pane_id)))
@@ -2387,7 +2396,8 @@ def create_spec(model: PickerModel) -> Dict[str, Any]:
                 "renamed": bool(row.name and row.name != row.member_name),
             }
         )
-    return {"team": model.team_name, "charter": model.charter or None, "naming": "prefixed", "members": members, "mode": model.mode}
+    return {"team": model.team_name, "charter": model.charter or None, "project": model.project or None,
+            "naming": "prefixed", "members": members, "mode": model.mode}
 
 
 def _set_input(model: PickerModel, text: str) -> None:
@@ -2455,6 +2465,10 @@ def picker_apply_key(model: PickerModel, key: str) -> Optional[Intent]:
         return _target_key(model, key)
     if model.stage == "name":
         return _name_key(model, key)
+    if model.stage == "project":
+        return _project_key(model, key)
+    if model.stage == "team_folder":
+        return _team_folder_key(model, key)
     if model.stage == "charter":
         return _charter_key(model, key)
     if model.stage == "members":
@@ -2525,6 +2539,16 @@ def _select_key(model: PickerModel, key: str) -> Optional[Intent]:
         return None
     if node is None:
         return None
+    if key == "f":
+        team = node.team if node.kind in ("team", "member") else ""
+        if not team:
+            model.error = "put the cursor on a team to set its folder"
+            return None
+        model.folder_team = team
+        model.stage = "team_folder"
+        model.error = None
+        _set_input(model, str((model.folders.get(team) or {}).get("project_dir") or team_shared_dir(model, team)))
+        return None
     if key in ("LEFT", "h"):
         if node.kind == "member":
             focus_node(model, "team:" + node.team)
@@ -2555,6 +2579,56 @@ def _select_key(model: PickerModel, key: str) -> Optional[Intent]:
         if node.kind == "agent" and node.row is not None and not selected_rows(model) and selectable(node.row):
             node.row.selected = True  # Enter on a single agent means "this one"
         return _advance_from_select(model)
+    return None
+
+
+def folder_summary(info: Dict[str, Any]) -> str:
+    """The tree's one-phrase version of a team's knowledge-base status."""
+    if not info.get("project_dir"):
+        return "none"
+    if info.get("issues"):
+        return str(info["issues"][0])
+    total = len(info.get("members") or [])
+    return "{} rules, {}/{} briefed, {} finding{}".format(
+        "has" if info.get("rules") else "no", info.get("with_instructions", 0), total,
+        info.get("findings", 0), "" if info.get("findings") == 1 else "s")
+
+
+def team_shared_dir(model: PickerModel, team: str) -> str:
+    """The directory that team's live members share, for prefilling the folder prompt."""
+    counts: Dict[str, int] = {}
+    order: List[str] = []
+    for member in model.rosters.get(team, []) or []:
+        if not isinstance(member, dict) or member.get("kind") == "human" or member.get("status") == "left":
+            continue
+        cwd = str(member.get("cwd") or "").strip()
+        if not cwd or not os.path.isdir(cwd):
+            continue
+        if cwd not in counts:
+            order.append(cwd)
+        counts[cwd] = counts.get(cwd, 0) + 1
+    if not order:
+        return ""
+    position = {path: index for index, path in enumerate(order)}
+    return min(order, key=lambda path: (-counts[path], position[path]))
+
+
+def _team_folder_key(model: PickerModel, key: str) -> Optional[Intent]:
+    if key in ("PASTE_START", "PASTE_END"):
+        model.paste_mode = key == "PASTE_START"
+        return None
+    if key == "ESC":
+        model.stage = "select"
+        model.error = None
+        _set_input(model, "")
+        return None
+    if key == "ENTER" and not model.paste_mode:
+        path = model.input.strip()
+        if not path:
+            model.error = "type a directory, or Esc to leave it alone"
+            return None
+        return Intent("team_folder_set", {"team": model.folder_team, "path": path})
+    edit_key(_TextView(model), key)
     return None
 
 
@@ -2728,6 +2802,51 @@ def _finish_charter(model: PickerModel) -> Optional[Intent]:
         return None
     model.charter = text
     model.error = None
+    model.stage = "project"
+    _set_input(model, suggested_project_dir(model))
+    return None
+
+
+def suggested_project_dir(model: PickerModel) -> str:
+    """The directory most of the selected agents already sit in, or "".
+
+    Only a suggestion: the operator still presses Enter, because the plugin
+    never writes into a repository nobody named.
+    """
+    counts: Dict[str, int] = {}
+    order: List[str] = []
+    for row in selected_rows(model):
+        cwd = (row.cwd or "").strip()
+        if not cwd or not os.path.isdir(cwd):
+            continue
+        if cwd not in counts:
+            order.append(cwd)
+        counts[cwd] = counts.get(cwd, 0) + 1
+    if not order:
+        return ""
+    # Positions captured first: sorting a list while indexing into it is a bug.
+    position = {path: index for index, path in enumerate(order)}
+    return min(order, key=lambda path: (-counts[path], position[path]))
+
+
+def _project_key(model: PickerModel, key: str) -> Optional[Intent]:
+    if key == "ESC":
+        model.stage = "charter"
+        model.error = None
+        _set_input(model, "")
+        return None
+    if key == "TAB":
+        model.project = ""
+        return _finish_project(model)
+    if key == "ENTER":
+        model.project = model.input.strip()
+        return _finish_project(model)
+    edit_key(_TextView(model), key)
+    return None
+
+
+def _finish_project(model: PickerModel) -> Optional[Intent]:
+    model.error = None
     model.stage = "members"
     model.member_index = 0
     model.member_field = "role"
@@ -2754,8 +2873,9 @@ def _members_key(model: PickerModel, key: str) -> Optional[Intent]:
             model.status = None
             return None
         else:
-            model.stage = "charter"
-            _set_input(model, "")
+            # Back one stage, which is now the folder, not the charter.
+            model.stage = "project"
+            _set_input(model, model.project or suggested_project_dir(model))
             return None
         model.error = None
         _begin_member_field(model)
@@ -2989,6 +3109,13 @@ def _team_header(model: PickerModel, node: PickerNode, width: int) -> str:
     else:
         glyph = "▸" if node.team in model.collapsed else "▾"
     text = "{} {}  ({} member{})".format(glyph, node.team, size, "" if size == 1 else "s")
+    info = model.folders.get(node.team)
+    if info is not None and degrade_level(width) < 2:
+        # A team with no shared folder is the thing worth spotting from the list.
+        if not info.get("project_dir"):
+            text += "  " + ("[no folder]" if model.ascii_only else "▫ no folder")
+        elif info.get("issues"):
+            text += "  " + ("[!]" if model.ascii_only else "⚠")
     charter = model.charters.get(node.team) or {}
     if degrade_level(width) == 0 and charter.get("text"):
         text += '  "{}"'.format(headline(str(charter["text"]), 40))
@@ -3007,7 +3134,7 @@ def _tree_lines(model: PickerModel, width: int, height: int) -> List[str]:
         scope = "  unassigned: {}".format(model.scope_workspace)
     picked = len(selected_rows(model))
     if degrade_level(width) == 0:
-        keys = "Enter acts · Space picks · w scope · a all · r refresh · Esc quit"
+        keys = "Enter acts · Space picks · f folder · w scope · a all · r refresh · Esc quit"
     else:
         keys = "Enter acts · Space picks · Esc quit"
     head = "{} team{} · {} agent{}{}".format(teams, "" if teams == 1 else "s", agents, "" if agents == 1 else "s", scope)
@@ -3059,6 +3186,11 @@ def _tree_detail(model: PickerModel, nodes: List[PickerNode]) -> str:
     if node.kind == "team":
         if selected_rows(model):
             return "Enter adds the selected agents to {}".format(node.team)
+        info = model.folders.get(node.team)
+        if info is not None and not info.get("project_dir"):
+            return "{} has no team folder (no shared rules or per-member instructions) · f creates one".format(node.team)
+        if info is not None:
+            return "Enter folds {} · folder: {} · f changes it".format(node.team, folder_summary(info))
         return "Enter folds {} open or shut".format(node.team)
     if node.kind == "member":
         goal = str((node.member or {}).get("brief") or "")
@@ -3120,6 +3252,18 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
         lines.append("Charter for {} (Enter adds a line, empty line or Alt+Enter finishes, Tab skips, Ctrl-O loads a file)".format(model.team_name))
         for line in model.charter_lines:
             lines.append("  " + line)
+        lines.append(INPUT_PROMPT + model.input)
+        has_input = True
+    elif model.stage == "team_folder":
+        lines.append("Team folder for {} (Enter sets it, Esc cancels)".format(model.folder_team))
+        lines.append("  rules, one instructions file per member, and artifacts/ go in")
+        lines.append("  <dir>/.herdr-team/{}/".format(model.folder_team))
+        lines.append(INPUT_PROMPT + model.input)
+        has_input = True
+    elif model.stage == "project":
+        lines.append("Team folder for {} (Enter accepts, Tab skips, Esc back)".format(model.team_name))
+        lines.append("  the team's rules, one instructions file per member, and artifacts/ go in")
+        lines.append("  <dir>/.herdr-team/{}/ ; leave empty for no folder".format(model.team_name))
         lines.append(INPUT_PROMPT + model.input)
         has_input = True
     elif model.stage == "members":

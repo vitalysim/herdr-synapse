@@ -9,7 +9,7 @@ import subprocess
 import unittest
 from unittest import mock
 
-from herdr_team import cli, paths, store
+from herdr_team import SKILL_VERSION, cli, paths, store
 from herdr_team import cmd_roster
 from support import FakeApi, FakeError, TempState, fake_agent, identity_tokens
 
@@ -612,7 +612,7 @@ class MeWhoAudit(unittest.TestCase):
             self.assertEqual(payload["cursor"], 0)
             self.assertTrue(payload["verified"])
             self.assertEqual(payload["via"], "cli")
-            self.assertEqual(payload["skill_version"], 1)
+            self.assertEqual(payload["skill_version"], SKILL_VERSION)
             self.assertIsNone(payload["skill_installed"])
             self.assertFalse(payload["skill_ok"])
             self.assertTrue(payload["cli"].endswith("bin/herdr-team"))
@@ -624,9 +624,9 @@ class MeWhoAudit(unittest.TestCase):
         with TempState() as ts:
             skill = ts.home / ".claude" / "skills" / "herdr-team" / "SKILL.md"
             skill.parent.mkdir(parents=True)
-            skill.write_text("---\nname: herdr-team\n---\n<!-- herdr-team skill v1, cli >= 0.1 -->\n")
+            skill.write_text("---\nname: herdr-team\n---\n<!-- herdr-team skill v{}, cli >= 0.2 -->\n".format(SKILL_VERSION))
             code, payload, _ = json_out(run_cli(["--json", "me"], ts.env_with(HERDR_PANE_ID="w2:p1"), live_api()))
-            self.assertEqual(payload["skill_installed"], 1)
+            self.assertEqual(payload["skill_installed"], SKILL_VERSION)
             self.assertTrue(payload["skill_ok"])
 
     def test_me_from_human_is_not_a_member(self):

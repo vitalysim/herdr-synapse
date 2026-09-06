@@ -30,6 +30,7 @@ from herdr_team import cli as _cli
 from herdr_team import paths as _paths
 from herdr_team import roster as _roster
 from herdr_team import store
+from herdr_team import workdir as _workdir
 from herdr_team.cli import api_for, emit, layout_for
 from herdr_team.cmd_board import (
     agent_members,
@@ -66,10 +67,10 @@ VIEW_LABEL_MAX_TWO = 27
 FULL_SCREEN_KINDS = frozenset({"claude", "opencode", "codex", "kilo", "omp"})
 DEFAULT_MUTE = "10m"
 
-KEYS: Dict[str, str] = {"team-up": "prefix+t", "compose": "prefix+m", "console": "prefix+u", "toggle-view": "prefix+y", "usage": "prefix+i"}
-KEY_DESCRIPTIONS: Dict[str, str] = {"team-up": "team up: pick agents", "compose": "post to the team board", "console": "open the team console", "toggle-view": "toggle the team agents view", "usage": "usage limits across agents"}
+KEYS: Dict[str, str] = {"team-up": "prefix+t", "compose": "prefix+m", "console": "prefix+u", "toggle-view": "prefix+y", "usage": "prefix+i", "knowledge": "prefix+f"}
+KEY_DESCRIPTIONS: Dict[str, str] = {"team-up": "team up: pick agents", "compose": "post to the team board", "console": "open the team console", "toggle-view": "toggle the team agents view", "usage": "usage limits across agents", "knowledge": "team knowledge bases"}
 #: The order the bindings are printed in.
-KEY_ACTIONS = ("team-up", "compose", "console", "toggle-view", "usage")
+KEY_ACTIONS = ("team-up", "compose", "console", "toggle-view", "usage", "knowledge")
 
 #: The token a stale sidebar block is missing; ``doctor`` looks for it.
 COLOR_SLOT_TOKEN = "$team_c1"
@@ -264,6 +265,34 @@ def _setup_toast_probe(args: argparse.Namespace) -> Tuple[Optional[str], Dict[st
     return delivery, probe
 
 
+def unwritable_project_dirs(layout: Any) -> List[str]:
+    """Teams whose project directory has gone away or turned read-only.
+
+    The mirror is refreshed best effort, so a moved checkout or a read-only
+    mount stops updating the folder with nothing on screen to say why. This is
+    the one place that says it out loud.
+    """
+    out: List[str] = []
+    try:
+        names = sorted(p.name for p in layout.session.teams_dir.iterdir() if p.is_dir())
+    except OSError:
+        return out
+    for name in names:
+        try:
+            doc = store.read_json(layout.team(name).team_json)
+        except (HerdrTeamError, OSError, ValueError):
+            continue
+        project = _workdir.project_dir_of(doc if isinstance(doc, dict) else {})
+        if not project:
+            continue
+        path = Path(project)
+        if not path.is_dir():
+            out.append("team {}: project directory {} is gone; run: herdr-team project set <path> or project clear".format(name, project))
+        elif not os.access(os.fspath(path), os.W_OK):
+            out.append("team {}: project directory {} is not writable; the team folder has stopped updating".format(name, project))
+    return out
+
+
 def sidebar_missing_team_colors(config_dir: Path) -> bool:
     """True when config.toml configures the Agents sidebar but predates the team colour cells.
 
@@ -406,6 +435,8 @@ def _run_doctor(args: argparse.Namespace) -> int:
     stale = sidebar_missing_team_colors(layout.config_dir)
     if stale:
         warnings.append("sidebar rows predate team colours; run: herdr-team setup --print-config, re-paste the block, then herdr server reload-config")
+    for line in unwritable_project_dirs(layout):
+        warnings.append(line)
     plugin = _plugin_state(args, layout, env, reachable=bool(herdr["reachable"]))
     if plugin.get("installed") is False:
         warnings.append("plugin {} is not installed".format(PLUGIN_ID))
