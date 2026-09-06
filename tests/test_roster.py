@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest import mock
 from typing import Any, Dict, List
 
-from support import FAKE_AGENTS, FakeApi, FakeError, TempState, fake_agent
+from support import FAKE_AGENTS, FakeApi, FakeError, TempState, fake_agent, identity_tokens
 
 from herdr_team import roster, store
 from herdr_team.errors import EXIT_REFUSED, HerdrTeamError
@@ -376,7 +376,7 @@ class MemberCrudTests(unittest.TestCase):
             self.assertTrue(result["tokens_cleared"])
             self.assertTrue(result["name_cleared"])
             metadata = [p for m, p in api.calls if m == "pane.report_metadata"]
-            self.assertEqual(metadata[0]["tokens"], {"team": None, "team_role": None})
+            self.assertEqual(metadata[0]["tokens"], identity_tokens(None, None))
             self.assertEqual(metadata[0]["source"], roster.TOKEN_SOURCE_ROSTER)
             self.assertEqual(metadata[1]["tokens"], {"team_task": None})
             self.assertIn(("pane.rename", {"pane_id": "w2:p1", "label": None}), api.calls)
@@ -421,7 +421,7 @@ class MemberCrudTests(unittest.TestCase):
             self.assertIn(("agent.rename", {"target": "w4:p2", "name": "alpha-worker"}), api.calls)
             self.assertIn(("pane.rename", {"pane_id": "w4:p2", "label": "team:alpha/worker"}), api.calls)
             stamped = [p for m, p in api.calls if m == "pane.report_metadata"]
-            self.assertEqual(stamped[0]["tokens"], {"team": "alpha", "team_role": "worker"})
+            self.assertEqual(stamped[0]["tokens"], identity_tokens("alpha", "worker"))
             self.assertEqual(roster.read_pane_record(ts.session, "term_w2"), {"team": "alpha", "name": "alpha-worker", "gen": 2})
             self.assertIsNone(roster.read_pane_record(ts.session, "term_w1"))
             self.assertEqual(board_events(ts), ["member_restarted"])
@@ -620,7 +620,7 @@ class TokenProjectionTests(unittest.TestCase):
         commands = roster.token_commands(member, "alpha", task_headline="→ review diff")
         self.assertEqual(len(commands), 2)
         identity_cmd, task_cmd = commands
-        self.assertEqual(identity_cmd.params(), {"pane_id": "w2:p1", "source": "herdr-team:roster", "tokens": {"team": "alpha", "team_role": "reviewer"}})
+        self.assertEqual(identity_cmd.params(), {"pane_id": "w2:p1", "source": "herdr-team:roster", "tokens": identity_tokens("alpha", "reviewer")})
         self.assertIsNone(identity_cmd.ttl_ms)
         self.assertEqual(task_cmd.source, "herdr-team:task")
         self.assertEqual(task_cmd.ttl_ms, 120000)
@@ -631,8 +631,10 @@ class TokenProjectionTests(unittest.TestCase):
     def test_clear_and_missing_pane(self) -> None:
         member = roster.Member("alpha-reviewer", "reviewer", "codex", "term_r1", pane_id="w2:p1")
         cleared = roster.token_commands(member, "alpha", clear=True)
-        self.assertEqual([c.tokens for c in cleared], [{"team": None, "team_role": None}, {"team_task": None}])
-        self.assertEqual(cleared[0].argv()[-2:], ["--token", "team_role="])
+        self.assertEqual([c.tokens for c in cleared], [identity_tokens(None, None), {"team_task": None}])
+        argv = cleared[0].argv()
+        for key in ("team", "team_role", "team_c1", "team_c6"):
+            self.assertIn("{}=".format(key), argv)  # an empty value clears the key
         self.assertEqual(roster.token_commands(roster.Member("x", "r", "codex", "t"), "alpha"), [])
         self.assertEqual(roster.token_commands(roster.Member("x", "r", "codex", "t"), "alpha", pane_id="w5:p5")[0].pane_id, "w5:p5")
 
@@ -739,7 +741,7 @@ class JoinTests(unittest.TestCase):
             self.assertIn(("agent.rename", {"target": "wA:p6", "name": "alpha-lead"}), api.calls)
             self.assertIn(("pane.rename", {"pane_id": "wA:p6", "label": "team:alpha/lead"}), api.calls)
             stamped = [p for m, p in api.calls if m == "pane.report_metadata"]
-            self.assertEqual(stamped[0]["tokens"], {"team": "alpha", "team_role": "lead"})
+            self.assertEqual(stamped[0]["tokens"], identity_tokens("alpha", "lead"))
             self.assertEqual(team.find("alpha-lead").name, "alpha-lead")  # type: ignore[union-attr]
             self.assertEqual(roster.load_team(ts.team).revision, team.revision)
             self.assertEqual(roster.read_pane_record(ts.session, "term_owner"), {"team": "alpha", "name": "alpha-lead", "gen": 1})

@@ -11,7 +11,7 @@ from unittest import mock
 
 from herdr_team import cli, paths, store
 from herdr_team import cmd_roster
-from support import FakeApi, FakeError, TempState, fake_agent
+from support import FakeApi, FakeError, TempState, fake_agent, identity_tokens
 
 
 def run_cli(argv, env, api=None):
@@ -113,7 +113,7 @@ class CreateFromLive(unittest.TestCase):
             labels = [p["label"] for m, p in api.calls if m == "pane.rename"]
             self.assertEqual(labels, ["team:beta/reviewer", "team:beta/worker"])
             tokens = [p for m, p in api.calls if m == "pane.report_metadata"]
-            self.assertEqual(tokens[0]["tokens"], {"team": "beta", "team_role": "reviewer"})
+            self.assertEqual(tokens[0]["tokens"], identity_tokens("beta", "reviewer"))
             self.assertEqual(tokens[0]["source"], "herdr-team:roster")
             self.assertNotIn("ttl_ms", tokens[0])
             # Files: team.json, briefing jobs, pane records, console default_team, charter record.

@@ -1686,6 +1686,36 @@ class Daemon:
         if doc is not None:
             team.roster = doc
             self._reload_gate_config(team)
+            self._assign_color_slot(team)
+
+    def _assign_color_slot(self, team: TeamState) -> None:
+        """Give a team the lowest sidebar colour slot no other team holds, once, and persist it.
+
+        The daemon is the single writer so two teams cannot race for one slot. A team created
+        while the daemon is down simply has no colour until this runs, the same grace the other
+        metadata tokens already have.
+        """
+        if roster.color_slot_of(team.roster) is not None:
+            return
+        taken = [roster.color_slot_of(other.roster) for other in self.teams.values() if other is not team]
+        slot = roster.free_color_slot(taken, len(self.teams))
+
+        def mutate(doc: Dict[str, Any]) -> None:
+            config = doc.get("config")
+            if not isinstance(config, dict):
+                config = {}
+                doc["config"] = config
+            config.setdefault("color_slot", slot)
+
+        try:
+            doc = update_roster(team.paths, mutate)
+        except HerdrTeamError as err:
+            # Cosmetic: a busy roster lock must never fail the scan phase. The next scan retries.
+            self.log("{}: sidebar colour slot deferred ({})".format(team.name, err.code))
+            return
+        if doc is not None:
+            team.roster = doc
+            self.log("{}: sidebar colour slot {} ({})".format(team.name, slot, roster.TEAM_COLOR_NAMES[slot - 1]))
 
     def _reload_gate_config(self, team: TeamState) -> None:
         """Rebuild ``team.gate_config`` from ``config.gate`` when the mapping changed; log once per change."""
@@ -2202,8 +2232,10 @@ class Daemon:
         if not isinstance(pane_id, str) or not member.get("terminal_id"):
             return
         role = str(member.get("role") or "")
+        identity: Dict[str, Any] = {"team": team.name, "team_role": role}
+        identity.update(roster.color_slot_tokens(team.name, roster.color_slot_of(team.roster)))
         try:
-            self.api.request("pane.report_metadata", {"pane_id": pane_id, "source": "herdr-team:roster", "tokens": {"team": team.name, "team_role": role}}, timeout=5.0)
+            self.api.request("pane.report_metadata", {"pane_id": pane_id, "source": "herdr-team:roster", "tokens": identity}, timeout=5.0)
         except HerdrTeamError as err:
             self.log("{}: token stamp on {} failed: {}".format(team.name, pane_id, err.code))
             return
@@ -2226,8 +2258,10 @@ class Daemon:
                 self.log("{}: task token on {} failed: {}".format(team.name, pane_id, err.code))
 
     def _clear_tokens(self, pane_id: str) -> None:
+        cleared: Dict[str, Any] = {"team": None, "team_role": None}
+        cleared.update(roster.color_slot_tokens(None, None))
         try:
-            self.api.request("pane.report_metadata", {"pane_id": pane_id, "source": "herdr-team:roster", "tokens": {"team": None, "team_role": None}}, timeout=5.0)
+            self.api.request("pane.report_metadata", {"pane_id": pane_id, "source": "herdr-team:roster", "tokens": cleared}, timeout=5.0)
             self.api.request("pane.report_metadata", {"pane_id": pane_id, "source": "herdr-team:task", "tokens": {"team_task": None}}, timeout=5.0)
         except HerdrTeamError as err:
             self.log("clear tokens on {} failed: {}".format(pane_id, err.code))

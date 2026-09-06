@@ -75,6 +75,62 @@ TASK_TOKEN_TTL_MS = 120000
 TASK_TOKEN_MAX_COLUMNS = 24
 TOKEN_VALUE_MAX_CHARS = 80
 
+#: Herdr colours a sidebar cell from a fixed ``fg`` in the user's config; nothing lets the colour
+#: depend on a token's value, and control characters are stripped from values, so ANSI cannot be
+#: smuggled in. What a plugin CAN do is give each team its own token key: the recommended sidebar
+#: row lists one cell per slot with its own colour, and a row's missing tokens (and their
+#: separators) simply disappear, so exactly one coloured cell ever renders per member.
+TEAM_COLOR_SLOTS = 6
+#: The colour each slot carries in ``cmd_misc.SIDEBAR_SNIPPET``; here for docs and tests only.
+TEAM_COLOR_HEX = ("#fb4934", "#b8bb26", "#83a598", "#d3869b", "#fabd2f", "#8ec07c")
+TEAM_COLOR_NAMES = ("red", "green", "blue", "purple", "yellow", "aqua")
+
+
+def color_slot_key(slot: int) -> str:
+    """The metadata token key for a colour slot: ``team_c1`` .. ``team_c6``."""
+    return "team_c{}".format(int(slot))
+
+
+def color_slot_keys() -> List[str]:
+    return [color_slot_key(slot) for slot in range(1, TEAM_COLOR_SLOTS + 1)]
+
+
+def color_slot_tokens(team: Optional[str], slot: Optional[Any]) -> Dict[str, Optional[str]]:
+    """Every slot key, with the team name in its own slot and ``None`` in the rest.
+
+    Sending all of them on every stamp is what makes a colour change or a move between teams
+    self-healing: a member can never keep a stale colour from its previous team.
+    """
+    if isinstance(slot, bool):
+        number = 0  # a JSON ``true`` in config.color_slot is not slot 1
+    else:
+        try:
+            number = int(slot)
+        except (TypeError, ValueError):
+            number = 0
+    tokens: Dict[str, Optional[str]] = {key: None for key in color_slot_keys()}
+    if team and 1 <= number <= TEAM_COLOR_SLOTS:
+        tokens[color_slot_key(number)] = _clip_token_value(team)
+    return tokens
+
+
+def color_slot_of(doc: Optional[Dict[str, Any]]) -> Optional[int]:
+    """``config.color_slot`` of a ``team.json`` document, when it holds a usable slot."""
+    config = doc.get("config") if isinstance(doc, dict) and isinstance(doc.get("config"), dict) else None
+    slot = config.get("color_slot") if config else None
+    if isinstance(slot, bool) or not isinstance(slot, int):
+        return None
+    return slot if 1 <= slot <= TEAM_COLOR_SLOTS else None
+
+
+def free_color_slot(taken: Iterable[Any], count: int = 0) -> int:
+    """The lowest slot no other team holds; past ``TEAM_COLOR_SLOTS`` teams the colours repeat."""
+    used = {s for s in taken if isinstance(s, int) and not isinstance(s, bool)}
+    for slot in range(1, TEAM_COLOR_SLOTS + 1):
+        if slot not in used:
+            return slot
+    return (max(0, int(count)) % TEAM_COLOR_SLOTS) + 1
+
 NAME_POLICY_ADOPT = "adopt"
 NAME_POLICY_ENFORCE = "enforce"
 
@@ -327,6 +383,11 @@ class Team:
 
     def names(self) -> List[str]:
         return [m.name for m in self.members if m.status != "left"]
+
+    @property
+    def color_slot(self) -> Optional[int]:
+        """``config.color_slot``: which sidebar colour this team's members are stamped with."""
+        return color_slot_of({"config": self.config})
 
     @property
     def name_policy(self) -> str:
@@ -813,20 +874,28 @@ def _clip_token_value(value: str) -> str:
     return text
 
 
-def token_commands(member: Member, team: str, task_headline: Optional[str] = None, clear: bool = False, pane_id: Optional[str] = None) -> List[TokenCommand]:
+def token_commands(member: Member, team: str, task_headline: Optional[str] = None, clear: bool = False, pane_id: Optional[str] = None, color_slot: Optional[Any] = None) -> List[TokenCommand]:
     """What to stamp on a member's pane (plan 5.3): identity without TTL, ``team_task`` with 120 s.
 
-    ``clear=True`` yields the commands that remove all three keys.
+    The identity command also carries the team's colour slot, so the Agents sidebar can show the
+    team name in the team's own colour. ``color_slot=None`` clears every slot, which is the right
+    state before the daemon has assigned one.
+
+    ``clear=True`` yields the commands that remove every key.
     """
     target = pane_id or member.pane_id
     if not target:
         return []
     if clear:
+        cleared: Dict[str, Optional[str]] = {"team": None, "team_role": None}
+        cleared.update(color_slot_tokens(None, None))
         return [
-            TokenCommand(target, TOKEN_SOURCE_ROSTER, {"team": None, "team_role": None}),
+            TokenCommand(target, TOKEN_SOURCE_ROSTER, cleared),
             TokenCommand(target, TOKEN_SOURCE_TASK, {"team_task": None}),
         ]
-    out = [TokenCommand(target, TOKEN_SOURCE_ROSTER, {"team": _clip_token_value(team), "team_role": _clip_token_value(member.role)})]
+    identity: Dict[str, Optional[str]] = {"team": _clip_token_value(team), "team_role": _clip_token_value(member.role)}
+    identity.update(color_slot_tokens(team, color_slot))
+    out = [TokenCommand(target, TOKEN_SOURCE_ROSTER, identity)]
     if task_headline:
         out.append(TokenCommand(target, TOKEN_SOURCE_TASK, {"team_task": _clip_token_value(task_headline)}, TASK_TOKEN_TTL_MS))
     return out
@@ -1415,7 +1484,7 @@ class Roster:
         label_pane(api, target.pane_id, member.label)
         if previous_pane and previous_pane[0] and previous_pane[0] != target.pane_id:
             clear_stale_label(api, previous_pane[0], member.label)  # RT-02: the old pane is a plain shell after a cold restart
-        execute_token_commands(api, token_commands(member, self.name))
+        execute_token_commands(api, token_commands(member, self.name, color_slot=team.color_slot))
         if previous_terminal and previous_terminal[0] and previous_terminal[0] != target.terminal_id:
             remove_pane_record(self.layout.session, previous_terminal[0])
         write_pane_record(self.layout.session, target.terminal_id, self.name, member.name, member.generation)
@@ -1522,7 +1591,7 @@ def join(layout: Layout, api: Any, team: Team, target: str, role: str, name: Opt
     saved, _previous = roster.add_member(member, steal=steal or previous_owner is not None, socket=os.fspath(layout.socket))
     team.members = saved.members
     team.revision = saved.revision
-    execute_token_commands(api, token_commands(member, team.team))
+    execute_token_commands(api, token_commands(member, team.team, color_slot=team.color_slot))
     _ensure_daemon(layout, dict(env or {}))
     write_briefing_job(roster.paths, member.name, requested_by=requested_by)
     return member

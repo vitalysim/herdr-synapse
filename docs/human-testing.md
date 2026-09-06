@@ -82,6 +82,10 @@ herdr-team kinds list
 
 ## 3. Keys and sidebar rows (once, optional but recommended)
 
+The sidebar block colour-codes teams: each team's name renders in its own
+colour next to its members. Re-paste it after an upgrade if `herdr-team
+doctor` says your rows predate the colours.
+
 ```bash
 herdr-team keys print          # four [[keys.command]] entries: prefix+t team-up, prefix+m compose, prefix+u console, prefix+y view
 herdr-team setup --print-config   # the required sidebar rows ($team_role, $team_task) and the optional block

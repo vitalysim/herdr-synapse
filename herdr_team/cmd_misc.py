@@ -71,20 +71,31 @@ KEY_DESCRIPTIONS: Dict[str, str] = {"team-up": "team up: pick agents", "compose"
 #: The order the bindings are printed in.
 KEY_ACTIONS = ("team-up", "compose", "console", "toggle-view", "usage")
 
+#: The token a stale sidebar block is missing; ``doctor`` looks for it.
+COLOR_SLOT_TOKEN = "$team_c1"
+#: One cell per team colour slot, then the role and the task. Herdr styles a cell from a fixed
+#: ``fg`` and cannot colour by a token's value, but a row drops the tokens that have no value, so
+#: only the cell matching the member's team ever renders. That is what colour-codes the teams.
+COLOR_ROW = "  " + ", ".join(
+    ['{{ token = "${}", fg = "{}" }}'.format(_roster.color_slot_key(slot + 1), hex_value) for slot, hex_value in enumerate(_roster.TEAM_COLOR_HEX)]
+    + ['{ token = "$team_role", dim = true }', '{ token = "$team_task", fg = "#89b4fa" }']
+)
+COLOR_ROW = "  [" + COLOR_ROW.strip() + "],"
+
 SIDEBAR_SNIPPET = """[ui.sidebar.agents]
 rows = [
   ["state_icon", "agent"],
-  [{ token = "$team_role", dim = true }, { token = "$team_task", fg = "#89b4fa" }],
+{color_row}
   ["workspace", "tab"],
 ]
 [ui.sidebar.agents.rows_by_agent]
 claude = [
   ["state_icon", "agent"],
-  [{ token = "$team_role", dim = true }, { token = "$team_task", fg = "#89b4fa" }],
+{color_row}
   ["terminal_title_stripped"],
   ["workspace", "tab"],
 ]
-"""
+""".format(color_row=COLOR_ROW)
 
 OPTIONAL_SNIPPET = """[ui]
 # Distinct static glyphs for blocked, working, done, idle, and unknown (changes every agent's marks).
@@ -253,6 +264,20 @@ def _setup_toast_probe(args: argparse.Namespace) -> Tuple[Optional[str], Dict[st
     return delivery, probe
 
 
+def sidebar_missing_team_colors(config_dir: Path) -> bool:
+    """True when config.toml configures the Agents sidebar but predates the team colour cells.
+
+    Such a config renders the role and the task but no team name, with nothing on screen to say
+    why, so ``doctor`` points at the re-paste. A config with no sidebar block at all is not
+    stale: the user simply has not set the sidebar up.
+    """
+    try:
+        text = (config_dir / "config.toml").read_text(encoding="utf-8")
+    except (OSError, ValueError):
+        return False
+    return "[ui.sidebar.agents]" in text and COLOR_SLOT_TOKEN not in text
+
+
 def _run_setup(args: argparse.Namespace) -> int:
     if not args.print_config:
         raise UsageError("setup --print-config prints the config blocks; setup never edits config")
@@ -378,6 +403,9 @@ def _run_doctor(args: argparse.Namespace) -> int:
         warnings.append("state root {} does not exist yet".format(layout.state_root.path))
     if "Mobile Documents" in os.fspath(layout.state_root.path):
         warnings.append("state root lives in a cloud-synced directory")
+    stale = sidebar_missing_team_colors(layout.config_dir)
+    if stale:
+        warnings.append("sidebar rows predate team colours; run: herdr-team setup --print-config, re-paste the block, then herdr server reload-config")
     plugin = _plugin_state(args, layout, env, reachable=bool(herdr["reachable"]))
     if plugin.get("installed") is False:
         warnings.append("plugin {} is not installed".format(PLUGIN_ID))

@@ -32,7 +32,7 @@ Global flags are accepted before or after the command name.
 | `--session NAME` | Named session, mirrors `herdr --session`. `default` means the default session. |
 | `--socket PATH` | Socket override. Wins over `--session`, `HERDR_SOCKET_PATH`, `HERDR_SESSION`. |
 | `--session-mismatch-ok` | Allow a write (`post`, `retract`, `edit`, `task`, `ack`, `charter set|edit`, `brief --set`, `use`, `rename`, `remove`, `bind`, `dissolve`) to a team whose `team.json` socket differs from the resolved socket. Without it such a write is refused with `team_session_mismatch` (plan 12, RS-08) whenever the socket was resolved explicitly (`HERDR_SOCKET_PATH`, `HERDR_SESSION`, `--session`); `--socket` counts as consent; the default-socket fallback outside Herdr (`--team <path>`, nothing configured) is not checked so the offline append of HP-05 keeps working. `add` checks always (as before). Reads never check. |
-| `--version` | `herdr-team 0.1.2`; JSON `{"version","skill_version","plugin_id"}`. |
+| `--version` | `herdr-team 0.1.3`; JSON `{"version","skill_version","plugin_id"}`. |
 | `--skill` | Prints `skills/herdr-team/SKILL.md`; JSON `{"skill","skill_version"}`. |
 
 Environment the CLI reads: `HERDR_SOCKET_PATH`, `HERDR_SESSION`,
@@ -791,6 +791,15 @@ the reopen in `doctor`/`daemon start`), so a console that has not written
 its own record yet is still recognisable as launching.
 
 `mute.json`: `{"*": "<until>"|null, "<name>": "<until>"}` with ISO timestamps.
+
+Metadata tokens stamped on a member's pane (source `herdr-team:roster`, no TTL):
+`team`, `team_role`, and `team_c1`..`team_c6`. Exactly one `team_c<slot>` carries the team
+name and the rest are cleared in the same patch, so a member that moves teams cannot keep a
+stale colour. The slot is `config.color_slot` in `team.json`, assigned once by the notifier
+(lowest slot no other team in the session holds; colours repeat past six) and persisted. It
+exists because Herdr styles a sidebar cell from a fixed `fg` in the user's config and cannot
+colour by a token's value; the pasted row lists one cell per slot, and a row drops the tokens
+that have no value. `team_task` (source `herdr-team:task`, TTL 120 s) is separate.
 
 `kinds.json` (session dir, one object per agent kind): `{"claude": {"trusted": true,
 "verified": false, "probe": {"nonce", "round_trip_ms", "paste_multiline", "ok", "result",

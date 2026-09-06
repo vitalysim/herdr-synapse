@@ -364,7 +364,7 @@ def perform_join(layout: Layout, api: Any, team: _roster.Team, spec: _JoinSpec, 
     saved, _prev = roster.add_member(member, steal=steal or previous_owner is not None, socket=os.fspath(layout.socket))
     team.members = saved.members
     team.revision = saved.revision
-    _roster.execute_token_commands(api, _roster.token_commands(member, team.team))
+    _roster.execute_token_commands(api, _roster.token_commands(member, team.team, color_slot=team.color_slot))
     # Join sets the member's cursor at the current max (plan 6.2); catch-up is board --last 30.
     try:
         from herdr_team.cmd_board import board_max_seq, cursor_advance
@@ -586,7 +586,7 @@ def _spawn_member(layout: Layout, api: Any, team: _roster.Team, team_paths: Team
     if member.terminal_id and member.terminal_id != resolved.terminal_id:
         _roster.remove_pane_record(layout.session, member.terminal_id)
     _roster.write_pane_record(layout.session, resolved.terminal_id, team.team, name, 1)
-    _roster.execute_token_commands(api, _roster.token_commands(active, team.team))
+    _roster.execute_token_commands(api, _roster.token_commands(active, team.team, color_slot=team.color_slot))
     try:
         from herdr_team.cmd_board import board_max_seq, cursor_advance
 

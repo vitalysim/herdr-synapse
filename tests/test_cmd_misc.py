@@ -38,13 +38,13 @@ def write_live_daemon(ts):
 PLAN_SIDEBAR_SNIPPET = """[ui.sidebar.agents]
 rows = [
   ["state_icon", "agent"],
-  [{ token = "$team_role", dim = true }, { token = "$team_task", fg = "#89b4fa" }],
+  [{ token = "$team_c1", fg = "#fb4934" }, { token = "$team_c2", fg = "#b8bb26" }, { token = "$team_c3", fg = "#83a598" }, { token = "$team_c4", fg = "#d3869b" }, { token = "$team_c5", fg = "#fabd2f" }, { token = "$team_c6", fg = "#8ec07c" }, { token = "$team_role", dim = true }, { token = "$team_task", fg = "#89b4fa" }],
   ["workspace", "tab"],
 ]
 [ui.sidebar.agents.rows_by_agent]
 claude = [
   ["state_icon", "agent"],
-  [{ token = "$team_role", dim = true }, { token = "$team_task", fg = "#89b4fa" }],
+  [{ token = "$team_c1", fg = "#fb4934" }, { token = "$team_c2", fg = "#b8bb26" }, { token = "$team_c3", fg = "#83a598" }, { token = "$team_c4", fg = "#d3869b" }, { token = "$team_c5", fg = "#fabd2f" }, { token = "$team_c6", fg = "#8ec07c" }, { token = "$team_role", dim = true }, { token = "$team_task", fg = "#89b4fa" }],
   ["terminal_title_stripped"],
   ["workspace", "tab"],
 ]
@@ -134,6 +134,7 @@ class SetupAndKeys(unittest.TestCase):
             code, payload, err = json_out(run_cli(["--json", "setup", "--print-config"], ts.env))
             self.assertEqual(code, 0, err)
             self.assertTrue(payload["required"].startswith(PLAN_SIDEBAR_SNIPPET))
+            self.assertIn('{ token = "$team_c1", fg = "#fb4934" }', payload["required"])
             self.assertIn("[[keys.command]]\nkey = \"prefix+t\"\ntype = \"plugin_action\"\ncommand = \"herdr-team.team-up\"", payload["required"])
             self.assertIn('status_indicators = "symbols"', payload["optional"])
             self.assertIn("sidebar_width", payload["optional"])

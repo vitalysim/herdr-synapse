@@ -254,8 +254,35 @@ def _pane_get(api: Any, pane_id: str) -> Tuple[Optional[Dict[str, Any]], Optiona
     return None, "pane_not_found"
 
 
+#: The sidebar colour slots, spelled out here rather than imported: this module deliberately keeps
+#: its imports minimal because it runs on every hook under a 5 s alarm. ``test_team_colors`` pins
+#: these against ``roster.color_slot_keys()``, which is the source of truth.
+COLOR_SLOT_KEYS = ("team_c1", "team_c2", "team_c3", "team_c4", "team_c5", "team_c6")
+
+
+def _color_slot_tokens(team_name: Optional[str], slot: Any) -> Dict[str, Any]:
+    """Every slot key, with the team name in its own slot and None in the rest."""
+    tokens: Dict[str, Any] = {key: None for key in COLOR_SLOT_KEYS}
+    if team_name and isinstance(slot, int) and not isinstance(slot, bool) and 1 <= slot <= len(COLOR_SLOT_KEYS):
+        tokens[COLOR_SLOT_KEYS[slot - 1]] = team_name
+    return tokens
+
+
+def _color_slot_of(doc: Any) -> Optional[int]:
+    config = doc.get("config") if isinstance(doc, dict) and isinstance(doc.get("config"), dict) else None
+    slot = config.get("color_slot") if config else None
+    return slot if isinstance(slot, int) and not isinstance(slot, bool) and 1 <= slot <= len(COLOR_SLOT_KEYS) else None
+
+
+def _roster_clear_tokens() -> Dict[str, Any]:
+    """The identity keys plus every colour slot, all cleared."""
+    tokens: Dict[str, Any] = {"team": None, "team_role": None}
+    tokens.update(_color_slot_tokens(None, None))
+    return tokens
+
+
 def _clear_tokens(api: Any, pane_id: str, log: Any) -> None:
-    for source, tokens in (("herdr-team:roster", {"team": None, "team_role": None}), ("herdr-team:task", {"team_task": None})):
+    for source, tokens in (("herdr-team:roster", _roster_clear_tokens()), ("herdr-team:task", {"team_task": None})):
         try:
             api.request("pane.report_metadata", {"pane_id": pane_id, "source": source, "tokens": tokens}, timeout=CALL_TIMEOUT_S)
         except HerdrTeamError as err:
@@ -263,9 +290,11 @@ def _clear_tokens(api: Any, pane_id: str, log: Any) -> None:
             return
 
 
-def _stamp_tokens(api: Any, pane_id: str, team_name: str, role: str, log: Any) -> None:
+def _stamp_tokens(api: Any, pane_id: str, team_name: str, role: str, log: Any, color_slot: Optional[int] = None) -> None:
+    tokens: Dict[str, Any] = {"team": team_name, "team_role": role}
+    tokens.update(_color_slot_tokens(team_name, color_slot))
     try:
-        api.request("pane.report_metadata", {"pane_id": pane_id, "source": "herdr-team:roster", "tokens": {"team": team_name, "team_role": role}}, timeout=CALL_TIMEOUT_S)
+        api.request("pane.report_metadata", {"pane_id": pane_id, "source": "herdr-team:roster", "tokens": tokens}, timeout=CALL_TIMEOUT_S)
     except HerdrTeamError as err:
         log("token stamp on {} failed: {}".format(pane_id, err.code))
 
@@ -462,7 +491,7 @@ def _reconcile_detected(layout: Layout, api: Any, teams: Dict[str, Dict[str, Any
                 role = str(member.get("role") or "")
                 label = member.get("label") or "team:{}/{}".format(team_name, role)
                 _apply_label(api, pane_id, str(label), say)
-                _stamp_tokens(api, pane_id, team_name, role, say)
+                _stamp_tokens(api, pane_id, team_name, role, say, _color_slot_of(doc))
                 _write_pane_record(layout, terminal_id, team_name, name, int(member.get("generation") or 1))
         else:
             for key in ("terminal_id", "pane_id", "workspace_id", "tab_id"):
@@ -490,7 +519,7 @@ def _reconcile_detected(layout: Layout, api: Any, teams: Dict[str, Dict[str, Any
             role = str(member.get("role") or "")
             label = member.get("label") or "team:{}/{}".format(team_name, role)
             _apply_label(api, pane_id, str(label), say)
-            _stamp_tokens(api, pane_id, team_name, role, say)
+            _stamp_tokens(api, pane_id, team_name, role, say, _color_slot_of(doc))
             _write_pane_record(layout, terminal_id, team_name, str(fields.get("name", name)), int(fields.get("generation", member.get("generation") or 1)))
         if fields:
             fields["last_seen_at"] = _now_iso()

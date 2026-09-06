@@ -45,6 +45,8 @@ filter: [all]  to me  requests  human  system  (Tab cycles)   ? help
   each a role and a unique name, add more later, and set a charter every
   member knows. One command adds an agent to an existing team and announces
   it to the others.
+- **Teams you can tell apart.** Each team gets its own colour in Herdr's
+  Agents sidebar, so a glance says who belongs to what.
 - **A team manager, not just a picker.** `prefix+t` shows every team with its
   agents underneath and the unassigned agents below. Enter on a member
   renames it, changes its goal, sends that goal to it, removes it, or takes

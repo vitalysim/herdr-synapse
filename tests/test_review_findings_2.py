@@ -19,7 +19,7 @@ from pathlib import Path
 
 from herdr_team import cmd_ui, daemon as D, gate, roster, store
 from herdr_team.errors import HerdrTeamError
-from support import FAKE_AGENTS, FakeApi, TempState, fake_agent, fake_pane, fake_plugin_pane_opened
+from support import FAKE_AGENTS, FakeApi, TempState, fake_agent, fake_pane, fake_plugin_pane_opened, identity_tokens
 from test_cmd_ui import console_pane, json_out, run_cli
 from test_daemon import make_daemon, post, ticks
 from test_hooks import member as hook_member, run_event as run_hook_event
@@ -161,7 +161,7 @@ class RehydrateNullKindTests(unittest.TestCase):
         member = hook_member(self.ts, "alpha-reviewer")
         self.assertEqual((member["status"], member["pane_id"], member.get("generation", 1)), ("missing", "w2:p1", 1))
         stamps = [p for m, p in api.calls if m == "pane.report_metadata" and p.get("pane_id") == "w2:p1"]
-        self.assertEqual(stamps[0]["tokens"], {"team": "alpha", "team_role": "reviewer"})
+        self.assertEqual(stamps[0]["tokens"], identity_tokens("alpha", "reviewer"))
         self.assertEqual([p["label"] for m, p in api.calls if m == "pane.rename"], ["team:alpha/reviewer"])
         self.assertTrue(any("no detected kind yet; ids adopted, status missing kept" in line for line in self.ts.session.hooks_log.read_text().splitlines()))
 

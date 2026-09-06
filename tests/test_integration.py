@@ -32,7 +32,7 @@ from unittest import mock
 
 from herdr_team import claude_settings, cli, daemon, gate, hooks, identity, nudge, roster, store
 from herdr_team.cmd_board import now_iso
-from support import PLUGIN_ROOT, FakeApi, FakeError, FakeHerdrServer, TempState, fake_agent
+from support import FakeApi, FakeError, FakeHerdrServer, PLUGIN_ROOT, TempState, fake_agent, identity_tokens
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "detection"
 TEAM = "beta"
@@ -127,7 +127,7 @@ class Workflow1Tests(unittest.TestCase):
         self.assertEqual({r["name"] for r in api.rows}, {"beta-reviewer", "beta-worker"}, "agent.rename applied the derived names")
         self.assertEqual([p["label"] for m, p in api.calls if m == "pane.rename"], ["team:beta/reviewer", "team:beta/worker"])
         tokens = [p for m, p in api.calls if m == "pane.report_metadata"]
-        self.assertEqual(tokens[0]["tokens"], {"team": TEAM, "team_role": "reviewer"})
+        self.assertEqual(tokens[0]["tokens"], identity_tokens(TEAM, "reviewer"))
         self.assertTrue(ts.session.pane_record(REVIEWER_TERM).is_file())
         self.assertTrue(ts.session.pane_record(WORKER_TERM).is_file())
         self.assertEqual(len(os.listdir(team_paths.jobs_dir)), 2, "one briefing job per member")

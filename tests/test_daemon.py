@@ -17,7 +17,7 @@ from herdr_team import gate, ledger, paths, roster, store
 from herdr_team.api import HerdrApi, IDENTITY_ENV_VARS
 from herdr_team.cli import main as cli_main
 from herdr_team.errors import HerdrTeamError
-from support import FAKE_AGENTS, FakeApi, FakeError, FakeHerdrServer, TempState, fake_agent, fake_read, wait_until
+from support import FAKE_AGENTS, FakeApi, FakeError, FakeHerdrServer, TempState, fake_agent, fake_read, identity_tokens, wait_until
 
 PLUGIN_ROOT = paths.plugin_root()
 
@@ -1169,7 +1169,7 @@ class HeartbeatAndWhoTests(unittest.TestCase):
         task = [p for p in self.stamps() if p["source"] == "herdr-team:task"]
         self.assertTrue(roster)
         self.assertNotIn("ttl_ms", roster[0])
-        self.assertEqual(roster[0]["tokens"], {"team": "alpha", "team_role": "reviewer"})
+        self.assertEqual(roster[0]["tokens"], identity_tokens("alpha", "reviewer", 1))
         self.assertEqual(task[0]["ttl_ms"], 120000)
         self.assertTrue(task[0]["tokens"]["team_task"].startswith("→ "))
         self.assertLessEqual(len(task[0]["tokens"]["team_task"]), 80)

@@ -40,6 +40,19 @@ PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 
 FAKE_TEAM = "alpha"
 FAKE_SLUG = "default"
+def identity_tokens(team: Optional[str], role: Optional[str], slot: Optional[int] = None) -> Dict[str, Any]:
+    """The roster-source token patch: the two identity keys plus every colour slot.
+
+    ``slot=None`` clears every slot, which is what a stamp looks like before the daemon has
+    assigned the team a colour. ``team=None`` is the full clear.
+    """
+    from herdr_team import roster as _roster
+
+    tokens: Dict[str, Any] = {"team": team, "team_role": role}
+    tokens.update(_roster.color_slot_tokens(team, slot))
+    return tokens
+
+
 FAKE_MEMBERS: List[Dict[str, Any]] = [
     {
         "name": "alpha-reviewer", "role": "reviewer", "kind": "codex", "terminal_id": "term_r1",

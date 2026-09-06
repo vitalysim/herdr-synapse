@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3 (2026-09-06)
+
+- Each team gets its own colour in Herdr's Agents sidebar. The plugin gives every team one of six colour slots, persisted in `team.json` as `config.color_slot`, and stamps the team name into that slot's metadata token (`team_c1`..`team_c6`); the sidebar block from `setup --print-config` now carries one differently-coloured cell per slot, and a row drops the tokens that have no value, so exactly one coloured team name renders per member. Herdr styles a cell from a fixed colour in your config and cannot colour by a token's value, which is why the slots exist.
+- The sidebar rows also show the team name at all: until now the `team` token was stamped but never displayed.
+- `doctor` warns when your `config.toml` configures the Agents sidebar but predates the colour cells, and tells you to re-paste the block.
+
 ## 0.1.2 (2026-09-06)
 
 - `prefix+t` is a team manager: it shows every team with its agents underneath and the agents that belong to no team below them, folds a team away with Enter, and scrolls when the list outgrows the popup. Enter on a member opens a numbered menu that renames it (the team name and the Herdr agent name together), changes its goal, sends that goal to it, removes it from the team (with or without keeping its Herdr name), or jumps to its pane. Actions run without closing the popup.

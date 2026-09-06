@@ -13,7 +13,7 @@ import unittest
 
 from herdr_team import hooks, paths, store
 from herdr_team.cli import main as cli_main
-from support import FAKE_MEMBERS, FakeApi, FakeError, TempState, fake_agent
+from support import FAKE_MEMBERS, FakeApi, FakeError, TempState, fake_agent, identity_tokens
 
 
 def event_env(ts, event="pane.agent_detected", pane_id="w2:p1", **extra):
@@ -160,7 +160,7 @@ class ReconcileDetectedTests(unittest.TestCase):
         self.assertEqual((m["status"], m["generation"]), ("active", 2))
         self.assertEqual(self.calls("agent.rename"), [])  # live name already matches
         stamps = self.calls("pane.report_metadata")
-        self.assertEqual(stamps[0]["tokens"], {"team": "alpha", "team_role": "reviewer"})
+        self.assertEqual(stamps[0]["tokens"], identity_tokens("alpha", "reviewer"))
         self.assertEqual(self.calls("pane.rename")[0]["label"], "team:alpha/reviewer")
         record = store.read_json(self.ts.session.pane_record("term_r1"))
         self.assertEqual(record, {"team": "alpha", "name": "alpha-reviewer", "gen": 2})
