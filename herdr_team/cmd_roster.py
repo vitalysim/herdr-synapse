@@ -930,7 +930,7 @@ def _run_rename(args: argparse.Namespace) -> int:
     check_write_session(args, layout, team_name)
     team = _roster.load_team(layout.team(team_name))
     member = team.find(args.old)
-    if member is None or member.is_human:
+    if member is None or member.is_human or member.status == "left":
         raise HerdrTeamError("member_not_found", "{!r} is not an agent member of {!r}".format(args.old, team_name), EXIT_REFUSED, {"name": args.old, "roster": team.names()})
     new = _roster.validate_member_name(args.new)
     if member.pane_id:

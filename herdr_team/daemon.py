@@ -2114,6 +2114,9 @@ class Daemon:
             team.roster = doc
             for name, update in changes:
                 self.log("{}: {} {}".format(team.name, name, json.dumps(update, ensure_ascii=False)))
+                new_name = update.get("name")
+                if isinstance(new_name, str) and new_name != name and roster.migrate_cursor(team.paths, name, new_name):
+                    self.log("{}: carried {}'s read position to {}".format(team.name, name, new_name))
                 if update.get("status") == "missing":
                     self._append_system(team, "member_gone", "{} is missing".format(name), ["human"])
                 elif "generation" in update:
@@ -2543,6 +2546,15 @@ class Daemon:
                     else:
                         del team.pending[name]
                         continue
+                if member.get("status") == "left":
+                    # ``remove`` tombstones the member and clears its tokens, label and Herdr name.
+                    # ``_evaluate_member``'s ``present`` check only pauses the TTL, so pending work
+                    # for a tombstone never expires and could still be delivered (M8).
+                    del team.pending[name]
+                    team.runtime.pop(name, None)
+                    self.log("{}: {} left the team; dropping its pending work".format(team.name, name))
+                    self.who_dirty = True
+                    continue
                 try:
                     self._evaluate_member(team, member, pending, now)
                 except Exception as err:  # noqa: BLE001 - F-07: the daemon must outlive one bad file/event

@@ -310,7 +310,7 @@ def set_brief(layout: Layout, team: str, author: Author, member_name: str, text:
 
     def mutate(doc: _roster.Team) -> None:
         member = doc.find(member_name)
-        if member is None or member.is_human:
+        if member is None or member.is_human or member.status == "left":
             raise HerdrTeamError("member_not_found", "{!r} is not an agent member of team {!r}".format(member_name, team), EXIT_REFUSED, {"name": member_name, "team": team, "roster": doc.names()})
         member.brief = body or None
         updated.append(member)

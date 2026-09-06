@@ -288,18 +288,26 @@ class Team:
     # -- lookups ---------------------------------------------------------------
 
     def find(self, name_or_terminal: str) -> Optional[Member]:
-        """By current name, by ``terminal_id``, or by a name retired under 10 minutes ago."""
+        """By current name, by ``terminal_id``, or by a name retired under 10 minutes ago.
+
+        A live member always wins over a ``left`` tombstone carrying the same
+        name or terminal. ``add`` only refuses duplicates among non-left
+        members (:meth:`Roster.add_member`), so a name may legitimately be
+        reused after a remove; resolving to the tombstone made ``remove``,
+        ``rename`` and ``brief --set`` act on the wrong entry and report
+        success while the live member kept its name.
+        """
         if not name_or_terminal:
             return None
-        for member in self.members:
-            if member.name == name_or_terminal:
-                return member
-        for member in self.members:
-            if member.terminal_id and member.terminal_id == name_or_terminal:
-                return member
-        for member in self.members:
-            if member.retired_name_active(name_or_terminal):
-                return member
+        for tombstones in (False, True):
+            for match in (
+                lambda m: m.name == name_or_terminal,
+                lambda m: bool(m.terminal_id) and m.terminal_id == name_or_terminal,
+                lambda m: m.retired_name_active(name_or_terminal),
+            ):
+                for member in self.members:
+                    if (member.status == "left") is tombstones and match(member):
+                        return member
         return None
 
     def find_by_terminal(self, terminal_id: Optional[str], include_left: bool = False) -> Optional[Member]:
@@ -648,6 +656,31 @@ def system_record(event: str, text: str, to: Optional[Sequence[str]] = None, ext
         for key, value in extra.items():
             record[key] = value
     return record
+
+
+def migrate_cursor(team_paths: TeamPaths, old_name: str, new_name: str) -> bool:
+    """Carry a renamed member's read position to its new name.
+
+    Every per-member artefact is keyed by name, so without this the new name
+    has no cursor file, ``Cursors.get`` starts at seq 0 (``store.py``), and
+    the member's next ``board --new`` replays the whole board. Best effort:
+    a missing source, an existing target, or an unreadable file leaves the
+    rename alone rather than failing it.
+    """
+    if old_name == new_name:
+        return False
+    try:
+        source = team_paths.cursor(old_name)
+        target = team_paths.cursor(new_name)
+        if not source.is_file() or target.exists():
+            return False
+        doc = store.read_json(source, default=None)
+        if not isinstance(doc, dict):
+            return False
+        store.write_json(target, doc)
+        return True
+    except (HerdrTeamError, OSError):
+        return False
 
 
 def append_system_record(team_paths: TeamPaths, event: str, text: str, to: Optional[Sequence[str]] = None, extra: Optional[Dict[str, Any]] = None, socket: Optional[str] = None) -> int:
@@ -1317,6 +1350,8 @@ class Roster:
         member = team.find(name)
         if member is None or member.is_human:
             raise HerdrTeamError("member_not_found", "{!r} is not an agent member of team {!r}".format(name, self.name), EXIT_REFUSED, {"name": name, "team": self.name, "roster": team.names()})
+        if member.status == "left":
+            raise HerdrTeamError("member_not_found", "{!r} already left team {!r}".format(name, self.name), EXIT_REFUSED, {"name": name, "team": self.name, "roster": team.names(), "status": "left"})
         cleared = execute_token_commands(api, token_commands(member, self.name, clear=True))
         tokens_cleared = all(entry["ok"] for entry in cleared) if cleared else False
         if member.pane_id:
@@ -1422,6 +1457,7 @@ class Roster:
 
         self.update(mutate)
         member = adopted[0]
+        migrate_cursor(self.paths, member_name, member.name)
         if member.terminal_id:
             write_pane_record(self.layout.session, member.terminal_id, self.name, member.name, member.generation)
         append_system_record(self.paths, "renamed", "{} is now {} (old name resolves for 10 min)".format(member_name, new_name), to=["all"], socket=socket)
