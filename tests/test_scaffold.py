@@ -39,6 +39,26 @@ def run(cmd, env=None, timeout=20):
     return subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout, env=env or clean_env(), cwd=os.fspath(PLUGIN_ROOT))
 
 
+class LauncherTests(unittest.TestCase):
+    def test_launcher_works_through_a_symlink(self):
+        """``install-cli`` symlinks ~/.local/bin/herdr-team to bin/herdr-team; the launcher must follow the link."""
+        import subprocess
+        import sys
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            link = Path(tmp) / "bin" / "herdr-team"
+            link.parent.mkdir()
+            link.symlink_to(PLUGIN_ROOT / "bin" / "herdr-team")
+            nested = Path(tmp) / "nested"
+            nested.symlink_to(link)  # a link to a link
+            env = {"PATH": "/usr/bin:/bin", "HOME": tmp, "HERDR_TEAM_PYTHON": sys.executable}
+            for path in (link, nested):
+                proc = subprocess.run([os.fspath(path), "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, timeout=30)
+                self.assertEqual(proc.returncode, 0, proc.stderr.decode())
+                self.assertEqual(proc.stdout.decode().strip(), "herdr-team {}".format(VERSION))
+
+
 class ManifestTests(unittest.TestCase):
     def test_manifest_is_regular_file_with_expected_entries(self):
         self.assertTrue(MANIFEST.is_file() and not MANIFEST.is_symlink())

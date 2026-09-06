@@ -8,7 +8,18 @@
 # POSIX sh only: this file runs from Herdr's plugin runtime with a minimal
 # PATH, from hooks, and from the user's shell. Keep it dependency free.
 
-root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P) || exit 1
+# `install-cli` symlinks ~/.local/bin/herdr-team to this file: follow the
+# link chain first, or the plugin root would be computed from ~/.local
+# (found live on 2026-09-06: "No module named herdr_team" through the link).
+self=$0
+while [ -L "$self" ]; do
+    link=$(readlink "$self") || break
+    case "$link" in
+        /*) self=$link ;;
+        *) self=$(dirname -- "$self")/$link ;;
+    esac
+done
+root=$(CDPATH= cd -- "$(dirname -- "$self")/.." && pwd -P) || exit 1
 
 py=${HERDR_TEAM_PYTHON:-}
 if [ -z "$py" ]; then

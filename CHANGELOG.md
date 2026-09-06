@@ -5,6 +5,7 @@
 - Usage limits across agents: `herdr-team usage` and the `prefix+i` popup (`ui usage`) show the session, weekly, and per-model windows of every provider account the session's agents draw on (Anthropic, OpenAI Codex, GitHub Copilot, Google Gemini), grouped with the agents behind each; tokens never leave the process.
 - Agent interrupts: `post --interrupt` (console `/interrupt @name text`) may be typed into a working teammate's turn when the team allows it for that kind (`config.gate.interrupt_kinds`, default Claude only), once per sender and teammate per cooldown (`interrupt_cooldown_ms`, default 10 min); `herdr-team interrupts` and `/interrupts` show or set the policy; the feed shows `⚡INTERRUPT` and `⚡interrupted`, `who` shows `⚡armed|cooldown|kind_not_allowed`.
 - The daemon restores its signal handlers when it exits, the Claude hook shim survives dash, and the suite passes on Linux.
+- The `herdr-team` launcher follows symlinks, so the `install-cli` link in `~/.local/bin` works (it computed the plugin root from the link's directory).
 
 ## 0.1.0 (2026-09-06)
 
