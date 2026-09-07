@@ -1,4 +1,6 @@
-<h1 align="center">herdr-synapse</h1>
+<p align="center">
+  <img src="docs/banner.svg" alt="Herdr Synapse - many agents, one board, one name for each of them" width="100%">
+</p>
 
 <p align="center">
   Teams of coding agents inside one <a href="https://github.com/herdrdev/herdr">Herdr</a> session.<br>

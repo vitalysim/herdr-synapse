@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 340" width="1200" height="340" role="img" aria-label="Herdr Synapse - many agents, one board, one name for each of them">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b0b0d"/><stop offset="0.55" stop-color="#161619"/><stop offset="1" stop-color="#0d0d10"/>
+    </linearGradient>
+    <linearGradient id="wm" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#c7c7d0"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.3" cy="0.3" r="0.7">
+      <stop offset="0" stop-color="#3c3c45" stop-opacity="0.5"/><stop offset="1" stop-color="#3c3c45" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect x="0" y="0" width="1200" height="340" rx="18" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1200" height="340" rx="18" fill="url(#glow)"/>
+
+  <!-- a flock of panes: many agents, one system, one of them being spoken to -->
+  <g opacity="0.5">
+    <g stroke="#3f3f47" stroke-width="1.2" fill="none" opacity="0.9">
+      <path d="M 872 96 L 964 140"/><path d="M 964 140 L 1064 104"/><path d="M 964 140 L 1006 214"/>
+      <path d="M 1006 214 L 1108 186"/><path d="M 1006 214 L 916 252"/><path d="M 1064 104 L 1136 148"/>
+    </g>
+    <g stroke="#52525b" stroke-width="1.5" fill="none">
+      <rect x="842" y="80" width="60" height="32" rx="5"/>
+      <rect x="1034" y="88" width="60" height="32" rx="5"/>
+      <rect x="1106" y="132" width="60" height="32" rx="5"/>
+      <rect x="1078" y="170" width="60" height="32" rx="5"/>
+      <rect x="886" y="236" width="60" height="32" rx="5"/>
+    </g>
+    <g stroke="#9a9aa8" stroke-width="1.8" fill="none">
+      <rect x="934" y="124" width="60" height="32" rx="5"/>
+    </g>
+    <circle cx="964" cy="140" r="3.6" fill="#9a9aa8" stroke="none"/>
+    <g stroke="#9a9aa8" stroke-width="1.4" fill="none" opacity="0.75">
+      <path d="M 964 108 A 40 40 0 0 1 964 172" />
+      <path d="M 964 92 A 56 56 0 0 1 964 188" opacity="0.5"/>
+    </g>
+  </g>
+
+  <rect x="0.75" y="0.75" width="1198.5" height="338.5" rx="17.25" fill="none" stroke="#2a2a31" stroke-width="1.5"/>
+
+  <text x="78" y="86" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="15" letter-spacing="4" font-weight="600" fill="#8a8a93">HERDR PLUGIN &#160;&#183;&#160; ANY MIX OF AGENTS</text>
+  <text x="76" y="188" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="82" font-weight="800" letter-spacing="-2" fill="url(#wm)">Herdr Synapse</text>
+  <text x="80" y="236" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="25" font-weight="400" fill="#a8a8b2">Many agents, one board, one name for each of them.</text>
+  <text x="80" y="280" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="17" letter-spacing="0.3" fill="#6b6b75">roster &#183; charter &#183; instructions &#183; board &#160;&#183;&#160; every agent kind</text>
+</svg>
