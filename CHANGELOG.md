@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.2 (2026-09-07)
+
+- The board is saved into the team folder automatically. `<project>/.herdr-team/<team>/board.md` holds the whole board, archived segments included, beside the team's rules and per-member instructions, so the folder carries the conversation and not just the documents. The notifier rewrites it when the board has actually moved, at most once a minute.
+- The snapshot's content is a pure function of the board — it is stamped with the newest post's timestamp rather than the current time — so an unchanged board never rewrites the file or shows up as a change.
+- `board.md` is added to the generated `.gitignore`, and the ignore rule is written before the file is, so a snapshot created under an older folder layout is never briefly committable. It is marker-protected like the other mirrors: a file the plugin did not write is left alone.
+- Generated mirrors are capped at 64 KB to stop a pathological document filling a repo; the board snapshot gets its own 8 MB budget, since at 64 KB a real team's board was cut in half.
+
 ## 0.4.1 (2026-09-07)
 
 - Team names may be up to 32 characters (was 15) and roles up to 64 (was 32). A real team was sitting exactly on both ceilings: `clickhouse-hunt` is 15 and `vulnerability-researcher-manager` is 32.

@@ -315,6 +315,19 @@ plugin did not write). A team with no folder is printed with the exact
 a scrollable popup (`ui knowledge`, or `knowledge-pane` inside it), the way
 `prefix+i` shows usage.
 
+### The board snapshot
+
+The notifier keeps `<project>/.herdr-team/<team>/board.md` current: the whole
+board, archived segments included, rendered like `export --format md`. It is
+rewritten only when the board has moved and at most once a minute, and its
+content is stamped with the newest post's timestamp rather than the current
+time, so an unchanged board never produces a change. Like the other mirrors it
+carries the generated marker and is never read back; unlike them it is listed
+in the generated `.gitignore`, because it is rewritten constantly.
+
+Use `export` when you want a copy to keep or share; the snapshot is the
+always-current one that lives with the team.
+
 ### Watching `artifacts/`
 
 The notifier fingerprints `<team>/artifacts/` every 10s and appends one

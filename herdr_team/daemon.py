@@ -102,6 +102,10 @@ IDLE_SWEEP_POLL_S = 10.0
 #: interrupts on its own, so this is the pace at which a chatty team's
 #: announcements reach an idle teammate: one nudge, not one per post.
 IDLE_SWEEP_AFTER_S = 180.0
+#: Floor between two rewrites of a team's ``board.md`` snapshot. The board can
+#: move many times a minute and the file is the whole archive, so it is written
+#: on change but no more often than this.
+BOARD_SNAPSHOT_MIN_INTERVAL_S = 60.0
 #: System events whose ``--urgent`` form nudges every member. ``knowledge_updated``
 #: and ``instructions_updated`` were missing, so the ``--urgent`` flag on
 #: ``knowledge set`` and ``instructions --set`` set the record flag and did
@@ -1147,6 +1151,9 @@ class TeamState:
     swept_ms: Dict[str, float] = field(default_factory=dict)
     #: When the sweep last ran for this team.
     sweep_scanned_ms: Optional[float] = None
+    #: Board watermark last written to ``board.md``, and when.
+    snapshot_seq: Optional[int] = None
+    snapshot_ms: Optional[float] = None
     #: ``say`` lines typed and awaiting confirmation, by member name (``confirm_says``).
     say_inflight: Dict[str, SayState] = field(default_factory=dict)
     #: Monotonic ms of the last interrupt typed per ``(sender, target)``: the ``interrupt_cooldown_ms`` clock.
@@ -1644,6 +1651,7 @@ class Daemon:
         # After the tail, so a post ingested this tick is already counted, and
         # before the evaluator, so a swept pending is acted on in the same pass.
         self._phase("sweep_unread", lambda: self.sweep_all_unread(now))
+        self._phase("board_snapshot", lambda: self.snapshot_all_boards(now))
         self._phase("evaluate_pending", self.evaluate_pending)
         self._phase("heartbeat", lambda: self.heartbeat_if_due(now))
         self._phase("notifications", self.process_notifications)
@@ -1807,6 +1815,44 @@ class Daemon:
         team.artifacts_announced = current
         team.artifacts_pending_since_ms = None
         team.artifacts_posted_ms = now
+
+    def snapshot_board(self, team: TeamState, now: float) -> None:
+        """Keep ``<project>/.herdr-team/<team>/board.md`` current.
+
+        The board is the team's record of what happened and it lived only in
+        the plugin's state dir. This mirrors it beside the team's rules and
+        per-member instructions, so the folder carries the conversation too.
+        Written only when the board actually moved, and at most once per
+        ``BOARD_SNAPSHOT_MIN_INTERVAL_S``: it is the whole archive, and a busy
+        team moves the watermark many times a minute.
+        """
+        if not _workdir.project_dir_of(team.roster):
+            return
+        watermark = team.watermark
+        if team.snapshot_seq == watermark:
+            return
+        if team.snapshot_ms is not None and now - team.snapshot_ms < BOARD_SNAPSHOT_MIN_INTERVAL_S * 1000.0:
+            return
+        try:
+            result = _workdir.render_board_snapshot(self.layout, team.name)
+        except Exception as err:  # noqa: BLE001 - F-07: the daemon must outlive one bad file
+            self.log("{}: board snapshot failed: {}: {}".format(team.name, type(err).__name__, err))
+            team.snapshot_ms = now
+            return
+        team.snapshot_ms = now
+        if result.get("reason"):
+            self.log("{}: board snapshot skipped: {}".format(team.name, result["reason"]))
+            return
+        team.snapshot_seq = watermark
+        if result.get("written"):
+            self.log("{}: board snapshot updated ({} posts)".format(team.name, result.get("records")))
+
+    def snapshot_all_boards(self, now: float) -> None:
+        for name, team in list(self.teams.items()):
+            try:
+                self.snapshot_board(team, now)
+            except Exception as err:  # noqa: BLE001
+                self.log("{}: board snapshot failed: {}: {}".format(name, type(err).__name__, err))
 
     def _refresh_workdir(self, team: TeamState) -> None:
         """Keep the project mirror current after a roster change.

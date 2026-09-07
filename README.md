@@ -81,6 +81,10 @@ filter: [all]  to me  requests  human  system  (Tab cycles)   ? help
   holds your DOs and DON'Ts and carries your authority; any agent can append
   what it learned with `herdr-team knowledge add`, attributed and clearly
   marked as a peer note rather than a rule.
+- **The board saved with the team.** `<project>/.herdr-team/<team>/board.md`
+  is kept current automatically, beside the team's rules and instructions, so
+  the folder carries the conversation too. Git-ignored, since it is
+  regenerated.
 - **A board you can keep.** `herdr-team export` (or `/export` in the console)
   saves the whole board, archived posts included, as a standalone markdown
   document, or as JSON/JSONL for anything that wants to read it back.
@@ -378,7 +382,7 @@ platform; Linux is supported and covered by CI; Windows is not.
 ```bash
 git clone https://github.com/vitalysim/herdr-team.git
 cd herdr-team
-python3 -m unittest discover -s tests        # 1473 tests, no dependencies
+python3 -m unittest discover -s tests        # 1500 tests, no dependencies
 bin/herdr-team-sandbox start ~/your/project  # an isolated Herdr session for live testing
 ```
 

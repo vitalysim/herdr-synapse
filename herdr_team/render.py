@@ -794,8 +794,10 @@ def render_export_markdown(
     out: List[str] = ["# Team board: {}".format(_safe_token(team, 64)), ""]
     span = "posts {}-{}".format(seqs[0], seqs[-1]) if len(seqs) > 1 else ("post {}".format(seqs[0]) if seqs else "no posts")
     out.append("{} record{}, {}.".format(len(ordered), "" if len(ordered) == 1 else "s", span))
-    if exported_at:
-        out.append("Exported {}{}.".format(_safe_token(exported_at, 40), " by {}".format(_safe_token(exported_by, 40)) if exported_by else ""))
+    if exported_at and exported_by:
+        out.append("Exported {} by {}.".format(_safe_token(exported_at, 40), _safe_token(exported_by, 40)))
+    elif exported_at:
+        out.append("As of post {} at {}.".format(seqs[-1] if seqs else "-", _safe_token(exported_at, 40)))
     out.append("")
 
     text = (charter or {}).get("text") if isinstance(charter, dict) else None

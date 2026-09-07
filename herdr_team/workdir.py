@@ -58,6 +58,9 @@ DIR_NAME = ".herdr-team"
 
 #: Cap on one rendered mirror, so a pathological instructions file cannot fill a repo.
 MAX_RENDER_BYTES = 64 * 1024
+#: The board snapshot is an archive of everything that was said, so it gets far
+#: more room than a document mirror; at 64 KB a real team's board was truncated.
+MAX_BOARD_BYTES = 8 * 1024 * 1024
 
 
 class ForeignFileError(HerdrTeamError):
@@ -141,6 +144,7 @@ def paths_for(project_dir: str, team_name: str) -> Dict[str, Path]:
         "members": root / "members",
         "artifacts": root / "artifacts",
         "exports": root / "exports",
+        "board": root / "board.md",
     }
 
 
@@ -183,7 +187,7 @@ def digest(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
-def write_generated(path: Path, body: str, force: bool = False) -> bool:
+def write_generated(path: Path, body: str, force: bool = False, max_bytes: int = MAX_RENDER_BYTES) -> bool:
     """Write one generated file. Returns True when the file changed.
 
     Refuses a file that exists without our marker unless ``force``. Never
@@ -191,9 +195,9 @@ def write_generated(path: Path, body: str, force: bool = False) -> bool:
     tombstone over it instead.
     """
     text = marker_for(path) + "\n" + body
-    if len(text.encode("utf-8")) > MAX_RENDER_BYTES:
+    if len(text.encode("utf-8")) > max_bytes:
         suffix = "\n…\n"
-        keep = MAX_RENDER_BYTES - len(suffix.encode("utf-8"))
+        keep = max_bytes - len(suffix.encode("utf-8"))
         text = text.encode("utf-8")[:keep].decode("utf-8", "ignore") + suffix
     if not force and not _is_ours(path):
         raise ForeignFileError(path)
@@ -242,16 +246,19 @@ prints who you are and where these files are.
 
 def gitignore_body(teams: List[str]) -> str:
     lines = [
-        "# Artifacts and board exports are working files, not source. The documents",
-        "# above them are kept so a checkout carries the team's rules and each",
-        "# member's instructions.",
+        "# Artifacts, board exports and the rolling board snapshot are working",
+        "# files, not source: board.md is regenerated whenever the board moves.",
+        "# The documents above them are kept so a checkout carries the team's",
+        "# rules and each member's instructions.",
     ]
     for team in sorted(teams):
         lines.append("{}/artifacts/".format(team))
         lines.append("{}/exports/".format(team))
+        lines.append("{}/board.md".format(team))
     if not teams:
         lines.append("*/artifacts/")
         lines.append("*/exports/")
+        lines.append("*/board.md")
     return "\n".join(lines) + "\n"
 
 
@@ -726,3 +733,75 @@ def status_summary(info: Dict[str, Any]) -> str:
     if info.get("artifacts"):
         parts.append("{} artifact{}".format(info["artifacts"], "" if info["artifacts"] == 1 else "s"))
     return ", ".join(parts)
+
+
+# --------------------------------------------------------------------------
+# the rolling board snapshot
+
+
+def refresh_gitignore(project_dir: str, team_name: str, force: bool = False) -> bool:
+    """Rewrite ``.herdr-team/.gitignore`` so it covers every team dir present."""
+    targets = paths_for(project_dir, team_name)
+    try:
+        teams = _existing_team_dirs(targets["shared"], team_name)
+        return write_generated(targets["gitignore"], gitignore_body(teams), force=force)
+    except (ForeignFileError, HerdrTeamError, OSError):
+        return False
+
+
+def render_board_snapshot(layout: Any, team_name: str, force: bool = False) -> Dict[str, Any]:
+    """Write the team's whole board to ``<team>/board.md``, archive included.
+
+    The board is the team's record of what happened, and it lived only in the
+    plugin's state dir where nobody looks. This keeps a readable copy beside
+    the team's rules and per-member instructions, regenerated whenever the
+    board moves. It is a mirror like the others: marker-protected, never read
+    back, and listed in the generated ``.gitignore`` because it is rewritten
+    constantly and would otherwise dominate every diff.
+
+    Best effort: the checkout may be read-only or gone, and this runs from the
+    notifier tick whose real job is delivery.
+    """
+    from . import roster as _roster
+    from . import store as _store
+
+    team_paths = layout.team(team_name)
+    doc = _roster.load_team(team_paths)
+    project = project_dir_of(doc.to_json())
+    out: Dict[str, Any] = {"team": team_name, "path": None, "records": 0, "written": False}
+    if not project:
+        out["reason"] = "no project directory"
+        return out
+    target = paths_for(project, team_name)["board"]
+    try:
+        records = _store.BoardStore(team_paths).read(include_archive=True, include_retracted=True)
+    except (HerdrTeamError, OSError) as err:
+        out["reason"] = "cannot read the board: {}".format(err)
+        return out
+    out["records"] = len(records)
+    out["path"] = os.fspath(target)
+
+    from . import render as _render
+
+    # The newest post's timestamp, not "now": the snapshot's content must be a
+    # pure function of the board, or it rewrites itself on every pass and shows
+    # up as a change when nothing was said.
+    newest = records[-1].get("ts") if records else None
+    body = _render.render_export_markdown(
+        records, team_name,
+        charter=doc.charter,
+        members=[m.to_json() for m in doc.members],
+        exported_at=newest if isinstance(newest, str) else None,
+        exported_by=None,
+    )
+    try:
+        _paths.ensure_dir(target.parent)
+        # The ignore rule must exist before the file does, or a snapshot written
+        # by an older folder layout is committable until the next roster change.
+        refresh_gitignore(project, team_name)
+        out["written"] = write_generated(target, body, force=force, max_bytes=MAX_BOARD_BYTES)
+    except ForeignFileError:
+        out["reason"] = "{} was not written by herdr-team".format(target)
+    except (HerdrTeamError, OSError) as err:
+        out["reason"] = "{}: {}".format(type(err).__name__, err)
+    return out

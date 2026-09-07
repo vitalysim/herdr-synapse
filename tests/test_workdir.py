@@ -216,7 +216,7 @@ class RenderTests(unittest.TestCase):
         # git has no HTML comments: an "<!-- ... -->" first line would be a pattern.
         self.assertTrue(gitignore.startswith("# "), gitignore.splitlines()[0])
         for line in gitignore.splitlines():
-            self.assertTrue(line.startswith("#") or line.endswith("/") or not line.strip(), line)
+            self.assertTrue(line.startswith("#") or line.endswith("/") or line.endswith(".md") or not line.strip(), line)
 
     def test_each_member_gets_its_own_file(self):
         self.set_project()
@@ -1485,3 +1485,174 @@ class ArtifactCoalescingTests(unittest.TestCase):
         self.poll()
         for record in self.records():
             self.assertLessEqual(len(record["text"]), workdir.MAX_RECORD_CHARS, record["text"])
+
+
+class BoardSnapshotTests(unittest.TestCase):
+    """The board is the team's record; it lived only in the plugin state dir."""
+
+    def setUp(self):
+        self.state = TempState()
+        self.addCleanup(self.state.cleanup)
+        self.layout = self.state.layout
+        self.team = self.state.team_name
+        self.project = Path(tempfile.mkdtemp(prefix="ht-proj-")).resolve()
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.project, ignore_errors=True))
+
+    def set_project(self):
+        def apply(doc: roster.Team) -> None:
+            doc.config["project_dir"] = os.fspath(self.project)
+
+        roster.update_team(self.state.team, apply)
+
+    def post(self, text: str = "hello"):
+        return store.BoardStore(self.state.team).append({
+            "from": "alpha-worker", "from_kind": "claude", "from_pane": "w2:p2", "from_terminal": "t",
+            "from_gen": 1, "to": ["all"], "to_role": None, "kind": "note",
+            "text": text, "refs": [], "reply_to": None,
+        })
+
+    @property
+    def target(self) -> Path:
+        return self.project / ".herdr-team" / self.team / "board.md"
+
+    def test_without_a_project_nothing_is_written(self):
+        self.post()
+        result = workdir.render_board_snapshot(self.layout, self.team)
+        self.assertIn("no project directory", result["reason"])
+        self.assertFalse(self.target.exists())
+
+    def test_the_board_is_mirrored_into_the_team_folder(self):
+        self.set_project()
+        self.post("the first finding")
+        self.post("the second finding")
+        result = workdir.render_board_snapshot(self.layout, self.team)
+        self.assertTrue(result["written"])
+        self.assertEqual(result["records"], 2)
+        text = self.target.read_text(encoding="utf-8")
+        self.assertIn("# Team board: {}".format(self.team), text)
+        self.assertIn("the first finding", text)
+        self.assertIn("the second finding", text)
+
+    def test_it_carries_the_charter_and_roster(self):
+        self.set_project()
+        self.post()
+        text = (workdir.render_board_snapshot(self.layout, self.team), self.target.read_text(encoding="utf-8"))[1]
+        self.assertIn("## Charter", text)
+        self.assertIn("| alpha-worker |", text)
+
+    def test_it_is_marker_protected_like_the_other_mirrors(self):
+        self.set_project()
+        self.post()
+        workdir.render_board_snapshot(self.layout, self.team)
+        self.assertTrue(self.target.read_text(encoding="utf-8").startswith(workdir.MARKER))
+        self.target.write_text("# mine\n", encoding="utf-8")
+        result = workdir.render_board_snapshot(self.layout, self.team)
+        self.assertIn("not written by herdr-team", result["reason"])
+        self.assertEqual(self.target.read_text(encoding="utf-8"), "# mine\n")
+
+    def test_an_unchanged_board_is_not_rewritten(self):
+        self.set_project()
+        self.post()
+        self.assertTrue(workdir.render_board_snapshot(self.layout, self.team)["written"])
+        self.assertFalse(workdir.render_board_snapshot(self.layout, self.team)["written"])
+
+    def test_a_board_larger_than_a_document_mirror_is_not_truncated(self):
+        """The 64 KB mirror cap would have cut a real team's board in half."""
+        self.set_project()
+        for index in range(120):
+            self.post("post {} ".format(index) + "x" * 800)
+        workdir.render_board_snapshot(self.layout, self.team)
+        size = self.target.stat().st_size
+        self.assertGreater(size, workdir.MAX_RENDER_BYTES)
+        self.assertIn("post 119", self.target.read_text(encoding="utf-8"))
+
+    def test_the_ignore_rule_exists_before_the_file_does(self):
+        """A snapshot written under an older folder layout was committable."""
+        self.set_project()
+        workdir.render(self.layout, self.team)
+        gitignore = self.project / ".herdr-team" / ".gitignore"
+        # Simulate the pre-0.4.2 ignore file, which knew nothing about board.md.
+        gitignore.write_text(workdir.MARKER_HASH + "\n{}/artifacts/\n".format(self.team), encoding="utf-8")
+        self.post("something worth keeping")
+        workdir.render_board_snapshot(self.layout, self.team)
+        self.assertIn("{}/board.md".format(self.team), gitignore.read_text(encoding="utf-8"))
+        self.assertTrue(self.target.exists())
+
+    def test_it_is_git_ignored(self):
+        body = workdir.gitignore_body(["alpha"])
+        self.assertIn("alpha/board.md", body)
+
+
+class DaemonBoardSnapshotTests(unittest.TestCase):
+    def setUp(self):
+        from support import TempState as TS
+        from test_daemon import FakeClock, make_daemon
+
+        self.clock = FakeClock()
+        self.ts = TS()
+        self.addCleanup(self.ts.cleanup)
+        self.project = Path(tempfile.mkdtemp(prefix="ht-proj-")).resolve()
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.project, ignore_errors=True))
+
+        def apply(doc: roster.Team) -> None:
+            doc.config["project_dir"] = os.fspath(self.project)
+
+        roster.update_team(self.ts.team, apply)
+        self.d, _api, _c = make_daemon(self.ts, clock=self.clock)
+        self.d.scan_teams(force=True)
+        self.team = self.d.teams[self.ts.team_name]
+
+    @property
+    def target(self) -> Path:
+        return self.project / ".herdr-team" / self.ts.team_name / "board.md"
+
+    def post(self, text="hello"):
+        store.BoardStore(self.ts.team).append({
+            "from": "alpha-worker", "from_kind": "claude", "from_pane": "w2:p2", "from_terminal": "t",
+            "from_gen": 1, "to": ["all"], "to_role": None, "kind": "note",
+            "text": text, "refs": [], "reply_to": None,
+        })
+
+    def test_a_post_reaches_the_snapshot(self):
+        self.post("into the knowledge base")
+        self.d.tail_boards()
+        self.d.snapshot_board(self.team, self.d.now_ms())
+        self.assertIn("into the knowledge base", self.target.read_text(encoding="utf-8"))
+
+    def test_it_is_not_rewritten_more_than_once_a_minute(self):
+        from herdr_team import daemon as D
+
+        self.post("first")
+        self.d.tail_boards()
+        self.d.snapshot_board(self.team, self.d.now_ms())
+        first = self.target.read_text(encoding="utf-8")
+        self.post("second")
+        self.d.tail_boards()
+        self.d.snapshot_board(self.team, self.d.now_ms())
+        self.assertEqual(self.target.read_text(encoding="utf-8"), first, "the floor holds the second write")
+        self.clock.advance(D.BOARD_SNAPSHOT_MIN_INTERVAL_S + 1)
+        self.d.snapshot_board(self.team, self.d.now_ms())
+        self.assertIn("second", self.target.read_text(encoding="utf-8"))
+
+    def test_an_unmoved_board_is_not_rewritten(self):
+        self.post()
+        self.d.tail_boards()
+        self.d.snapshot_board(self.team, self.d.now_ms())
+        before = self.target.stat().st_mtime_ns
+        self.clock.advance(600)
+        self.d.snapshot_board(self.team, self.d.now_ms())
+        self.assertEqual(self.target.stat().st_mtime_ns, before)
+
+    def test_the_tick_runs_it(self):
+        self.post("through the tick")
+        self.d.tick()
+        self.assertTrue(self.target.exists(), "the snapshot must be wired into the tick")
+
+    def test_a_team_with_no_project_is_skipped(self):
+        from support import TempState as TS
+        from test_daemon import make_daemon
+
+        with TS() as ts:
+            d, _api, _c = make_daemon(ts)
+            d.scan_teams(force=True)
+            d.snapshot_board(d.teams[ts.team_name], d.now_ms())  # must not raise
