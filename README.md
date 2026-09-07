@@ -111,18 +111,53 @@ server. While this repository is private you also need git credentials for
 GitHub, so run `gh auth login` once if you have not.
 
 ```bash
+# 1. the plugin, and the CLI on your PATH
 herdr plugin install vitalysim/herdr-team                                      # checks out under ~/.config/herdr/plugins/github/
-~/.config/herdr/plugins/github/herdr-team-*/bin/herdr-team install-cli --yes   # puts herdr-team on PATH via ~/.local/bin
-herdr-team daemon start              # the startup hook only fires on a server start, so start it once by hand
-herdr-team skill install             # teaches the agents the board commands
-herdr-team kinds trust claude        # per Herdr session, for every agent kind you use
+~/.config/herdr/plugins/github/herdr-team-*/bin/herdr-team install-cli --yes   # symlinks herdr-team into ~/.local/bin
+
+# 2. the notifier (the startup hook only fires on a server start, so start it once by hand)
+herdr-team daemon start
+
+# 3. teach your agents the board commands
+herdr-team skill install
+
+# 4. REQUIRED: allow delivery, once per Herdr session, for every kind you use
+herdr-team kinds trust claude
 herdr-team kinds trust codex
-herdr-team hooks install claude      # optional: Claude Code hooks
+herdr-team kinds trust opencode
+
+# 5. Claude Code only: hooks, so a Claude member sees the board on every prompt
+herdr-team hooks install claude
 ```
 
-Trusting a kind is the one deliberate step: it tells the notifier that you
-have checked the typing path for that kind. Until then members of that kind
-are listed but nothing is typed into them.
+**Step 4 is not optional.** Until a kind is trusted the notifier types nothing
+into it: members of that kind join, appear in `who`, and are never briefed and
+never nudged. The symptom is a team that looks fine and never talks, and the
+reason is one line per member in the notifier log:
+
+```
+clickhouse-hunt: claude-hunter-research held: kind_unverified
+```
+
+`herdr-team kinds list` shows what is trusted. Trusting a kind is the one
+deliberate step in the whole install: it says you have checked what typing into
+that kind actually does.
+
+**Step 5 matters more than "optional" suggests.** Without the hooks a Claude
+member only sees the board when the notifier types a nudge into it. With them
+it also gets the unread posts at the top of every prompt, a briefing at session
+start, and a check at the end of a turn. There is one catch: `hooks install`
+switches those members to `delivery: "hooks"`, which raises the idle-stability
+window from 2 s to 15 s before a nudge may be typed. If you want the hooks
+without that, set it back per team:
+
+```jsonc
+// team.json -> config
+"gate": { "stable_ms_hooks_delivery": 3000 }
+```
+
+Members already running pick the hooks up only after their Claude session
+restarts. Only Claude Code has hooks; other kinds rely on typed nudges.
 
 Adding the plugin to a session that is already running agents loses nothing.
 The install, the notifier, and the config reload all talk to the running
@@ -150,7 +185,9 @@ colour.
 
 ```bash
 herdr plugin list                # herdr-team, enabled
+herdr-team kinds list            # every kind you use says "trusted" (step 4)
 herdr-team skill check           # the skill is installed and current
+herdr-team hooks check claude    # SessionStart=yes, UserPromptSubmit=yes, Stop=yes
 herdr-team daemon status         # notifier alive, socket, teams
 herdr-team doctor                # warns about anything missing, including stale sidebar rows
 ```
@@ -162,6 +199,17 @@ Then end to end, with two agents running:
 3. Post `@<member> run herdr-team board --new, ack the charter, and reply with your status`.
 4. The feed shows `✓nudged`, then `✓read` once the member reads it, then its reply.
 5. `herdr-team notifier stats` for delivery health; `wrong_target` must be 0.
+
+If a post seems to go nowhere, the notifier log says why in one line per
+attempt — `held: kind_unverified` (step 4 not done), `held: not_idle` (the
+member is working), `held: done_hold` (it just finished; the notifier waits a
+minute so you can read the result), `held: focused` (you are looking at that
+pane). `herdr-team nudge <name> --force` overrides all of them.
+
+A post addressed to the whole team does not interrupt anyone: members see it
+on their next board read, and a member that is idle with unread posts is
+swept into a nudge within a few minutes. Use `--to <name>` when one member
+must act, and `--urgent` when it cannot wait.
 
 ### Updating
 
@@ -326,7 +374,7 @@ platform; Linux is supported and covered by CI; Windows is not.
 ```bash
 git clone https://github.com/vitalysim/herdr-team.git
 cd herdr-team
-python3 -m unittest discover -s tests        # 1409 tests, no dependencies
+python3 -m unittest discover -s tests        # 1451 tests, no dependencies
 bin/herdr-team-sandbox start ~/your/project  # an isolated Herdr session for live testing
 ```
 
