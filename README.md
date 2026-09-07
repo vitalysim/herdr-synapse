@@ -299,14 +299,24 @@ them apart. Give the team a directory and it gets one:
 ```
 <your project>/.herdr-team/<team>/
   knowledge.md         the team's rules, and what its members have learned
-  members/<name>.md    what this member in particular is here to do
+  members/<name>.md    this member's own document; the one file you edit
   artifacts/           work products; the only part git ignores
 ```
+
+Each member's file has the same six sections, all optional, with a line of
+guidance in each: Mission, Scope, Constraints, Definition of done, Handoffs,
+and Notes, which stays private to you. Team creation fills Mission in from the
+brief, so nobody starts at "none set". Edit the file in your editor and the
+notifier leaves it alone and tells you; `herdr-team instructions <name>
+--adopt` shows the diff and applies it. That confirm step is the whole
+security model: the folder is inside a checkout your agents can write to, so
+nothing there counts as your word until you say it does.
 
 | Command | What it does | Who |
 | --- | --- | --- |
 | `project set <path>` | records the directory and creates the folder | you |
-| `instructions <name> --set "…"` | that member's standing orders | you |
+| `instructions <name> --edit` | that member's own document, in your editor | you |
+| edit `members/<name>.md`, then `instructions <name> --adopt` | the same, in your repo | you |
 | `knowledge set "…"` | the team's DOs and DON'Ts | you |
 | `knowledge add "…"` | one attributed finding | any member |
 | `knowledge-status`, `prefix+f` | what every team has, and what is missing | anyone |
@@ -318,8 +328,10 @@ it read back to its teammates as your instruction. The plugin writes nothing
 until you name a directory, and it **never deletes** anything inside one.
 
 Rules and instructions carry your authority and reach Claude in its session
-context. Findings do not: they are attributed peer notes, escaped so one can
-never pose as a rule.
+context, and a changed document reaches it on its very next turn, once, until
+it acknowledges. Other kinds are told to re-read. Findings do not carry
+authority: they are attributed peer notes, escaped so one can never pose as a
+rule.
 
 Everything that changes here reaches the team through the board, so a new
 rule, a changed instruction, a finding, or a file dropped in `artifacts/` by

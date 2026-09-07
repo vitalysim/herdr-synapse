@@ -30,6 +30,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from herdr_team import claude_settings, paths, store
+from herdr_team import charter as _charter
+from herdr_team import instructions_doc as _doc
 from herdr_team import daemon as _daemon
 from herdr_team import hooks as _hooks
 from herdr_team import render as _render
@@ -332,6 +334,21 @@ def _charter_headline(doc: Optional[Dict[str, Any]]) -> Optional[Tuple[int, str]
     return int(charter.get("seq", 0) or 0), text
 
 
+def instructions_lines(team: paths.TeamPaths, name: str, max_chars: int = BRIEF_CONTEXT_MAX_SECTION) -> List[str]:
+    """The member's instructions document as context lines, or nothing when unset.
+
+    Read from the team state dir, never from the project mirror: that folder is
+    writable by the agents themselves, so anything read back from it would be an
+    agent-authored instruction wearing operator authority. Private sections are
+    dropped and every line is escaped by ``instructions_doc.injected``.
+    """
+    text = _read_state_text(team.instructions(name), max_chars)
+    body = _doc.injected(_doc.parse(text)) if text else []
+    if not body:
+        return []
+    return ["your instructions (operator authority), full text: herdr-team instructions"] + body
+
+
 def _read_state_text(path: Path, max_chars: int) -> str:
     """Read one human-authored file from the team state dir, trimmed to ``max_chars``."""
     try:
@@ -433,11 +450,8 @@ def brief_context(team: paths.TeamPaths, team_name: str, member: Dict[str, Any])
     # write text that reaches another as the operator's word. Every line is
     # escaped and the whole block capped, because this stdout is spliced into
     # Claude's context unfenced.
-    instructions = _read_state_text(team.instructions(name), BRIEF_CONTEXT_MAX_SECTION)
-    if instructions:
-        lines.append("your instructions (operator authority), full text: herdr-team instructions")
-        lines.extend(_render.escape_context_line(line) for line in instructions.splitlines())
-    rules = _read_state_text(team.knowledge_md, BRIEF_CONTEXT_MAX_SECTION)
+    lines.extend(instructions_lines(team, name))
+    rules = _read_state_text(_charter.rules_path(team), BRIEF_CONTEXT_MAX_SECTION)
     if rules:
         lines.append("team rules (operator authority), full text: herdr-team knowledge")
         lines.extend(_render.escape_context_line(line) for line in rules.splitlines())
@@ -462,6 +476,24 @@ def brief_context(team: paths.TeamPaths, team_name: str, member: Dict[str, Any])
     if len(encoded) > BRIEF_CONTEXT_MAX_BYTES:
         text = encoded[:BRIEF_CONTEXT_MAX_BYTES].decode("utf-8", "ignore").rstrip() + "\n[herdr-team: context truncated; run herdr-team me]\n"
     return text
+
+
+def unacknowledged_instructions(team: paths.TeamPaths, name: str) -> str:
+    """The member's instructions block while it has not acknowledged the current revision."""
+    doc = _read_team_doc(team) or {}
+    member = None
+    for candidate in doc.get("members") or []:
+        if isinstance(candidate, dict) and candidate.get("name") == name:
+            member = candidate
+            break
+    if member is None or not _charter.instructions_stale(member):
+        return ""
+    body = instructions_lines(team, name)
+    if not body:
+        return ""
+    head = "[herdr-team instructions updated (revision {}); operator authority. Run herdr-team ack when you have read them.]".format(
+        _charter.instructions_seq(member))
+    return "\n".join([head] + body[1:]) + "\n\n"
 
 
 def render_board_context(records: List[Dict[str, Any]], max_posts: int = CONTEXT_MAX_POSTS, max_bytes: int = CONTEXT_MAX_BYTES) -> str:
@@ -618,6 +650,14 @@ def run_hook_input(args: argparse.Namespace) -> int:
     if action == "prompt-submit":
         records = _unread_from_offset(team, name)
         text = render_board_context(records, max_posts=max(1, int(args.max)), max_bytes=max(256, int(args.max_bytes)))
+        # An instructions document the member has not acknowledged rides the next
+        # turn, once. Without this the operator's edit reaches a Claude member
+        # only at its next session start, which may be hours away; with the ack
+        # gate it costs context once rather than every turn.
+        pending = unacknowledged_instructions(team, name)
+        if pending:
+            text = pending + text
+            result["instructions"] = True
         result["handled"] = True
         result["count"] = len(records)
         result["context"] = text

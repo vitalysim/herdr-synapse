@@ -48,7 +48,7 @@ Environment the CLI reads: `HERDR_SOCKET_PATH`, `HERDR_SESSION`,
 | Code | Meaning | Typical error codes |
 | --- | --- | --- |
 | 0 | ok | |
-| 1 | refused or validation failure | `team_name_invalid`, `name_invalid`, `name_reserved`, `role_invalid`, `agent_name_taken`, `member_claimed`, `team_exists`, `team_not_found`, `member_not_found`, `author_mismatch`, `text_too_long`, `invalid_utf8`, `charter_too_long`, `ref_invalid`, `path_symlink`, `team_session_mismatch`, `team_ambiguous`, `view_foreign`, `plugin_disabled`, `agent_not_found`, `agent_blocked`, `agent_not_ready`, `launch_pending`, `not_an_agent`, `board_write_failed`, `roster_conflict`, `home_unset`, `internal`, `say_unverified`, `say_multiline`, `say_too_long`, `say_control_command`, `say_timeout`, `kind_unverified`, `retract_invalid`, `edit_invalid`, `interrupt_needs_recipient`, `interrupt_cooldown`, `session_unknown`, `session_unsupported`, `outside_herdr`, `command_not_found`, `pane_busy`, `member_alive` |
+| 1 | refused or validation failure | `team_name_invalid`, `name_invalid`, `name_reserved`, `role_invalid`, `agent_name_taken`, `member_claimed`, `team_exists`, `team_not_found`, `member_not_found`, `author_mismatch`, `text_too_long`, `invalid_utf8`, `charter_too_long`, `ref_invalid`, `path_symlink`, `team_session_mismatch`, `team_ambiguous`, `view_foreign`, `plugin_disabled`, `agent_not_found`, `agent_blocked`, `agent_not_ready`, `launch_pending`, `not_an_agent`, `board_write_failed`, `roster_conflict`, `home_unset`, `internal`, `say_unverified`, `say_multiline`, `say_too_long`, `say_control_command`, `say_timeout`, `kind_unverified`, `retract_invalid`, `edit_invalid`, `interrupt_needs_recipient`, `interrupt_cooldown`, `session_unknown`, `session_unsupported`, `outside_herdr`, `command_not_found`, `pane_busy`, `member_alive`, `no_project_dir`, `workdir_foreign_file`, `instructions_too_long`, `rules_too_long` |
 | 2 | usage | `usage`, `unknown_command` |
 | 3 | not a member, or Herdr unreachable | `not_a_member`, `team_required`, `server_not_running`, `herdr_unreachable`, `herdr_timeout`, `herdr_not_found` |
 | 4 | echo rejected | `echo_rejected` |
@@ -279,18 +279,47 @@ JSON `{"team","history":[{"seq":57,"ts":"…","charter_seq":3,"text":"…","refs
 Sets the member's role brief (≤ 300 chars delivered in the briefing line;
 the rest via `me`). JSON `{"team","member":"<name>","brief":"…"}`.
 
-### `instructions [<name>] [--set "<text>" | --file <path> | --clear]`
+### `instructions [<name>] [--set "<text>" | --file <path> | --edit | --adopt | --discard | --clear] [--yes] [--urgent]`
 
-The long form of a brief: what this member in particular is here to do, up
-to 4000 characters. Reading is open to anyone; setting is human only. The
-authoritative copy lives in the team state dir. When the team has a project
-directory, a mirror is rendered to `members/<name>.md` inside it, and Claude
-members also receive the text in their session context.
+The member's own standing orders: a structured document, up to 4000
+characters. Reading is open to anyone; every write is human only. Exactly one
+mode per call; two are a usage error.
 
-Appends an `instructions_updated` system record addressed to everyone, so the
-member learns its job changed and teammates learn who owns what; `--urgent`
-nudges. With no name, shows your own.
-JSON `{"team","member","chars","path","record_seq"}`.
+The document has six known sections, all optional: `Mission`, `Scope`,
+`Constraints`, `Definition of done`, `Handoffs`, and `Notes`, which is private
+and never sent to the agent. A heading the plugin does not know is kept in
+place. Guidance for each section rides in HTML comments, which are invisible in
+rendered Markdown and never injected. Plain text with no headings becomes the
+`Mission`, so `--set "one sentence"` behaves as it always did, and a pre-0.6
+instructions file needs no migration.
+
+The authoritative copy lives in the team state dir, which no agent can reach
+through the project checkout. When the team has a project directory the
+document is mirrored to `members/<name>.md`.
+
+| Mode | What it does |
+| --- | --- |
+| `--set`, `--file` | replace the document from text or a file; a file over the limit is refused, never truncated |
+| `--edit` | open it in `$VISUAL`/`$EDITOR`, exactly as `charter edit` does |
+| `--adopt` | import the edit made to `members/<name>.md`, after showing a unified diff and asking (`--yes` skips) |
+| `--discard` | throw that edit away and restore the file from the authoritative copy |
+| `--clear` | remove the document |
+
+`--adopt` is what makes an edit the operator's word. The project folder is
+inside a checkout the agents can write to and the plugin cannot tell whose
+editor saved the file, so an edited `members/<name>.md` is **kept, not
+imported**: the notifier stops overwriting it, posts one `instructions_edited`
+record to you naming the adopt command, and waits. Until you adopt, nothing
+from that file reaches any agent.
+
+Every write bumps the member's `instructions_seq` and appends an
+`instructions_updated` record addressed to **the member and to `all`**, so the
+member is nudged (a record addressed only to `all` is a broadcast, which the
+delivery gate holds) and teammates still learn who owns what. `--urgent`
+nudges everyone at once. With no name, shows your own.
+
+JSON `{"team","member","chars","path","record_seq","instructions_seq"}`;
+`--adopt` adds `"adopted"` and `"diff"`.
 
 ### `knowledge [--limit N]`
 
@@ -300,9 +329,14 @@ Prints the team's rules and its findings.
 
 The team's DOs and DON'Ts, up to 4000 characters. These carry operator
 authority: they are injected into Claude members' context alongside the
-charter, so only a human may set them. Appends a `knowledge_updated` system
-record so members see the change on their next board read; `--urgent` nudges
-them instead of waiting. JSON `{"team","chars","path","record_seq"}`.
+charter, so only a human may set them. Stored as `rules.md` in the team state
+dir (before 0.6 this was `knowledge.md`, which is still read when `rules.md`
+is absent and removed on the first write; the project mirror's `knowledge.md`
+is a different document, rules **plus** every finding). Appends a
+`knowledge_updated` system record so members see the change on their next
+board read; `--urgent` nudges them instead of waiting. A file over the limit
+is refused rather than truncated.
+JSON `{"team","chars","path","record_seq","rules_seq"}`.
 
 ### `knowledge add "<text>"`
 
@@ -408,7 +442,8 @@ From a member pane. JSON:
 {"team":"vuln-hunt","name":"vuln-hunt-reviewer","role":"reviewer","kind":"codex","pane_id":"w2:p1","terminal_id":"term_…",
  "brief":"…"|null,"charter":{"seq":3,"headline":"…"}|null,"teammates":[{"name","role","kind","status"}],
  "unread":2,"cursor":41,"verified":true,"via":"cli","skill_version":1,"skill_installed":1|null,"skill_ok":true,
- "cli":"/abs/path/herdr-team","notifier":"alive","session":"…f01a83b5a560"|null}
+ "cli":"/abs/path/herdr-team","notifier":"alive","session":"…f01a83b5a560"|null,
+ "instructions_path":"…","knowledge_path":"…","board_path":"…","instructions_stale":false}
 ```
 
 `session` is the tail of the harness session id the roster holds for you
@@ -430,7 +465,7 @@ calls `agent read`. JSON:
  "members":[{"name":"vuln-hunt-reviewer","role":"reviewer","kind":"codex","status":"active","agent_status":"idle",
    "pane_id":"w2:p1","terminal_id":"term_…","workspace_id":"w2","last_headline":"→ review diff","pending_nudges":0,
    "muted_until":null,"verified_kind":true,"delivery":"nudge","hooks_last_seen":null,"last_seen_at":"…",
-   "briefed":true,"charter_stale":false,"unread":0,"brief":"…"|null,"session":"…f01a83b5a560"|null}],
+   "briefed":true,"charter_stale":false,"instructions_stale":false,"unread":0,"brief":"…"|null,"session":"…f01a83b5a560"|null}],
  "kinds":{"claude":{"trusted":true,"verified":false,"probe_ok":false,"multiline":{"one_submission":true,…}|null}}}
 ```
 

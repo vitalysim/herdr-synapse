@@ -2754,9 +2754,13 @@ def folder_summary(info: Dict[str, Any]) -> str:
     if info.get("issues"):
         return str(info["issues"][0])
     total = len(info.get("members") or [])
-    return "{} rules, {}/{} briefed, {} finding{}".format(
+    out = "{} rules, {}/{} with instructions, {} finding{}".format(
         "has" if info.get("rules") else "no", info.get("with_instructions", 0), total,
         info.get("findings", 0), "" if info.get("findings") == 1 else "s")
+    waiting = info.get("awaiting_adopt") or []
+    if waiting:
+        out += ", {} edit{} to adopt".format(len(waiting), "" if len(waiting) == 1 else "s")
+    return out
 
 
 def team_shared_dir(model: PickerModel, team: str) -> str:

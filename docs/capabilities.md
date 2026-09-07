@@ -89,7 +89,7 @@ on disk tells them apart. Three additions close that:
 | Choose where the folder goes | `project set <path>`, `project clear`, `project render`; `create --project`; a `prefix+t` wizard stage that prefills the shared directory | human only |
 | See what every team has | `knowledge-status`, the `prefix+f` popup, and a per-team marker in the `prefix+t` tree | anyone |
 | Set it all up at creation | `create --project … --rules … --instructions NAME=TEXT` | human only |
-| Long-form per-member instructions | `instructions <name> --set "…" \| --file p \| --clear` | human to set, anyone to read |
+| The member's own instructions document | `instructions <name> --set "…" \| --file p \| --edit \| --adopt \| --discard \| --clear`, or edit `members/<name>.md` and adopt it | human to write, anyone to read |
 | Team rules, the DOs and DON'Ts | `knowledge set "…" \| --file p`, `knowledge clear` | human only |
 | What the team has learned | `knowledge add "<text>"` | any member |
 | Read both | `knowledge` | anyone |
@@ -104,9 +104,12 @@ Three properties make it safe to put in a repository agents can write to:
 
 - **The mirror is never truth.** The authoritative copies live in the team
   state dir behind human-only commands, and every read that feeds an agent's
-  context comes from there. A hand-edited mirror is reported as drifted and
-  regenerated, never imported. Without this an agent could edit a file and
-  have it read back to a teammate as the operator's instruction.
+  context comes from there. Since 0.6 one file is editable in place, the
+  member's own `members/<name>.md`: an edit to it is **kept** rather than
+  overwritten, but it is still not truth until `instructions <name> --adopt`
+  imports it, and that command is human only. Everything else is still
+  regenerated. Without this an agent could edit a file and have it read back
+  to a teammate as the operator's instruction.
 - **Consent is explicit.** `config.project_dir` is empty until a human runs
   `project set`. Nothing is inferred from member cwds, so the plugin cannot
   write into the wrong repository or into two of them.
@@ -122,7 +125,9 @@ exists:
 | Change | Record | Who learns, and when |
 | --- | --- | --- |
 | `knowledge set` | `knowledge_updated` | everyone, next board read |
-| `instructions --set` | `instructions_updated` | everyone, next board read |
+| `instructions --set/--edit/--adopt` | `instructions_updated` | the member itself, nudged when idle; everyone else on their next board read |
+| editing `members/<name>.md` | `instructions_edited` | you, so you can adopt it |
+| `project set` | `project_set` | everyone, next board read |
 | `knowledge add` | `knowledge_finding` | everyone, next board read |
 | a file in `artifacts/` | `artifacts_changed` | everyone, next board read |
 
@@ -146,6 +151,16 @@ Rules carry operator authority and are injected into Claude members' context
 with the charter. Findings do not: they are attributed, escaped so one can
 never open a fence or forge a role prefix, and pointed at rather than
 inlined, so a peer's note can never reach another member as an instruction.
+
+**How an instructions change reaches its member.** A Claude member with hooks
+gets the document spliced into its next turn, and only while it has not
+acknowledged that revision, so it costs context once rather than every turn.
+Every other kind gets the ordinary nudge from the record, which names the
+member, plus the skill's standing rule to run `herdr-team instructions` when
+the board says they changed. `who` shows `instructions: stale` until the
+member runs `ack`, which now records the charter, the instructions, and the
+rules together. The document is versioned per member (`instructions_seq`) and
+the rules per team (`rules_seq`), the same monotonic pattern the charter uses.
 
 ### The command menu
 

@@ -29,6 +29,7 @@ from herdr_team import store
 from herdr_team.errors import EXIT_REFUSED, HerdrTeamError
 from herdr_team.identity import Author, audit
 from herdr_team.paths import Layout, TeamPaths, canonicalize, check_not_symlink, ensure_team_dirs
+from herdr_team import instructions_doc as _doc
 from herdr_team import roster as _roster
 from herdr_team import workdir as _workdir
 
@@ -387,7 +388,12 @@ MAX_FINDINGS_SHOWN = 200
 
 
 def get_instructions(layout: Layout, team: str, member_name: str) -> Optional[str]:
-    """The authoritative long-form instructions for one member, or None."""
+    """The authoritative long-form instructions for one member, or None.
+
+    The stored form since 0.6: the document's sections, without the title and
+    the guidance comments the mirror carries. A pre-0.6 plain-text blob reads
+    back as a Mission, so an upgrade needs no migration.
+    """
     team_paths = layout.team(team)
     try:
         text = team_paths.instructions(member_name).read_text(encoding="utf-8")
@@ -399,40 +405,119 @@ def get_instructions(layout: Layout, team: str, member_name: str) -> Optional[st
     return text or None
 
 
-def set_instructions(layout: Layout, team: str, author: Author, member_name: str, text: Optional[str], file_path: Optional[str] = None, urgent: bool = False) -> Dict[str, Any]:
-    """Set one member's long-form instructions (human only)."""
+def get_instructions_doc(layout: Layout, team: str, member_name: str) -> "_doc.Sections":
+    """One member's instructions as parsed sections (empty list when unset)."""
+    return _doc.parse(get_instructions(layout, team, member_name))
+
+
+def instructions_seq(member: Any) -> int:
+    """The member's instructions revision; 0 when nothing was ever set."""
+    if isinstance(member, dict):
+        raw = member.get("instructions_seq")
+    else:
+        raw = getattr(member, "instructions_seq", None)
+    try:
+        return int(raw or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def instructions_stale(member: Any) -> bool:
+    """True when the member has not acknowledged its current instructions."""
+    seq = instructions_seq(member)
+    if seq <= 0:
+        return False
+    if isinstance(member, dict):
+        acked = member.get("instructions_seq_acked")
+    else:
+        acked = getattr(member, "instructions_seq_acked", None)
+    try:
+        return acked is None or int(acked) < seq
+    except (TypeError, ValueError):
+        return True
+
+
+def set_instructions(layout: Layout, team: str, author: Author, member_name: str, text: Optional[str], file_path: Optional[str] = None, urgent: bool = False, announce: bool = True) -> Dict[str, Any]:
+    """Set one member's long-form instructions (human only).
+
+    ``announce`` is False only at team creation, where every member is briefed
+    anyway and a record per member would be noise before anyone has read a board.
+    """
     require_human(layout, team, author, "instructions set")
     team_paths = layout.team(team)
     doc = _roster.load_team(team_paths)
     member = doc.find(member_name)
     if member is None or member.is_human or member.status == "left":
         raise HerdrTeamError("member_not_found", "{!r} is not an agent member of team {!r}".format(member_name, team), EXIT_REFUSED, {"name": member_name, "team": team, "roster": doc.names()})
+    if text is not None and file_path:
+        raise HerdrTeamError("usage", "pass --set or --file, not both", 2, {"member": member_name})
     if file_path:
-        body = _read_text_file(file_path, MAX_INSTRUCTIONS_CHARS, "instructions_too_long")
+        body = _read_text_file(file_path, MAX_INSTRUCTIONS_CHARS, "instructions_too_long", truncate=False)
     else:
         body = sanitize(str(text or ""), MAX_INSTRUCTIONS_CHARS, code="instructions_too_long")
+    # Whatever route the text came in by, it is stored as the document: sections
+    # in a known order, guidance comments dropped. A plain paragraph becomes the
+    # Mission, so ``--set "one sentence"`` still works exactly as it did.
+    sections = _doc.parse(body)
+    stored = _doc.to_text(sections) if not _doc.is_empty(sections) else ""
     ensure_team_dirs(team_paths)
     target = team_paths.instructions(member.name)
-    if body:
-        store.atomic_write(target, (body + "\n").encode("utf-8"))
-    else:
-        store.atomic_write(target, b"")
-    # Addressed to ``all``: the member learns its job changed, and teammates
-    # learn who owns what, which is the thing a shared folder cannot tell them.
-    what = _one_line(body, 200) if body else "cleared"
-    seq = _roster.append_system_record(
-        team_paths, "instructions_updated",
-        "{}'s instructions updated: {} (read them: herdr-team instructions {})".format(member.name, what, member.name),
-        to=["all"], extra={"urgent": bool(urgent), "member": member.name, "chars": len(body)}, socket=os.fspath(layout.socket),
-    )
-    audit(layout, team, "instructions_set", author, {"member": member.name, "chars": len(body), "urgent": bool(urgent)})
-    return {"team": team, "member": member.name, "chars": len(body), "path": os.fspath(target), "record_seq": seq}
+    store.atomic_write(target, stored.encode("utf-8"))
+    revision = _bump_member_counter(team_paths, member.name, "instructions_seq")
+    # Addressed to the member *and* to ``all``: the member learns its job changed
+    # (a record naming nobody is a broadcast, which the delivery gate holds), and
+    # teammates learn who owns what, which a shared folder cannot tell them.
+    what = _doc.summary(sections, 200) if stored else "cleared"
+    seq = None
+    if announce:
+        seq = _roster.append_system_record(
+            team_paths, "instructions_updated",
+            "{}'s instructions updated: {} (read them: herdr-team instructions {})".format(member.name, what, member.name),
+            to=[member.name, "all"],
+            extra={"urgent": bool(urgent), "member": member.name, "chars": len(stored), "instructions_seq": revision},
+            socket=os.fspath(layout.socket),
+        )
+    audit(layout, team, "instructions_set", author, {"member": member.name, "chars": len(stored), "urgent": bool(urgent), "instructions_seq": revision})
+    return {"team": team, "member": member.name, "chars": len(stored), "path": os.fspath(target), "record_seq": seq, "instructions_seq": revision}
+
+
+def _bump_member_counter(team_paths: TeamPaths, member_name: str, field: str) -> int:
+    """Increment one monotonic counter on a member and return its new value."""
+    seen: List[int] = []
+
+    def mutate(team: _roster.Team) -> None:
+        member = team.find(member_name)
+        if member is None:
+            return
+        current = getattr(member, field, None)
+        try:
+            nxt = int(current or 0) + 1
+        except (TypeError, ValueError):
+            nxt = 1
+        setattr(member, field, nxt)
+        seen.append(nxt)
+
+    _roster.update_team(team_paths, mutate)
+    return seen[0] if seen else 0
+
+
+def rules_path(team_paths: TeamPaths) -> Path:
+    """Where this team's rules are: ``rules.md``, or the pre-0.6 ``knowledge.md``.
+
+    The old name is read when the new one is absent, so an upgrade needs no
+    migration step; the first write moves the content to ``rules.md``.
+    """
+    if team_paths.rules_md.is_file():
+        return team_paths.rules_md
+    if team_paths.knowledge_md.is_file():
+        return team_paths.knowledge_md
+    return team_paths.rules_md
 
 
 def get_rules(layout: Layout, team: str) -> Optional[str]:
     """The operator's DOs and DON'Ts for this team, or None."""
     try:
-        text = layout.team(team).knowledge_md.read_text(encoding="utf-8")
+        text = rules_path(layout.team(team)).read_text(encoding="utf-8")
     except FileNotFoundError:
         return None
     except OSError:
@@ -441,16 +526,45 @@ def get_rules(layout: Layout, team: str) -> Optional[str]:
     return text or None
 
 
+def rules_seq(doc: Any) -> int:
+    """The team's rules revision from ``team.json`` ``config``; 0 when never set."""
+    config = doc.get("config") if isinstance(doc, dict) else getattr(doc, "config", None)
+    try:
+        return int((config or {}).get("rules_seq") or 0)
+    except (TypeError, ValueError, AttributeError):
+        return 0
+
+
+def rules_stale(member: Any, doc: Any) -> bool:
+    """True when the member has not acknowledged the team's current rules."""
+    seq = rules_seq(doc)
+    if seq <= 0:
+        return False
+    acked = member.get("rules_seq_acked") if isinstance(member, dict) else getattr(member, "rules_seq_acked", None)
+    try:
+        return acked is None or int(acked) < seq
+    except (TypeError, ValueError):
+        return True
+
+
 def set_rules(layout: Layout, team: str, author: Author, text: Optional[str], file_path: Optional[str] = None, urgent: bool = False) -> Dict[str, Any]:
     """Set the team's rules (human only; carries operator authority)."""
     require_human(layout, team, author, "knowledge set")
     team_paths = layout.team(team)
     if file_path:
-        body = _read_text_file(file_path, MAX_RULES_CHARS, "rules_too_long")
+        body = _read_text_file(file_path, MAX_RULES_CHARS, "rules_too_long", truncate=False)
     else:
         body = sanitize(str(text or ""), MAX_RULES_CHARS, code="rules_too_long")
     ensure_team_dirs(team_paths)
-    store.atomic_write(team_paths.knowledge_md, ((body + "\n") if body else "").encode("utf-8"))
+    store.atomic_write(team_paths.rules_md, ((body + "\n") if body else "").encode("utf-8"))
+    if team_paths.knowledge_md.is_file():
+        # Pre-0.6 teams kept the rules here. The first write moves them to
+        # ``rules.md``; leaving the old file would shadow it on the next read.
+        try:
+            os.unlink(team_paths.knowledge_md)
+        except OSError:
+            pass
+    revision = _bump_team_counter(team_paths, "rules_seq")
     # The board is how a member learns anything changed. A ``system`` record to
     # ``all`` is seen on the next board read (and by Claude on its next prompt)
     # without waking anyone; ``--urgent`` nudges, exactly as the charter does.
@@ -458,10 +572,26 @@ def set_rules(layout: Layout, team: str, author: Author, text: Optional[str], fi
     seq = _roster.append_system_record(
         team_paths, "knowledge_updated",
         "team rules updated: {} (full text: herdr-team knowledge)".format(headline),
-        to=["all"], extra={"urgent": bool(urgent), "chars": len(body)}, socket=os.fspath(layout.socket),
+        to=["all"], extra={"urgent": bool(urgent), "chars": len(body), "rules_seq": revision}, socket=os.fspath(layout.socket),
     )
-    audit(layout, team, "knowledge_set", author, {"chars": len(body), "urgent": bool(urgent)})
-    return {"team": team, "chars": len(body), "path": os.fspath(team_paths.knowledge_md), "record_seq": seq}
+    audit(layout, team, "knowledge_set", author, {"chars": len(body), "urgent": bool(urgent), "rules_seq": revision})
+    return {"team": team, "chars": len(body), "path": os.fspath(team_paths.rules_md), "record_seq": seq, "rules_seq": revision}
+
+
+def _bump_team_counter(team_paths: TeamPaths, field: str) -> int:
+    """Increment one monotonic counter in ``team.json`` ``config`` and return it."""
+    seen: List[int] = []
+
+    def mutate(team: _roster.Team) -> None:
+        try:
+            nxt = int(team.config.get(field) or 0) + 1
+        except (TypeError, ValueError):
+            nxt = 1
+        team.config[field] = nxt
+        seen.append(nxt)
+
+    _roster.update_team(team_paths, mutate)
+    return seen[0] if seen else 0
 
 
 def read_findings(layout: Layout, team: str, limit: int = MAX_FINDINGS_SHOWN) -> List[Dict[str, Any]]:
@@ -534,7 +664,7 @@ def _append_finding(path: Path, record: Dict[str, Any]) -> None:
         os.close(fd)
 
 
-def _read_text_file(file_path: str, max_chars: int, code: str) -> str:
+def _read_text_file(file_path: str, max_chars: int, code: str, truncate: bool = True) -> str:
     """Read a ``--file`` argument the way ``set_charter`` reads ``--charter-file``."""
     resolved = canonicalize(file_path)
     check_not_symlink(resolved)
@@ -550,5 +680,9 @@ def _read_text_file(file_path: str, max_chars: int, code: str) -> str:
         raise HerdrTeamError("path_invalid", "cannot read {}: {}".format(file_path, err), EXIT_REFUSED, {"path": file_path}) from err
     body = sanitize(raw, MAX_CHARTER_FILE_BYTES, code=code)
     if len(body) > max_chars:
+        if not truncate:
+            # Silently cutting a document mid-sentence is worse than refusing it:
+            # ``--set`` already refuses, and the two must not disagree.
+            raise HerdrTeamError(code, "{} is {} characters after sanitizing; the limit is {}".format(file_path, len(body), max_chars), EXIT_REFUSED, {"path": file_path, "chars": len(body), "max_chars": max_chars})
         body = body[:max_chars].rstrip()
     return body

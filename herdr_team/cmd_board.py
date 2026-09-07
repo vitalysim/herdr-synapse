@@ -69,7 +69,8 @@ RECORD_KINDS = POST_KINDS + ("direct", "retract", "system")
 SYSTEM_EVENTS = (
     "nudged", "toast", "retracted", "expired", "abandoned", "member_gone", "member_restarted",
     "rotated", "reset_detected", "charter_updated", "renamed", "typed", "member_joined",
-    "knowledge_updated", "instructions_updated", "knowledge_finding", "artifacts_changed",
+    "knowledge_updated", "instructions_updated", "instructions_edited", "knowledge_finding",
+    "artifacts_changed", "project_set",
 )
 HUMAN_VIAS = (VIA_CONSOLE, VIA_CONSOLE_UNFOCUSED, VIA_POPUP, VIA_OUTSIDE)
 #: ``say`` (docs/cli.md section 7): only the verified team console may type into a member. A shell pane is
@@ -1609,19 +1610,27 @@ def _run_ack(args: argparse.Namespace) -> int:
     cursor = cursor_advance(team, author.name, max_seq, author.terminal_id, "cli", touch=True)
     charter = charter_of(doc)
     charter_seq = int(charter.get("seq", 0)) if charter else None
+    # The operator's two other documents are acknowledged here too, on the same
+    # evidence: the member ran ``ack`` from its own pane after reading. This is
+    # what stops the hook re-injecting an instructions document every turn.
+    instructions_seq = int(member.get("instructions_seq") or 0)
+    rules_seq = _charter.rules_seq(doc)
     now = now_iso()
 
     def mutate(d: Dict[str, Any]) -> None:
         for m in members_of(d):
             if m.get("name") == author.name:
                 m["charter_seq_acked"] = charter_seq
+                m["instructions_seq_acked"] = instructions_seq
+                m["rules_seq_acked"] = rules_seq
                 m["briefed_at"] = m.get("briefed_at") or now
                 m["last_seen_at"] = now
                 if m.get("briefing_seq") is None:
                     m["briefing_seq"] = max_seq
 
     update_doc(team, mutate)
-    payload = {"team": team_name, "member": author.name, "cursor": int(cursor.get("seq", max_seq)), "charter_seq_acked": charter_seq}
+    payload = {"team": team_name, "member": author.name, "cursor": int(cursor.get("seq", max_seq)), "charter_seq_acked": charter_seq,
+               "instructions_seq_acked": instructions_seq, "rules_seq_acked": rules_seq}
     return emit(args, payload, "{} acknowledged: cursor {}, charter #{}".format(author.name, payload["cursor"], charter_seq if charter_seq is not None else "none"))
 
 

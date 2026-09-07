@@ -433,8 +433,28 @@ class TeamPaths:
         return self.root / "charter.md"
 
     @property
+    def mirror_json(self) -> Path:
+        """Digest of what the plugin last wrote to each editable mirror file.
+
+        Without it a mirror that differs from what we would write now is
+        ambiguous: the operator may have edited it, or the plugin's own format
+        may have changed. Only the first is an edit to adopt.
+        """
+        return self.root / "mirror.json"
+
+    @property
+    def rules_md(self) -> Path:
+        """The operator's rules for this team (read through ``charter.get_rules``).
+
+        Named ``rules.md`` because the project mirror's ``knowledge.md`` is a
+        different document: it holds these rules *plus* every member finding.
+        Two files with one name confused agents told to "read knowledge.md".
+        """
+        return self.root / "rules.md"
+
+    @property
     def knowledge_md(self) -> Path:
-        """The team's knowledge base: operator rules plus attributed member findings."""
+        """Where the rules lived before 0.6; read as a fallback, never written."""
         return self.root / "knowledge.md"
 
     @property

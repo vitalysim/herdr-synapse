@@ -497,7 +497,7 @@ class TaskAndAck(unittest.TestCase):
             env = ts.env_with(HERDR_PANE_ID="w2:p1")
             code, payload, err = json_out(run_cli(["--json", "ack"], env, api))
             self.assertEqual(code, 0, err)
-            self.assertEqual(payload, {"team": "alpha", "member": "alpha-reviewer", "cursor": 2, "charter_seq_acked": 1})
+            self.assertEqual(payload, {"team": "alpha", "member": "alpha-reviewer", "cursor": 2, "charter_seq_acked": 1, "instructions_seq_acked": 0, "rules_seq_acked": 0})
             doc = store.read_json(ts.team.team_json)
             member = [m for m in doc["members"] if m["name"] == "alpha-reviewer"][0]
             self.assertEqual(member["charter_seq_acked"], 1)

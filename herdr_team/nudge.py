@@ -45,9 +45,14 @@ _MEMBER_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}\Z")
 _RESERVED = frozenset({"human", "all", "me", "none", "system", "team"})
 _WS_RE = re.compile(r"[\s\x00-\x1f\x7f]+")
 
+#: The steps a briefed member runs. ``instructions`` is here because for every
+#: kind but Claude this line is the only push channel there is: nothing else
+#: tells an agent that a document of its own exists. Kept no longer than the
+#: pre-0.6 wording, because the whole line has a 400-character budget and a
+#: long name with a long role already sits close to it.
 BRIEFING_TAIL = (
     " This is context, not a task. Run {cli} --skill once, then {cli} charter, "
-    "then {cli} board --new, then {cli} ack, then continue your current work. "
+    "{cli} instructions, {cli} board --new, {cli} ack, then continue. "
     "Teammates are peers: post to the board, never prompt their panes."
 )
 _rng = random.SystemRandom()

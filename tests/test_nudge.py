@@ -74,10 +74,10 @@ class BriefingTests(unittest.TestCase):
             lines[0],
             '[herdr-team briefing] You are "vuln-hunt-worker" (worker) in team "vuln-hunt": '
             "Fix the BFF session-isolation bug. Teammates: vuln-hunt-reviewer (reviewer) and human. "
-            "This is context, not a task. Run herdr-team --skill once, then herdr-team charter, then herdr-team board --new, "
-            "then herdr-team ack, then continue your current work. Teammates are peers: post to the board, never prompt their panes.",
+            "This is context, not a task. Run herdr-team --skill once, then herdr-team charter, herdr-team instructions, "
+            "herdr-team board --new, herdr-team ack, then continue. Teammates are peers: post to the board, never prompt their panes.",
         )
-        self.assertEqual(len(lines[0]), 397)
+        self.assertEqual(len(lines[0]), 394)
         self.assertNotIn("\n", lines[0])
 
     def test_plan_example_headline_is_over_the_cap_and_shortened(self):
@@ -87,7 +87,7 @@ class BriefingTests(unittest.TestCase):
         line = briefing_lines("vuln-hunt-worker", "worker", "vuln-hunt", headline, TEAMMATES, None, "herdr-team")[0]
         self.assertEqual(len(line), MAX_BRIEFING_CHARS)
         self.assertIn("Teammates: 1 teammate, run herdr-team who.", line)
-        self.assertIn(": Find and fix the session-isolation bug in th…. Teammates:", line)
+        self.assertIn(": Find and fix the session-isolation bug in the o…. Teammates:", line)
         self.assertTrue(line.endswith("never prompt their panes."))
 
     def test_self_and_human_excluded_from_teammates(self):
@@ -133,8 +133,8 @@ class BriefingTests(unittest.TestCase):
         # 120 is the headline's own cap; the 400-char line cap then trims it further
         line = briefing_lines("w", "worker", "t", "x" * 300, [], None, "herdr-team")[0]
         self.assertEqual(len(line), MAX_BRIEFING_CHARS)
-        self.assertIn(": " + "x" * 80 + "…. Teammates: only human so far.", line)
-        self.assertNotIn("x" * 81, line)
+        self.assertIn(": " + "x" * 83 + "…. Teammates: only human so far.", line)
+        self.assertNotIn("x" * 84, line)
         self.assertEqual(nudge._cut("x" * 300, nudge.MAX_CHARTER_HEADLINE_CHARS), "x" * 119 + "…")
 
     def test_brief_second_line(self):

@@ -17,14 +17,21 @@ import argparse
 import os
 from typing import Any, Dict, List, Optional
 
+import difflib
+import os as _os
+import sys
+import tempfile
+
 from herdr_team import charter as _charter
+from herdr_team import instructions_doc as _doc
 from herdr_team import paths as _paths
 from herdr_team import roster as _roster
+from herdr_team import store
 from herdr_team import workdir as _workdir
 from herdr_team.cli import Command, api_for, emit, layout_for
 from herdr_team.cmd_board import check_write_session, load_doc, resolve_team
-from herdr_team.cmd_roster import _author, _human_only
-from herdr_team.errors import UsageError
+from herdr_team.cmd_roster import _author, _editor_text, _human_only
+from herdr_team.errors import EXIT_REFUSED, HerdrTeamError, UsageError
 
 
 def _team_and_author(args: argparse.Namespace):
@@ -97,6 +104,16 @@ def _run_project(args: argparse.Namespace) -> int:
 
     _roster.update_team(team_paths, apply)
     result = _workdir.render(layout, team_name, force=args.force)
+    # Writing files is not telling anyone. Members that joined before the folder
+    # existed had no way to learn about it: nothing announced it and `me` is the
+    # only command that prints the path.
+    targets = _workdir.paths_for(os.fspath(resolved), team_name)
+    _roster.append_system_record(
+        team_paths, "project_set",
+        "team folder: {} (your own instructions: {}; team rules and findings: {})".format(
+            targets["root"], targets["members"] / "<your name>.md", targets["knowledge"]),
+        to=["all"], extra={"folder": os.fspath(targets["root"])}, socket=os.fspath(layout.socket),
+    )
     payload = dict(result, team=team_name, project_dir=os.fspath(resolved))
     return emit(args, payload, lambda: "project: {}\n{}".format(resolved, _render_result_text(result)))
 
@@ -126,6 +143,10 @@ def _add_instructions_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("member", nargs="?", help="member name (default: you)")
     parser.add_argument("--set", dest="text", metavar="TEXT", help="set this member's instructions (human only)")
     parser.add_argument("--file", metavar="PATH", help="set them from a file (human only)")
+    parser.add_argument("--edit", action="store_true", help="open the document in $EDITOR (human only)")
+    parser.add_argument("--adopt", action="store_true", help="import the edit made to the file in the project folder (human only)")
+    parser.add_argument("--discard", action="store_true", help="restore that file from the authoritative copy (human only)")
+    parser.add_argument("--yes", action="store_true", help="do not ask before adopting or discarding")
     parser.add_argument("--clear", action="store_true", help="remove this member's instructions (human only)")
     parser.add_argument("--urgent", action="store_true", help="nudge every member instead of waiting for their next board read")
 
@@ -142,8 +163,13 @@ def _run_instructions(args: argparse.Namespace) -> int:
     if not member_name:
         raise UsageError("which member? herdr-team instructions <name>")
 
-    writing = args.text is not None or args.file is not None or args.clear
-    if not writing:
+    modes = [name for name, on in (("--set", args.text is not None), ("--file", args.file is not None),
+                                   ("--edit", args.edit), ("--adopt", args.adopt),
+                                   ("--discard", args.discard), ("--clear", args.clear)) if on]
+    if len(modes) > 1:
+        raise UsageError("pass one of {}, not {}".format(", ".join(modes[:-1]) or "--set", modes[-1]))
+
+    if not modes:
         text = _charter.get_instructions(layout, team_name, member_name)
         doc = load_doc(team_paths_of(layout, team_name))
         brief = None
@@ -152,15 +178,121 @@ def _run_instructions(args: argparse.Namespace) -> int:
                 brief = candidate.get("brief")
                 break
         payload = {"team": team_name, "member": member_name, "brief": brief, "instructions": text}
+        path = _mirror_path(layout, team_name, member_name)
+        if path is not None:
+            payload["path"] = _os.fspath(path)
         return emit(args, payload, lambda: text or "no instructions set for {}".format(member_name))
 
     check_write_session(args, layout, team_name)
-    if args.clear and (args.text is not None or args.file is not None):
-        raise UsageError("--clear takes no text")
-    result = _charter.set_instructions(layout, team_name, author, member_name, None if args.clear else args.text, None if args.clear else args.file, urgent=args.urgent)
+    if args.discard:
+        return _discard_instructions(args, layout, team_name, author, member_name)
+    if args.adopt:
+        return _adopt_instructions(args, layout, team_name, author, member_name)
+
+    text, file_path = args.text, args.file
+    if args.clear:
+        text, file_path = None, None
+    if args.edit:
+        _human_only(layout, team_name, author, "instructions --edit")
+        current = _charter.get_instructions(layout, team_name, member_name) or ""
+        sections = _doc.parse(current) or _doc.skeleton()
+        edited = _editor_text(_doc.document(member_name, team_name, _role_of(layout, team_name, member_name), sections), env_of_args(args))
+        text = _doc.to_text(_doc.parse(edited))
+
+    result = _charter.set_instructions(layout, team_name, author, member_name, text, file_path, urgent=args.urgent)
     render = _render_quietly(layout, team_name)
     payload = dict(result, mirror=render.get("written") or [])
-    return emit(args, payload, lambda: "instructions for {}: {} chars".format(result["member"], result["chars"]))
+    return emit(args, payload, lambda: _written_text(result))
+
+
+def env_of_args(args: argparse.Namespace) -> Dict[str, str]:
+    from herdr_team.cmd_board import env_of
+
+    return env_of(args)
+
+
+def _written_text(result: Dict[str, Any]) -> str:
+    return "instructions for {}: {} chars (revision {})".format(result["member"], result["chars"], result.get("instructions_seq"))
+
+
+def _role_of(layout: Any, team_name: str, member_name: str) -> str:
+    for candidate in load_doc(team_paths_of(layout, team_name)).get("members") or []:
+        if isinstance(candidate, dict) and candidate.get("name") == member_name:
+            return str(candidate.get("role") or "")
+    return ""
+
+
+def _mirror_path(layout: Any, team_name: str, member_name: str):
+    """The member's file in the project folder, or None when the team has no folder."""
+    project = _workdir.project_dir_of(load_doc(team_paths_of(layout, team_name)))
+    if not project:
+        return None
+    return _workdir.paths_for(project, team_name)["members"] / (member_name + ".md")
+
+
+def _read_mirror(path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError) as err:
+        raise HerdrTeamError("path_invalid", "cannot read {}: {}".format(path, err), EXIT_REFUSED, {"path": _os.fspath(path)})
+
+
+def _confirm(args: argparse.Namespace, question: str) -> bool:
+    """Ask before importing or throwing away an edit; ``--yes`` and ``--json`` skip."""
+    if args.yes or getattr(args, "json", False):
+        return True
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        raise HerdrTeamError("confirmation_required", "{} (pass --yes)".format(question), EXIT_REFUSED, {"question": question})
+    args.stdout.write("{} [y/N] ".format(question))
+    args.stdout.flush()
+    return sys.stdin.readline().strip().lower() in ("y", "yes")
+
+
+def _adopt_instructions(args: argparse.Namespace, layout: Any, team_name: str, author: Any, member_name: str) -> int:
+    """Import the edit made to the member's file in the project folder.
+
+    This command is what makes an edit the operator's word. The folder is
+    inside a checkout the agents can write to, and the plugin cannot tell whose
+    editor saved the file, so nothing there is authoritative until a human runs
+    this and sees the diff.
+    """
+    _human_only(layout, team_name, author, "instructions --adopt")
+    path = _mirror_path(layout, team_name, member_name)
+    if path is None:
+        raise HerdrTeamError("no_project_dir", "team {} has no project folder; set one with herdr-team project set <path>".format(team_name), EXIT_REFUSED, {"team": team_name})
+    if not _workdir._is_ours(path):
+        raise HerdrTeamError("workdir_foreign_file", "{} was not written by herdr-team; move it aside first".format(path), EXIT_REFUSED, {"path": _os.fspath(path)})
+    sections = _doc.parse(_read_mirror(path))
+    incoming = _doc.to_text(sections) if not _doc.is_empty(sections) else ""
+    current = _charter.get_instructions(layout, team_name, member_name) or ""
+    if incoming.strip() == current.strip():
+        payload = {"team": team_name, "member": member_name, "adopted": False, "reason": "unchanged", "path": _os.fspath(path)}
+        return emit(args, payload, "no change in {}".format(path))
+    diff = list(difflib.unified_diff(current.splitlines(), incoming.splitlines(), "authoritative", "your edit", lineterm="", n=1))
+    if not getattr(args, "json", False):
+        args.stdout.write("\n".join(diff) + "\n")
+    if not _confirm(args, "adopt this edit as {}'s instructions?".format(member_name)):
+        payload = {"team": team_name, "member": member_name, "adopted": False, "reason": "declined", "path": _os.fspath(path)}
+        return emit(args, payload, "not adopted; {} still holds the edit".format(path))
+    result = _charter.set_instructions(layout, team_name, author, member_name, incoming, None, urgent=args.urgent)
+    _workdir.forget_mirror(team_paths_of(layout, team_name), path.name)
+    render = _render_quietly(layout, team_name)
+    payload = dict(result, adopted=True, diff=diff, mirror=render.get("written") or [])
+    return emit(args, payload, lambda: "adopted. " + _written_text(result))
+
+
+def _discard_instructions(args: argparse.Namespace, layout: Any, team_name: str, author: Any, member_name: str) -> int:
+    """Throw away the edit in the project folder and restore the authoritative copy."""
+    _human_only(layout, team_name, author, "instructions --discard")
+    path = _mirror_path(layout, team_name, member_name)
+    if path is None:
+        raise HerdrTeamError("no_project_dir", "team {} has no project folder".format(team_name), EXIT_REFUSED, {"team": team_name})
+    if not _confirm(args, "discard the edit in {}?".format(path)):
+        return emit(args, {"team": team_name, "member": member_name, "discarded": False}, "kept")
+    _workdir.forget_mirror(team_paths_of(layout, team_name), path.name)
+    render = _workdir.render(layout, team_name)
+    payload = {"team": team_name, "member": member_name, "discarded": True, "path": _os.fspath(path), "mirror": render.get("written") or []}
+    return emit(args, payload, "restored {}".format(path))
 
 
 def team_paths_of(layout: Any, team_name: str):

@@ -736,7 +736,18 @@ def _apply_workdir_setup(
         if name not in live:
             out["warnings"].append("--instructions {}=…: no member of that name joined; skipped".format(name))
             continue
-        _charter.set_instructions(layout, team_name, author, name, text, None)
+        _charter.set_instructions(layout, team_name, author, name, text, None, announce=False)
+
+    # Every member starts with a document rather than "none set": its Mission is
+    # the brief the operator already wrote, and the rest is the empty skeleton,
+    # which is what makes the structure obvious the first time anyone opens it.
+    named = set(instructions or {})
+    for member in members_of(load_doc(team_paths)):
+        name = str(member.get("name") or "")
+        brief = str(member.get("brief") or "").strip()
+        if not name or name in named or member.get("kind") == "human" or not brief:
+            continue
+        _charter.set_instructions(layout, team_name, author, name, brief, None, announce=False)
 
     if project_dir is not None:
         result = _workdir.render(layout, team_name)
@@ -1130,14 +1141,18 @@ def _run_me(args: argparse.Namespace) -> int:
         "skill_version": SKILL_VERSION, "skill_installed": installed, "skill_ok": installed == SKILL_VERSION,
         "cli": cli_path(), "notifier": notifier_state(layout.session),
         "session": _roster.short_session(me.get("session")),
+        "instructions_stale": _charter.instructions_stale(me),
     }
     # The team folder is how an agent differentiated only by a file finds that
     # file. Both paths are absolute so a member outside the project can read them.
     project = _workdir.project_dir_of(doc)
     if project:
+        targets = _workdir.paths_for(project, team_name)
         payload["project_dir"] = project
-        payload["team_dir"] = os.fspath(_workdir.team_root(project, team_name))
-        payload["instructions_path"] = os.fspath(_workdir.team_root(project, team_name) / "members" / (author.name + ".md"))
+        payload["team_dir"] = os.fspath(targets["root"])
+        payload["instructions_path"] = os.fspath(targets["members"] / (author.name + ".md"))
+        payload["knowledge_path"] = os.fspath(targets["knowledge"])
+        payload["board_path"] = os.fspath(targets["board"])
     if installed is not None and installed != SKILL_VERSION:
         warn(args, "installed skill v{} differs from v{}; run: herdr-team skill install".format(installed, SKILL_VERSION))
     return emit(args, payload, lambda: _render.render_me(payload, doc))

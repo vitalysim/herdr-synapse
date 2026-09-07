@@ -662,6 +662,8 @@ def render_who(
             tags.append("unbriefed")
         if member.get("charter_stale"):
             tags.append("charter: stale")
+        if member.get("instructions_stale"):
+            tags.append("instructions: stale")
         if member.get("delivery") == "hooks" and not brief:
             seen_hooks = parse_ts(member.get("hooks_last_seen"))
             if seen_hooks is None:
@@ -697,6 +699,8 @@ def render_me(member: Dict[str, Any], team_doc: Dict[str, Any]) -> str:
     ]
     if member.get("pane_id") or member.get("terminal_id"):
         lines.append("pane {}{}".format(_safe_token(member.get("pane_id"), 16), " ({})".format(_safe_token(member.get("terminal_id"), 64)) if member.get("terminal_id") else ""))
+    if member.get("instructions_stale"):
+        lines.append("your instructions changed since you last acknowledged them; read them, then run herdr-team ack")
     if isinstance(member.get("session"), str) and member.get("session"):
         lines.append("session {} (herdr-team resume {} reopens it)".format(_safe_token(member.get("session"), 24), _safe_token(member.get("name"), 32)))
     charter = member.get("charter") if member.get("charter") is not None else team_doc.get("charter")
@@ -711,9 +715,11 @@ def render_me(member: Dict[str, Any], team_doc: Dict[str, Any]) -> str:
     # reach the team folder. This is the only channel every agent kind shares.
     if member.get("instructions_path"):
         lines.append("your instructions: {}".format(_safe_token(member.get("instructions_path"), 300)))
+    if member.get("knowledge_path"):
+        lines.append("team rules and findings: {}".format(_safe_token(member.get("knowledge_path"), 300)))
     if member.get("team_dir"):
         lines.append("team folder: {}".format(_safe_token(member.get("team_dir"), 300)))
-        lines.append("  knowledge.md = team rules and findings; artifacts/ = where your work products go")
+        lines.append("  artifacts/ = where your work products go; board.md = the whole board, kept current")
     teammates = member.get("teammates")
     if teammates is None:
         teammates = [m for m in (team_doc.get("members") or []) if m.get("name") != member.get("name")]

@@ -14,6 +14,7 @@ import unittest
 from pathlib import Path
 
 from herdr_team import charter as _charter
+from herdr_team import instructions_doc as _doc
 from herdr_team import cmd_hooks, roster, store, workdir
 from herdr_team.errors import HerdrTeamError
 from herdr_team.identity import Author
@@ -149,7 +150,9 @@ class KnowledgeAuthorityTests(unittest.TestCase):
             _charter.set_instructions(self.layout, self.team, human(), "nobody", "x", None)
         self.assertEqual(caught.exception.code, "member_not_found")
         _charter.set_instructions(self.layout, self.team, human(), name, "own the parser", None)
-        self.assertEqual(_charter.get_instructions(self.layout, self.team, name), "own the parser")
+        # Stored as the document: a plain paragraph becomes the Mission.
+        self.assertEqual(_charter.get_instructions(self.layout, self.team, name), "## Mission\n\nown the parser")
+        self.assertEqual(_doc.section(_charter.get_instructions_doc(self.layout, self.team, name), "Mission"), ["own the parser"])
 
     def test_a_member_may_add_a_finding_and_it_is_attributed(self):
         result = _charter.add_finding(self.layout, self.team, agent("red-dev-claude"), "the build needs zig 0.15.2")
@@ -227,8 +230,13 @@ class RenderTests(unittest.TestCase):
         written = sorted(p.stem for p in members.glob("*.md"))
         self.assertEqual(written, sorted(names))
         self.assertIn("own the parser", (members / (names[0] + ".md")).read_text(encoding="utf-8"))
-        # A member with no instructions still gets a file, so the folder differentiates everyone.
-        self.assertIn("None set", (members / (names[1] + ".md")).read_text(encoding="utf-8"))
+        # A member with no instructions still gets a file, and it carries the empty
+        # skeleton with its guidance, so the structure is clear before anyone writes.
+        blank = (members / (names[1] + ".md")).read_text(encoding="utf-8")
+        for section in _doc.SECTIONS:
+            self.assertIn("## " + section, blank)
+        self.assertIn("What is this member for?", blank)
+        self.assertIn("--adopt", blank)
 
     def test_a_finding_cannot_forge_a_rule_in_the_mirror(self):
         self.set_project()
@@ -626,7 +634,10 @@ class AwarenessTests(unittest.TestCase):
         self.assertEqual(len(found), 1)
         self.assertIn(self.member, found[0]["text"])
         self.assertIn("own the parser", found[0]["text"])
-        self.assertEqual(found[0]["to"], ["all"])
+        # The member is named as well as the team: a record addressed only to
+        # ``all`` is a broadcast, which the delivery gate holds, so the one member
+        # whose job changed was never nudged about it.
+        self.assertEqual(found[0]["to"], [self.member, "all"])
 
     def test_a_finding_reaches_the_board_attributed(self):
         _charter.add_finding(self.layout, self.team, agent("red-dev-claude"), "zig 0.15.2 is required")

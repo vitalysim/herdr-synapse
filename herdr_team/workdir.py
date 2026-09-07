@@ -34,10 +34,16 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from . import store
 from .errors import EXIT_REFUSED, HerdrTeamError
+from . import instructions_doc as _doc
 from . import paths as _paths
 
 #: Bumped when a generated file's layout changes; the renderer rewrites older ones.
-WORKDIR_VERSION = 1
+#: Bumped whenever a generated file's shape changes. It is also how an upgrade
+#: is told apart from an operator's edit: a file whose marker names an older
+#: version was written by an older plugin, not by a human, so it is regenerated
+#: rather than held for adoption. Without this an old notifier still running
+#: during an upgrade leaves every member file looking edited, forever.
+WORKDIR_VERSION = 2
 
 #: What every generated file starts with. Its absence means the file is not ours.
 MARKER_TEXT = "herdr-team:workdir v{} generated file, edits are overwritten".format(WORKDIR_VERSION)
@@ -58,6 +64,8 @@ DIR_NAME = ".herdr-team"
 
 #: Cap on one rendered mirror, so a pathological instructions file cannot fill a repo.
 MAX_RENDER_BYTES = 64 * 1024
+#: Mirrors the operator may edit in place; a drifted one is kept, never overwritten.
+EDITABLE = "member"
 #: The board snapshot is an archive of everything that was said, so it gets far
 #: more room than a document mirror; at 64 KB a real team's board was truncated.
 MAX_BOARD_BYTES = 8 * 1024 * 1024
@@ -211,6 +219,65 @@ def write_generated(path: Path, body: str, force: bool = False, max_bytes: int =
     return True
 
 
+def mirror_state(team_paths: Any) -> Dict[str, str]:
+    """``{file name: digest}`` of what the plugin last wrote to each editable mirror."""
+    doc = store.read_json(team_paths.mirror_json, default=None)
+    if not isinstance(doc, dict):
+        return {}
+    return {k: v for k, v in doc.items() if isinstance(k, str) and isinstance(v, str)}
+
+
+def save_mirror_state(team_paths: Any, state: Dict[str, str]) -> None:
+    try:
+        store.write_json(team_paths.mirror_json, state, fsync=False)
+    except (HerdrTeamError, OSError):
+        return  # the folder is a convenience; losing the digest only re-renders
+
+
+def forget_mirror(team_paths: Any, file_name: str) -> None:
+    """Drop one file's recorded digest, so the next render rewrites it.
+
+    Called after an edit is adopted or discarded: until the record is cleared,
+    the file still looks edited and the render keeps skipping it, which would
+    leave the mirror and the authoritative copy permanently apart.
+    """
+    state = mirror_state(team_paths)
+    if state.pop(file_name, None) is not None:
+        save_mirror_state(team_paths, state)
+
+
+def marker_version(text: str) -> Optional[int]:
+    """The workdir version named by a generated file's first line, or None."""
+    first = text.splitlines()[0] if text else ""
+    if not first.startswith(MARKER_PREFIXES):
+        return None
+    for word in first.split():
+        if word.startswith("v") and word[1:].isdigit():
+            return int(word[1:])
+    return None
+
+
+def edited(path: Path, recorded: Optional[str]) -> bool:
+    """True when this file is not what the plugin last wrote there.
+
+    The one question that matters for an editable mirror, and the reason a
+    digest is recorded at all: ``drifted`` also fires when the plugin's own
+    template changes, which is not an edit to adopt. No record means the file
+    was never written by this version, so it is not treated as edited.
+    """
+    if not recorded:
+        return False
+    try:
+        current = path.read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError):
+        return False
+    if not current.startswith(MARKER_PREFIXES):
+        return False  # foreign: ``write_generated`` refuses it, which is the louder signal
+    if marker_version(current) != WORKDIR_VERSION:
+        return False  # an older plugin wrote this, not a human
+    return digest(current) != recorded
+
+
 def drifted(path: Path, expected_body: str) -> bool:
     """True when a mirror exists, is ours, and no longer matches what we would write."""
     try:
@@ -288,8 +355,19 @@ def knowledge_body(team_name: str, rules: Optional[str], findings: List[Dict[str
     return "\n".join(out) + "\n"
 
 
+def adopt_command(name: str) -> str:
+    """The command that imports an edit to this member's file."""
+    return "herdr-team instructions {} --adopt".format(name)
+
+
 def member_body(team_name: str, name: str, role: str, brief: Optional[str], instructions: Optional[str], left_for: Optional[str] = None, left: bool = False) -> str:
-    """One member's instructions file, or its tombstone once the member is gone."""
+    """One member's instructions document, or its tombstone once the member is gone.
+
+    The document is the operator's to edit: unlike every other mirror, an edit
+    here is kept rather than overwritten, and ``instructions <name> --adopt``
+    imports it. ``brief`` is unused since 0.6 (it seeds the Mission at team
+    creation instead) and stays in the signature for callers.
+    """
     out = ["# {} — {}".format(name, team_name), ""]
     if left:
         out.append("This member left the team. Nothing here is current.")
@@ -299,26 +377,15 @@ def member_body(team_name: str, name: str, role: str, brief: Optional[str], inst
         out.append("Renamed to **{}**. See `{}.md`.".format(left_for, left_for))
         out.append("")
         return "\n".join(out) + "\n"
-    out.append("Role: {}".format(role or "member"))
-    out.append("")
-    if brief:
-        out.append("## Brief")
-        out.append("")
-        out.append(" ".join(str(brief).split()))
-        out.append("")
-    out.append("## Instructions")
-    out.append("")
-    if instructions:
-        out.append(instructions.strip())
-    else:
-        out.append("_None set. The operator sets these with `herdr-team instructions {} --set \"...\"`._".format(name))
-    out.append("")
-    out.append("---")
-    out.append("")
-    out.append("These instructions are the operator's, and they are yours alone: other")
-    out.append("members of this team have their own. They do not replace the team")
-    out.append("charter, which applies to everyone.")
-    return "\n".join(out) + "\n"
+    sections = _doc.parse(instructions) or _doc.skeleton()
+    note = [
+        "These instructions are the operator's, and they are yours alone: other",
+        "members of this team have their own. They do not replace the team",
+        "charter, which applies to everyone.",
+        "",
+        "---",
+    ]
+    return _doc.document(name, team_name, role, sections, adopt_command=adopt_command(name), note=note)
 
 
 def render(layout: Any, team_name: str, force: bool = False) -> Dict[str, Any]:
@@ -335,7 +402,7 @@ def render(layout: Any, team_name: str, force: bool = False) -> Dict[str, Any]:
     team_paths = layout.team(team_name)
     doc = _roster.load_team(team_paths)
     project = project_dir_of(doc.to_json())
-    result: Dict[str, Any] = {"project_dir": project, "written": [], "skipped": [], "drifted": []}
+    result: Dict[str, Any] = {"project_dir": project, "written": [], "skipped": [], "drifted": [], "awaiting_adopt": []}
     if not project:
         result["reason"] = "no project directory; set one with herdr-team project set <path>"
         return result
@@ -344,9 +411,9 @@ def render(layout: Any, team_name: str, force: bool = False) -> Dict[str, Any]:
     rules = _charter.get_rules(layout, team_name)
     findings = _charter.read_findings(layout, team_name)
 
-    plan: List[Tuple[Path, str]] = [
-        (targets["readme"], README_BODY),
-        (targets["knowledge"], knowledge_body(team_name, rules, findings)),
+    plan: List[Tuple[Path, str, str]] = [
+        (targets["readme"], README_BODY, "generated"),
+        (targets["knowledge"], knowledge_body(team_name, rules, findings), "generated"),
     ]
     for member in doc.members:
         if member.is_human:
@@ -355,6 +422,7 @@ def render(layout: Any, team_name: str, force: bool = False) -> Dict[str, Any]:
         plan.append((
             targets["members"] / (_paths._safe_stem(member.name, "name") + ".md"),
             member_body(team_name, member.name, member.role or "", member.brief, instructions, left=member.status == "left"),
+            EDITABLE,
         ))
         # A rename leaves a file behind under the old name. It is never deleted:
         # it is rewritten to point at the new one, so a teammate holding the old
@@ -370,28 +438,47 @@ def render(layout: Any, team_name: str, force: bool = False) -> Dict[str, Any]:
             plan.append((
                 targets["members"] / (stem + ".md"),
                 member_body(team_name, old_name, "", None, None, left_for=member.name),
+                "generated",
             ))
 
     try:
         _paths.ensure_dir(targets["members"])
         _paths.ensure_dir(targets["artifacts"])
         existing_teams = _existing_team_dirs(targets["shared"], team_name)
-        plan.append((targets["gitignore"], gitignore_body(existing_teams)))
+        plan.append((targets["gitignore"], gitignore_body(existing_teams), "generated"))
     except (HerdrTeamError, OSError) as err:
         result["reason"] = "cannot create {}: {}".format(targets["root"], err)
         return result
 
-    for path, body in plan:
+    state = mirror_state(team_paths)
+    state_changed = False
+    for path, body, kind in plan:
+        if kind == EDITABLE and not force and edited(path, state.get(path.name)):
+            # The operator's own document. Overwriting it here is what made the
+            # file uneditable; it waits for ``instructions --adopt`` instead,
+            # which is also the step that confers authority on the edit, since
+            # the checkout is writable by the agents themselves.
+            result["awaiting_adopt"].append(os.fspath(path))
+            continue
         if drifted(path, body):
             result["drifted"].append(os.fspath(path))
         try:
-            if write_generated(path, body, force=force):
+            wrote = write_generated(path, body, force=force)
+            if wrote:
                 result["written"].append(os.fspath(path))
+            if kind == EDITABLE and (wrote or path.name not in state):
+                try:
+                    state[path.name] = digest(path.read_text(encoding="utf-8"))
+                    state_changed = True
+                except OSError:
+                    pass
         except ForeignFileError:
             result["skipped"].append(os.fspath(path))
         except (HerdrTeamError, OSError) as err:
             result["skipped"].append(os.fspath(path))
             result.setdefault("errors", []).append("{}: {}".format(path, err))
+    if state_changed:
+        save_mirror_state(team_paths, state)
     return result
 
 
@@ -682,12 +769,15 @@ def status(layout: Any, team_name: str) -> Dict[str, Any]:
     rules = _charter.get_rules(layout, team_name) or ""
     findings = _charter.read_findings(layout, team_name)
     members: List[Dict[str, Any]] = []
+    state = mirror_state(team_paths) if project else {}
     for member in doc.members:
         if member.is_human or member.status == "left":
             continue
         text = _charter.get_instructions(layout, team_name, member.name) or ""
         members.append({"name": member.name, "role": member.role or "", "kind": member.kind or "",
-                        "instructions": bool(text), "chars": len(text)})
+                        "instructions": bool(text), "chars": len(text),
+                        "stale": _charter.instructions_stale(member),
+                        "edited": _member_file_edited(team_paths, project, team_name, member.name, state) if project else False})
     out: Dict[str, Any] = {
         "team": team_name,
         "project_dir": project,
@@ -701,6 +791,7 @@ def status(layout: Any, team_name: str) -> Dict[str, Any]:
         "with_instructions": sum(1 for m in members if m["instructions"]),
         "artifacts": 0,
         "issues": [],
+        "awaiting_adopt": [],
     }
     if not project:
         return out
@@ -715,7 +806,24 @@ def status(layout: Any, team_name: str) -> Dict[str, Any]:
     for label, path_ in (("README.md", targets["readme"]), ("knowledge.md", targets["knowledge"])):
         if path_.exists() and not _is_ours(path_):
             out["issues"].append("{} was not written by herdr-team".format(label))
+    # A member's own document is the one mirror the operator edits, so both a
+    # foreign file and a pending edit matter here; neither used to be checked.
+    for entry in out["members"]:
+        member_file = targets["members"] / (str(entry["name"]) + ".md")
+        if not member_file.exists():
+            continue
+        if not _is_ours(member_file):
+            out["issues"].append("members/{}.md was not written by herdr-team".format(entry["name"]))
+        elif entry.get("edited"):
+            out["awaiting_adopt"].append(entry["name"])
     return out
+
+
+def _member_file_edited(team_paths: Any, project: str, team_name: str, name: str, state: Optional[Dict[str, str]] = None) -> bool:
+    """True when this member's mirror holds an edit nobody has adopted yet."""
+    path = paths_for(project, team_name)["members"] / (str(name) + ".md")
+    recorded = (mirror_state(team_paths) if state is None else state).get(path.name)
+    return edited(path, recorded)
 
 
 def status_summary(info: Dict[str, Any]) -> str:
@@ -728,10 +836,15 @@ def status_summary(info: Dict[str, Any]) -> str:
         return "folder not created yet"
     parts = ["rules" if info.get("rules") else "no rules"]
     total = len(info.get("members") or [])
-    parts.append("{}/{} briefed".format(info.get("with_instructions", 0), total))
+    # "briefed" means something else on this roster (a member that received its
+    # briefing); this counter is about who has an instructions document.
+    parts.append("{}/{} with instructions".format(info.get("with_instructions", 0), total))
     parts.append("{} finding{}".format(info.get("findings", 0), "" if info.get("findings") == 1 else "s"))
     if info.get("artifacts"):
         parts.append("{} artifact{}".format(info["artifacts"], "" if info["artifacts"] == 1 else "s"))
+    waiting = info.get("awaiting_adopt") or []
+    if waiting:
+        parts.append("{} edit{} to adopt".format(len(waiting), "" if len(waiting) == 1 else "s"))
     return ", ".join(parts)
 
 

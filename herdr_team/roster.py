@@ -186,7 +186,8 @@ MAX_SESSION_PATH_CHARS = 4096
 SYSTEM_EVENTS = (
     "nudged", "toast", "retracted", "expired", "abandoned", "member_gone",
     "member_restarted", "rotated", "reset_detected", "charter_updated", "renamed", "typed", "member_joined",
-    "knowledge_updated", "instructions_updated", "knowledge_finding", "artifacts_changed",
+    "knowledge_updated", "instructions_updated", "instructions_edited", "knowledge_finding",
+    "artifacts_changed", "project_set",
 )
 
 _SAVE_RETRIES = 3
@@ -355,6 +356,12 @@ class Member:
     briefed_at: Optional[str] = None
     briefing_seq: Optional[int] = None
     charter_seq_acked: Optional[int] = None
+    #: Revision of this member's instructions document, bumped on every write,
+    #: and the revision it last acknowledged. Same shape as the charter's pair,
+    #: so ``who`` can say ``instructions: stale`` the way it says ``charter: stale``.
+    instructions_seq: int = 0
+    instructions_seq_acked: Optional[int] = None
+    rules_seq_acked: Optional[int] = None
     previous_names: List[Dict[str, Any]] = field(default_factory=list)
 
     @property
@@ -384,6 +391,9 @@ class Member:
             "briefed_at": self.briefed_at,
             "briefing_seq": self.briefing_seq,
             "charter_seq_acked": self.charter_seq_acked,
+            "instructions_seq": int(self.instructions_seq or 0),
+            "instructions_seq_acked": self.instructions_seq_acked,
+            "rules_seq_acked": self.rules_seq_acked,
         }
         if self.previous_names:
             obj["previous_names"] = [dict(p) for p in self.previous_names]
@@ -422,6 +432,9 @@ class Member:
             briefed_at=obj.get("briefed_at"),
             briefing_seq=obj.get("briefing_seq"),
             charter_seq_acked=obj.get("charter_seq_acked"),
+            instructions_seq=int(obj.get("instructions_seq") or 0),
+            instructions_seq_acked=obj.get("instructions_seq_acked"),
+            rules_seq_acked=obj.get("rules_seq_acked"),
             previous_names=[dict(p) for p in previous if isinstance(p, dict)],
         )
 
@@ -1397,6 +1410,7 @@ def build_who_json(
                 "last_seen_at": member.last_seen_at,
                 "briefed": member.briefed_at is not None,
                 "charter_stale": _charter_stale(member, charter),
+                "instructions_stale": _instructions_stale(member),
                 "unread": int(((unread or {}).get(team_name) or {}).get(member.name, 0)),
                 "brief": member.brief,
                 "session": short_session(member.session),
@@ -1408,6 +1422,20 @@ def build_who_json(
         doc["teams"][team_name] = {"members": members_out, "naming": team.naming, "revision": team.revision}
         doc["ledger"][team_name] = dict(ledger_counts.get(team_name) or {})
     return doc
+
+
+def _instructions_stale(member: Member) -> bool:
+    """True when the member has instructions it has not acknowledged."""
+    if member.is_human:
+        return False
+    seq = int(member.instructions_seq or 0)
+    if seq <= 0:
+        return False
+    acked = member.instructions_seq_acked
+    try:
+        return acked is None or int(acked) < seq
+    except (TypeError, ValueError):
+        return True
 
 
 def _charter_stale(member: Member, charter: Optional[Dict[str, Any]]) -> bool:

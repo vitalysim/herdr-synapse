@@ -50,6 +50,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 from herdr_team import PLUGIN_ID, VERSION, gate, nudge, render, roster, sanitize, store
+from herdr_team import charter as _charter
 from herdr_team import workdir as _workdir
 from herdr_team.api import HerdrApi, IDENTITY_ENV_VARS, PROMPT_TIMEOUT_S, read_text, scrub_env
 from herdr_team.errors import EXIT_DAEMON_DOWN, EXIT_OK, EXIT_REFUSED, EXIT_UNREACHABLE, HerdrTeamError, LockTimeout
@@ -1148,6 +1149,9 @@ class TeamState:
     #: When a record was last posted for this team.
     artifacts_posted_ms: Optional[float] = None
     #: When the unread sweep last created a pending for each member.
+    #: Member file -> digest of the edit already announced, so one edit is
+    #: reported once however many times the mirror is re-rendered.
+    adopt_announced: Dict[str, str] = field(default_factory=dict)
     swept_ms: Dict[str, float] = field(default_factory=dict)
     #: When the sweep last ran for this team.
     sweep_scanned_ms: Optional[float] = None
@@ -1870,6 +1874,35 @@ class Daemon:
             return
         for path in result.get("skipped") or []:
             self.log("{}: team folder left {} alone; it is not ours".format(team.name, path))
+        self._announce_edits(team, result.get("awaiting_adopt") or [])
+
+    def _announce_edits(self, team: TeamState, paths_: Sequence[str]) -> None:
+        """Tell the operator once about each member document edited in the checkout.
+
+        The edit is kept, not imported: the project folder is writable by the
+        agents themselves, so ``instructions --adopt`` is what makes an edit
+        the operator's word. Keyed by content digest, so re-rendering the
+        mirror does not re-announce, and a second edit does.
+        """
+        live = set()
+        for path in paths_:
+            live.add(path)
+            try:
+                current = _workdir.digest(Path(path).read_text(encoding="utf-8"))
+            except OSError:
+                continue
+            if team.adopt_announced.get(path) == current:
+                continue
+            team.adopt_announced[path] = current
+            name = Path(path).stem
+            self.log("{}: {} was edited; waiting for adopt".format(team.name, path))
+            self._append_system(
+                team, "instructions_edited",
+                "{} was edited. Review and apply it: herdr-team instructions {} --adopt".format(path, name),
+                ["human"], {"member": name, "path": path},
+            )
+        for path in [p for p in team.adopt_announced if p not in live]:
+            del team.adopt_announced[path]  # adopted or discarded; the next edit is news again
 
     def _assign_color_slot(self, team: TeamState) -> None:
         """Give a team the lowest sidebar colour slot no other team holds, once, and persist it.
@@ -1962,7 +1995,7 @@ class Daemon:
             urgent = bool(rec.get("urgent"))
             targets: List[str] = []
             if author == "system":
-                if rec.get("event") in ("charter_updated", "member_joined") and urgent:
+                if rec.get("event") in URGENT_SYSTEM_EVENTS and urgent:
                     newcomer = rec.get("member") if rec.get("event") == "member_joined" else None
                     targets = [n for n in cursors if n != newcomer]
             else:
@@ -3981,6 +4014,7 @@ class Daemon:
                     "last_seen_at": member.get("last_seen_at"),
                     "briefed": member.get("briefed_at") is not None,
                     "charter_stale": bool(charter and (member.get("charter_seq_acked") or 0) < int(charter.get("seq") or 0)) if member.get("kind") != "human" else False,
+                    "instructions_stale": _charter.instructions_stale(member) if member.get("kind") != "human" else False,
                     "brief": member.get("brief"),
                     "session": roster.short_session(member.get("session")),
                 })

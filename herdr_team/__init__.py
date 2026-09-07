@@ -4,6 +4,6 @@ Python 3.9+ standard library only. See ``docs/cli.md`` for the command
 contract and ``README.md`` for the module map.
 """
 
-VERSION = "0.5.0"
-SKILL_VERSION = 2
+VERSION = "0.6.0"
+SKILL_VERSION = 3
 PLUGIN_ID = "herdr-team"
