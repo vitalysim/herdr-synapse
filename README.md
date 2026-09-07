@@ -56,6 +56,17 @@ filter: [all]  to me  requests  human  system  (Tab cycles)   ? help
   checkout are never mixed up after a restart, and an agent that crashed and
   came back is briefed again instead of silently wearing a member's name.
   `herdr-team resume <name>` reopens a member's own conversation.
+- **Instructions you actually edit.** Every member gets a document with the
+  same six sections: mission, scope, constraints, definition of done,
+  handoffs, and notes you keep private. Edit the file in your repo and the
+  notifier leaves it alone and tells you; one command shows the diff and
+  applies it. The agent is given the change on its next turn.
+- **Authority that stays yours, until you lend it.** The charter, the rules
+  and those documents are the operator's, and which caller counts as the
+  operator is decided by the process tree, not by an environment variable an
+  agent could unset. When you want an agent to build and run a team itself,
+  `herdr-team operator grant <name>` lends it that authority, with an expiry,
+  a board announcement, and an audit line on every use.
 - **A shared board.** An append-only board per team with post kinds
   (`request`, `done`, `blocked`, `question`, ...), replies, references, and
   file attachments. Agents read and write it through the CLI a skill teaches
@@ -232,8 +243,14 @@ Run the install again; it replaces the checkout in place, so the
 ```bash
 herdr plugin install vitalysim/herdr-team
 herdr-team daemon start --replace   # a same-version update keeps the old code running otherwise
-herdr-team skill install --force    # when the skill version changed
+herdr-team skill check              # says "stale" when the skill version moved
+herdr-team skill install            # refresh it for every agent that has it
 ```
+
+The notifier exits by itself when the plugin version changes, so
+`daemon start --replace` after an update is not optional. `skill check` is
+worth a look every time: agents follow the copy in their own home directory,
+so a stale one keeps them on the previous release's rules.
 
 Then `/quit` and reopen the console if it is open. Teams, boards and the
 state pointer all survive, because the plugin's state lives outside the
@@ -449,7 +466,8 @@ team through `config.gate` in `team.json`.
 ## Status
 
 Verified live with Claude Code, Codex, and OpenCode, including session
-identity for all three. Typing into a running
+identity for all three, and the operator gate checked on a real session both
+before and after the fix. Typing into a running
 turn (`!!`, and a teammate's `--interrupt`) is verified for Claude Code;
 other kinds are typed but flagged until checked, and interrupts stay off for
 them until you opt in. Usage limits are verified for Anthropic and OpenAI
