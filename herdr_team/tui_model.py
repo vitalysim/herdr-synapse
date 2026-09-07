@@ -498,6 +498,16 @@ def kind_glyph(kind: Optional[str], ascii_only: bool = False) -> str:
     return table.get(kind or "", "")
 
 
+def _session_tail(value: Any, tail: int = 8) -> Optional[str]:
+    """The end of a member's harness session id: ``who.json`` carries the short form, ``team.json`` the record."""
+    if isinstance(value, dict):
+        value = value.get("value")
+    if not isinstance(value, str) or not value:
+        return None
+    text = value if len(value) <= tail else value[-tail:]
+    return "".join(ch for ch in text if ch.isalnum() or ch in "._:-") or None
+
+
 def roster_line(
     member: Dict[str, Any],
     width: int = 80,
@@ -528,6 +538,9 @@ def roster_line(
     head = member.get("last_headline")
     if level == 0 and head:
         fields.append('"{}"'.format(headline(str(head), HEADLINE_COLUMNS)))
+    session = _session_tail(member.get("session"))
+    if level == 0 and session:
+        fields.append("sess " + session)
     pending = member.get("pending_nudges") or 0
     if pending:
         hold = member.get("hold")
@@ -3079,6 +3092,7 @@ ACTION_OPTIONS = (
     ("remove", "remove it from {team}"),
     ("remove_keep", "remove it from {team}, keep its Herdr agent name"),
     ("focus", "go to its pane (closes this popup)"),
+    ("resume", "show the command that reopens its own session (herdr-team resume)"),
 )
 
 
@@ -3136,6 +3150,8 @@ def _start_action(model: PickerModel, action: str) -> Optional[Intent]:
         return None
     if action == "send_goal":
         return Intent("member_send_goal", dict(base))
+    if action == "resume":
+        return Intent("member_resume", dict(base))
     if action in ("remove", "remove_keep"):
         intent = Intent("member_remove", dict(base, keep_name=action == "remove_keep"))
         model.pending_action = intent

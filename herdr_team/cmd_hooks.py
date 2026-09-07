@@ -33,6 +33,7 @@ from herdr_team import claude_settings, paths, store
 from herdr_team import daemon as _daemon
 from herdr_team import hooks as _hooks
 from herdr_team import render as _render
+from herdr_team import roster as _roster
 from herdr_team import cli as _cli
 from herdr_team.cli import api_for, emit, layout_for
 from herdr_team.errors import EXIT_DAEMON_DOWN, EXIT_OK, EXIT_REFUSED, HerdrTeamError
@@ -352,6 +353,61 @@ def _count_findings(team: paths.TeamPaths) -> int:
         return 0
 
 
+def _claude_session(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The ``SessionStart`` payload's ``session_id`` in the shape Herdr's ``agent_session`` uses.
+
+    Herdr's own Claude integration reports the same id through
+    ``pane.report_agent_session`` (source ``herdr:claude``); this is the
+    second channel for it, so the roster learns a new session even when
+    Herdr kept a stale id (it refuses a ``startup`` report while one is held).
+    """
+    value = payload.get("session_id")
+    if _roster.session_value_problem(value, "id") is not None:
+        return None
+    return _roster.session_of({"source": "herdr:claude", "agent": "claude", "kind": "id", "value": value})
+
+
+def record_member_session(team: paths.TeamPaths, name: str, live_session: Dict[str, Any], source: Any) -> Optional[Dict[str, Any]]:
+    """Write ``session`` on the member; a *different* id than the one recorded is a fresh agent.
+
+    ``compact`` re-reports the current id, so it never trips this; ``clear``,
+    ``startup`` after a crash, and a ``resume`` of another conversation do,
+    and the member is re-briefed the way the daemon's reconcile would (new
+    generation, ``briefed_at`` cleared, a briefing job enqueued, a
+    ``member_restarted`` record). Returns the fields written, or None.
+    """
+    fields: Dict[str, Any] = {}
+    previous: List[Any] = []
+
+    def mutate(doc: _roster.Team) -> None:
+        member = doc.find(name)
+        if member is None or member.is_human:
+            return
+        previous.append(member.session)
+        if _roster.same_session(member.session, live_session):
+            return
+        fields["session"] = live_session
+        member.session = live_session
+        if _roster.session_key(previous[0]) is not None:
+            member.generation = int(member.generation) + 1
+            member.briefed_at = None
+            fields["generation"] = member.generation
+            fields["briefed_at"] = None
+
+    _roster.update_team(team, mutate)
+    if not fields:
+        return None
+    if "generation" in fields:
+        _roster.write_briefing_job(team, name)
+        _roster.append_system_record(
+            team, "member_restarted",
+            "{} restarted (generation {}); new session, briefing again".format(name, fields["generation"]),
+            to=["all"],
+            extra={"session": _roster.short_session(live_session), "previous_session": _roster.short_session(previous[0]), "session_source": source if isinstance(source, str) else None},
+        )
+    return fields
+
+
 def brief_context(team: paths.TeamPaths, team_name: str, member: Dict[str, Any]) -> str:
     """The SessionStart context: charter, own brief, roster, unread count."""
     doc = _read_team_doc(team) or {}
@@ -524,6 +580,7 @@ def run_hook_input(args: argparse.Namespace) -> int:
     _record_hook_seen(layout, member.get("terminal_id"), action)
     if action == "session-start":
         terminal_id = member.get("terminal_id")
+        live_session = _claude_session(payload)
         if terminal_id:
             record_path = layout.session.pane_record(str(terminal_id))
             record = store.read_json(record_path, default={})
@@ -537,12 +594,22 @@ def run_hook_input(args: argparse.Namespace) -> int:
                 "transcript_path": payload.get("transcript_path"),
                 "session_recorded_at": _now_iso(),
             })
+            if live_session is not None:
+                record["session"] = live_session
             record.setdefault("gen", 1)
             try:
                 paths.ensure_dir(record_path.parent)
                 store.write_json(record_path, record, fsync=False)
             except Exception as err:
                 _hooks_log(layout, "session-start: cannot write pane record: {}".format(err))
+        if live_session is not None:
+            try:
+                changed = record_member_session(team, name, live_session, payload.get("source"))
+            except HerdrTeamError as err:
+                _hooks_log(layout, "session-start: cannot record the session on {}: {}".format(name, err.code))
+            else:
+                if changed:
+                    _hooks_log(layout, "session-start {} {}: {}".format(team_name, name, json.dumps(changed, ensure_ascii=False)))
         text = brief_context(team, team_name, member)
         result["handled"] = True
         result["context"] = text

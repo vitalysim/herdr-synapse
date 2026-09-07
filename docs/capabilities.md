@@ -39,7 +39,8 @@ holds `daemon.json`, `daemon.log`, `who.json`, `kinds.json`, `view.json`,
 | See who is on which team | `prefix+t`: teams with their agents underneath, then the agents in no team; Enter folds a team, `↑↓`/PgUp/PgDn move, the list scrolls | `who`, `teams` |
 | Manage one member | `prefix+t`, Enter on a member: a numbered menu with rename, change its goal, send the goal now, remove it (with or without keeping its Herdr agent name), and go to its pane. Rename and goal are pre-filled and validated before anything is written; remove asks `y` (Enter is deliberately not yes). A member whose agent is missing or unsettled refuses rename, send and focus, because its pane is stale | `rename`, `brief <name> --set`, `brief <name>`, `remove`, `focus` |
 | Remove, leave | `prefix+t` → Enter on the member → 4, or console `/remove name` (asks y/n) | `remove <team> <name> [--keep-name]` (clears tokens and label, clears the Herdr name unless `--keep-name`, keeps a tombstone); `leave` from the member's own pane |
-| Re-attach a missing member | | `bind <team> <name> <target>`: refuses a kind mismatch unless the member is `kind_changed`, refuses a terminal another team claims, bumps the generation, re-applies name, label, tokens, clears the stale label on the old pane, posts `member_restarted` |
+| Re-attach a missing member | | `bind <team> <name> <target>`: refuses a kind mismatch unless the member is `kind_changed`, refuses a terminal another team claims, bumps the generation, re-applies name, label, tokens, clears the stale label on the old pane, records the target's harness session, posts `member_restarted` |
+| Reopen a member's own conversation | `prefix+t`, Enter on the member, 7: shows the command | `resume <name>` from a shell pane (human only): runs the command Herdr's own restore would use for the session the roster recorded, in the member's directory, replacing the shell; the notifier rebinds the member to that pane by the session. Covers all 17 sources Herdr ships an integration for (`docs/cli.md` section 4), pi and omp by absolute path rather than id. `--print` only shows it. Never `--continue`: that picks by directory or recency and can bring back another member's conversation |
 | Dissolve | | `dissolve <team> --yes` (mandatory flag; human only; archives the team, clears tokens and labels, keeps the agents' Herdr names) |
 | Several teams | console `/use team` | `use <team>` sets the default team for human posts; `teams` lists teams and whether their session runs (works offline); `create --use` makes a second team the default at creation |
 
@@ -184,6 +185,23 @@ record shape, so an export goes back into any tool that reads a board file.
   the same pane, after a session change under an installed integration,
   after a live handoff, and after a cold server restart once the agent is
   running again.
+- A member is tied to its **harness session**, not only to a terminal. Herdr
+  reports one per pane through each harness's integration (`agent_session`
+  in `agent list`, for the 17 kinds it ships one for: claude, codex, copilot,
+  cursor, devin, droid, grok, hermes, kilo, kimi, mastracode, omp, opencode,
+  pi, qodercli, qwen, agy), the
+  roster records it (`session` in `team.json`, the tail shown by `who`, `me`
+  and the tree), and rehydration matches on it before terminal id, label,
+  pane id, name or fingerprint. Two agents of one kind in one directory are
+  told apart by it, which the fingerprint step never could. A different
+  session appearing on a member's own terminal means a fresh agent (a crash
+  and restart, a Claude `/clear`, a resume by hand): the member keeps its
+  name and pane, gets a new generation, `member_restarted` names both
+  sessions, and it is briefed again. A compaction re-reports the same id and
+  changes nothing. The Claude `SessionStart` hook is a second channel for the
+  same id, so a Claude member is caught even when Herdr kept a stale one.
+  Kinds without an integration (no session reported) behave exactly as
+  before.
 
 **Verified**: RS-02, RS-03, RS-13, RT-01a, RT-02.
 
@@ -577,7 +595,9 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
 | Capability | How | What to expect |
 | --- | --- | --- |
 | Daemon | `herdr-team daemon start [--replace] [--allow-version] [--dry-nudge] \| stop [--timeout N] \| status`, the `daemon-start` action; the plugin's startup hook starts it on every server start; `create`, `add`, `bind`, and `ui picker` start it if needed | one instance per session; refuses a Herdr other than 0.8.x without `--allow-version`; exits when the manifest version changes or the server stays unreachable for 60 s (the startup hook brings it back); `start` also re-applies the team view and reconciles the console |
-| Cold server restart | nothing to do | panes come back as shells; members show `gone` after a 30 s grace; once the agents run again the daemon rebinds each member by terminal, then label, then pane id and kind, then name, re-applies names, restamps tokens; a member that matches only by kind and directory is left `missing` with the candidate named in `daemon.log` until you `bind` it; unread posts are kept, their TTL restarts |
+| Cold server restart | nothing to do | panes come back as shells; members show `gone` after a 30 s grace; once the agents run again the daemon rebinds each member by harness session, then terminal, then label, then pane id and kind, then name, re-applies names, restamps tokens; a member that matches only by kind and directory is left `missing` with the candidate named in `daemon.log` until you `bind` it; unread posts are kept, their TTL restarts; pane records of terminals that no longer exist are dropped |
+| Agent crashes, restarts in its pane | nothing to do; `resume <name>` if you want the same conversation back | a new session on the member's terminal is detected within one scan: same name and pane, generation +1, `member_restarted` with the old and new session, a fresh briefing once it is idle. Without `resume` the new agent starts empty; with it the member's own conversation is reopened |
+| Resume by hand | `herdr-team resume <name>` in a shell pane | the exact `--resume <id>` command for that member; a bare `claude --continue` or `codex resume --last` in a shared checkout may bring back another member's conversation, and the roster then rebinds by session rather than by pane |
 | Live update or handoff | nothing to do | the daemon reconnects and reconciles; a surviving daemon is kept |
 | Console after restart | nothing to do | a console that was open is reopened; a dead `Team console` shell is detected by process info and replaced |
 | Member exits or pane closes | nothing to do | member `missing`, its tokens cleared, `member_gone` to you; the manifest event hooks do this when the daemon is dead |

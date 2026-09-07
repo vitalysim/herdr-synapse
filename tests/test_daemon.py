@@ -1634,7 +1634,8 @@ class RehydrateFixtureTests(unittest.TestCase):
 
     def test_cold_restart_fixture_binds_like_the_roster_matcher(self):
         d, expected, members = self.run_fixture("cold_restart.json")
-        self.assertEqual(sorted(b.member for b in expected.bindings), ["alpha-reviewer", "alpha-scout", "alpha-worker"])
+        self.assertEqual(sorted(b.member for b in expected.bindings), ["alpha-reviewer", "alpha-scout", "alpha-twin", "alpha-worker"])
+        self.assertEqual({b.member: b.how for b in expected.bindings if b.how == roster.MATCH_SESSION}, {"alpha-reviewer": "session", "alpha-twin": "session"})
         self.assertIn({"target": "w2:p4", "name": "alpha-reviewer"}, [p for m, p in d.api.calls if m == "agent.rename"])
 
     def test_in_session_move_fixture_binds_like_the_roster_matcher(self):

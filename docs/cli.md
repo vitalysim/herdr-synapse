@@ -48,7 +48,7 @@ Environment the CLI reads: `HERDR_SOCKET_PATH`, `HERDR_SESSION`,
 | Code | Meaning | Typical error codes |
 | --- | --- | --- |
 | 0 | ok | |
-| 1 | refused or validation failure | `team_name_invalid`, `name_invalid`, `name_reserved`, `role_invalid`, `agent_name_taken`, `member_claimed`, `team_exists`, `team_not_found`, `member_not_found`, `author_mismatch`, `text_too_long`, `invalid_utf8`, `charter_too_long`, `ref_invalid`, `path_symlink`, `team_session_mismatch`, `team_ambiguous`, `view_foreign`, `plugin_disabled`, `agent_not_found`, `agent_blocked`, `agent_not_ready`, `launch_pending`, `not_an_agent`, `board_write_failed`, `roster_conflict`, `home_unset`, `internal`, `say_unverified`, `say_multiline`, `say_too_long`, `say_control_command`, `say_timeout`, `kind_unverified`, `retract_invalid`, `edit_invalid`, `interrupt_needs_recipient`, `interrupt_cooldown` |
+| 1 | refused or validation failure | `team_name_invalid`, `name_invalid`, `name_reserved`, `role_invalid`, `agent_name_taken`, `member_claimed`, `team_exists`, `team_not_found`, `member_not_found`, `author_mismatch`, `text_too_long`, `invalid_utf8`, `charter_too_long`, `ref_invalid`, `path_symlink`, `team_session_mismatch`, `team_ambiguous`, `view_foreign`, `plugin_disabled`, `agent_not_found`, `agent_blocked`, `agent_not_ready`, `launch_pending`, `not_an_agent`, `board_write_failed`, `roster_conflict`, `home_unset`, `internal`, `say_unverified`, `say_multiline`, `say_too_long`, `say_control_command`, `say_timeout`, `kind_unverified`, `retract_invalid`, `edit_invalid`, `interrupt_needs_recipient`, `interrupt_cooldown`, `session_unknown`, `session_unsupported`, `outside_herdr`, `command_not_found`, `pane_busy`, `member_alive` |
 | 2 | usage | `usage`, `unknown_command` |
 | 3 | not a member, or Herdr unreachable | `not_a_member`, `team_required`, `server_not_running`, `herdr_unreachable`, `herdr_timeout`, `herdr_not_found` |
 | 4 | echo rejected | `echo_rejected` |
@@ -168,12 +168,57 @@ From a member pane: `remove` on self. JSON `{"team","left":"<name>"}`.
 ### `bind <team> <name> <target>`
 
 Re-attach a `missing`/`unbound`/`kind_changed` member to a live agent
-(rehydration case (e) or a manual fix). JSON
+(rehydration case (e) or a manual fix). The target's `agent_session` is
+recorded on the member. JSON
 `{"team","member":member,"previous_terminal_id":"…"}`. When the member moves
 to another pane, its previous pane loses the `team:<team>/<role>` label if
 that pane still carries it and hosts no agent (after a cold restart it is a
 plain shell; RT-02). The daemon applies the same rule when a reconcile
 rebinds a member to another terminal.
+
+### `resume <name> [--print]` (human only)
+
+Reopens a member's **own** harness session in the pane you run it from.
+`claude --continue`, `codex resume --last` and `opencode -c` pick a
+conversation by directory or by recency, never by pane, so with several
+members in one checkout any of them can come back under a member's name.
+`resume` runs the exact command Herdr itself uses on restore for the session
+the roster recorded, from the member's directory, and replaces the CLI
+process with it, so the pane becomes the agent. The table is copied entry for
+entry from Herdr 0.8.2 (`src/agent_resume.rs`) and covers every integration
+Herdr ships:
+
+| Source | Command | Source | Command |
+| --- | --- | --- | --- |
+| `herdr:claude` | `claude --resume <id>` | `herdr:kilo` | `kilo --session <id>` |
+| `herdr:codex` | `codex resume <id>` | `herdr:kimi` | `kimi --session <id>` |
+| `herdr:copilot` | `copilot --resume=<id>` | `herdr:mastracode` | `mastracode --thread <id>` |
+| `herdr:cursor` | `cursor-agent --resume <id>` | `herdr:omp` | `omp --resume=<path\|id>` |
+| `herdr:devin` | `devin --resume <id>` | `herdr:opencode` | `opencode --session <id>` |
+| `herdr:droid` | `droid --resume <id>` | `herdr:pi` | `pi --session <path\|id>` |
+| `herdr:grok` | `grok --resume <id>` | `herdr:qodercli` | `qodercli --resume <id>` |
+| `herdr:hermes` | `hermes --resume <id>` | `herdr:qwen` | `qwen --resume <id>` |
+| `herdr:antigravity_cli` | `agy --conversation <id>` | | |
+
+Pi and omp identify a session by an absolute path rather than an id; every
+other kind uses an id. On Windows the Cursor binary is `cursor-agent.cmd`. The harness's own hook
+then reports that session to Herdr for this pane and the notifier rebinds the
+member here on its next scan (rehydration step 0), with a `member_restarted`
+record; the old pane is left to `reconcile`.
+
+`--print` shows the command instead of running it (this is what the
+`prefix+t` action does, since a popup is not a shell). JSON
+`{"team","member","kind","session":{"source","agent","kind","value","seen_at"},"argv":[…],"command":"…","cwd":"…"|null,"cwd_missing":"…"|null}`.
+
+Refusals: `session_unknown` (1) when the member never reported a session
+(its harness integration is not installed: `herdr integration install
+<kind>`) or the recorded value is unusable, `session_unsupported` (1) for a
+source Herdr does not issue, a source paired with an agent Herdr never pairs
+it with, or a reference kind that source does not use,
+`author_mismatch` (1) from a member pane, `outside_herdr` (1) without
+`HERDR_PANE_ID` (the harness could not report the session for a pane),
+`command_not_found` (1), `member_alive` (1) when the member is still running
+that session in its own pane (go there, or stop it first).
 
 ### `dissolve <team> [--yes]`
 
@@ -363,8 +408,12 @@ From a member pane. JSON:
 {"team":"vuln-hunt","name":"vuln-hunt-reviewer","role":"reviewer","kind":"codex","pane_id":"w2:p1","terminal_id":"term_…",
  "brief":"…"|null,"charter":{"seq":3,"headline":"…"}|null,"teammates":[{"name","role","kind","status"}],
  "unread":2,"cursor":41,"verified":true,"via":"cli","skill_version":1,"skill_installed":1|null,"skill_ok":true,
- "cli":"/abs/path/herdr-team","notifier":"alive"}
+ "cli":"/abs/path/herdr-team","notifier":"alive","session":"…f01a83b5a560"|null}
 ```
+
+`session` is the tail of the harness session id the roster holds for you
+(the full record is `session` in `team.json`); human output shows it with the
+`resume` command that reopens it.
 
 Errors: `not_a_member` (3) with `hint` details listing known teams.
 
@@ -381,7 +430,7 @@ calls `agent read`. JSON:
  "members":[{"name":"vuln-hunt-reviewer","role":"reviewer","kind":"codex","status":"active","agent_status":"idle",
    "pane_id":"w2:p1","terminal_id":"term_…","workspace_id":"w2","last_headline":"→ review diff","pending_nudges":0,
    "muted_until":null,"verified_kind":true,"delivery":"nudge","hooks_last_seen":null,"last_seen_at":"…",
-   "briefed":true,"charter_stale":false,"unread":0,"brief":"…"|null}],
+   "briefed":true,"charter_stale":false,"unread":0,"brief":"…"|null,"session":"…f01a83b5a560"|null}],
  "kinds":{"claude":{"trusted":true,"verified":false,"probe_ok":false,"multiline":{"one_submission":true,…}|null}}}
 ```
 
@@ -392,9 +441,12 @@ never probed. `--role` filters `members` only; `kinds` always covers the
 whole roster (M6 SK-03).
 
 `--role` filters `members`; `--brief` drops `brief`, `last_seen_at`,
-`hooks_last_seen` from human output only. Human rows are glyph, name, role,
-kind, pane, status, headline, tags (the role column is added to the plan 11
-layout so a member reading `who` can say who does what; SK-02).
+`hooks_last_seen`, and the `session` tag from human output only. Human rows
+are glyph, name, role, kind, pane, status, headline, tags (the role column is
+added to the plan 11 layout so a member reading `who` can say who does what;
+SK-02). `session` is the tail of the harness session id recorded for the
+member (`agent_session` in Herdr's `agent list`), the key rehydration uses
+first and `resume` reopens; `null` until the member's harness reports one.
 
 ### `audit [--last N]`
 

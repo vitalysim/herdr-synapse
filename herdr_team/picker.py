@@ -306,7 +306,7 @@ def run(layout: Layout, api: Any, env: Dict[str, str], actions: bool = True) -> 
 
 
 #: Member actions the tree can run while the popup stays open.
-ACTION_INTENTS = ("member_rename", "member_goal", "member_send_goal", "member_remove", "member_focus", "team_folder_set", "team_board_open")
+ACTION_INTENTS = ("member_rename", "member_goal", "member_send_goal", "member_remove", "member_focus", "member_resume", "team_folder_set", "team_board_open")
 #: ``remove`` and ``rename`` do several socket round trips plus a lock wait; the console's 20 s is too
 #: tight for them, and a timeout kills the CLI mid-change (M8 review).
 ACTION_TIMEOUT_S = 45.0
@@ -317,6 +317,7 @@ ACTION_LABELS = {
     "member_send_goal": "sending the goal to {member}",
     "member_remove": "removing {member} from {team}",
     "member_focus": "going to {member}",
+    "member_resume": "looking up the session of {member}",
     "team_folder_set": "setting the folder for {team}",
     "team_board_open": "opening the {team} board",
 }
@@ -342,6 +343,8 @@ def action_args(intent: Any) -> List[str]:
         return ["--team", team, "brief", member, "--set", str(args.get("text") or "")]
     if intent.kind == "member_send_goal":
         return ["--team", team, "brief", member]
+    if intent.kind == "member_resume":
+        return ["--team", team, "resume", member, "--print"]
     return ["--team", team, "focus", member]
 
 
@@ -366,6 +369,8 @@ def action_failure_status(intent: Any, err: Dict[str, Any]) -> str:
         return message
     if code == "member_not_found":
         return "{} is not in {} any more; press r to refresh".format(member, intent.args.get("team"))
+    if code in ("session_unknown", "session_unsupported"):
+        return "{}: {}".format(member, message)
     if code in ("team_not_found", "team_session_mismatch"):
         return "team {} is not in this session; press r".format(intent.args.get("team"))
     if code in ("lock_timeout", "board_locked"):
@@ -397,6 +402,9 @@ def action_success_status(intent: Any, out: Any) -> str:
         return "goal saved for {}; it does not reach the agent until you send it (action 3)".format(member)
     if intent.kind == "member_send_goal":
         return "briefing queued for {}; it lands once the agent is idle".format(member)
+    if intent.kind == "member_resume":
+        command = (out or {}).get("command") if isinstance(out, dict) else None
+        return "in a shell pane run: herdr-team resume {}  ({})".format(member, command or "no command")
     if intent.kind == "member_remove":
         kept = " (its Herdr agent name was kept)" if args.get("keep_name") else ""
         return "{} removed from {}{}".format(member, args.get("team"), kept)

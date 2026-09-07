@@ -1,6 +1,6 @@
 id = "herdr-team"
 name = "Herdr Team"
-version = "0.4.2"
+version = "0.5.0"
 min_herdr_version = "0.8.2"
 description = "Teams of agents in one Herdr session: roster, charter, shared board, idle-gated nudges"
 platforms = ["macos", "linux"]

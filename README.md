@@ -51,6 +51,11 @@ filter: [all]  to me  requests  human  system  (Tab cycles)   ? help
   agents underneath and the unassigned agents below. Enter on a member
   renames it, changes its goal, sends that goal to it, removes it, or takes
   you to its pane, without closing the popup.
+- **Members that survive restarts.** Each member is tied to the conversation
+  its agent is running, not just to a pane, so two agents of one kind in one
+  checkout are never mixed up after a restart, and an agent that crashed and
+  came back is briefed again instead of silently wearing a member's name.
+  `herdr-team resume <name>` reopens a member's own conversation.
 - **A shared board.** An append-only board per team with post kinds
   (`request`, `done`, `blocked`, `question`, ...), replies, references, and
   file attachments. Agents read and write it through the CLI a skill teaches
@@ -322,6 +327,39 @@ anyone shows up for Claude on its next prompt and for every other kind on its
 next board read. Broadcasts never interrupt a running turn; `--urgent` is the
 opt-in that nudges.
 
+## Members and their sessions
+
+A member is not just a pane. Herdr's integrations report which conversation
+each agent is running, and the roster records it, so a member survives things
+that used to confuse it.
+
+```bash
+herdr integration install claude       # once per kind, so it reports its session
+herdr-team who                         # each member now shows its session
+```
+
+| What happens | What you get |
+| --- | --- |
+| Herdr restarts | every member goes back to its own pane, even two agents of one kind in one checkout, which pane labels and directories could never tell apart |
+| An agent crashes and you start a fresh one in its pane | recognised as a new conversation: the member keeps its name and pane, and is briefed again so it knows who it is |
+| A Claude member runs `/clear` | the same: a new conversation, briefed again. A compaction keeps the same session and changes nothing |
+| You want the old conversation back | `herdr-team resume <name>` from a shell pane |
+
+`resume` runs the exact command Herdr's own restore would use, in the
+member's directory, and the pane becomes that agent:
+
+```bash
+herdr-team resume vuln-hunt-reviewer     # e.g. codex resume 01a077d4-…
+herdr-team resume vuln-hunt-reviewer --print   # just show it
+```
+
+Never use a bare `claude --continue`, `codex resume --last`, or `opencode -c`
+for a team member. Those pick a conversation by directory or by recency, not
+by pane, so in a shared checkout they can bring back a different member's
+work. `resume` covers all 17 kinds Herdr ships an integration for; a kind
+without one keeps working exactly as before, it just has no session to
+reopen. `prefix+t`, Enter on a member, action 7 shows the command.
+
 ## How delivery works
 
 Every post to a member becomes pending work for the daemon. Before it types
@@ -370,11 +408,15 @@ team through `config.gate` in `team.json`.
 
 ## Status
 
-Verified live with Claude Code, Codex, and OpenCode. Typing into a running
+Verified live with Claude Code, Codex, and OpenCode, including session
+identity for all three. Typing into a running
 turn (`!!`, and a teammate's `--interrupt`) is verified for Claude Code;
 other kinds are typed but flagged until checked, and interrupts stay off for
 them until you opt in. Usage limits are verified for Anthropic and OpenAI
-Codex logins; Copilot and Gemini are best effort. Hooks exist for Claude Code only. macOS is the primary
+Codex logins; Copilot and Gemini are best effort. Hooks exist for Claude Code
+only. Session identity and `resume` follow Herdr's own table and cover the 17
+kinds it ships an integration for; the other 14 kinds it detects report no
+session and behave as they always did. macOS is the primary
 platform; Linux is supported and covered by CI; Windows is not.
 
 ## Development

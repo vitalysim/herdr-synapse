@@ -136,6 +136,7 @@ def free_color_slot(taken: Iterable[Any], count: int = 0) -> int:
 NAME_POLICY_ADOPT = "adopt"
 NAME_POLICY_ENFORCE = "enforce"
 
+MATCH_SESSION = "session"
 MATCH_TERMINAL = "terminal_id"
 MATCH_LABEL = "label"
 MATCH_PANE = "pane_id"
@@ -143,6 +144,44 @@ MATCH_NAME = "name"
 MATCH_FINGERPRINT = "fingerprint"
 #: Owner decision 16.5 is open: fingerprint matches wait for ``bind`` by default.
 AUTO_BIND_FINGERPRINT = False
+
+#: Herdr's own agent binary for Cursor (``src/agent_resume.rs``: ``cursor-agent.cmd`` on Windows).
+CURSOR_AGENT_BIN = "cursor-agent.cmd" if os.name == "nt" else "cursor-agent"
+
+#: ``agent_session.source`` -> ``(agent kind, session ref kinds it may carry, argv template)``,
+#: copied entry for entry from Herdr's own restore table (``src/agent_resume.rs::plan`` and
+#: ``is_official_agent_source`` at v0.8.2), so ``resume`` reopens a session exactly the way Herdr
+#: would on a cold start. ``{id}`` is the session value, substituted inside a part so the joined
+#: forms (``--resume=<id>``) stay one argument. Every integration Herdr ships is here; a source it
+#: does not issue, or one paired with the wrong agent, is refused by ``resume`` rather than
+#: guessed, because a wrong flag starts a *new* conversation wearing the member's name, which is
+#: the confusion this table exists to prevent. ``pi`` and ``omp`` identify a session by an
+#: absolute path rather than an id, which is why the ref kinds are per entry.
+RESUME_COMMANDS: Dict[str, Tuple[str, Tuple[str, ...], Tuple[str, ...]]] = {
+    "herdr:antigravity_cli": ("agy", ("id",), ("agy", "--conversation", "{id}")),
+    "herdr:claude": ("claude", ("id",), ("claude", "--resume", "{id}")),
+    "herdr:codex": ("codex", ("id",), ("codex", "resume", "{id}")),
+    "herdr:copilot": ("copilot", ("id",), ("copilot", "--resume={id}")),
+    "herdr:cursor": ("cursor", ("id",), (CURSOR_AGENT_BIN, "--resume", "{id}")),
+    "herdr:devin": ("devin", ("id",), ("devin", "--resume", "{id}")),
+    "herdr:droid": ("droid", ("id",), ("droid", "--resume", "{id}")),
+    "herdr:grok": ("grok", ("id",), ("grok", "--resume", "{id}")),
+    "herdr:hermes": ("hermes", ("id",), ("hermes", "--resume", "{id}")),
+    "herdr:kilo": ("kilo", ("id",), ("kilo", "--session", "{id}")),
+    "herdr:kimi": ("kimi", ("id",), ("kimi", "--session", "{id}")),
+    "herdr:mastracode": ("mastracode", ("id",), ("mastracode", "--thread", "{id}")),
+    "herdr:omp": ("omp", ("path", "id"), ("omp", "--resume={id}")),
+    "herdr:opencode": ("opencode", ("id",), ("opencode", "--session", "{id}")),
+    "herdr:pi": ("pi", ("path", "id"), ("pi", "--session", "{id}")),
+    "herdr:qodercli": ("qodercli", ("id",), ("qodercli", "--resume", "{id}")),
+    "herdr:qwen": ("qwen", ("id",), ("qwen", "--resume", "{id}")),
+}
+
+#: The two ``AgentSessionRefKind`` values Herdr issues.
+SESSION_REF_KINDS = ("id", "path")
+#: Herdr's ``MAX_SESSION_ID_LEN`` and ``MAX_SESSION_PATH_LEN``.
+MAX_SESSION_ID_CHARS = 512
+MAX_SESSION_PATH_CHARS = 4096
 
 SYSTEM_EVENTS = (
     "nudged", "toast", "retracted", "expired", "abandoned", "member_gone",
@@ -176,6 +215,117 @@ def parse_iso(value: Optional[str]) -> Optional[float]:
         except ValueError:
             continue
     return None
+
+
+# --------------------------------------------------------------------------
+# harness sessions: the one key that survives a Herdr restart
+
+
+def _control_free(value: str) -> bool:
+    """No Unicode ``Cc`` character, the one thing Herdr's own session validators reject."""
+    return not any(ord(ch) < 0x20 or 0x7F <= ord(ch) <= 0x9F for ch in value)
+
+
+def session_value_problem(value: Any, ref_kind: str = "id") -> Optional[str]:
+    """Why ``value`` is not a usable session reference, or None.
+
+    Mirrors Herdr's ``valid_session_id`` and ``valid_session_path``
+    (non-empty, within the length cap, no control characters, absolute for a
+    path), and adds one rule Herdr does not need: a value may not start with
+    ``-``. Herdr hands these to its own spawn; ``resume`` puts them in an
+    ``execvp`` argv, where a leading dash would be read as a flag. No real
+    id or path starts with one.
+    """
+    if not isinstance(value, str) or not value:
+        return "empty"
+    limit = MAX_SESSION_PATH_CHARS if ref_kind == "path" else MAX_SESSION_ID_CHARS
+    if len(value) > limit:
+        return "longer than {} characters".format(limit)
+    if not _control_free(value):
+        return "contains control characters"
+    if value.startswith("-"):
+        return "starts with a dash"
+    if ref_kind == "path" and not os.path.isabs(value):
+        return "is not an absolute path"
+    return None
+
+
+def session_of(row: Any, seen_at: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """``Member.session`` from a live row's ``agent_session`` (or a bare ``AgentSessionInfo``).
+
+    Herdr's integrations report a session per pane (``pane.report_agent_session``)
+    and ``agent.list``/``agent.get``/``pane.get`` carry it as ``{"source",
+    "agent", "kind", "value"}``. Only ``source`` and ``value`` are load-bearing;
+    anything without both is no session. An unusable value is refused rather
+    than trimmed to fit: a truncated id is a *wrong* id, which would bind the
+    member to nothing and resume nothing.
+    """
+    info = row.get("agent_session") if isinstance(row, dict) and "agent_session" in row else row
+    if not isinstance(info, dict):
+        return None
+    source = info.get("source")
+    value = info.get("value")
+    if not isinstance(source, str) or not source or len(source) > 64 or not _control_free(source):
+        return None
+    ref_kind = info.get("kind") if info.get("kind") in SESSION_REF_KINDS else "id"
+    if session_value_problem(value, ref_kind) is not None:
+        return None
+    out: Dict[str, Any] = {
+        "source": source,
+        "agent": info.get("agent") if isinstance(info.get("agent"), str) else None,
+        "kind": ref_kind,
+        "value": value,
+        "seen_at": seen_at or now_iso(),
+    }
+    return out
+
+
+def session_key(session: Any) -> Optional[Tuple[str, str]]:
+    """``(source, value)`` when ``session`` names one, else None."""
+    if not isinstance(session, dict):
+        return None
+    source, value = session.get("source"), session.get("value")
+    if isinstance(source, str) and source and isinstance(value, str) and value:
+        return source, value
+    return None
+
+
+def same_session(a: Any, b: Any) -> bool:
+    key_a, key_b = session_key(a), session_key(b)
+    return key_a is not None and key_a == key_b
+
+
+def short_session(session: Any, tail: int = 8) -> Optional[str]:
+    """The last ``tail`` characters of the session value, for ``who``/``me`` and the tree."""
+    key = session_key(session)
+    if key is None:
+        return None
+    value = key[1]
+    return value if len(value) <= tail else "\u2026" + value[-tail:]
+
+
+def resume_argv(session: Any) -> List[str]:
+    """The exact command that reopens ``session`` (``RESUME_COMMANDS``); refuses what it cannot name."""
+    key = session_key(session)
+    if key is None:
+        raise HerdrTeamError("session_unknown", "no harness session is recorded for this member", EXIT_REFUSED, {"hint": "the member's harness must report its session to Herdr (herdr integration install <kind>); see who"})
+    source, value = key
+    entry = RESUME_COMMANDS.get(source)
+    if entry is None:
+        raise HerdrTeamError("session_unsupported", "no resume command is known for {} sessions".format(source), EXIT_REFUSED, {"source": source, "supported": sorted(RESUME_COMMANDS)})
+    agent, ref_kinds, template = entry
+    reported = session.get("agent") if isinstance(session, dict) else None
+    if isinstance(reported, str) and reported and reported != agent:
+        # Herdr only ever pairs a source with its own agent (``is_official_agent_source``); a
+        # mismatch is a report Herdr would not have issued, so resuming it would be a guess.
+        raise HerdrTeamError("session_unsupported", "{} is not the agent Herdr pairs with {}".format(reported, source), EXIT_REFUSED, {"source": source, "agent": reported, "expected": agent})
+    ref_kind = session.get("kind") if isinstance(session, dict) and session.get("kind") in SESSION_REF_KINDS else "id"
+    if ref_kind not in ref_kinds:
+        raise HerdrTeamError("session_unsupported", "{} sessions are not identified by a {}".format(source, ref_kind), EXIT_REFUSED, {"source": source, "kind": ref_kind, "expected": list(ref_kinds)})
+    problem = session_value_problem(value, ref_kind)
+    if problem is not None:
+        raise HerdrTeamError("session_unknown", "the recorded session {} {}".format(ref_kind, problem), EXIT_REFUSED, {"source": source, "kind": ref_kind})
+    return [part.replace("{id}", value) for part in template]
 
 
 # --------------------------------------------------------------------------
@@ -685,10 +835,13 @@ def check_session(layout: Layout, team: Team, allow_mismatch: bool = False) -> N
 # pane records (panes/<terminal_id>.json = {team, name, gen})
 
 
-def write_pane_record(session: SessionPaths, terminal_id: str, team: str, name: str, generation: int) -> Path:
+def write_pane_record(session: SessionPaths, terminal_id: str, team: str, name: str, generation: int, agent_session: Optional[Dict[str, Any]] = None) -> Path:
     path = session.pane_record(terminal_id)
     ensure_dir(session.panes_dir)
-    store.write_json(path, {"team": team, "name": name, "gen": int(generation)})
+    record: Dict[str, Any] = {"team": team, "name": name, "gen": int(generation)}
+    if session_key(agent_session) is not None:
+        record["session"] = dict(agent_session)  # type: ignore[arg-type]
+    store.write_json(path, record)
     return path
 
 
@@ -977,6 +1130,10 @@ def _agent_kind(row: Dict[str, Any]) -> Optional[str]:
 def rehydrate_match(members: Sequence[Member], agent_list_rows: Sequence[Dict[str, Any]], pane_list_rows: Sequence[Dict[str, Any]] = ()) -> RehydrationResult:
     """Match roster members to live agents in the plan 4.2 order.
 
+    (0) the harness session: a row whose ``agent_session`` names the same
+    ``(source, value)`` the member recorded is that member, whatever its
+    terminal, pane, label or name are now (the only key that survives a
+    Herdr restart, since terminal ids are reallocated and names dropped);
     (a) ``terminal_id``; (b) ``pane list`` row with the member's label and a
     live agent of the member's kind on that terminal; (c) same public
     ``pane_id`` and kind; (d) exact name; (e) unique ``(kind, cwd,
@@ -1002,8 +1159,27 @@ def rehydrate_match(members: Sequence[Member], agent_list_rows: Sequence[Dict[st
         used.add(row["terminal_id"])
         result.bindings.append(Binding(member.name, how, row, kind_matches=(_agent_kind(row) == member.kind)))
 
-    # (a) terminal id
+    # (0) harness session. Several rows may carry one session for a moment (Herdr keeps a pane's
+    # session until its process exits, so a resume elsewhere overlaps it): the member's own
+    # terminal wins, so nothing moves until the old pane is really gone.
+    sessions: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
+    for row in agents:
+        key = session_key(session_of(row))
+        if key is not None:
+            sessions.setdefault(key, []).append(row)
     rest: List[Member] = []
+    for member in pending:
+        key = session_key(member.session)
+        rows = [r for r in (sessions.get(key) if key is not None else []) or [] if r["terminal_id"] not in used]
+        if not rows:
+            rest.append(member)
+            continue
+        own = next((r for r in rows if r["terminal_id"] == member.terminal_id), None)
+        take(member, own or rows[0], MATCH_SESSION)
+    pending = rest
+
+    # (a) terminal id
+    rest = []
     for member in pending:
         row = next((a for a in agents if a["terminal_id"] == member.terminal_id and a["terminal_id"] not in used), None)
         if row is None:
@@ -1223,6 +1399,7 @@ def build_who_json(
                 "charter_stale": _charter_stale(member, charter),
                 "unread": int(((unread or {}).get(team_name) or {}).get(member.name, 0)),
                 "brief": member.brief,
+                "session": short_session(member.session),
                 "live_name": (live or {}).get("name") if live else None,
                 "focused": bool((live or {}).get("focused")) if live else False,
                 "launch_pending": bool((live or {}).get("launch_pending")) if live else False,
@@ -1259,6 +1436,7 @@ class ResolvedTarget:
     launch_pending: bool
     agent_status: Optional[str]
     raw: Dict[str, Any]
+    agent_session: Optional[Dict[str, Any]] = None
 
 
 def resolve_target(api: Any, target: str) -> ResolvedTarget:
@@ -1298,6 +1476,7 @@ def resolve_target(api: Any, target: str) -> ResolvedTarget:
         launch_pending=bool(agent.get("launch_pending")),
         agent_status=agent.get("agent_status"),
         raw=agent,
+        agent_session=session_of(agent),
     )
 
 
@@ -1427,7 +1606,7 @@ class Roster:
 
         team = self.update(mutate)
         if member.terminal_id:
-            write_pane_record(self.layout.session, member.terminal_id, self.name, member.name, member.generation)
+            write_pane_record(self.layout.session, member.terminal_id, self.name, member.name, member.generation, member.session)
         return team, previous
 
     def set_status(self, name: str, status: str, **fields: Any) -> Member:
@@ -1503,6 +1682,8 @@ class Roster:
             member.cwd = target.cwd or member.cwd
             if target.kind:
                 member.kind = target.kind
+            if target.agent_session is not None:
+                member.session = target.agent_session
             member.generation = int(member.generation) + 1
             member.status = "active"
             member.last_seen_at = now_iso()
@@ -1522,7 +1703,7 @@ class Roster:
         execute_token_commands(api, token_commands(member, self.name, color_slot=team.color_slot))
         if previous_terminal and previous_terminal[0] and previous_terminal[0] != target.terminal_id:
             remove_pane_record(self.layout.session, previous_terminal[0])
-        write_pane_record(self.layout.session, target.terminal_id, self.name, member.name, member.generation)
+        write_pane_record(self.layout.session, target.terminal_id, self.name, member.name, member.generation, member.session)
         append_system_record(self.paths, "member_restarted", "{} rebound to {} (generation {})".format(member.name, target.pane_id, member.generation), to=["all"], socket=socket)
         return {"team": self.name, "member": member.to_json(), "previous_terminal_id": previous_terminal[0] if previous_terminal else None}
 
@@ -1563,7 +1744,7 @@ class Roster:
         member = adopted[0]
         migrate_cursor(self.paths, member_name, member.name)
         if member.terminal_id:
-            write_pane_record(self.layout.session, member.terminal_id, self.name, member.name, member.generation)
+            write_pane_record(self.layout.session, member.terminal_id, self.name, member.name, member.generation, member.session)
         append_system_record(self.paths, "renamed", "{} is now {} (old name resolves for 10 min)".format(member_name, new_name), to=["all"], socket=socket)
         return member
 
@@ -1612,6 +1793,7 @@ def join(layout: Layout, api: Any, team: Team, target: str, role: str, name: Opt
         cwd=resolved.cwd,
         brief=brief,
         managed=False,
+        session=resolved.agent_session,
         status="active",
         generation=1,
         delivery="nudge",

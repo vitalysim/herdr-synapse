@@ -1,32 +1,235 @@
 {
-  "description": "Cold restart without integrations (plan 4.2): every terminal_id was reallocated and every agent name dropped; pane labels and public pane ids survived. Members: reviewer rebinds by label (b), worker by pane id (c, its label was lost), scout by exact name (d, a live handoff kept it), lone is a unique fingerprint (e, waits for bind), ghost has no candidate (missing).",
+  "description": "Cold restart without integrations (plan 4.2): every terminal_id was reallocated and every agent name dropped; pane labels and public pane ids survived. Members: reviewer and twin are both codex in /tmp/work and rebind by harness session (0), which the fingerprint step could never tell apart; worker by pane id (c, its label was lost); scout by exact name (d, a live handoff kept it); lone is a unique fingerprint (e, waits for bind); ghost has no candidate (missing). The decoy pane carries worker's label and twin's session: the session wins, and worker is not fooled by the label.",
   "members": [
-    {"name": "alpha-reviewer", "role": "reviewer", "kind": "codex", "terminal_id": "term_old_r", "pane_id": "w2:p1", "workspace_id": "w2", "label": "team:alpha/reviewer", "cwd": "/tmp/work", "status": "active"},
-    {"name": "alpha-worker", "role": "worker", "kind": "claude", "terminal_id": "term_old_w", "pane_id": "w2:p2", "workspace_id": "w2", "label": "team:alpha/worker", "cwd": "/tmp/work", "status": "active"},
-    {"name": "alpha-scout", "role": "scout", "kind": "gemini", "terminal_id": "term_old_s", "pane_id": "w2:p3", "workspace_id": "w2", "label": "team:alpha/scout", "cwd": "/tmp/work", "status": "active"},
-    {"name": "alpha-lone", "role": "lone", "kind": "kimi", "terminal_id": "term_old_l", "pane_id": "w9:p9", "workspace_id": "w4", "label": "team:alpha/lone", "cwd": "/tmp/other", "status": "active"},
-    {"name": "alpha-ghost", "role": "ghost", "kind": "amp", "terminal_id": "term_old_g", "pane_id": "w9:p1", "workspace_id": "w9", "label": "team:alpha/ghost", "cwd": "/tmp/gone", "status": "active"},
-    {"name": "alpha-gone", "role": "gone", "kind": "codex", "terminal_id": "term_old_x", "pane_id": "w2:p8", "workspace_id": "w2", "label": "team:alpha/gone", "cwd": "/tmp/work", "status": "left"},
-    {"name": "human", "role": "operator", "kind": "human", "terminal_id": null, "status": "active"}
+    {
+      "name": "alpha-reviewer",
+      "role": "reviewer",
+      "kind": "codex",
+      "terminal_id": "term_old_r",
+      "pane_id": "w2:p1",
+      "workspace_id": "w2",
+      "label": "team:alpha/reviewer",
+      "cwd": "/tmp/work",
+      "status": "active",
+      "session": {
+        "source": "herdr:codex",
+        "agent": "codex",
+        "kind": "id",
+        "value": "0199-reviewer-session",
+        "seen_at": "2026-09-04T10:00:00Z"
+      }
+    },
+    {
+      "name": "alpha-twin",
+      "role": "twin",
+      "kind": "codex",
+      "terminal_id": "term_old_t",
+      "pane_id": "w2:p6",
+      "workspace_id": "w2",
+      "label": "team:alpha/twin",
+      "cwd": "/tmp/work",
+      "status": "active",
+      "session": {
+        "source": "herdr:codex",
+        "agent": "codex",
+        "kind": "id",
+        "value": "0199-twin-session",
+        "seen_at": "2026-09-04T10:00:00Z"
+      }
+    },
+    {
+      "name": "alpha-worker",
+      "role": "worker",
+      "kind": "claude",
+      "terminal_id": "term_old_w",
+      "pane_id": "w2:p2",
+      "workspace_id": "w2",
+      "label": "team:alpha/worker",
+      "cwd": "/tmp/work",
+      "status": "active"
+    },
+    {
+      "name": "alpha-scout",
+      "role": "scout",
+      "kind": "gemini",
+      "terminal_id": "term_old_s",
+      "pane_id": "w2:p3",
+      "workspace_id": "w2",
+      "label": "team:alpha/scout",
+      "cwd": "/tmp/work",
+      "status": "active"
+    },
+    {
+      "name": "alpha-lone",
+      "role": "lone",
+      "kind": "kimi",
+      "terminal_id": "term_old_l",
+      "pane_id": "w9:p9",
+      "workspace_id": "w4",
+      "label": "team:alpha/lone",
+      "cwd": "/tmp/other",
+      "status": "active"
+    },
+    {
+      "name": "alpha-ghost",
+      "role": "ghost",
+      "kind": "amp",
+      "terminal_id": "term_old_g",
+      "pane_id": "w9:p1",
+      "workspace_id": "w9",
+      "label": "team:alpha/ghost",
+      "cwd": "/tmp/gone",
+      "status": "active"
+    },
+    {
+      "name": "alpha-gone",
+      "role": "gone",
+      "kind": "codex",
+      "terminal_id": "term_old_x",
+      "pane_id": "w2:p8",
+      "workspace_id": "w2",
+      "label": "team:alpha/gone",
+      "cwd": "/tmp/work",
+      "status": "left"
+    },
+    {
+      "name": "human",
+      "role": "operator",
+      "kind": "human",
+      "terminal_id": null,
+      "status": "active"
+    }
   ],
   "agent_list": [
-    {"terminal_id": "term_new_r", "pane_id": "w2:p4", "workspace_id": "w2", "agent": "codex", "name": null, "cwd": "/tmp/work", "agent_status": "idle"},
-    {"terminal_id": "term_new_w", "pane_id": "w2:p2", "workspace_id": "w2", "agent": "claude", "name": null, "cwd": "/tmp/work", "agent_status": "idle"},
-    {"terminal_id": "term_new_s", "pane_id": "w2:p7", "workspace_id": "w2", "agent": "gemini", "name": "alpha-scout", "cwd": "/tmp/work", "agent_status": "idle"},
-    {"terminal_id": "term_new_l", "pane_id": "w4:p2", "workspace_id": "w4", "agent": "kimi", "name": null, "cwd": "/tmp/other", "agent_status": "idle"},
-    {"terminal_id": "term_new_decoy", "pane_id": "w2:p9", "workspace_id": "w2", "agent": "codex", "name": null, "cwd": "/tmp/work", "agent_status": "idle"}
+    {
+      "terminal_id": "term_new_r",
+      "pane_id": "w2:p4",
+      "workspace_id": "w2",
+      "agent": "codex",
+      "name": null,
+      "cwd": "/tmp/work",
+      "agent_status": "idle",
+      "agent_session": {
+        "source": "herdr:codex",
+        "agent": "codex",
+        "kind": "id",
+        "value": "0199-reviewer-session"
+      }
+    },
+    {
+      "terminal_id": "term_new_w",
+      "pane_id": "w2:p2",
+      "workspace_id": "w2",
+      "agent": "claude",
+      "name": null,
+      "cwd": "/tmp/work",
+      "agent_status": "idle",
+      "agent_session": null
+    },
+    {
+      "terminal_id": "term_new_s",
+      "pane_id": "w2:p7",
+      "workspace_id": "w2",
+      "agent": "gemini",
+      "name": "alpha-scout",
+      "cwd": "/tmp/work",
+      "agent_status": "idle",
+      "agent_session": null
+    },
+    {
+      "terminal_id": "term_new_l",
+      "pane_id": "w4:p2",
+      "workspace_id": "w4",
+      "agent": "kimi",
+      "name": null,
+      "cwd": "/tmp/other",
+      "agent_status": "idle",
+      "agent_session": null
+    },
+    {
+      "terminal_id": "term_new_decoy",
+      "pane_id": "w2:p9",
+      "workspace_id": "w2",
+      "agent": "codex",
+      "name": null,
+      "cwd": "/tmp/work",
+      "agent_status": "idle",
+      "agent_session": {
+        "source": "herdr:codex",
+        "agent": "codex",
+        "kind": "id",
+        "value": "0199-twin-session"
+      }
+    }
   ],
   "pane_list": [
-    {"terminal_id": "term_new_r", "pane_id": "w2:p4", "workspace_id": "w2", "label": "team:alpha/reviewer", "agent": "codex"},
-    {"terminal_id": "term_new_w", "pane_id": "w2:p2", "workspace_id": "w2", "label": null, "agent": "claude"},
-    {"terminal_id": "term_new_s", "pane_id": "w2:p7", "workspace_id": "w2", "label": null, "agent": "gemini"},
-    {"terminal_id": "term_new_l", "pane_id": "w4:p2", "workspace_id": "w4", "label": null, "agent": "kimi"},
-    {"terminal_id": "term_new_decoy", "pane_id": "w2:p9", "workspace_id": "w2", "label": "team:alpha/worker", "agent": "codex"},
-    {"terminal_id": "term_shell", "pane_id": "w2:p1", "workspace_id": "w2", "label": "team:alpha/reviewer", "agent": null}
+    {
+      "terminal_id": "term_new_r",
+      "pane_id": "w2:p4",
+      "workspace_id": "w2",
+      "label": "team:alpha/reviewer",
+      "agent": "codex"
+    },
+    {
+      "terminal_id": "term_new_w",
+      "pane_id": "w2:p2",
+      "workspace_id": "w2",
+      "label": null,
+      "agent": "claude"
+    },
+    {
+      "terminal_id": "term_new_s",
+      "pane_id": "w2:p7",
+      "workspace_id": "w2",
+      "label": null,
+      "agent": "gemini"
+    },
+    {
+      "terminal_id": "term_new_l",
+      "pane_id": "w4:p2",
+      "workspace_id": "w4",
+      "label": null,
+      "agent": "kimi"
+    },
+    {
+      "terminal_id": "term_new_decoy",
+      "pane_id": "w2:p9",
+      "workspace_id": "w2",
+      "label": "team:alpha/worker",
+      "agent": "codex"
+    },
+    {
+      "terminal_id": "term_shell",
+      "pane_id": "w2:p1",
+      "workspace_id": "w2",
+      "label": "team:alpha/reviewer",
+      "agent": null
+    }
   ],
   "expected": {
-    "bindings": {"alpha-reviewer": ["term_new_r", "label"], "alpha-worker": ["term_new_w", "pane_id"], "alpha-scout": ["term_new_s", "name"]},
-    "unbound": {"alpha-lone": "term_new_l"},
-    "missing": ["alpha-ghost"]
+    "bindings": {
+      "alpha-reviewer": [
+        "term_new_r",
+        "session"
+      ],
+      "alpha-twin": [
+        "term_new_decoy",
+        "session"
+      ],
+      "alpha-worker": [
+        "term_new_w",
+        "pane_id"
+      ],
+      "alpha-scout": [
+        "term_new_s",
+        "name"
+      ]
+    },
+    "unbound": {
+      "alpha-lone": "term_new_l"
+    },
+    "missing": [
+      "alpha-ghost"
+    ]
   }
 }

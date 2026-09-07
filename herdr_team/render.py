@@ -672,6 +672,8 @@ def render_who(
             tags.append("kind: unverified")
         if member.get("unreachable"):
             tags.append("cannot reach Herdr")
+        if not brief and isinstance(member.get("session"), str) and member.get("session"):
+            tags.append("session {}".format(_ascii(_safe_token(member.get("session"), 24), ascii_only)))
         if not brief and member.get("last_seen_at") and roster_status in ("active", "starting"):
             seen = parse_ts(member.get("last_seen_at"))
             if seen is not None:
@@ -695,6 +697,8 @@ def render_me(member: Dict[str, Any], team_doc: Dict[str, Any]) -> str:
     ]
     if member.get("pane_id") or member.get("terminal_id"):
         lines.append("pane {}{}".format(_safe_token(member.get("pane_id"), 16), " ({})".format(_safe_token(member.get("terminal_id"), 64)) if member.get("terminal_id") else ""))
+    if isinstance(member.get("session"), str) and member.get("session"):
+        lines.append("session {} (herdr-team resume {} reopens it)".format(_safe_token(member.get("session"), 24), _safe_token(member.get("name"), 32)))
     charter = member.get("charter") if member.get("charter") is not None else team_doc.get("charter")
     if isinstance(charter, dict) and (charter.get("headline") or charter.get("text")):
         lines.append("charter #{}: {}".format(_safe_token(charter.get("seq"), 12), sanitize.headline(charter.get("headline") or charter.get("text"), 120)))

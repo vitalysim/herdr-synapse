@@ -914,6 +914,82 @@ def _run_bind(args: argparse.Namespace) -> int:
     return emit(args, {"team": team_name, "member": member, "previous_terminal_id": result["previous_terminal_id"]}, "{} bound to {}".format(member["name"], member["pane_id"]))
 
 
+def _add_resume_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("name", help="the member whose harness session to reopen")
+    parser.add_argument("--print", dest="print_only", action="store_true", help="print the command instead of running it")
+
+
+#: Patched in tests; ``resume`` replaces the CLI process with the harness so the pane becomes the agent.
+_execvp = os.execvp
+
+
+def resume_plan(team_name: str, member: _roster.Member) -> Dict[str, Any]:
+    """What ``resume`` would run for ``member``: the argv, the directory, and the recorded session."""
+    argv = _roster.resume_argv(member.session)
+    cwd = member.cwd if isinstance(member.cwd, str) and member.cwd and os.path.isdir(member.cwd) else None
+    return {
+        "team": team_name, "member": member.name, "kind": member.kind,
+        "session": dict(member.session or {}), "argv": argv, "command": " ".join(shlex.quote(a) for a in argv),
+        "cwd": cwd, "cwd_missing": member.cwd if member.cwd and cwd is None else None,
+    }
+
+
+def _run_resume(args: argparse.Namespace) -> int:
+    """Reopen a member's own harness session in this pane (human only).
+
+    ``claude --continue``, ``codex resume --last`` and ``opencode -c`` pick a
+    conversation by directory or recency, never by pane, so with several
+    members in one checkout any of them can come back under a member's name.
+    This runs the exact command Herdr itself uses on restore (``claude
+    --resume <id>`` and friends) for the session the roster recorded, then
+    lets the notifier rebind the member to this pane by that session.
+    """
+    layout = layout_for(args)
+    api = api_for(args, layout)
+    env = env_of(args)
+    team_name = _team_arg(args, layout, None)
+    author = _author(args, layout, api, team=team_name, require_server=False)
+    _human_only(layout, team_name, author, "resume")
+    doc = _roster.load_team(layout.team(team_name))
+    member = doc.find(args.name)
+    if member is None or member.is_human:
+        raise HerdrTeamError("member_not_found", "{!r} is not in team {!r}".format(args.name, team_name), EXIT_REFUSED, {"name": args.name, "team": team_name, "roster": doc.names()})
+    plan = resume_plan(team_name, member)
+    if args.print_only:
+        return emit(args, plan, plan["command"] + ("  # in " + plan["cwd"] if plan["cwd"] else ""))
+    pane_id = env.get("HERDR_PANE_ID") or ""
+    if not pane_id:
+        raise HerdrTeamError("outside_herdr", "resume runs inside a Herdr pane so the harness can report its session for it; use --print to see the command", EXIT_REFUSED, {"command": plan["command"]})
+    if shutil.which(plan["argv"][0]) is None:
+        raise HerdrTeamError("command_not_found", "{} is not on PATH".format(plan["argv"][0]), EXIT_REFUSED, {"command": plan["command"]})
+    here = None
+    try:
+        here = api.request("pane.get", {"pane_id": pane_id}).get("pane")
+    except HerdrTeamError as err:
+        if err.exit_code != EXIT_UNREACHABLE:
+            raise
+    if isinstance(here, dict) and here.get("agent"):
+        raise HerdrTeamError("pane_busy", "this pane already hosts a {} agent; resume from a shell pane".format(here.get("agent")), EXIT_REFUSED, {"pane_id": pane_id, "agent": here.get("agent")})
+    if member.status in ("active", "starting") and member.pane_id and member.pane_id != pane_id:
+        live = None
+        try:
+            live = api.request("agent.get", {"target": member.pane_id}).get("agent")
+        except HerdrTeamError as err:
+            if err.exit_code == EXIT_UNREACHABLE:
+                raise
+        if isinstance(live, dict) and live.get("terminal_id") == member.terminal_id and _roster.same_session(_roster.session_of(live), member.session):
+            raise HerdrTeamError("member_alive", "{} is still running in {}; go there (focus) or stop it first".format(member.name, member.pane_id), EXIT_REFUSED, {"pane_id": member.pane_id})
+    if plan["cwd_missing"]:
+        warn(args, "{}'s directory {} is gone; resuming from {}".format(member.name, plan["cwd_missing"], os.getcwd()))
+    audit(layout, team_name, "resume", author, {"member": member.name, "pane_id": pane_id, "command": plan["command"]})
+    if plan["cwd"]:
+        os.chdir(plan["cwd"])
+    args.stderr.write("resuming {} in {}: {}\n".format(member.name, pane_id, plan["command"]))
+    args.stderr.flush()
+    _execvp(plan["argv"][0], plan["argv"])
+    return 0  # pragma: no cover - reached only when exec is patched
+
+
 def _add_dissolve_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("team_pos", metavar="team")
     parser.add_argument("--yes", action="store_true")
@@ -1053,6 +1129,7 @@ def _run_me(args: argparse.Namespace) -> int:
         "teammates": teammates, "unread": unread, "cursor": cursor, "verified": bool(author.verified), "via": author.via,
         "skill_version": SKILL_VERSION, "skill_installed": installed, "skill_ok": installed == SKILL_VERSION,
         "cli": cli_path(), "notifier": notifier_state(layout.session),
+        "session": _roster.short_session(me.get("session")),
     }
     # The team folder is how an agent differentiated only by a file finds that
     # file. Both paths are absolute so a member outside the project can read them.
@@ -1359,6 +1436,7 @@ COMMANDS: List[Command] = [
     Command("remove", "remove a member (tokens and label cleared, tombstone kept)", _add_remove_arguments, _run_remove),
     Command("leave", "leave your team (from a member pane)", _no_arguments, _run_leave),
     Command("bind", "re-attach a missing member to a live agent", _add_bind_arguments, _run_bind),
+    Command("resume", "reopen a member's own harness session in this pane (human only)", _add_resume_arguments, _run_resume),
     Command("dissolve", "archive a team and clear every member's tokens and labels", _add_dissolve_arguments, _run_dissolve),
     Command("use", "set the default team for human posts", _add_use_arguments, _run_use),
     Command("teams", "list the teams of this session (works offline)", _no_arguments, _run_teams),

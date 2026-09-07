@@ -38,6 +38,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from herdr_team import store
 from herdr_team.api import HerdrApi, scrub_env
+from herdr_team.roster import same_session, session_key, session_of, short_session, write_briefing_job
 from herdr_team.errors import HerdrTeamError
 from herdr_team.paths import Layout, TeamPaths, ensure_dir, ensure_session_dirs, resolve_layout, socket_allowed
 
@@ -208,6 +209,17 @@ def _members_on_pane(doc: Dict[str, Any], pane_id: str) -> List[Dict[str, Any]]:
     return [m for m in doc.get("members", []) if isinstance(m, dict) and m.get("pane_id") == pane_id and m.get("kind") != "human" and m.get("status") in LIVE_STATUSES]
 
 
+def _member_by_session(doc: Dict[str, Any], session: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """The live member that recorded ``session`` (``roster.rehydrate_match`` step (0))."""
+    key = session_key(session)
+    if key is None:
+        return None
+    for m in doc.get("members", []):
+        if isinstance(m, dict) and m.get("kind") != "human" and m.get("status") in LIVE_STATUSES and session_key(m.get("session")) == key:
+            return m
+    return None
+
+
 def _member_by_terminal(doc: Dict[str, Any], terminal_id: Optional[str]) -> Optional[Dict[str, Any]]:
     if not terminal_id:
         return None
@@ -332,7 +344,7 @@ def _load_session_teams(layout: Layout) -> Dict[str, Dict[str, Any]]:
     return teams
 
 
-def _write_pane_record(layout: Layout, terminal_id: str, team_name: str, name: str, generation: int) -> None:
+def _write_pane_record(layout: Layout, terminal_id: str, team_name: str, name: str, generation: int, session: Optional[Dict[str, Any]] = None) -> None:
     """Merge into ``panes/<terminal_id>.json``; the Claude hook's ``hooks_last_seen`` keys survive."""
     try:
         path = layout.session.pane_record(terminal_id)
@@ -341,6 +353,8 @@ def _write_pane_record(layout: Layout, terminal_id: str, team_name: str, name: s
         if not isinstance(record, dict):
             record = {}
         record.update({"team": team_name, "name": name, "gen": int(generation)})
+        if session_key(session) is not None:
+            record["session"] = dict(session)  # type: ignore[arg-type]
         store.write_json(path, record, fsync=False)
     except HerdrTeamError:
         return
@@ -414,7 +428,12 @@ def _reconcile_gone(layout: Layout, api: Any, teams: Dict[str, Dict[str, Any]], 
 
 
 def _reconcile_detected(layout: Layout, api: Any, teams: Dict[str, Dict[str, Any]], pane_id: str, agent: Optional[Dict[str, Any]], code: Optional[str], out: Dict[str, Any], say: Any) -> None:
-    """``pane.agent_detected``: bind by terminal id, else pane id + kind, else exact name; re-apply the name.
+    """``pane.agent_detected``: bind by harness session, else terminal id, else label, pane id + kind, exact name; re-apply the name.
+
+    A terminal that reports a different harness session than its member
+    recorded hosts a fresh agent (crash and restart, ``/clear``, a resume by
+    hand): the member keeps its name and pane, gets a new generation, and is
+    briefed again, the same rule as the daemon's reconcile.
 
     A row whose ``agent`` is ``null`` (``launch_pending`` right after
     ``agent start``, or detection not yet run) is no evidence for or against
@@ -440,12 +459,18 @@ def _reconcile_detected(layout: Layout, api: Any, teams: Dict[str, Dict[str, Any
     terminal_id = str(agent["terminal_id"])
     live_kind = agent.get("agent")
     live_name = agent.get("name")
+    live_session = session_of(agent)
     launch_pending = bool(agent.get("launch_pending"))
     pane_label: Optional[str] = None
     pane_fetched = False
     for team_name, doc in teams.items():
-        member = _member_by_terminal(doc, terminal_id)
-        how = "terminal_id"
+        member = _member_by_session(doc, live_session)
+        how = "session"
+        if member is not None and member.get("terminal_id") != terminal_id and _claimed_elsewhere(teams, team_name, terminal_id):
+            member = None
+        if member is None:
+            member = _member_by_terminal(doc, terminal_id)
+            how = "terminal_id"
         if member is None:
             # (b) the pane carries the member's team label and hosts an agent of the member's kind.
             if not pane_fetched:
@@ -504,6 +529,20 @@ def _reconcile_detected(layout: Layout, api: Any, teams: Dict[str, Dict[str, Any
                 fields["status"] = "active"
                 if status in ("missing", "unbound", "starting", "kind_changed"):
                     fields["generation"] = int(member.get("generation") or 1) + 1
+            rebrief = False
+            if how == "session" and "terminal_id" in fields and "generation" not in fields:
+                fields["generation"] = int(member.get("generation") or 1) + 1  # moved panes, memory intact
+            if live_session is not None and not same_session(member.get("session"), live_session):
+                fields["session"] = live_session
+                if session_key(member.get("session")) is not None:
+                    # A different session than recorded: a fresh agent, whether on the member's own
+                    # terminal or on the pane a label or pane-id match found (same rule as the daemon).
+                    rebrief = True
+                    if "generation" not in fields:
+                        fields["generation"] = int(member.get("generation") or 1) + 1
+                    fields["briefed_at"] = None
+                    say("{}: {} started a new session on {} ({} -> {}); re-briefing".format(
+                        team_name, name, pane_id, short_session(member.get("session")), short_session(live_session)))
             if not launch_pending:
                 if live_name is None:
                     conflict = _apply_name(api, pane_id, name, say)
@@ -520,7 +559,12 @@ def _reconcile_detected(layout: Layout, api: Any, teams: Dict[str, Dict[str, Any
             label = member.get("label") or "team:{}/{}".format(team_name, role)
             _apply_label(api, pane_id, str(label), say)
             _stamp_tokens(api, pane_id, team_name, role, say, _color_slot_of(doc))
-            _write_pane_record(layout, terminal_id, team_name, str(fields.get("name", name)), int(fields.get("generation", member.get("generation") or 1)))
+            _write_pane_record(layout, terminal_id, team_name, str(fields.get("name", name)), int(fields.get("generation", member.get("generation") or 1)), fields.get("session") or member.get("session"))
+            if rebrief:
+                try:
+                    write_briefing_job(layout.team(team_name), str(fields.get("name", name)))
+                except HerdrTeamError as err:
+                    say("{}: could not enqueue a briefing for {}: {}".format(team_name, name, err.code))
         if fields:
             fields["last_seen_at"] = _now_iso()
             _update_members(layout.team(team_name), {name: fields})

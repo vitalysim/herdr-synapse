@@ -2060,6 +2060,11 @@ class Daemon:
             if terminal_id not in fresh:
                 del self.stability[terminal_id]
         identity_changed = set(fresh) != set(self.agents) or any(fresh[t].get("name") != self.agents.get(t, {}).get("name") for t in fresh)
+        # A new harness session on a terminal we already knew is a fresh agent wearing a member's
+        # pane (crash and restart, ``/clear``, a resume by hand): reconcile now, not in 10 s.
+        identity_changed = identity_changed or any(
+            roster.session_key(roster.session_of(fresh[t])) != roster.session_key(roster.session_of(self.agents.get(t, {}))) for t in fresh
+        )
         changed = identity_changed or any(fresh[t].get("agent_status") != self.agents.get(t, {}).get("agent_status") for t in fresh)
         self.agents = fresh
         self.agents_by_pane = by_pane
@@ -2131,12 +2136,15 @@ class Daemon:
     def reconcile(self) -> None:
         """Rehydrate every team by the plan 4.2 order (``roster.rehydrate_match``); rewrite ``who.json``.
 
-        One matcher for the daemon and the roster tests: (a) ``terminal_id``,
-        (b) a ``pane.list`` row with the member's label and a live agent of
-        its kind, (c) ``pane_id`` plus kind, (d) exact name, (e) a unique
-        ``(kind, cwd, workspace)`` fingerprint, which stays owner-gated
+        One matcher for the daemon and the roster tests: (0) the harness
+        session the member recorded, (a) ``terminal_id``, (b) a ``pane.list``
+        row with the member's label and a live agent of its kind, (c)
+        ``pane_id`` plus kind, (d) exact name, (e) a unique ``(kind, cwd,
+        workspace)`` fingerprint, which stays owner-gated
         (``roster.AUTO_BIND_FINGERPRINT``): it is logged and waits for
         ``bind``. Rows claimed by another team's live member never bind here.
+        A pass that had to fetch ``pane.list`` also drops pane records whose
+        terminal is gone, so a restart does not leave one orphan per member.
         """
         now = self.now_ms()
         self.reconcile_due = False
@@ -2202,6 +2210,33 @@ class Daemon:
             if changes:
                 self._apply_changes(team, changes)
             self.who_dirty = True
+        if self._panes_fetched_ms is not None:
+            self._gc_pane_records()
+
+    def _gc_pane_records(self) -> None:
+        """Remove ``panes/<terminal_id>.json`` for terminals that are in neither ``pane.list`` nor any roster.
+
+        Terminal ids are reallocated on every Herdr restart, so each restart
+        orphaned one record per member; identity resolves through the record
+        first, so a stale one could point a hook at a member that has moved.
+        Only runs on a pass that fetched ``pane.list`` (no extra socket call).
+        """
+        try:
+            entries = list(self.session.panes_dir.iterdir())
+        except OSError:
+            return
+        held = {str(m.get("terminal_id")) for team in self.teams.values() for m in team.members() if m.get("terminal_id")}
+        for entry in entries:
+            if entry.suffix != ".json":
+                continue
+            terminal_id = entry.stem
+            if terminal_id in self.panes_by_terminal or terminal_id in self.agents or terminal_id in held:
+                continue
+            try:
+                entry.unlink()
+                self.log("dropped pane record {} (terminal gone)".format(terminal_id))
+            except OSError:
+                continue
 
     def _rehydration_members(self, team: TeamState) -> Tuple[List[roster.Member], Dict[str, Dict[str, Any]]]:
         """Roster members as ``roster.Member`` (label derived for pre-label rosters) plus the raw dicts by name."""
@@ -2240,6 +2275,9 @@ class Daemon:
                 update[key] = match.get(key)
         if match.get("cwd") and not member.get("cwd"):
             update["cwd"] = match.get("cwd")
+        live_session = roster.session_of(match)
+        if live_session is not None and not roster.same_session(member.get("session"), live_session):
+            update["session"] = live_session
         return update
 
     def _ids_update(self, team: TeamState, member: Dict[str, Any], match: Dict[str, Any]) -> Dict[str, Any]:
@@ -2260,6 +2298,18 @@ class Daemon:
                 update["generation"] = int(member.get("generation") or 1) + 1
         if "terminal_id" in update:
             self.log("{}: {} rebound by {} to {} ({})".format(team.name, name, how, update["terminal_id"], match.get("pane_id")))
+            if how == roster.MATCH_SESSION and "generation" not in update:
+                update["generation"] = int(member.get("generation") or 1) + 1  # moved panes with its memory intact
+        if "session" in update and roster.session_key(member.get("session")) is not None:
+            # A different harness session than the one recorded, on the member's own terminal (a
+            # crash and restart, a Claude ``/clear``, the operator resuming something else there) or
+            # on the pane a label or pane-id match found: the agent has no memory of who it is, so it
+            # gets a new generation and a fresh briefing; the name and read position stay.
+            if "generation" not in update:
+                update["generation"] = int(member.get("generation") or 1) + 1
+            update["briefed_at"] = None
+            self.log("{}: {} started a new session on {} ({} -> {}); re-briefing".format(
+                team.name, name, match.get("pane_id"), roster.short_session(member.get("session")), roster.short_session(update["session"])))
         live_name = match.get("name")
         if not match.get("launch_pending"):
             if live_name is None:
@@ -2322,6 +2372,7 @@ class Daemon:
                         member.update(update)
                         break
 
+        before = {str(m.get("name")): m.get("session") for m in team.members() if isinstance(m, dict)}
         doc = update_roster(team.paths, mutate)
         if doc is not None:
             team.roster = doc
@@ -2333,7 +2384,20 @@ class Daemon:
                 if update.get("status") == "missing":
                     self._append_system(team, "member_gone", "{} is missing".format(name), ["human"])
                 elif "generation" in update:
-                    self._append_system(team, "member_restarted", "{} restarted (generation {})".format(update.get("name", name), update["generation"]), ["all"])
+                    shown = update.get("name", name)
+                    text = "{} restarted{} (generation {})".format(shown, " on {}".format(update["pane_id"]) if update.get("pane_id") else "", update["generation"])
+                    extra: Dict[str, Any] = {}
+                    if "session" in update:
+                        extra["session"] = roster.short_session(update["session"])
+                        extra["previous_session"] = roster.short_session(before.get(name))
+                    if "briefed_at" in update and update["briefed_at"] is None:
+                        text += "; new session, briefing again"
+                    self._append_system(team, "member_restarted", text, ["all"], extra or None)
+                    if "briefed_at" in update and update["briefed_at"] is None:
+                        try:
+                            roster.write_briefing_job(team.paths, str(shown))
+                        except HerdrTeamError as err:
+                            self.log("{}: could not enqueue a briefing for {}: {}".format(team.name, shown, err.code))
             for member in team.members():
                 terminal_id = member.get("terminal_id")
                 if isinstance(terminal_id, str) and member.get("status") == "active":
@@ -2359,6 +2423,8 @@ class Daemon:
         if not isinstance(record, dict):
             record = {}
         record.update({"team": team.name, "name": member.get("name"), "gen": int(member.get("generation") or 1)})
+        if roster.session_key(member.get("session")) is not None:
+            record["session"] = dict(member["session"])
         store.write_json(path, record, fsync=False)
 
     def _hooks_last_seen(self, member: Dict[str, Any]) -> Optional[str]:
@@ -3916,6 +3982,7 @@ class Daemon:
                     "briefed": member.get("briefed_at") is not None,
                     "charter_stale": bool(charter and (member.get("charter_seq_acked") or 0) < int(charter.get("seq") or 0)) if member.get("kind") != "human" else False,
                     "brief": member.get("brief"),
+                    "session": roster.short_session(member.get("session")),
                 })
             teams[team.name] = {"members": members, "pending": sum(len(p.seqs) for p in team.pending.values()), "watermark": team.watermark}
         return {
