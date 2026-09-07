@@ -271,7 +271,7 @@ SYSTEM_EVENTS = (
     "nudged", "toast", "retracted", "expired", "abandoned", "member_gone", "member_restarted",
     "rotated", "reset_detected", "charter_updated", "renamed", "typed", "member_joined",
     "knowledge_updated", "instructions_updated", "instructions_edited", "knowledge_finding",
-    "artifacts_changed", "project_set",
+    "artifacts_changed", "project_set", "operator_granted", "operator_revoked",
 )
 #: Every key of a stored record in file order (docs/cli.md section 10).
 RECORD_KEYS = (

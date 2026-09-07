@@ -505,7 +505,9 @@ class OutsideTierTests(unittest.TestCase):
             self.assertEqual(author.tier, identity.TIER_OUTSIDE)
             self.assertIsNone(author.from_label)  # labels need a verified path
             self.assertEqual(author.origin["ignored_label"], "vitaly")
-            self.assertEqual(api.calls, [])
+            # One call: "is this process inside an agent's pane?" A caller outside
+            # Herdr answers no, and stays the human it always was.
+            self.assertEqual([m for m, _p in api.calls], ["pane.list"])
             self.assertTrue(identity.human_origin_ok(author.origin))
 
     def test_outside_with_herdr_team_env(self) -> None:

@@ -40,6 +40,7 @@ holds `daemon.json`, `daemon.log`, `who.json`, `kinds.json`, `view.json`,
 | Manage one member | `prefix+t`, Enter on a member: a numbered menu with rename, change its goal, send the goal now, remove it (with or without keeping its Herdr agent name), and go to its pane. Rename and goal are pre-filled and validated before anything is written; remove asks `y` (Enter is deliberately not yes). A member whose agent is missing or unsettled refuses rename, send and focus, because its pane is stale | `rename`, `brief <name> --set`, `brief <name>`, `remove`, `focus` |
 | Remove, leave | `prefix+t` → Enter on the member → 4, or console `/remove name` (asks y/n) | `remove <team> <name> [--keep-name]` (clears tokens and label, clears the Herdr name unless `--keep-name`, keeps a tombstone); `leave` from the member's own pane |
 | Re-attach a missing member | | `bind <team> <name> <target>`: refuses a kind mismatch unless the member is `kind_changed`, refuses a terminal another team claims, bumps the generation, re-applies name, label, tokens, clears the stale label on the old pane, records the target's harness session, posts `member_restarted` |
+| Let an agent build and run teams | | `operator grant <name> [--ttl 2h]` (yours alone; a delegate cannot pass it on): that member may then write the charter, the rules, any member's instructions and the project folder. Every use is audited as `operator_action`, the grant is announced on the board, `who` tags the member, and `doctor` warns while it is live. `operator revoke <name>` ends it |
 | Reopen a member's own conversation | `prefix+t`, Enter on the member, 7: shows the command | `resume <name>` from a shell pane (human only): runs the command Herdr's own restore would use for the session the roster recorded, in the member's directory, replacing the shell; the notifier rebinds the member to that pane by the session. Covers all 17 sources Herdr ships an integration for (`docs/cli.md` section 4), pi and omp by absolute path rather than id. `--print` only shows it. Never `--continue`: that picks by directory or recency and can bring back another member's conversation |
 | Dissolve | | `dissolve <team> --yes` (mandatory flag; human only; archives the team, clears tokens and labels, keeps the agents' Herdr names) |
 | Several teams | console `/use team` | `use <team>` sets the default team for human posts; `teams` lists teams and whether their session runs (works offline); `create --use` makes a second team the default at creation |
@@ -52,6 +53,19 @@ default naming a role may equal a kind label (`t-claude`); with `--names
 plain` the default role becomes `agent`, `agent2`, … because a member name
 may not be a kind label. Each member pane gets the label `team:<team>/<role>`,
 which is what survives a server restart.
+
+**Who counts as the operator.** The three documents that carry authority are
+gated on identity, and identity comes from the process tree rather than the
+environment. Before 0.7 a member could unset `HERDR_PANE_ID` and be treated as
+the operator, because the gate only tested that the author was *named* `human`.
+A pane-less caller that descends from an agent's pane is now resolved as that
+agent. An unreachable server or a missing `ps` is inconclusive and changes
+nothing, so a failed lookup can never lock the operator out.
+
+This is defence in depth, not a sandbox. An agent that can run a shell as your
+user can read and write the same files you can, including the grant file. What
+the change buys is that the obvious route is closed, the sanctioned route is
+explicit and expiring, and every privileged action names who took it.
 
 **Verified**: RS-01 to RS-03, RS-09 to RS-11, UI-03.
 

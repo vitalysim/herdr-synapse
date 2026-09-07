@@ -51,6 +51,7 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, 
 
 from herdr_team import PLUGIN_ID, VERSION, gate, nudge, render, roster, sanitize, store
 from herdr_team import charter as _charter
+from herdr_team import operator as _operator
 from herdr_team import workdir as _workdir
 from herdr_team.api import HerdrApi, IDENTITY_ENV_VARS, PROMPT_TIMEOUT_S, read_text, scrub_env
 from herdr_team.errors import EXIT_DAEMON_DOWN, EXIT_OK, EXIT_REFUSED, EXIT_UNREACHABLE, HerdrTeamError, LockTimeout
@@ -4015,6 +4016,7 @@ class Daemon:
                     "briefed": member.get("briefed_at") is not None,
                     "charter_stale": bool(charter and (member.get("charter_seq_acked") or 0) < int(charter.get("seq") or 0)) if member.get("kind") != "human" else False,
                     "instructions_stale": _charter.instructions_stale(member) if member.get("kind") != "human" else False,
+                    "operator": bool(_operator.active(self.session, team.name, name)) if member.get("kind") != "human" else False,
                     "brief": member.get("brief"),
                     "session": roster.short_session(member.get("session")),
                 })

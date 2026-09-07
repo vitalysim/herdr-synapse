@@ -26,6 +26,7 @@ from herdr_team import cmd_board as _cmd_board
 from herdr_team import gate
 from herdr_team import PLUGIN_ID, VERSION
 from herdr_team import api as _api
+from herdr_team import operator as _operator
 from herdr_team import cli as _cli
 from herdr_team import paths as _paths
 from herdr_team import roster as _roster
@@ -437,6 +438,12 @@ def _run_doctor(args: argparse.Namespace) -> int:
         warnings.append("sidebar rows predate team colours; run: herdr-team setup --print-config, re-paste the block, then herdr server reload-config")
     for line in unwritable_project_dirs(layout):
         warnings.append(line)
+    for grant in _operator.active_all(layout.session):
+        # Authority nobody remembers granting is the failure mode worth naming.
+        warnings.append("{} acts with your authority in team {} ({}); revoke: herdr-team operator revoke {} --team {}".format(
+            grant.get("member"), grant.get("team"),
+            "until {}".format(grant["expires_at"]) if grant.get("expires_at") else "no expiry",
+            grant.get("member"), grant.get("team")))
     plugin = _plugin_state(args, layout, env, reachable=bool(herdr["reachable"]))
     if plugin.get("installed") is False:
         warnings.append("plugin {} is not installed".format(PLUGIN_ID))

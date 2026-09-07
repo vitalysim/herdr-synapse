@@ -40,6 +40,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from herdr_team import sanitize, store
 from herdr_team.errors import EXIT_REFUSED, EXIT_UNREACHABLE, HerdrTeamError
 from herdr_team.paths import Layout, ensure_team_dirs, team_name_from_arg
+from herdr_team import operator as _operator
 from herdr_team import roster as _roster
 
 VIA_CLI = "cli"
@@ -86,6 +87,9 @@ class Author:
     tier: int = 0
     relayed_for: Optional[str] = None
     generation: Optional[int] = None
+    #: A live delegation from the operator (``herdr_team.operator``). Only ever
+    #: set on a verified roster member, and only by an explicit grant.
+    operator: bool = False
 
     @property
     def is_human(self) -> bool:
@@ -108,6 +112,8 @@ class Author:
             obj["from_label"] = self.from_label
         if self.relayed_for:
             obj["relayed_for"] = self.relayed_for
+        if self.operator:
+            obj["operator"] = True
         if self.reason:
             obj["reason"] = self.reason
         return obj
@@ -228,8 +234,11 @@ def confirm_pane_ancestry(api: Any, pane_id: str, own_pid: Optional[int] = None,
         pids.add(info["shell_pid"])
     if isinstance(info.get("foreground_process_group_id"), int):
         pids.add(info["foreground_process_group_id"])
+    # init is every process's ancestor, so a pane reporting pid 1 (or 0) would
+    # otherwise claim every caller in the session as its own descendant.
+    pids = {p for p in pids if p > 1}
     if not pids:
-        return None, "pane {} reports no processes".format(pane_id)
+        return None, "pane {} reports no usable processes".format(pane_id)
     resolved = table if table is not None else ps_table()
     if resolved is None:
         return None, "ps unavailable"
@@ -241,6 +250,49 @@ def confirm_pane_ancestry(api: Any, pane_id: str, own_pid: Optional[int] = None,
 
 # --------------------------------------------------------------------------
 # audit
+
+
+#: Agent panes examined before giving up on the "am I inside one?" question.
+MAX_ANCESTRY_PANES = 24
+
+
+def hosting_agent_pane(api: Any, own_pid: Optional[int] = None, table: Optional[Dict[int, int]] = None) -> Optional[Dict[str, Any]]:
+    """The agent pane this process is running inside, when there is one.
+
+    An agent's shell command is a descendant of that agent's own pane whatever
+    the environment says. ``HERDR_PANE_ID`` is set by Herdr, but a member can
+    unset it, and every human-only gate tests only that the author is *named*
+    ``human`` -- so dropping one variable used to turn any member into the
+    operator. The process tree cannot be unset the same way, so it is what
+    decides here.
+
+    Returns the ``pane.list`` row on positive evidence, else None. Absence of
+    evidence is not evidence of absence: an unreachable server or a missing
+    ``ps`` leaves the caller exactly where it was, because refusing on a
+    failed lookup would lock the operator out of their own CLI.
+    """
+    try:
+        result = api.request("pane.list", {})
+    except HerdrTeamError:
+        return None
+    panes = result.get("panes") if isinstance(result, dict) else None
+    if not isinstance(panes, list):
+        return None
+    resolved = table if table is not None else ps_table()
+    if resolved is None:
+        return None
+    pid = own_pid if own_pid is not None else os.getpid()
+    checked = 0
+    for pane in panes:
+        if not isinstance(pane, dict) or not pane.get("agent") or not isinstance(pane.get("pane_id"), str):
+            continue
+        checked += 1
+        if checked > MAX_ANCESTRY_PANES:
+            break
+        inside, _why = confirm_pane_ancestry(api, pane["pane_id"], own_pid=pid, table=resolved)
+        if inside is True:
+            return pane
+    return None
 
 
 def audit(layout: Layout, team: Optional[str], event: str, author: Author, details: Optional[Dict[str, Any]] = None) -> Optional[str]:
@@ -366,6 +418,23 @@ def _apply_label(author: Author, label: Optional[str], env: Dict[str, str]) -> A
         author.origin["ignored_label"] = clean
         note = "--name ignored on an unverified or non-human path"
         author.reason = "{}; {}".format(author.reason, note) if author.reason else note
+    return author
+
+
+def _apply_operator_grant(author: Author, layout: Layout) -> Author:
+    """Mark a member the operator has delegated its authority to.
+
+    Only a *verified* roster member can hold one: an identity taken from
+    ``HERDR_TEAM_MEMBER`` is a claim, not evidence, and a grant must not be
+    reachable by claiming to be the member that holds it.
+    """
+    if not author.is_member or not author.verified or not author.team:
+        return author
+    grant = _operator.active(layout.session, author.team, author.name)
+    if grant is None:
+        return author
+    author.operator = True
+    author.origin["operator"] = {"granted_at": grant.get("granted_at"), "expires_at": grant.get("expires_at")}
     return author
 
 
@@ -601,6 +670,13 @@ def _shell_pane_author(env: Dict[str, str], layout: Layout, api: Any, pane: Dict
         if isinstance(console, dict) and isinstance(console.get("default_team"), str):
             team_name = console["default_team"]
     verified, reason = verify_shell_ancestry(api, current_pane, os.getpgrp())
+    if not verified:
+        # A verified shell is the foreground job of this very pane, so it cannot
+        # also be a descendant of some agent's pane and the scan is skipped. An
+        # unverified one might be an agent's subprocess pointed at a shell pane.
+        inside = hosting_agent_pane(api)
+        if inside is not None and inside.get("pane_id") != current_pane:
+            return _rerouted_agent_author(env, layout, api, inside, env_team, False, "HERDR_PANE_ID names another pane")
     via = VIA_CLI if verified else VIA_CLI_UNVERIFIED
     origin["via"] = via
     origin["verified"] = bool(verified)
@@ -628,7 +704,7 @@ def _shell_pane_author(env: Dict[str, str], layout: Layout, api: Any, pane: Dict
     return author
 
 
-def _tier_outside(env: Dict[str, str], layout: Layout, team: Optional[str]) -> Author:
+def _tier_outside(env: Dict[str, str], layout: Layout, api: Any, team: Optional[str], as_human: bool = False) -> Author:
     resolved_team = _env_team(env, team)
     if resolved_team is None and not layout.env_socket.explicit and layout.state_root.team_dir is None:
         raise HerdrTeamError(
@@ -637,10 +713,28 @@ def _tier_outside(env: Dict[str, str], layout: Layout, team: Optional[str]) -> A
             EXIT_UNREACHABLE,
             {"teams": layout.session.list_teams()},
         )
+    inside = hosting_agent_pane(api)
+    if inside is not None:
+        # No pane in the environment, but the process tree says otherwise: this is
+        # an agent's own subprocess with the variable stripped. It gets its own
+        # identity back, not the operator's.
+        return _rerouted_agent_author(env, layout, api, inside, resolved_team, as_human, "no HERDR_PANE_ID")
     author = Author(AUTHOR_HUMAN, "human", VIA_OUTSIDE, False, team=resolved_team, tier=TIER_OUTSIDE)
     author.origin = _base_origin(VIA_OUTSIDE, False, layout)
     author.reason = "outside Herdr"
     return author
+
+
+def _rerouted_agent_author(env: Dict[str, str], layout: Layout, api: Any, pane: Dict[str, Any], env_team: Optional[str], as_human: bool, why: str) -> Author:
+    """Resolve as the agent whose pane this process actually runs in."""
+    pane_id = str(pane.get("pane_id"))
+    origin = _base_origin(VIA_CLI, False, layout)
+    origin.update({
+        "pane_id": pane_id, "terminal_id": pane.get("terminal_id"),
+        "workspace_id": pane.get("workspace_id"), "tab_id": pane.get("tab_id"),
+        "rerouted": why,
+    })
+    return _agent_pane_author(env, layout, api, pane, pane_id, origin, env_team, as_human, team_explicit=env_team is not None)
 
 
 def resolve_author(
@@ -671,11 +765,12 @@ def resolve_author(
     elif env.get("HERDR_PANE_ID"):
         author = _tier_pane(env, layout, api, team, as_human, require_server, team_explicit)
     else:
-        author = _tier_outside(env, layout, team)
+        author = _tier_outside(env, layout, api, team, as_human)
     if as_human and not author.is_human:
         raise refuse_as_human(layout, author, {"tier": author.tier})
     author = _apply_relay(author, relayed_for)
     author = _apply_label(author, label, env)
+    author = _apply_operator_grant(author, layout)
     if author.origin:
         author.origin["via"] = author.via
         author.origin["verified"] = bool(author.verified)

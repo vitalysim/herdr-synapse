@@ -339,6 +339,34 @@ anyone shows up for Claude on its next prompt and for every other kind on its
 next board read. Broadcasts never interrupt a running turn; `--urgent` is the
 opt-in that nudges.
 
+## Letting an agent run the team
+
+Everything in this README is one CLI, so an agent can drive it: create a team,
+spawn its members into fresh panes, hand out roles and briefs, post the work,
+and read the board back. The three documents that carry your authority are the
+exception. The charter, the team rules, and each member's instructions are
+yours, and a member is refused when it tries to write them.
+
+When you want an agent to do the whole thing, say so once:
+
+```bash
+herdr-team operator grant hunt-orchestrator --ttl 4h --note "builds the team"
+herdr-team operator            # who holds your authority right now
+herdr-team operator revoke hunt-orchestrator
+```
+
+That member can then write those documents too, and every time it does the
+audit log records `operator_action` with its name, the board carries the
+grant, `who` marks it `acts as operator`, and `doctor` keeps warning you while
+it is live. Granting is yours alone: a delegated member is refused if it tries
+to grant anything, and `say`, the one command that types straight into a
+teammate's pane, stays yours.
+
+Authority is decided by the process tree, not by environment variables, so an
+agent cannot claim it by unsetting one. That is a speed bump rather than a
+wall: anything running as your user can reach your files. It closes the
+obvious route and makes the sanctioned one explicit and revocable.
+
 ## Members and their sessions
 
 A member is not just a pane. Herdr's integrations report which conversation

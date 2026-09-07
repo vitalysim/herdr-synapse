@@ -48,7 +48,7 @@ Environment the CLI reads: `HERDR_SOCKET_PATH`, `HERDR_SESSION`,
 | Code | Meaning | Typical error codes |
 | --- | --- | --- |
 | 0 | ok | |
-| 1 | refused or validation failure | `team_name_invalid`, `name_invalid`, `name_reserved`, `role_invalid`, `agent_name_taken`, `member_claimed`, `team_exists`, `team_not_found`, `member_not_found`, `author_mismatch`, `text_too_long`, `invalid_utf8`, `charter_too_long`, `ref_invalid`, `path_symlink`, `team_session_mismatch`, `team_ambiguous`, `view_foreign`, `plugin_disabled`, `agent_not_found`, `agent_blocked`, `agent_not_ready`, `launch_pending`, `not_an_agent`, `board_write_failed`, `roster_conflict`, `home_unset`, `internal`, `say_unverified`, `say_multiline`, `say_too_long`, `say_control_command`, `say_timeout`, `kind_unverified`, `retract_invalid`, `edit_invalid`, `interrupt_needs_recipient`, `interrupt_cooldown`, `session_unknown`, `session_unsupported`, `outside_herdr`, `command_not_found`, `pane_busy`, `member_alive`, `no_project_dir`, `workdir_foreign_file`, `instructions_too_long`, `rules_too_long` |
+| 1 | refused or validation failure | `team_name_invalid`, `name_invalid`, `name_reserved`, `role_invalid`, `agent_name_taken`, `member_claimed`, `team_exists`, `team_not_found`, `member_not_found`, `author_mismatch`, `text_too_long`, `invalid_utf8`, `charter_too_long`, `ref_invalid`, `path_symlink`, `team_session_mismatch`, `team_ambiguous`, `view_foreign`, `plugin_disabled`, `agent_not_found`, `agent_blocked`, `agent_not_ready`, `launch_pending`, `not_an_agent`, `board_write_failed`, `roster_conflict`, `home_unset`, `internal`, `say_unverified`, `say_multiline`, `say_too_long`, `say_control_command`, `say_timeout`, `kind_unverified`, `retract_invalid`, `edit_invalid`, `interrupt_needs_recipient`, `interrupt_cooldown`, `session_unknown`, `session_unsupported`, `outside_herdr`, `command_not_found`, `pane_busy`, `member_alive`, `no_project_dir`, `workdir_foreign_file`, `instructions_too_long`, `rules_too_long`, `operator_grant` (in `needs`) |
 | 2 | usage | `usage`, `unknown_command` |
 | 3 | not a member, or Herdr unreachable | `not_a_member`, `team_required`, `server_not_running`, `herdr_unreachable`, `herdr_timeout`, `herdr_not_found` |
 | 4 | echo rejected | `echo_rejected` |
@@ -243,10 +243,37 @@ Works offline. JSON:
 `agent rename` plus roster update plus a board note; the old name resolves
 for 10 minutes. JSON `{"team","old","new"}`.
 
-## 5. Charter and briefs (human only)
+## 5. Charter and briefs (operator authority)
 
 Every write here refuses `author_mismatch` from an agent pane, a hook, or
-`--as human`, and appends to `audit.jsonl`.
+`--as human`, and appends to `audit.jsonl`. The exception is a member the
+operator has delegated to with `operator grant`: its writes are accepted and
+audited as `operator_action`, naming the member.
+
+**What counts as the operator.** Authority is decided by where the command
+runs, and the process tree decides that, not the environment. A caller with
+no `HERDR_PANE_ID` that is a descendant of an agent's pane is resolved as that
+agent, so unsetting the variable no longer buys authority. An operator's own
+shell, a console, and anything genuinely outside Herdr are unaffected. When
+the server or `ps` cannot answer, the caller is left where it was, because
+refusing on a failed lookup would lock the operator out of their own CLI.
+
+### `operator [list] | grant <name> [--ttl DURATION] [--note TEXT] | revoke <name>`
+
+Shows, grants, or withdraws a member's delegation of your authority. This is
+how an agent is allowed to build and run a team end to end: with a grant it
+may write the charter, the team rules, any member's instructions, and the
+project folder, exactly as you can.
+
+Granting is yours alone. A delegated member passes every other operator gate
+but is refused here, so authority cannot be passed on. `--ttl` defaults to 12
+hours and takes the usual durations (`30m`, `2h`); `0` never expires. Both
+grant and revoke append a system record to `all`, so the team sees who holds
+authority, `who` tags the member `acts as operator`, and `doctor` warns while
+any grant is live. `say` is unaffected and stays the operator's alone.
+
+JSON: `list` gives `{"team","grants":[{"team","member","granted_at","granted_by","expires_at","note"}]}`;
+`grant` gives that entry; `revoke` gives `{"team","member","revoked":bool}`.
 
 ### `charter [<team>]`
 

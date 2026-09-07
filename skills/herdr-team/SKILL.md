@@ -130,16 +130,16 @@ Teammates are peers, not tools. For any pane that belongs to a teammate:
   `herdr pane read` it. Post to the board instead. This overrides the
   upstream Herdr skill's helper-agent recipes for teammates only; those
   recipes still apply to helpers you started yourself.
-- only the team notifier types into member panes (nudges, briefings, and
-  lines the human sends from the team console). If you think a teammate
-  missed a post, wait or post again; do not deliver it yourself.
+- only the team notifier types into member panes (nudges, briefings, and the
+  human's console lines). If a teammate missed a post, wait or post again.
 - never `send-keys` or `send-text` into any pane you did not start
   yourself, including the human's shell and the team console.
 
 Never run `herdr integration install`, `herdr plugin link`,
 `herdr plugin install`, any `herdr config` command, or `herdr server stop`.
 Do not create, dissolve, or edit teams, and do not change the charter, the
-rules, or anyone's instructions; those belong to the human. If the team setup
+rules, or anyone's instructions; those belong to the human, unless `herdr-team
+operator` shows you were granted that authority. Never grant it. If the setup
 looks broken, post `--kind blocked --to human` and carry on with what you can.
 
 ## When you are done

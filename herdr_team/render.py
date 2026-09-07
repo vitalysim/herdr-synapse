@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 from herdr_team import sanitize
 
@@ -664,6 +664,8 @@ def render_who(
             tags.append("charter: stale")
         if member.get("instructions_stale"):
             tags.append("instructions: stale")
+        if member.get("operator"):
+            tags.append("acts as operator")
         if member.get("delivery") == "hooks" and not brief:
             seen_hooks = parse_ts(member.get("hooks_last_seen"))
             if seen_hooks is None:
@@ -686,6 +688,21 @@ def render_who(
         lines.append(line)
         if not brief and member.get("brief"):
             lines.append("    brief: {}".format(_ascii(sanitize.headline(member.get("brief"), 200), ascii_only)))
+    return "\n".join(lines)
+
+
+def render_operator_grants(grants: Sequence[Dict[str, Any]]) -> str:
+    """``operator list``: who currently writes with the operator's authority."""
+    if not grants:
+        return "no member holds your authority. Grant one with: herdr-team operator grant <member>"
+    lines = ["{} member{} act with your authority:".format(len(grants), "" if len(grants) == 1 else "s")]
+    for grant in grants:
+        until = grant.get("expires_at")
+        lines.append("  {}  {}  {}{}".format(
+            _safe_token(grant.get("member"), 32),
+            _safe_token(grant.get("team"), 32),
+            "until {}".format(_safe_token(until, 32)) if until else "no expiry",
+            "  {}".format(sanitize.headline(grant.get("note"), 60)) if grant.get("note") else ""))
     return "\n".join(lines)
 
 

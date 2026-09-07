@@ -600,6 +600,11 @@ class SessionPaths:
         return self.root / "claims.lock"
 
     @property
+    def operators_json(self) -> Path:
+        """Which members the operator has delegated its authority to (``herdr_team.operator``)."""
+        return self.root / "operators.json"
+
+    @property
     def panes_dir(self) -> Path:
         return self.root / "panes"
 

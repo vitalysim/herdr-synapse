@@ -32,6 +32,7 @@ from herdr_team import charter as _charter
 from herdr_team import cli as _cli
 from herdr_team import daemon as _daemon
 from herdr_team import identity as _identity
+from herdr_team import operator as _operator
 from herdr_team import paths as _paths
 from herdr_team import render as _render
 from herdr_team import roster as _roster
@@ -101,7 +102,11 @@ SKILL_INSTALL_PATHS = (".agents/skills/herdr-team/SKILL.md", ".claude/skills/her
 
 
 def _human_only(layout: Layout, team: str, author: Author, action: str) -> None:
+    """The operator, or a member the operator delegated to; see ``charter.require_human``."""
     if author.is_human:
+        return
+    if getattr(author, "operator", False):
+        audit(layout, team, "operator_action", author, {"action": action, "resolved": author.name, "via": author.via})
         return
     audit(layout, team, "author_mismatch", author, {"action": action, "resolved": author.name, "via": author.via})
     raise HerdrTeamError("author_mismatch", "{} is human only; this pane is {!r} ({})".format(action, author.name, author.via), EXIT_REFUSED, {"action": action, "author": author.name, "via": author.via})
@@ -1001,6 +1006,85 @@ def _run_resume(args: argparse.Namespace) -> int:
     return 0  # pragma: no cover - reached only when exec is patched
 
 
+def _add_operator_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("action", nargs="?", choices=("list", "grant", "revoke"), help="list (default), grant, or revoke")
+    parser.add_argument("member", nargs="?", help="the member to delegate to")
+    parser.add_argument("--ttl", metavar="DURATION", help="how long the grant lasts (default 12h; 0 never expires)")
+    parser.add_argument("--note", metavar="TEXT", help="why, for the audit trail and the board")
+
+
+def _strictly_human(layout: Layout, team: str, author: Author, action: str) -> None:
+    """Granting authority is the operator's alone; a delegate cannot pass its own on."""
+    if author.is_human:
+        return
+    audit(layout, team, "author_mismatch", author, {"action": action, "resolved": author.name, "via": author.via})
+    raise HerdrTeamError(
+        "author_mismatch",
+        "{} is the operator's alone; a delegated member cannot grant authority".format(action),
+        EXIT_REFUSED,
+        {"action": action, "author": author.name, "via": author.via},
+    )
+
+
+def _run_operator(args: argparse.Namespace) -> int:
+    """Show, grant, or revoke the operator's delegation to a member.
+
+    The three documents that carry operator authority are human-only, which
+    stops an agent writing its own instructions. An operator who *wants* an
+    agent to build and run a team says so here, once, and the delegation is
+    announced on the board and audited on every use.
+    """
+    layout = layout_for(args)
+    api = api_for(args, layout)
+    team_name = _team_arg(args, layout, None)
+    author = _author(args, layout, api, team=team_name, require_server=False)
+    action = args.action or "list"
+
+    if action == "list":
+        grants = _operator.active_all(layout.session)
+        return emit(args, {"team": team_name, "grants": grants}, lambda: _render.render_operator_grants(grants))
+
+    _strictly_human(layout, team_name, author, "operator {}".format(action))
+    check_write_session(args, layout, team_name)
+    if not args.member:
+        raise UsageError("operator {} needs a member name".format(action))
+    doc = _roster.load_team(layout.team(team_name))
+    member = doc.find(args.member)
+    if member is None or member.is_human or member.status == "left":
+        raise HerdrTeamError("member_not_found", "{!r} is not an agent member of team {!r}".format(args.member, team_name), EXIT_REFUSED,
+                             {"name": args.member, "team": team_name, "roster": doc.names()})
+
+    if action == "revoke":
+        dropped = _operator.revoke(layout.session, team_name, member.name)
+        if dropped:
+            _roster.append_system_record(
+                layout.team(team_name), "operator_revoked",
+                "{} no longer acts with the operator's authority".format(member.name),
+                to=["all"], extra={"member": member.name}, socket=os.fspath(layout.socket))
+        audit(layout, team_name, "operator_revoke", author, {"member": member.name, "was_granted": dropped})
+        return emit(args, {"team": team_name, "member": member.name, "revoked": dropped},
+                    "{} {}".format(member.name, "no longer holds a delegation" if dropped else "held no delegation"))
+
+    ttl_s = _operator.DEFAULT_TTL_S if args.ttl is None else _cmd_misc_duration(args.ttl)
+    entry = _operator.grant(layout.session, team_name, member.name, ttl_s=ttl_s, note=args.note, granted_by=author.name)
+    _roster.append_system_record(
+        layout.team(team_name), "operator_granted",
+        "{} may now write the charter, the team rules and any member's instructions{}".format(
+            member.name, " until {}".format(entry["expires_at"]) if entry.get("expires_at") else " (no expiry)"),
+        to=["all"], extra={"member": member.name, "expires_at": entry.get("expires_at")}, socket=os.fspath(layout.socket))
+    audit(layout, team_name, "operator_grant", author, {"member": member.name, "expires_at": entry.get("expires_at"), "note": entry.get("note")})
+    return emit(args, dict(entry, team=team_name), lambda: "{} now acts with your authority{}".format(
+        member.name, " until {}".format(entry["expires_at"]) if entry.get("expires_at") else "; it does not expire"))
+
+
+def _cmd_misc_duration(text: str) -> int:
+    from herdr_team.cmd_misc import parse_duration_s
+
+    if str(text).strip() in ("0", "none", "never"):
+        return 0
+    return parse_duration_s(text)
+
+
 def _add_dissolve_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("team_pos", metavar="team")
     parser.add_argument("--yes", action="store_true")
@@ -1232,6 +1316,8 @@ def _who_payload(args: argparse.Namespace, layout: Layout, api: Any, team_name: 
                 m["last_headline"] = task.get("headline")
         member_doc = next((x for x in members_of(doc) if x.get("name") == name), {})
         m.setdefault("brief", member_doc.get("brief"))
+        if m.get("kind") != "human":
+            m["operator"] = bool(_operator.active(layout.session, team_name, name))
     kinds = _who_kinds(layout, members)
     if args.role:
         members = [m for m in members if m.get("role") == args.role]
@@ -1452,6 +1538,7 @@ COMMANDS: List[Command] = [
     Command("leave", "leave your team (from a member pane)", _no_arguments, _run_leave),
     Command("bind", "re-attach a missing member to a live agent", _add_bind_arguments, _run_bind),
     Command("resume", "reopen a member's own harness session in this pane (human only)", _add_resume_arguments, _run_resume),
+    Command("operator", "show, grant, or revoke a member's delegation of your authority", _add_operator_arguments, _run_operator),
     Command("dissolve", "archive a team and clear every member's tokens and labels", _add_dissolve_arguments, _run_dissolve),
     Command("use", "set the default team for human posts", _add_use_arguments, _run_use),
     Command("teams", "list the teams of this session (works offline)", _no_arguments, _run_teams),

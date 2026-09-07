@@ -96,8 +96,18 @@ def headline_of(text: str, max_chars: int = HEADLINE_CHARS) -> str:
 
 
 def require_human(layout: Layout, team: str, author: Author, action: str) -> None:
-    """Charter and brief writes are human only; anything else is ``author_mismatch`` and audited."""
+    """Charter, rules and instructions writes carry the operator's authority.
+
+    The operator passes, and so does a member the operator has explicitly
+    delegated to (``herdr-team operator grant``), which is what lets an agent
+    build and run a team end to end. A delegated write is audited as one, so
+    the trail says who really typed it. Everything else is
+    ``author_mismatch``, also audited.
+    """
     if author.is_human:
+        return
+    if getattr(author, "operator", False):
+        audit(layout, team, "operator_action", author, {"action": action, "resolved": author.name, "via": author.via})
         return
     audit(layout, team, "author_mismatch", author, {"action": action, "resolved": author.name, "via": author.via})
     raise HerdrTeamError(
