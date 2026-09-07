@@ -87,6 +87,10 @@ filter: [all]  to me  requests  human  system  (Tab cycles)   ? help
 - **Attribution and an audit trail.** Peer posts arrive framed as requests,
   not orders. Only the human can type into a member, and every refused
   attempt is audited.
+- **A board per team, several at once.** Open each team's board in its own
+  split and read them side by side. `prefix+u` opens the default team's, `b`
+  on a team in `prefix+t` opens that one, and each pane stays pinned to its
+  team.
 - **A console built for the operator.** Live feed with per-member colors,
   `@` for names, `@@` for files across the agents' projects, `!` for members,
   `?` for help, receipts (`✓nudged`, `✓read`, `✓typed`), and hold reasons.
@@ -374,7 +378,7 @@ platform; Linux is supported and covered by CI; Windows is not.
 ```bash
 git clone https://github.com/vitalysim/herdr-team.git
 cd herdr-team
-python3 -m unittest discover -s tests        # 1451 tests, no dependencies
+python3 -m unittest discover -s tests        # 1473 tests, no dependencies
 bin/herdr-team-sandbox start ~/your/project  # an isolated Herdr session for live testing
 ```
 

@@ -198,10 +198,16 @@ def roster_members(layout: Layout, team: str) -> List[Dict[str, Any]]:
     return []
 
 
-def human_label_for(layout: Layout, env: Dict[str, str]) -> str:
-    console_json = read_console_json(layout)
-    label = console_json.get("human_label") or env.get("HERDR_TEAM_HUMAN") or "human"
-    return str(label)
+def human_label_for(layout: Layout, env: Dict[str, str], terminal_id: Optional[str] = None) -> str:
+    """This console's label. Per console, so ``/as`` in one board does not
+    re-point another board's unread cursor."""
+    from herdr_team.cmd_board import console_entry
+
+    entry = console_entry(layout.session, terminal_id) if terminal_id else None
+    label = (entry or {}).get("human_label")
+    if not label:
+        label = read_console_json(layout).get("human_label")
+    return str(label or env.get("HERDR_TEAM_HUMAN") or "human")
 
 
 def _team_dir_exists(layout: Layout, team: str) -> bool:
@@ -249,6 +255,8 @@ class ConsoleState:
         #: Last ``input_signature`` and when the model was last rebuilt.
         self.signature: Optional[Tuple[Any, ...]] = None
         self.last_build = 0.0
+        #: This console's terminal id: the registry key for its entry.
+        self.terminal_id: Optional[str] = None
 
 
 #: Rebuild at least this often even when nothing on disk moved, so relative age
@@ -326,7 +334,7 @@ def build_model(layout: Layout, team: str, state: Optional[ConsoleState] = None,
         height=state.height,
         view_on=view_is_on(layout, team),
         toasts=toast_mode(layout, who),
-        human_label=human_label_for(layout, state.env),
+        human_label=human_label_for(layout, state.env, getattr(state, "terminal_id", None)),
         ascii_only=state.ascii_only,
         now=datetime.now(timezone.utc),
         previous=previous,
@@ -502,9 +510,16 @@ def execute_intent(intent: Intent, model: ConsoleModel, state: ConsoleState, api
     kind = intent.kind
     if kind in ("none", "filter", "help", "error", "as"):
         if kind == "as":
-            doc = read_console_json(state.layout)
-            doc["human_label"] = intent.args.get("label")
-            write_console_record(state.layout, doc)
+            from herdr_team.cmd_board import upsert_console
+
+            label = intent.args.get("label")
+            if state.terminal_id:
+                upsert_console(state.layout, state.terminal_id, {"human_label": label})
+            else:
+                doc = read_console_json(state.layout)
+                doc["human_label"] = label
+                write_console_record(state.layout, doc)
+            model.human_label = str(label)
         return True
     if kind == "quit":
         return False
@@ -581,18 +596,25 @@ def execute_intent(intent: Intent, model: ConsoleModel, state: ConsoleState, api
         model.status = "remove failed: {}".format(err.get("message")) if err else "removed {}".format(intent.args.get("member"))
         return True
     if kind == "use":
+        # A console is pinned to its team for life, so this opens that team's
+        # board beside this one instead of switching this pane under you.
+        # Switching also rewrote the session-wide default team, which changed
+        # team inference for every other console, popup and shell.
         new_team = str(intent.args.get("team"))
         if not _team_dir_exists(state.layout, new_team):
             model.status = "no team {} in this session".format(new_team)
             return True
-        rc, out, err = run_cli(["use", new_team], env)
-        if err:
-            model.status = "use failed: {}".format(err.get("message"))
+        if new_team == state.team:
+            model.status = "this board is already {}".format(new_team)
             return True
-        state.team = new_team
-        state.tail = BoardTail(state.layout.team(new_team))
-        model.team = new_team
-        model.status = "switched to team {}".format(new_team)
+        rc, out, err = run_cli(["ui", "console", "--team", new_team], env)
+        if err:
+            model.status = "could not open {}: {}".format(new_team, err.get("message") or err.get("code"))
+            return True
+        if isinstance(out, dict) and out.get("opened") is False:
+            model.status = "{} is already open in {}; focused it".format(new_team, out.get("pane_id"))
+        else:
+            model.status = "opened the {} board".format(new_team)
         return True
     if kind == "charter":
         if intent.args.get("action") == "set":
@@ -944,20 +966,39 @@ def run(layout: Layout, api: Any, team: Optional[str], env: Dict[str, str]) -> i
     if pane_id and api is not None:
         pane = pane_get_cli(api, pane_id, FOCUS_CHECK_TIMEOUT_S)
         terminal_id = pane.get("terminal_id") if pane is not None and isinstance(pane.get("terminal_id"), str) else None
-    record = read_console_json(layout)
-    record.pop("closed_at", None)  # written by the pane.closed path; meaningless once the console is open again
-    record.update(
-        {
+    # One entry per console, keyed by terminal: a session may have a board open
+    # per team, and the old single record meant a second console overwrote the
+    # first and silently demoted it to ``cli-unverified``.
+    from herdr_team.cmd_board import console_entry as _console_entry
+    from herdr_team.cmd_board import update_console_doc as _update_console_doc
+
+    existing = _console_entry(layout.session, terminal_id) or {}
+
+    def register(doc: Dict[str, Any]) -> None:
+        entry = dict(doc["consoles"].get(terminal_id) or {})
+        entry.pop("closed_at", None)  # meaningless once this console is open again
+        entry.update({
             "pane_id": pane_id,
             "terminal_id": terminal_id,
+            "team": chosen,
             "pid": os.getpid(),
             "open": True,
-            "default_team": record.get("default_team") or chosen,
-            "human_label": record.get("human_label") or env.get("HERDR_TEAM_HUMAN") or "human",
+            "human_label": entry.get("human_label") or env.get("HERDR_TEAM_HUMAN") or "human",
             "opened_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
-        }
-    )
-    write_console_record(layout, record)
+        })
+        if terminal_id:
+            doc["consoles"][terminal_id] = entry
+        doc.setdefault("default_team", chosen)
+
+    state.terminal_id = terminal_id
+    if terminal_id:
+        _update_console_doc(layout.session, register)
+    else:
+        # No terminal id (running outside a plugin pane): nothing to register,
+        # and identity will treat this console as unverified, as it did before.
+        record = read_console_json(layout)
+        record.setdefault("default_team", chosen)
+        write_console_record(layout, record)
     previous = install_sigterm_handler()
     try:
         try:
@@ -970,10 +1011,15 @@ def run(layout: Layout, api: Any, team: Optional[str], env: Dict[str, str]) -> i
                 signal.signal(signal.SIGTERM, previous)
             except (ValueError, OSError, TypeError):
                 pass
-        closing = read_console_json(layout)
-        closing["open"] = False
-        closing["pid"] = None
-        write_console_record(layout, closing)
+        if terminal_id:
+            # Only this console's entry: closing one board must not mark another
+            # team's console closed.
+            from herdr_team.cmd_board import close_console as _close_console
+
+            try:
+                _close_console(layout.session, terminal_id)
+            except (HerdrTeamError, OSError):
+                pass
 
 
 # --------------------------------------------------------------------------

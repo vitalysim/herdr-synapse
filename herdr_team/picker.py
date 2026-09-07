@@ -306,7 +306,7 @@ def run(layout: Layout, api: Any, env: Dict[str, str], actions: bool = True) -> 
 
 
 #: Member actions the tree can run while the popup stays open.
-ACTION_INTENTS = ("member_rename", "member_goal", "member_send_goal", "member_remove", "member_focus", "team_folder_set")
+ACTION_INTENTS = ("member_rename", "member_goal", "member_send_goal", "member_remove", "member_focus", "team_folder_set", "team_board_open")
 #: ``remove`` and ``rename`` do several socket round trips plus a lock wait; the console's 20 s is too
 #: tight for them, and a timeout kills the CLI mid-change (M8 review).
 ACTION_TIMEOUT_S = 45.0
@@ -318,6 +318,7 @@ ACTION_LABELS = {
     "member_remove": "removing {member} from {team}",
     "member_focus": "going to {member}",
     "team_folder_set": "setting the folder for {team}",
+    "team_board_open": "opening the {team} board",
 }
 
 
@@ -333,6 +334,8 @@ def action_args(intent: Any) -> List[str]:
         return argv
     if intent.kind == "member_rename":
         return ["--team", team, "rename", member, str(args["new"])]
+    if intent.kind == "team_board_open":
+        return ["ui", "console", "--team", team]
     if intent.kind == "team_folder_set":
         return ["--team", team, "project", "set", str(args.get("path") or "")]
     if intent.kind == "member_goal":
@@ -377,6 +380,10 @@ def action_failure_status(intent: Any, err: Dict[str, Any]) -> str:
 def action_success_status(intent: Any, out: Any) -> str:
     args = intent.args
     member = str(args.get("member") or "")
+    if intent.kind == "team_board_open":
+        if isinstance(out, dict) and out.get("opened") is False:
+            return "the {} board is already open in {}; focused it".format(args.get("team"), out.get("pane_id"))
+        return "opened the {} board".format(args.get("team"))
     if intent.kind == "team_folder_set":
         written = len((out or {}).get("written") or []) if isinstance(out, dict) else 0
         return "{} now has a folder at {} ({} file{} written)".format(

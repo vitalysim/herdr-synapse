@@ -12,7 +12,7 @@ import time
 import unittest
 from pathlib import Path
 
-from herdr_team import daemon as D
+from herdr_team import cmd_board, daemon as D
 from herdr_team import gate, ledger, paths, roster, store
 from herdr_team.api import HerdrApi, IDENTITY_ENV_VARS
 from herdr_team.cli import main as cli_main
@@ -1268,13 +1268,14 @@ class HeartbeatAndWhoTests(unittest.TestCase):
         self.assertTrue(self.d.console_check_due)
         self.d.tick()
         self.assertFalse(self.d.console_check_due)
-        self.assertTrue(store.read_json(self.ts.session.console_json)["open"])
+        self.assertTrue(any(e.get("open") for e in cmd_board.console_entries(self.ts.session).values()))
         # plugin pane close: the terminal is gone while the server answers
         self.api.set_response("pane.list", {"type": "pane_list", "panes": [fake_pane("w1:p1", "term_shell")]})
         self.d.handle_event({"event": "pane_closed", "data": {"pane_id": "w4:p1"}})
         self.d.tick()
         doc = store.read_json(self.ts.session.console_json)
-        self.assertEqual((doc["open"], doc["pid"]), (False, None))
+        entry = next(iter(cmd_board.console_entries(self.ts.session).values()))
+        self.assertEqual((entry["open"], entry["pid"]), (False, None))
         self.assertTrue(any("console pane closed" in line for line in self.d.logged))
 
     def test_rebind_to_another_pane_clears_the_label_left_on_the_old_shell(self):
@@ -1322,12 +1323,10 @@ class HeartbeatAndWhoTests(unittest.TestCase):
         self.assertEqual([m for m, _ in self.api.calls if m == "pane.close"], [])  # foreground unknown: unresolved, retry scheduled
         self.assertIsNotNone(self.d.console_reconcile_at_ms)
         # the reopened console writes its record; the old shell now shows a plain zsh, but the launch grace still holds
-        store.write_json(self.ts.session.console_json, dict(store.read_json(self.ts.session.console_json), pane_id="w3:p7", terminal_id="term_new", pid=os.getpid(), open=True))
+        cmd_board.upsert_console(self.ts.session, "term_new", {"pane_id": "w3:p7", "team": "alpha", "pid": os.getpid(), "open": True})
         self.api.set_response("pane.list", {"type": "pane_list", "panes": [fake_pane("w3:p6", "term_shell6", None, "Team console"), fake_pane("w3:p7", "term_new", None, "Team console"), fake_pane("w1:p1", "term_shell")]})
         foreground["procs"] = [{"pid": 4, "name": "zsh"}]
-        console = store.read_json(self.ts.session.console_json)
-        console["launched_at"] = "2020-01-01T00:00:00.000Z"  # grace over
-        store.write_json(self.ts.session.console_json, console)
+        cmd_board.update_console_doc(self.ts.session, lambda doc: doc.__setitem__("launched_at", "2020-01-01T00:00:00.000Z"))  # grace over
         self.clock.advance(3.1)
         self.d.tick()
         self.assertEqual([p for m, p in self.api.calls if m == "pane.close"], [{"pane_id": "w3:p6"}])

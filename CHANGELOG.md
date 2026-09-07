@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0 (2026-09-07)
+
+- A team's board can be opened, not only switched to, and several can be open at once in the same space. `herdr-team ui console --team <name>` opens that team's board; a second open for a team that already has one focuses it instead. `prefix+u` opens the default team's board, and `b` on a team row in `prefix+t` opens that team's. Each console is pinned to the team it was opened for, and its pane is labelled `Team console: <team>`.
+- `/use <team>` in a console now **opens** that team's board beside the current one instead of switching the pane under you. It also no longer rewrites the session-wide default team, which used to change team inference for every other console, popup and shell in the session.
+- `console.json` is a registry keyed by terminal id rather than a single record. This is what made a second console impossible: the one recorded `terminal_id` was also the proof that a process is the console, so opening a second one overwrote it and silently demoted the first to `cli-unverified` (HP-07). A pre-registry file is read as a one-entry registry, so no migration is needed. Registry writes take a lock, because several console processes write the file now.
+- `say` and verified human posts accept any live registered console rather than one recorded terminal. The real gates are unchanged: the pane must still be focused and the caller must still be a descendant of it, and Herdr's focus is session-wide, so exactly one board is say-capable at a time — the one you are looking at.
+- `reconcile_console` no longer closes a live console it does not recognise, closes each console on its own evidence, and reopens each recorded console on its own team.
+- `/as` sets the label of the console you typed it in, so it no longer re-points another board's unread cursor.
+
 ## 0.3.1 (2026-09-07)
 
 - An idle agent no longer sits on mail nothing will ever wake it for. A post addressed to `all` creates no pending unless it is urgent or you wrote it, and every agent-side read path is turn-triggered, so an idle member holding only a teammate's broadcast stayed asleep indefinitely: measured on a live team, a member's broadcast took a **median of 42 minutes** to reach everyone and 11 of 47 never reached someone at all. The notifier now sweeps for members that are idle with unread posts and creates an ordinary pending, at most once per member every three minutes. Broadcasts still do not interrupt: the swept nudge is not urgent, so every gate (done_hold, focus, dialogs, drafts) still applies, and a chatty team costs one nudge per member per interval rather than one per post.

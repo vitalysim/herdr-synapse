@@ -117,23 +117,25 @@ def open_pane(api: Any, target: str, target_pane: Optional[str], env: Dict[str, 
     return {"ui": target, "opened": True, "placement": "split", "pane_id": plugin_pane_id(result), "fallback": "console", "retried": retried, "error": last.to_json()}
 
 
-def focus_live_console(api: Any, layout: Any) -> Optional[str]:
-    """Focus the live console recorded in ``console.json`` and return its current pane id, else None.
+def focus_live_console(api: Any, layout: Any, team: Optional[str] = None) -> Optional[str]:
+    """Focus the live console for ``team`` and return its pane id, else None.
 
-    Plan 7.3: a second open locates the console by ``terminal_id`` (pane ids change on move) and
-    calls ``plugin.pane.focus``; the console is single-writer, so nothing may open a second one
-    while this one is alive.
+    A session may hold one console per team, so this is what stops a *second*
+    console for the same team rather than a second console outright. The
+    lookup is by ``terminal_id`` because pane ids change when a pane moves.
+    With no ``team`` it focuses any live console, which keeps the popup
+    fallback's old behaviour.
     """
-    from herdr_team.cmd_board import read_console_json
+    from herdr_team.cmd_board import console_for_team, live_console_entries
 
     try:
-        console = read_console_json(layout.session)
+        entry = console_for_team(layout.session, team) if team else next(iter(live_console_entries(layout.session).values()), None)
     except (HerdrTeamError, OSError):
         return None
-    if not (console.get("open") and _pid_alive(console.get("pid"))):
+    if entry is None:
         return None
     try:
-        live = find_console_pane(api, console)
+        live = find_console_pane(api, entry)
     except HerdrTeamError:
         return None
     if live is None or not isinstance(live.get("pane_id"), str):
@@ -146,6 +148,27 @@ def focus_live_console(api: Any, layout: Any) -> Optional[str]:
 
 
 CONSOLE_TITLE = "Team console"
+
+
+def console_label(team: Optional[str]) -> str:
+    """``Team console: <team>``, so two boards are distinguishable in the UI."""
+    return "{}: {}".format(CONSOLE_TITLE, team) if team else CONSOLE_TITLE
+
+
+def is_console_label(value: Any) -> bool:
+    """True for the manifest title and for any per-team label built from it."""
+    return isinstance(value, str) and (value == CONSOLE_TITLE or value.startswith(CONSOLE_TITLE + ":"))
+
+
+def label_console_pane(api: Any, pane_id: Any, team: Optional[str]) -> None:
+    """Name the pane after its team. ``plugin.pane.open`` takes no title, so this
+    is a follow-up ``pane.rename``; best effort, never fatal."""
+    if not team or not isinstance(pane_id, str) or not pane_id:
+        return
+    try:
+        api.request("pane.rename", {"pane_id": pane_id, "label": console_label(team)})
+    except (HerdrTeamError, OSError):
+        pass
 #: After ``plugin.pane.open`` of the console entrypoint, ``reconcile_console`` leaves labelled shells alone this long.
 CONSOLE_LAUNCH_GRACE_S = 15.0
 SHELL_NAMES =frozenset({"sh", "bash", "zsh", "fish", "dash", "ksh", "tcsh", "csh", "-sh", "-bash", "-zsh", "-fish", "login"})
@@ -228,14 +251,26 @@ def _iso_age_s(value: Any, now: Optional[float] = None) -> Optional[float]:
     return (time.time() if now is None else now) - stamp
 
 
-def record_console_launch(layout: Any) -> None:
-    """Stamp ``launched_at`` in ``console.json``: the console entrypoint was just opened and may still be booting."""
-    from herdr_team.cmd_board import read_console_json, write_console_json
+def record_console_launch(layout: Any, team: Optional[str] = None) -> None:
+    """Stamp a pending launch: the console entrypoint was opened and may still be booting.
+
+    Kept per team rather than per session, so one console booting no longer
+    shelters an unrelated dead ``Team console`` shell from reconcile.
+    """
+    from herdr_team.cmd_board import update_console_doc
+
+    def mutate(doc: Dict[str, Any]) -> None:
+        stamp = _utc_now_iso()
+        doc["launched_at"] = stamp  # session-wide, for a launch whose team is unknown
+        launches = doc.get("launches")
+        if not isinstance(launches, dict):
+            launches = {}
+        if team:
+            launches[team] = stamp
+        doc["launches"] = launches
 
     try:
-        console = read_console_json(layout.session)
-        console["launched_at"] = _utc_now_iso()
-        write_console_json(layout.session, console)
+        update_console_doc(layout.session, mutate)
     except (HerdrTeamError, OSError):
         pass
 
@@ -259,21 +294,26 @@ def mark_console_closed_if_pane_gone(session: Any, api: Any) -> bool:
     and ``reconcile_console`` reopens. An unreachable or empty ``pane.list``
     is no evidence. Returns True when the record changed; never raises.
     """
-    from herdr_team.cmd_board import read_console_json, write_console_json
+    from herdr_team.cmd_board import close_console, console_entries
 
     try:
-        console = read_console_json(session)
-        terminal_id = console.get("terminal_id")
-        if not console.get("open") or not isinstance(terminal_id, str) or not terminal_id:
+        recorded = console_entries(session)
+        open_terminals = [t for t, entry in recorded.items() if entry.get("open") and isinstance(t, str) and t]
+        if not open_terminals:
             return False
         panes = _pane_list(api)
-        if not panes or any(p.get("terminal_id") == terminal_id for p in panes):
+        if not panes:
             return False
-        console["open"] = False
-        console["pid"] = None
-        console["closed_at"] = _utc_now_iso()
-        write_console_json(session, console)
-        return True
+        alive = {p.get("terminal_id") for p in panes}
+        # Each console is closed on its own evidence: one pane going away must
+        # not mark another team's console closed.
+        changed = False
+        for terminal_id in open_terminals:
+            if terminal_id in alive:
+                continue
+            close_console(session, terminal_id, _utc_now_iso())
+            changed = True
+        return changed
     except (HerdrTeamError, OSError, ValueError, TypeError):
         return False
 
@@ -289,20 +329,31 @@ def reconcile_console(layout: Any, api: Any, env: Dict[str, str], reopen: bool =
     startup hook runs before a restored pane's shell has even been spawned,
     RT-05 in the rig).
     """
-    from herdr_team.cmd_board import read_console_json, write_console_json
+    from herdr_team.cmd_board import close_console, console_doc, console_entries, live_console_entries
 
-    out: Dict[str, Any] = {"closed": [], "reopened": None, "live": None, "unresolved": []}
+    out: Dict[str, Any] = {"closed": [], "reopened": None, "live": None, "unresolved": [], "lives": []}
     try:
-        console = read_console_json(layout.session)
+        console = console_doc(layout.session)
         panes = _pane_list(api)
-        live = find_console_pane(api, console, panes) if _pid_alive(console.get("pid")) and console.get("open") else None
+        # Every live console is spared, not just one: a session may have a
+        # console open per team, and closing a stranger used to be how a second
+        # console got killed.
+        alive_entries = live_console_entries(layout.session)
+        live_terminals = set(alive_entries)
+        live = None
+        for entry in alive_entries.values():
+            found = find_console_pane(api, entry, panes)
+            if found is not None:
+                out["lives"].append(found.get("pane_id"))
+                if live is None:
+                    live = found
         if live is not None:
             out["live"] = live.get("pane_id")
         launching = _launch_in_progress(console)
         for pane in panes:
-            if live is not None and pane.get("terminal_id") == live.get("terminal_id"):
+            if pane.get("terminal_id") in live_terminals:
                 continue
-            if pane.get("label") != CONSOLE_TITLE and pane.get("title") != CONSOLE_TITLE:
+            if not is_console_label(pane.get("label")) and not is_console_label(pane.get("title")):
                 continue
             if pane.get("agent"):
                 continue  # an agent adopted the labelled pane; never close it
@@ -323,18 +374,24 @@ def reconcile_console(layout: Any, api: Any, env: Dict[str, str], reopen: bool =
                 out["closed"].append(pane_id)
             except HerdrTeamError:
                 continue
-        if live is None and console.get("open") and reopen:
-            if console.get("pid") and not _pid_alive(console.get("pid")):
-                console["open"] = False
-                console["pid"] = None
-                write_console_json(layout.session, console)
-            team = console.get("default_team") if isinstance(console.get("default_team"), str) else None
-            try:
-                result = open_pane(api, "console", None, env, team, retry=False)
-                out["reopened"] = result.get("pane_id") or "opened"
-                record_console_launch(layout)
-            except HerdrTeamError as err:
-                out["reopen_error"] = err.code
+        if reopen:
+            # Reopen every console the record says was open and whose process is
+            # gone, each on its own team, rather than one console on the
+            # session default.
+            for terminal_id, entry in console_entries(layout.session).items():
+                if not entry.get("open") or terminal_id in live_terminals:
+                    continue
+                if entry.get("pid") and _pid_alive(entry.get("pid")):
+                    continue
+                close_console(layout.session, terminal_id, _utc_now_iso())
+                team = entry.get("team") if isinstance(entry.get("team"), str) else None
+                team = team or (console.get("default_team") if isinstance(console.get("default_team"), str) else None)
+                try:
+                    result = open_pane(api, "console", None, env, team, retry=False)
+                    out["reopened"] = result.get("pane_id") or "opened"
+                    record_console_launch(layout, team)
+                except HerdrTeamError as err:
+                    out["reopen_error"] = err.code
     except (HerdrTeamError, OSError, ValueError, TypeError) as err:
         out["error"] = "{}: {}".format(type(err).__name__, err)
     return out
@@ -365,13 +422,24 @@ def _run_ui(args: argparse.Namespace) -> int:
         except (HerdrTeamError, OSError):
             pass
     if target == "console":
-        # Plan 7.3: a second open locates the console by terminal_id and focuses it (single writer).
-        live_pane = focus_live_console(api, layout)
+        # One console per team, not one per session: a second open for the SAME
+        # team focuses the pane that already has it, a console for another team
+        # opens beside it. Each pane keeps its team for life (``HERDR_TEAM``).
+        from herdr_team.cmd_board import default_team_of
+
+        team = team or default_team_of(layout.session)
+        live_pane = focus_live_console(api, layout, team)
         if live_pane is not None:
-            return emit(args, {"ui": "console", "opened": False, "focused": True, "placement": "split", "pane_id": live_pane, "fallback": None, "retried": False}, "console already open in {}; focused".format(live_pane))
+            return emit(
+                args,
+                {"ui": "console", "opened": False, "focused": True, "placement": "split",
+                 "pane_id": live_pane, "team": team, "fallback": None, "retried": False},
+                "console for {} already open in {}; focused".format(team or "this session", live_pane),
+            )
     payload = open_pane(api, target, getattr(args, "target_pane", None), env, team, retry=not getattr(args, "no_retry", False), layout=layout)
     if payload.get("opened") and (target in ("console", "who") or payload.get("fallback") == "console"):
-        record_console_launch(layout)  # protects the booting pane from reconcile_console's close rule
+        record_console_launch(layout, team)  # protects the booting pane from reconcile_console's close rule
+        label_console_pane(api, payload.get("pane_id"), team)
     human = "{} opened ({})".format(target, payload["placement"])
     if payload.get("fallback") and payload.get("focused"):
         human = "{} popup failed; live console {} focused instead".format(target, payload["pane_id"])

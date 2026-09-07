@@ -606,6 +606,11 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
   not, skips a member that is working, already has work, was nudged recently,
   or has not been briefed, and applies the same reader rule as the ingest
   path, so an unverified record can never become a nudge through it.
+- A session may hold one console per team, each pinned to its team. A console
+  is only a console while its terminal is a live entry in the `console.json`
+  registry; `say` additionally requires the pane to be focused and the caller
+  to be its descendant, and Herdr's focus is session-wide, so at most one
+  board can type into an agent at any instant.
 - Only the daemon types into an agent, one line at a time, only into panes
   that are in a team roster. `herdr-team notifier stats` reports
   `wrong_target`; it must stay 0. The one exception to *waiting for idle* is

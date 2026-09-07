@@ -769,7 +769,7 @@ def system_record(team_name: str, event: str, text: str, to: Sequence[str], sock
     return rec
 
 
-def say_source_problem(rec: Any, member: str, console_terminal: Optional[str]) -> Optional[str]:
+def say_source_problem(rec: Any, member: str, console_terminal: Any) -> Optional[str]:
     """Why the daemon must not type ``rec`` for a ``say`` job, or None when it is the console's own ``direct`` record.
 
     The job file carries only a seq; the text comes from the board record,
@@ -787,8 +787,12 @@ def say_source_problem(rec: Any, member: str, console_terminal: Optional[str]) -
     origin = rec.get("origin") if isinstance(rec.get("origin"), dict) else {}
     if origin.get("verified") is not True or origin.get("via") not in SAY_VIAS:
         return "record origin is {} {}".format(origin.get("via"), "verified" if origin.get("verified") else "unverified")
-    if not console_terminal or rec.get("from_terminal") != console_terminal:
-        return "record terminal {!r} is not the console's {!r}".format(rec.get("from_terminal"), console_terminal)
+    # ``console_terminal`` is every live console terminal, not one: a session may
+    # have a console open per team, and any of them may have typed this line.
+    # A single string is still accepted so the signature stays usable directly.
+    known = {console_terminal} if isinstance(console_terminal, str) else set(console_terminal or ())
+    if not known or rec.get("from_terminal") not in known:
+        return "record terminal {!r} is not a live console's {}".format(rec.get("from_terminal"), sorted(known) or "(none open)")
     if not isinstance(rec.get("text"), str) or not rec["text"].strip():
         return "record has no text"
     return None
@@ -3474,8 +3478,9 @@ class Daemon:
             rec = store.BoardStore(team.paths).get(seq)
         except HerdrTeamError:
             rec = None
-        console = store.read_json(self.session.console_json, default=None)
-        console_terminal = console.get("terminal_id") if isinstance(console, dict) and isinstance(console.get("terminal_id"), str) else None
+        from herdr_team import cmd_board as _console_registry
+
+        console_terminal = set(_console_registry.live_console_entries(self.session))
         problem = say_source_problem(rec, requested_name, console_terminal)
         if problem is not None and name != requested_name:
             problem = say_source_problem(rec, name, console_terminal)  # the member was renamed since the CLI wrote both

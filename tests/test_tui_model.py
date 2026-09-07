@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from support import FAKE_AGENTS, FAKE_MEMBERS, PLUGIN_ROOT, FakeApi, TempState, fake_agent
 
-from herdr_team import compose, console, paths, picker, store, tui_model
+from herdr_team import cmd_board, compose, console, paths, picker, store, tui_model
 from herdr_team.errors import HerdrTeamError
 from herdr_team.tui_model import (
     ComposeModel,
@@ -1295,7 +1295,10 @@ class ConsoleRuntimeTests(unittest.TestCase):
             self.assertTrue(callable(seen["handler"]))
             self.assertEqual(signal.getsignal(signal.SIGTERM), before)  # restored for the rest of the process
             doc = console.read_console_json(ts.layout)
-            self.assertEqual((doc["open"], doc["pid"], doc["default_team"]), (False, None, "alpha"))
+            # No HERDR_PANE_ID means no terminal to key an entry on, so this
+            # console registers nothing and stays unverifiable, as before.
+            self.assertEqual(cmd_board.console_entries(ts.session), {})
+            self.assertEqual(doc["default_team"], "alpha")
             # a plain return from the loop still records closed and keeps the exit code
             with mock.patch("curses.wrapper", lambda fn, *a: 0):
                 self.assertEqual(console.run(ts.layout, None, "alpha", env), 0)

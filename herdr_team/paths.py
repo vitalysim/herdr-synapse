@@ -541,6 +541,11 @@ class SessionPaths:
         return self.root / "console.json"
 
     @property
+    def console_lock(self) -> Path:
+        """Guards the console registry: several console processes write it now."""
+        return self.root / "console.lock"
+
+    @property
     def kinds_json(self) -> Path:
         return self.root / "kinds.json"
 

@@ -17,7 +17,7 @@ from unittest import mock
 
 from support import FakeApi, TempState, fake_pane, fake_plugin_pane_opened
 
-from herdr_team import cli, cmd_ui, store
+from herdr_team import cli, cmd_board, cmd_ui, store
 from herdr_team.errors import HerdrTeamError
 
 
@@ -120,7 +120,7 @@ class ReconcileConsoleTests(unittest.TestCase):
             self.assertEqual((result["closed"], result["reopened"]), (["w1:p2"], "w1:p9"))
             opened = [p for m, p in api.calls if m == "plugin.pane.open"]
             self.assertEqual((len(opened), opened[0]["entrypoint"], opened[0]["env"]), (1, "console", {"HERDR_TEAM": "alpha"}))
-            self.assertFalse(store.read_json(ts.session.console_json)["open"])
+            self.assertFalse(any(e.get("open") for e in cmd_board.console_entries(ts.session).values()))
 
     def test_unknown_foreground_and_launch_grace_are_reported_as_unresolved(self):
         """RT-05 (rig, 2026-09-05): the startup hook ran before the restored shell spawned; nothing re-checked."""
@@ -164,9 +164,10 @@ class ConsoleClosedByPaneCloseTests(unittest.TestCase):
             self._open_console(ts)  # pane_id w3:p2 is stale: the console was moved to w4:p1 before it was closed
             api.set_response("pane.list", {"type": "pane_list", "panes": [fake_pane("w1:p1", "term_shell")]})
             self.assertTrue(cmd_ui.mark_console_closed_if_pane_gone(ts.session, api))
-            doc = store.read_json(ts.session.console_json)
-            self.assertEqual((doc["open"], doc["pid"], doc["default_team"]), (False, None, "alpha"))
-            self.assertTrue(doc["closed_at"].endswith("Z"))
+            doc = cmd_board.console_doc(ts.session)
+            entry = next(iter(doc["consoles"].values()))
+            self.assertEqual((entry["open"], entry["pid"], doc["default_team"]), (False, None, "alpha"))
+            self.assertTrue(entry["closed_at"].endswith("Z"))
             # idempotent: a second pane.closed changes nothing
             self.assertFalse(cmd_ui.mark_console_closed_if_pane_gone(ts.session, api))
 
@@ -176,7 +177,7 @@ class ConsoleClosedByPaneCloseTests(unittest.TestCase):
             self._open_console(ts)
             api.set_response("pane.list", {"type": "pane_list", "panes": [fake_pane("w4:p1", "term_console", None, cmd_ui.CONSOLE_TITLE)]})
             self.assertFalse(cmd_ui.mark_console_closed_if_pane_gone(ts.session, api))
-            self.assertTrue(store.read_json(ts.session.console_json)["open"])
+            self.assertTrue(any(e.get("open") for e in cmd_board.console_entries(ts.session).values()))
 
     def test_no_pane_list_evidence_changes_nothing(self):
         with TempState() as ts:
@@ -187,7 +188,7 @@ class ConsoleClosedByPaneCloseTests(unittest.TestCase):
             self.assertFalse(cmd_ui.mark_console_closed_if_pane_gone(ts.session, api))
             api.unreachable = True
             self.assertFalse(cmd_ui.mark_console_closed_if_pane_gone(ts.session, api))
-            self.assertTrue(store.read_json(ts.session.console_json)["open"])
+            self.assertTrue(any(e.get("open") for e in cmd_board.console_entries(ts.session).values()))
             store.write_json(ts.session.console_json, {"default_team": "alpha"})  # no console record at all
             api.unreachable = False
             api.set_response("pane.list", {"type": "pane_list", "panes": [fake_pane("w1:p1", "term_shell")]})

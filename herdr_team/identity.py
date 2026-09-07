@@ -398,6 +398,8 @@ def _tier_system(env: Dict[str, str], layout: Layout, team: Optional[str], as_hu
 
 
 def _tier_console(env: Dict[str, str], layout: Layout, api: Any, team: Optional[str], require_server: bool) -> Author:
+    from herdr_team import cmd_board as _console_registry
+
     console = store.read_json(layout.session.console_json, default=None)
     console = console if isinstance(console, dict) else {}
     default_team = console.get("default_team") if isinstance(console.get("default_team"), str) else None
@@ -425,12 +427,21 @@ def _tier_console(env: Dict[str, str], layout: Layout, api: Any, team: Optional[
     author.workspace_id = pane.get("workspace_id")
     author.tab_id = pane.get("tab_id")
     author.origin.update({"pane_id": author.pane_id, "terminal_id": author.terminal_id, "workspace_id": author.workspace_id, "tab_id": author.tab_id})
-    recorded = console.get("terminal_id")
-    if not recorded or recorded != author.terminal_id:
+    # Membership in the console registry, not equality with a single recorded
+    # terminal: several consoles may be open, one per team. The entry must also
+    # still be running, so a stale record cannot make a dead pane's terminal
+    # verify. Ancestry and focus below remain the real gates.
+    entry = _console_registry.console_entry(layout.session, author.terminal_id)
+    live = bool(entry) and bool(entry.get("open")) and _console_registry._pid_is_alive(entry.get("pid"))
+    if not live:
+        known = sorted(_console_registry.live_console_entries(layout.session))
         author.via = VIA_CLI_UNVERIFIED
         author.origin["via"] = VIA_CLI_UNVERIFIED
-        author.reason = "console.json records terminal {!r}, this pane is {!r}".format(recorded, author.terminal_id)
+        author.reason = "this pane is {!r}; live consoles are {}".format(author.terminal_id, known or "none")
         return author
+    # A console is pinned to the team it was opened for.
+    if isinstance(entry.get("team"), str) and entry["team"] and not team:
+        author.team = entry["team"]
     confirmed, reason = confirm_pane_ancestry(api, author.pane_id)
     # ``say`` needs a positive answer: ``None`` (no process info, no ``ps``) stays an unfocused-grade author there.
     author.origin["ancestry"] = "confirmed" if confirmed else ("unconfirmed" if confirmed is False else "unavailable")

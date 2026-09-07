@@ -2683,6 +2683,14 @@ def _select_key(model: PickerModel, key: str) -> Optional[Intent]:
         return None
     if node is None:
         return None
+    if key == "b":
+        # Open that team's board. A session may have one console per team, so
+        # this adds a board rather than switching an existing one.
+        team = node.team if node.kind in ("team", "member") else ""
+        if not team:
+            model.error = "put the cursor on a team to open its board"
+            return None
+        return Intent("team_board_open", {"team": team})
     if key == "f":
         team = node.team if node.kind in ("team", "member") else ""
         if not team:
@@ -3278,7 +3286,7 @@ def _tree_lines(model: PickerModel, width: int, height: int) -> List[str]:
         scope = "  unassigned: {}".format(model.scope_workspace)
     picked = len(selected_rows(model))
     if degrade_level(width) == 0:
-        keys = "Enter acts · Space picks · f folder · w scope · a all · r refresh · Esc quit"
+        keys = "Enter acts · Space picks · b board · f folder · w scope · a all · r refresh · Esc quit"
     else:
         keys = "Enter acts · Space picks · Esc quit"
     head = "{} team{} · {} agent{}{}".format(teams, "" if teams == 1 else "s", agents, "" if agents == 1 else "s", scope)

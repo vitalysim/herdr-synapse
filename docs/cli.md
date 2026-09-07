@@ -511,6 +511,37 @@ silently drops them is not a record of what happened.
 
 JSON `{"team","records":68,"format":"md","path":"…","bytes":41234}`.
 
+### Opening a team's board
+
+`herdr-team ui console --team <name>` opens that team's board as a split. A
+session may hold **one console per team**: a second open for a team that
+already has one focuses that pane instead, a console for another team opens
+beside it. `prefix+u` opens the default team's board; `b` on a team row in
+`prefix+t` opens that team's.
+
+Each console is pinned to the team it was opened for (through `HERDR_TEAM` in
+the pane env) and its pane is labelled `Team console: <team>`. `/use <team>`
+inside a console opens that team's board rather than switching the pane, and
+no longer rewrites the session-wide default team.
+
+`console.json` records the consoles as a registry keyed by `terminal_id`:
+
+```json
+{"schema": 2, "default_team": "red-dev", "launched_at": "…",
+ "consoles": {"term_abc": {"pane_id": "wC:p6", "team": "red-dev", "pid": 811,
+                           "open": true, "human_label": "human", "opened_at": "…"}}}
+```
+
+`default_team` stays session-wide: it is what every CLI command infers its
+team from. A pre-registry document (one flat record) is read as a one-entry
+registry, so upgrading needs no migration.
+
+A console proves it is a console by having its `terminal_id` in that registry
+with a live pid; `say` and verified human posts then still require the pane to
+be focused and the caller to be a descendant of it. Herdr's focus is
+session-wide, so exactly one board is `say`-capable at a time: the one you are
+looking at.
+
 ### `ack`
 
 Always rewrites the member's cursor file (`touch`), even when the seq does not move: the

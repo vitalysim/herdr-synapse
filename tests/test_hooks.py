@@ -11,7 +11,7 @@ import threading
 import time
 import unittest
 
-from herdr_team import hooks, paths, store
+from herdr_team import cmd_board, hooks, paths, store
 from herdr_team.cli import main as cli_main
 from support import FAKE_MEMBERS, FakeApi, FakeError, TempState, fake_agent, identity_tokens
 
@@ -264,12 +264,13 @@ class ReconcileGoneTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertTrue(out.get("console_closed"))
         doc = store.read_json(self.ts.session.console_json)
-        self.assertEqual((doc["open"], doc["pid"]), (False, None))
+        entry = next(iter(cmd_board.console_entries(self.ts.session).values()))
+        self.assertEqual((entry["open"], entry["pid"]), (False, None))
         # pane_exited never touches the record (the pane, and the terminal, still exist)
         store.write_json(self.ts.session.console_json, {"pane_id": "w3:p2", "terminal_id": "term_console", "pid": os.getpid(), "open": True})
         code, out = run_event(self.ts, self.api, "pane_exited", pane_id="w3:p2")
         self.assertNotIn("console_closed", out)
-        self.assertTrue(store.read_json(self.ts.session.console_json)["open"])
+        self.assertTrue(any(e.get("open") for e in cmd_board.console_entries(self.ts.session).values()))
 
     def test_pane_exited_clears_tokens(self):
         self.api.set_error("agent.get", "agent_not_found", "gone")

@@ -295,6 +295,133 @@ def default_team_of(session: SessionPaths) -> Optional[str]:
     return value if isinstance(value, str) and value else None
 
 
+# --------------------------------------------------------------------------
+# the console registry (docs/cli.md section 7)
+#
+# ``console.json`` used to be one flat record with a single slot for
+# ``terminal_id``/``pane_id``/``pid``/``human_label``, which is what limited a
+# session to one console: ``identity._tier_console`` proves a caller is the
+# console by comparing its terminal against that one value, so a second console
+# overwrote the record and silently demoted the first to ``cli-unverified``
+# (HP-07, 2026-09-05). The registry keys those fields by ``terminal_id`` so a
+# team can have its own board open without breaking anybody else's.
+#
+# ``default_team`` stays a single session-wide field: it is what every CLI
+# command in the session infers its team from, not a per-console value.
+
+
+CONSOLE_SCHEMA = 2
+#: Fields that belong to one console rather than to the session.
+#: ``launched_at`` is deliberately NOT here: it is the session-wide boot grace
+#: ``reconcile_console`` reads, and moving it into an entry silently disabled it.
+CONSOLE_ENTRY_KEYS = ("pane_id", "terminal_id", "team", "pid", "open", "human_label", "opened_at", "closed_at")
+
+
+def console_doc(session: SessionPaths) -> Dict[str, Any]:
+    """``console.json`` normalised to the registry shape.
+
+    A pre-registry document (one flat record, no ``consoles``) is read as a
+    one-entry registry, so an upgrade needs no migration pass and an older
+    plugin still finds the fields it expects where it left them.
+    """
+    doc = read_console_json(session)
+    consoles = doc.get("consoles")
+    if isinstance(consoles, dict):
+        entries = {str(k): dict(v) for k, v in consoles.items() if isinstance(v, dict)}
+    else:
+        entries = {}
+        terminal = doc.get("terminal_id")
+        if isinstance(terminal, str) and terminal:
+            entries[terminal] = {key: doc[key] for key in CONSOLE_ENTRY_KEYS if key in doc}
+            entries[terminal].setdefault("team", doc.get("default_team"))
+    out = {k: v for k, v in doc.items() if k not in CONSOLE_ENTRY_KEYS and k != "consoles"}
+    out["schema"] = CONSOLE_SCHEMA
+    out["consoles"] = entries
+    return out
+
+
+def console_entries(session: SessionPaths) -> Dict[str, Dict[str, Any]]:
+    """Every recorded console, keyed by ``terminal_id``."""
+    return console_doc(session).get("consoles") or {}
+
+
+def console_entry(session: SessionPaths, terminal_id: Optional[str]) -> Optional[Dict[str, Any]]:
+    if not terminal_id:
+        return None
+    return console_entries(session).get(str(terminal_id))
+
+
+def live_console_entries(session: SessionPaths, alive: Any = None) -> Dict[str, Dict[str, Any]]:
+    """Recorded consoles that say ``open`` and whose pid is still running."""
+    check = alive if alive is not None else _pid_is_alive
+    out: Dict[str, Dict[str, Any]] = {}
+    for terminal, entry in console_entries(session).items():
+        if entry.get("open") and check(entry.get("pid")):
+            out[terminal] = entry
+    return out
+
+
+def _pid_is_alive(pid: Any) -> bool:
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def update_console_doc(session: SessionPaths, mutate: Any) -> Dict[str, Any]:
+    """Read-modify-write ``console.json`` under the session lock.
+
+    Several console processes now write this file, and every writer replaces
+    the whole document, so an unlocked read-modify-write would silently drop a
+    concurrent console's entry.
+    """
+    _paths.ensure_session_dirs(session)
+    with store.FileLock(session.console_lock):
+        doc = console_doc(session)
+        mutate(doc)
+        doc["schema"] = CONSOLE_SCHEMA
+        store.write_json(session.console_json, doc)
+        return doc
+
+
+def upsert_console(session: SessionPaths, terminal_id: str, fields: Dict[str, Any]) -> Dict[str, Any]:
+    """Create or update one console's entry, leaving every other entry alone."""
+    def mutate(doc: Dict[str, Any]) -> None:
+        entry = dict(doc["consoles"].get(terminal_id) or {})
+        entry.update(fields)
+        entry["terminal_id"] = terminal_id
+        doc["consoles"][terminal_id] = entry
+
+    return update_console_doc(session, mutate)
+
+
+def close_console(session: SessionPaths, terminal_id: str, closed_at: Optional[str] = None) -> Dict[str, Any]:
+    """Mark one console closed. The entry is kept: it records which team that pane held."""
+    def mutate(doc: Dict[str, Any]) -> None:
+        entry = dict(doc["consoles"].get(terminal_id) or {})
+        if not entry:
+            return
+        entry.update({"open": False, "pid": None, "closed_at": closed_at or now_iso()})
+        doc["consoles"][terminal_id] = entry
+
+    return update_console_doc(session, mutate)
+
+
+def console_for_team(session: SessionPaths, team: str, alive: Any = None) -> Optional[Dict[str, Any]]:
+    """The live console showing ``team``, if one is open."""
+    for entry in live_console_entries(session, alive).values():
+        if entry.get("team") == team:
+            return entry
+    return None
+
+
 def mute_state(team: TeamPaths) -> Dict[str, Any]:
     doc = store.read_json(team.mute_json)
     return doc if isinstance(doc, dict) else {}

@@ -17,7 +17,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from herdr_team import cmd_ui, daemon as D, gate, roster, store
+from herdr_team import cmd_board, cmd_ui, daemon as D, gate, roster, store
 from herdr_team.errors import HerdrTeamError
 from support import FAKE_AGENTS, FakeApi, TempState, fake_agent, fake_pane, fake_plugin_pane_opened, identity_tokens
 from test_cmd_ui import console_pane, json_out, run_cli
@@ -403,8 +403,8 @@ class ConsoleLaunchRaceTests(unittest.TestCase):
             api.set_response("plugin.pane.open", fake_plugin_pane_opened("console", console_pane("w1:p9")))
             result = cmd_ui.reconcile_console(ts.layout, api, dict(ts.env))
             self.assertEqual((result["closed"], result["reopened"]), (["w1:p2"], "w1:p9"))
-            console = store.read_json(ts.session.console_json)
-            self.assertFalse(console["open"])
+            console = cmd_board.console_doc(ts.session)
+            self.assertFalse(any(e.get("open") for e in console["consoles"].values()))
             self.assertTrue(cmd_ui._launch_in_progress(console))
             # a second reconcile right after the reopen (daemon start following doctor) closes nothing
             api.calls.clear()
