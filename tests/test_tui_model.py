@@ -193,7 +193,7 @@ class ReceiptTests(unittest.TestCase):
         recs = [
             record(41, **{"from": "human", "to": ["alpha-reviewer"], "origin": {"via": "console", "verified": True}}),
             record(42, **{"from": "human", "to": ["alpha-reviewer"], "origin": {"via": "console", "verified": True}}),
-            system_record(43, "nudged", "[herdr-team nudge] 2 new board posts for alpha-reviewer (seq 41-42). Run: herdr-team board --new [n17]", to=["alpha-reviewer"]),
+            system_record(43, "nudged", "[herdr-team nudge] 2 new board posts for alpha-reviewer (seq 41-42). Run: herdr-synapse board --new [n17]", to=["alpha-reviewer"]),
         ]
         cursors = {"alpha-reviewer": {"v": 1, "seq": 41, "surfaced_by": "cli"}}
         receipts = derive_receipts(recs, cursors, self.members())
@@ -1249,7 +1249,7 @@ class ConsoleRuntimeTests(unittest.TestCase):
 
     def test_run_cli_reports_bad_paths(self):
         original = console.cli_path
-        console.cli_path = lambda: Path("/nonexistent/herdr-team")
+        console.cli_path = lambda: Path("/nonexistent/herdr-synapse")
         try:
             rc, out, err = console.run_cli(["--version"], {}, timeout=1.0)
         finally:
@@ -1339,7 +1339,7 @@ class PaneEntrypointSocketGateTests(unittest.TestCase):
             args, api, err = self._gated(ts, "console", target_pane=None)
             with mock.patch("sys.stderr", err):
                 self.assertEqual(console.run_args(args), 0)
-            self.assertEqual(err.getvalue(), "herdr-team console skipped: socket not allowed\n")
+            self.assertEqual(err.getvalue(), "herdr-synapse console skipped: socket not allowed\n")
             self.assertEqual(api.calls, [])
             self.assertFalse(ts.session.console_json.exists())
             self.assertIsNone(paths.read_pointer(ts.config_dir))
@@ -1349,7 +1349,7 @@ class PaneEntrypointSocketGateTests(unittest.TestCase):
             args, api, err = self._gated(ts, "compose")
             with mock.patch("sys.stderr", err):
                 self.assertEqual(compose.run_args(args), 0)
-            self.assertEqual(err.getvalue(), "herdr-team compose skipped: socket not allowed\n")
+            self.assertEqual(err.getvalue(), "herdr-synapse compose skipped: socket not allowed\n")
             self.assertEqual(api.calls, [])
             self.assertFalse(ts.session.console_json.exists())
 
@@ -1358,7 +1358,7 @@ class PaneEntrypointSocketGateTests(unittest.TestCase):
             args, api, err = self._gated(ts, "picker", dry_run=True)
             with mock.patch("sys.stderr", err):
                 self.assertEqual(picker.run_args(args), 0)
-            self.assertEqual(err.getvalue(), "herdr-team picker skipped: socket not allowed\n")
+            self.assertEqual(err.getvalue(), "herdr-synapse picker skipped: socket not allowed\n")
             self.assertEqual(api.calls, [])
             self.assertFalse(ts.session.console_json.exists())
 

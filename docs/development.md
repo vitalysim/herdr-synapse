@@ -6,7 +6,7 @@ Internals, conventions, and the status log for people changing the plugin. The u
 
 ```
 herdr-plugin.toml        manifest (plan section 10): startup, 6 actions, 3 event hooks, 3 panes
-bin/herdr-team           sh launcher: HERDR_TEAM_PYTHON > python3 > /usr/bin/python3, refuses < 3.9
+bin/herdr-synapse           sh launcher: HERDR_TEAM_PYTHON > python3 > /usr/bin/python3, refuses < 3.9
 bin/hook                 sh gate for manifest events: exit 0 in ~15 ms when daemon.json names a live pid
 console.sh               console pane wrapper: prints the relaunch hint and waits on failure
 herdr_team/
@@ -22,7 +22,7 @@ herdr_team/
   hooks.py claude_settings.py                                 event reconciler and Claude hooks
   tui_model.py console.py picker.py compose.py                UIs (curses console, picker, compose popups)
 hooks/claude/            the Claude Code hook shim (written by the hooks implementer)
-skills/herdr-team/SKILL.md   printed by `herdr-team --skill`
+skills/herdr-synapse/SKILL.md   printed by `herdr-synapse --skill`
 docs/cli.md              command contract
 tests/                   unittest suite; tests/support.py has TempState, FakeHerdrServer, FakeApi
 ```
@@ -32,12 +32,12 @@ tests/                   unittest suite; tests/support.py has TempState, FakeHer
 The plugin runs on the installed Herdr 0.8.2; no fork build is needed. The
 zero-interference way is the sandbox launcher, a named session with its own
 config, registry, and state: from a terminal outside Herdr run
-`bin/herdr-team-sandbox start`, then `prefix+t` inside it. Read
+`bin/herdr-synapse-sandbox start`, then `prefix+t` inside it. Read
 `docs/human-testing.md` (the guided first run) and `docs/capabilities.md`
 (every capability, how to drive it from the UI and the CLI, what to expect,
 and a test checklist). Short form: `herdr plugin link <this dir>`,
-`herdr plugin action invoke herdr-team.daemon-start`, `herdr-team kinds trust
-claude` (and `codex`), paste `herdr-team keys print` and `herdr-team setup
+`herdr plugin action invoke herdr-synapse.daemon-start`, `herdr-synapse kinds trust
+claude` (and `codex`), paste `herdr-synapse keys print` and `herdr-synapse setup
 --print-config` into your config, reload, then `prefix+t` to pick two fresh
 panes into a team. A post with no recipient goes to the whole team; `@name`
 addresses one member and nudges it; your posts to the whole team nudge everyone,
@@ -51,9 +51,9 @@ works) and records it as a `direct` post. `@@path` attaches a file to a post
 ```bash
 python3 -m unittest discover -s tests -v            # Homebrew python (3.14)
 /usr/bin/python3 -m unittest discover -s tests -v   # Apple python (3.9): both must pass
-./bin/herdr-team --version
-./bin/herdr-team --skill
-./bin/herdr-team <command> --help
+./bin/herdr-synapse --version
+./bin/herdr-synapse --skill
+./bin/herdr-synapse <command> --help
 ```
 
 Rules for code in this package:
@@ -114,18 +114,18 @@ owner's 17 agents. Until milestone M10:
   teams/<team>/ team.json team.lock board.seq board.jsonl charter.md archive/ cursors/ payloads/
                 briefings/ notifier/{ledger.jsonl,state.json,jobs/} mute.json audit.jsonl
   _archive/<team>-<ts>/
-<config_dir>/plugins/config/herdr-team/{state-dir, allowed-sockets}
+<config_dir>/plugins/config/herdr-synapse/{state-dir, allowed-sockets}
 ```
 
-State root resolution (`herdr-team doctor` prints it): `--team <path>` →
+State root resolution (`herdr-synapse doctor` prints it): `--team <path>` →
 `HERDR_TEAM_STATE_DIR` → `HERDR_TEAM_DIR` → `HERDR_PLUGIN_STATE_DIR` →
-pointer file → `${XDG_STATE_HOME:-$HOME/.local/state}/<app>/plugins/herdr-team`.
+pointer file → `${XDG_STATE_HOME:-$HOME/.local/state}/<app>/plugins/herdr-synapse`.
 
 ## Status
 
 Integration pass of 2026-09-04 (the plugin was developed inside a fork of Herdr; this log moved here with it):
 
-- 2026-09-05: `herdr-team say` and the console's `!name text` / `!!name text`
+- 2026-09-05: `herdr-synapse say` and the console's `!name text` / `!!name text`
   type one line into a member now (docs/cli.md section 7, capabilities section
   7 and 11). Suite: 1141 tests green under both interpreters.
 

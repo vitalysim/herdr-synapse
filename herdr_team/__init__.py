@@ -1,9 +1,9 @@
-"""herdr-team: teams of coding agents inside one Herdr session.
+"""herdr-synapse: teams of coding agents inside one Herdr session.
 
 Python 3.9+ standard library only. See ``docs/cli.md`` for the command
 contract and ``README.md`` for the module map.
 """
 
-VERSION = "0.7.0"
+VERSION = "0.8.0"
 SKILL_VERSION = 3
-PLUGIN_ID = "herdr-team"
+PLUGIN_ID = "herdr-synapse"

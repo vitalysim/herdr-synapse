@@ -1,6 +1,6 @@
 # Human testing guide
 
-How to try herdr-team in your own Herdr session for the first time. The
+How to try herdr-synapse in your own Herdr session for the first time. The
 complete list of capabilities, with UI and CLI paths, expected behaviour, and
 a test checklist, is `capabilities.md` in this directory. Written
 2026-09-05 after four rig runs against Herdr 0.8.2. Everything here has run
@@ -16,10 +16,10 @@ default session.
 
 ```bash
 # from a terminal window that is NOT inside Herdr:
-<plugin checkout>/bin/herdr-team-sandbox start ~/projects/<your-project>
+<plugin checkout>/bin/herdr-synapse-sandbox start ~/projects/<your-project>
 ```
 
-`start` creates `~/herdr-teamtest/`, copies your `config.toml` into it and
+`start` creates `~/herdr-synapsetest/`, copies your `config.toml` into it and
 appends the plugin's key bindings and sidebar rows, trusts `claude` and
 `codex` for delivery, links the plugin into the sandbox registry, and
 launches the session; the plugin's startup hook starts the notifier. Inside
@@ -47,10 +47,10 @@ manual setup in your real session later.
   one short line at a time. It never touches a pane outside a roster. The
   one thing that types *now*, without waiting for idle, is your own
   `!name text` in the console; nothing an agent does can trigger that. If
-  you see anything else, run `herdr-team daemon stop` and tell me.
+  you see anything else, run `herdr-synapse daemon stop` and tell me.
 - Everything the plugin writes lives under
-  `~/.local/state/herdr/plugins/herdr-team/` plus a pointer file under
-  `~/.config/herdr/plugins/config/herdr-team/`. Nothing else in `~/.config`
+  `~/.local/state/herdr/plugins/herdr-synapse/` plus a pointer file under
+  `~/.config/herdr/plugins/config/herdr-synapse/`. Nothing else in `~/.config`
   or `~/.claude` is touched unless you run `hooks install` (step 8).
 
 ## 1. Link the plugin (once)
@@ -58,10 +58,10 @@ manual setup in your real session later.
 ```bash
 herdr plugin link <plugin checkout>
 herdr plugin list --json | jq '.result.plugins[] | {plugin_id, enabled, warnings}'
-herdr plugin action invoke herdr-team.daemon-start
-<plugin checkout>/bin/herdr-team daemon status --json
-<plugin checkout>/bin/herdr-team install-cli --yes   # puts herdr-team on PATH via ~/.local/bin
-herdr-team doctor
+herdr plugin action invoke herdr-synapse.daemon-start
+<plugin checkout>/bin/herdr-synapse daemon status --json
+<plugin checkout>/bin/herdr-synapse install-cli --yes   # puts herdr-synapse on PATH via ~/.local/bin
+herdr-synapse doctor
 ```
 
 `doctor` should show `alive: true` for the daemon, your socket, slug
@@ -75,24 +75,24 @@ that protects you from the plugin typing into an agent kind that was never
 verified. Your rig runs verified Claude and Codex, so:
 
 ```bash
-herdr-team kinds trust claude
-herdr-team kinds trust codex
-herdr-team kinds list
+herdr-synapse kinds trust claude
+herdr-synapse kinds trust codex
+herdr-synapse kinds list
 ```
 
 ## 3. Keys and sidebar rows (once, optional but recommended)
 
 The sidebar block colour-codes teams: each team's name renders in its own
-colour next to its members. Re-paste it after an upgrade if `herdr-team
+colour next to its members. Re-paste it after an upgrade if `herdr-synapse
 doctor` says your rows predate the colours.
 
 ```bash
-herdr-team keys print          # four [[keys.command]] entries: prefix+t team-up, prefix+m compose, prefix+u console, prefix+y view
-herdr-team setup --print-config   # the required sidebar rows ($team_role, $team_task) and the optional block
+herdr-synapse keys print          # four [[keys.command]] entries: prefix+t team-up, prefix+m compose, prefix+u console, prefix+y view
+herdr-synapse setup --print-config   # the required sidebar rows ($team_role, $team_task) and the optional block
 ```
 
 Paste both into `~/.config/herdr/config.toml`, then `herdr server
-reload-config`. `herdr-team keys check` confirms nothing collides with your
+reload-config`. `herdr-synapse keys check` confirms nothing collides with your
 own bindings. The defaults never use `prefix+t/m/u/y`.
 
 ## 4. Make a team
@@ -108,11 +108,11 @@ idle, then either:
   member is nudged that `<name> joined team <t>` and the newcomer is briefed)
 - **UI**: `prefix+t`, Space on the two rows, Enter, team name, charter, then
   per member a role, a name, an optional brief, confirm; or
-- **CLI**: `herdr-team create demo --charter "Try the team board end to end" --member <pane1>:reviewer --member <pane2>:worker`.
+- **CLI**: `herdr-synapse create demo --charter "Try the team board end to end" --member <pane1>:reviewer --member <pane2>:worker`.
 
 Each member gets a one-line briefing typed into its input box once it is
 idle, then reads the skill, the charter, and the board, and acknowledges.
-`herdr-team who` shows `briefed` for each within about a minute.
+`herdr-synapse who` shows `briefed` for each within about a minute.
 
 Reopen `prefix+t` afterwards and it shows the team with its agents under it.
 Enter on a member opens its actions: rename it, change its goal, send that
@@ -123,8 +123,8 @@ goal to it now", which needs the notifier.
 ## 5. Watch it work
 
 ```bash
-herdr-team who                      # roster, status, headline, receipts
-herdr-team board --last 20          # the board
+herdr-synapse who                      # roster, status, headline, receipts
+herdr-synapse board --last 20          # the board
 prefix+u                            # the console: charter, roster, live board tail, input line
 ```
 
@@ -139,7 +139,7 @@ shows `✓typed` or why not), `@@path` attaches a file to the post (type
 interrupt: urgent, and typed into that member's running turn when its kind
 allows it (Claude by default; `/interrupts claude,codex` widens it,
 `/interrupts off` stops it). Agents have the same with
-`herdr-team post --to <name> --interrupt`, once per teammate per 10 min.
+`herdr-synapse post --to <name> --interrupt`, once per teammate per 10 min.
 
 `prefix+i` opens the usage popup: every agent in the session grouped by the
 provider account it draws on, with session and weekly bars and reset times
@@ -159,7 +159,7 @@ idle, the member reads the board and replies, `board --receipts` shows
   (`✗ not typed (dialog)`), and only `!!` types into a working member.
 - A teammate's `post --interrupt` types its notice into a *working* Claude
   member (the same queue behaviour `!!` uses). For every other kind the same
-  post waits for idle unless you run `herdr-team interrupts claude,codex`.
+  post waits for idle unless you run `herdr-synapse interrupts claude,codex`.
 - `!name text` works only from the console pane. The compose popup answers
   `direct typing is console-only` and a shell pane `say_unverified`, because
   neither can prove it is you.
@@ -168,7 +168,7 @@ idle, the member reads the board and replies, `board --receipts` shows
   board read (Claude with hooks sees it on its next turn) unless it is `/urgent`.
 - Your posts from a shell pane inside Herdr are `verified`; from outside
   Herdr or from the compose popup they are `unverified`; from inside an
-  agent's pane `--as human` is refused and audited. `herdr-team audit` lists
+  agent's pane `--as human` is refused and audited. `herdr-synapse audit` lists
   refusals.
 - Toasts: your config is `delivery = "terminal"`, so posts addressed to you
   arrive as terminal notifications, and the console badge is the reliable
@@ -180,31 +180,31 @@ idle, the member reads the board and replies, `board --receipts` shows
 ## 7. If something goes wrong
 
 ```bash
-herdr-team daemon stop              # nothing is typed anywhere after this
-herdr-team doctor                   # state, socket, daemon, config
-herdr-team notifier stats           # what was delivered, held, and why
-tail -50 ~/.local/state/herdr/plugins/herdr-team/sessions/default/daemon.log
-herdr plugin disable herdr-team     # clears tokens and the view within 10 s, daemon exits
+herdr-synapse daemon stop              # nothing is typed anywhere after this
+herdr-synapse doctor                   # state, socket, daemon, config
+herdr-synapse notifier stats           # what was delivered, held, and why
+tail -50 ~/.local/state/herdr/plugins/herdr-synapse/sessions/default/daemon.log
+herdr plugin disable herdr-synapse     # clears tokens and the view within 10 s, daemon exits
 ```
 
 ## 8. Claude hooks (optional, edits ~/.claude/settings.json)
 
-`herdr-team hooks install claude` adds three hook entries in their own
+`herdr-synapse hooks install claude` adds three hook entries in their own
 objects so Herdr's own installer leaves them alone (verified both ways).
 Members started after that get new board posts in context on every turn and
 are held from stopping while a directed post is unread, capped at three
-times per ten minutes. `herdr-team hooks uninstall claude` removes exactly
+times per ten minutes. `herdr-synapse hooks uninstall claude` removes exactly
 those entries.
 
 ## Known gaps
 
 - Only Claude and Codex have been verified end to end. Other kinds
   (opencode, gemini, cursor-agent, kimi, agy) need one probe each:
-  `herdr-team hooks probe <kind> --member <name>` runs one round trip and
+  `herdr-synapse hooks probe <kind> --member <name>` runs one round trip and
   records the result.
 - The console opens as a split in the current tab, not as its own tab.
-- `herdr-team read <name>` shows only the visible screen of a member.
+- `herdr-synapse read <name>` shows only the visible screen of a member.
 - Codex under its default sandbox cannot reach the Herdr socket from a tool
-  call and asks to rerun unsandboxed; approve read-only `herdr-team`
+  call and asks to rerun unsandboxed; approve read-only `herdr-synapse`
   commands when it asks, or start it with an approval policy that allows
   them.

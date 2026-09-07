@@ -1,6 +1,6 @@
 """Manifest event reconciler (``bin/hook`` slow path) and the Claude Stop decision (plan 9.4, 10).
 
-``bin/hook <event>`` execs ``herdr-team hook-event <event>`` only when no
+``bin/hook <event>`` execs ``herdr-synapse hook-event <event>`` only when no
 daemon is alive. The reconciler reads ``HERDR_PLUGIN_EVENT`` and
 ``HERDR_PLUGIN_EVENT_JSON`` (``data.pane_id`` only; a top-level ``pane_id``
 is accepted too), re-fetches truth with ``agent.get``/``pane.get`` over the
@@ -294,7 +294,7 @@ def _roster_clear_tokens() -> Dict[str, Any]:
 
 
 def _clear_tokens(api: Any, pane_id: str, log: Any) -> None:
-    for source, tokens in (("herdr-team:roster", _roster_clear_tokens()), ("herdr-team:task", {"team_task": None})):
+    for source, tokens in (("herdr-synapse:roster", _roster_clear_tokens()), ("herdr-synapse:task", {"team_task": None})):
         try:
             api.request("pane.report_metadata", {"pane_id": pane_id, "source": source, "tokens": tokens}, timeout=CALL_TIMEOUT_S)
         except HerdrTeamError as err:
@@ -306,7 +306,7 @@ def _stamp_tokens(api: Any, pane_id: str, team_name: str, role: str, log: Any, c
     tokens: Dict[str, Any] = {"team": team_name, "team_role": role}
     tokens.update(_color_slot_tokens(team_name, color_slot))
     try:
-        api.request("pane.report_metadata", {"pane_id": pane_id, "source": "herdr-team:roster", "tokens": tokens}, timeout=CALL_TIMEOUT_S)
+        api.request("pane.report_metadata", {"pane_id": pane_id, "source": "herdr-synapse:roster", "tokens": tokens}, timeout=CALL_TIMEOUT_S)
     except HerdrTeamError as err:
         log("token stamp on {} failed: {}".format(pane_id, err.code))
 
@@ -600,7 +600,7 @@ def _daemon_alive(layout: Layout) -> bool:
 
 
 def run_hook_event(argv: Sequence[str], env: Dict[str, str], api: Any = None, stdout: Any = None) -> int:
-    """Entry for ``herdr-team hook-event <event>``; returns 0 in every case that is not a bug.
+    """Entry for ``herdr-synapse hook-event <event>``; returns 0 in every case that is not a bug.
 
     Prints ``{"event","pane_id","team"|null,"changes":[...],"skipped":...}``
     as one JSON line on ``stdout``. ``api`` may be injected by tests.
@@ -785,7 +785,7 @@ def stop_decision(layout: Layout, team: str, member: str, stdin_payload: Dict[st
         return 0, ""
     count = len(unread)
     span = "seq {}".format(seqs[0]) if len(seqs) == 1 else ("seq {}-{}".format(seqs[0], seqs[-1]) if seqs else "seq ?")
-    message = "{} {} unread board post{} for {} ({}). Run: herdr-team board --new, then herdr-team ack, then finish.".format(
+    message = "{} {} unread board post{} for {} ({}). Run: herdr-synapse board --new, then herdr-synapse ack, then finish.".format(
         STOP_MARKER, count, "" if count == 1 else "s", member, span,
     )
     return 2, message

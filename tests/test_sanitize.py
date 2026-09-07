@@ -244,7 +244,7 @@ class MarkerTests(unittest.TestCase):
         self.assertTrue(sanitize.is_marker_text("[herdr-team"))
 
     def test_nonce_anywhere(self):
-        self.assertTrue(sanitize.is_marker_text("Run: herdr-team board --new [n17]"))
+        self.assertTrue(sanitize.is_marker_text("Run: herdr-synapse board --new [n17]"))
         self.assertTrue(sanitize.is_marker_text("x [n0] y"))
         self.assertFalse(sanitize.is_marker_text("x [n] y"))
         self.assertFalse(sanitize.is_marker_text("x [nx1] y"))

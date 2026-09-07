@@ -98,8 +98,8 @@ class SettingsCase(unittest.TestCase):
 
 class EntryShapeTests(SettingsCase):
     def test_command_string_matches_herdr_quoting(self):
-        path = Path("/Users/some one/.claude/hooks/herdr-team-hook.sh")
-        self.assertEqual(cs.hook_command(path, "SessionStart"), "bash '/Users/some one/.claude/hooks/herdr-team-hook.sh' session-start")
+        path = Path("/Users/some one/.claude/hooks/herdr-synapse-hook.sh")
+        self.assertEqual(cs.hook_command(path, "SessionStart"), "bash '/Users/some one/.claude/hooks/herdr-synapse-hook.sh' session-start")
         self.assertEqual(cs.hook_command(Path("/a'b/h.sh"), "Stop"), "bash '/a'\"'\"'b/h.sh' stop")
         self.assertEqual(cs.shell_single_quote(HERDR_HOOK_PATH), "'" + HERDR_HOOK_PATH + "'")
 
@@ -369,25 +369,25 @@ class CheckAndScanTests(SettingsCase):
 
 class ShimFileTests(SettingsCase):
     def test_render_bakes_cli_path_and_keeps_marker(self):
-        text = cs.render_shim(Path("/opt/x y/bin/herdr-team"))
-        self.assertIn("HERDR_TEAM_CLI='/opt/x y/bin/herdr-team'", text)
+        text = cs.render_shim(Path("/opt/x y/bin/herdr-synapse"))
+        self.assertIn("HERDR_TEAM_CLI='/opt/x y/bin/herdr-synapse'", text)
         self.assertNotIn(cs.CLI_PLACEHOLDER, text)
         self.assertIn(cs.SHIM_MARKER + str(cs.SHIM_VERSION), text)
         self.assertTrue(text.startswith("#!/bin/sh\n"))
 
     def test_write_shim_mode_and_foreign_refusal(self):
         hooks_dir = self.claude_dir / "hooks"
-        target = cs.write_shim(hooks_dir, Path("/opt/herdr-team"))
+        target = cs.write_shim(hooks_dir, Path("/opt/herdr-synapse"))
         self.assertEqual(target, hooks_dir / cs.HOOK_FILE_NAME)
         self.assertEqual(stat.S_IMODE(os.stat(target).st_mode), 0o700)
         self.assertTrue(cs.shim_is_ours(target))
         # rewrite is fine for our own file
-        cs.write_shim(hooks_dir, Path("/opt/other/herdr-team"))
-        self.assertIn("/opt/other/herdr-team", target.read_text(encoding="utf-8"))
+        cs.write_shim(hooks_dir, Path("/opt/other/herdr-synapse"))
+        self.assertIn("/opt/other/herdr-synapse", target.read_text(encoding="utf-8"))
         # a foreign file with the same name is never overwritten or removed
         target.write_text("#!/bin/sh\necho mine\n", encoding="utf-8")
         with self.assertRaises(HerdrTeamError) as ctx:
-            cs.write_shim(hooks_dir, Path("/opt/herdr-team"))
+            cs.write_shim(hooks_dir, Path("/opt/herdr-synapse"))
         self.assertEqual(ctx.exception.code, "hook_file_foreign")
         self.assertFalse(cs.remove_shim(hooks_dir))
         self.assertTrue(target.exists())
@@ -395,7 +395,7 @@ class ShimFileTests(SettingsCase):
     def test_remove_shim_removes_only_ours(self):
         hooks_dir = self.claude_dir / "hooks"
         self.assertFalse(cs.remove_shim(hooks_dir))
-        cs.write_shim(hooks_dir, Path("/opt/herdr-team"))
+        cs.write_shim(hooks_dir, Path("/opt/herdr-synapse"))
         self.assertTrue(cs.remove_shim(hooks_dir))
         self.assertFalse((hooks_dir / cs.HOOK_FILE_NAME).exists())
 

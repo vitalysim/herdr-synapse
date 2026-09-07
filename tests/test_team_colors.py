@@ -100,7 +100,7 @@ class DaemonAssignsTheSlotTests(unittest.TestCase):
             d, api, _clock = make_daemon(ts)
             d.on_connected()
             d.heartbeat()
-            stamps = [p for m, p in api.calls if m == "pane.report_metadata" and p.get("source") == "herdr-team:roster"]
+            stamps = [p for m, p in api.calls if m == "pane.report_metadata" and p.get("source") == "herdr-synapse:roster"]
             self.assertTrue(stamps)
             self.assertEqual(stamps[0]["tokens"], identity_tokens("alpha", "reviewer", 1))
             self.assertNotIn("ttl_ms", stamps[0])  # the colour is identity, it must not fade
@@ -109,7 +109,7 @@ class DaemonAssignsTheSlotTests(unittest.TestCase):
         with TempState() as ts:
             d, api, _clock = make_daemon(ts)
             d._clear_tokens("w2:p1")
-            cleared = [p for m, p in api.calls if m == "pane.report_metadata" and p.get("source") == "herdr-team:roster"]
+            cleared = [p for m, p in api.calls if m == "pane.report_metadata" and p.get("source") == "herdr-synapse:roster"]
             self.assertEqual(cleared[0]["tokens"], identity_tokens(None, None))
 
     def test_a_busy_roster_lock_defers_the_slot_rather_than_failing(self):

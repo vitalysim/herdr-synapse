@@ -1,4 +1,4 @@
-"""`herdr-team kinds list|trust|untrust`: the owner override behind gate 4."""
+"""`herdr-synapse kinds list|trust|untrust`: the owner override behind gate 4."""
 from __future__ import annotations
 
 import io

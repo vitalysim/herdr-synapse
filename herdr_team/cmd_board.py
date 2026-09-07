@@ -144,7 +144,7 @@ def env_of(args: argparse.Namespace) -> Dict[str, str]:
 
 
 def cli_path() -> str:
-    return os.fspath(_paths.plugin_root() / "bin" / "herdr-team")
+    return os.fspath(_paths.plugin_root() / "bin" / "herdr-synapse")
 
 
 # --------------------------------------------------------------------------
@@ -518,7 +518,7 @@ def notifier_state(session: SessionPaths) -> str:
 def require_daemon(session: SessionPaths) -> None:
     status = daemon_status(session)
     if not status["alive"]:
-        raise HerdrTeamError("daemon_down", "the team notifier is not running ({}); run: herdr-team daemon start".format(status.get("reason")), EXIT_DAEMON_DOWN)
+        raise HerdrTeamError("daemon_down", "the team notifier is not running ({}); run: herdr-synapse daemon start".format(status.get("reason")), EXIT_DAEMON_DOWN)
 
 
 def enqueue_job(team: TeamPaths, kind: str, member: Optional[str], author: Author, force: bool = False, extra: Optional[Dict[str, Any]] = None) -> str:
@@ -779,7 +779,7 @@ def resolve_team(args: argparse.Namespace, layout: Layout, author: Optional[Auth
         if len(known) == 1:
             name = known[0]
         elif len(known) > 1:
-            raise HerdrTeamError("team_ambiguous", "several teams in this session; pass --team or run: herdr-team use <team>", EXIT_REFUSED, {"teams": known})
+            raise HerdrTeamError("team_ambiguous", "several teams in this session; pass --team or run: herdr-synapse use <team>", EXIT_REFUSED, {"teams": known})
         elif required:
             raise HerdrTeamError("team_not_found", "no team exists in this session", EXIT_REFUSED, {"teams": []})
         else:
@@ -1145,7 +1145,7 @@ def _run_post(args: argparse.Namespace) -> int:
     attached = [s.committed for s in staged if s.committed]
     notifier = notifier_state(layout.session)
     if notifier == "offline":
-        warn(args, "notifier offline: nudges are queued until the daemon runs (herdr-team daemon start)")
+        warn(args, "notifier offline: nudges are queued until the daemon runs (herdr-synapse daemon start)")
     payload = {
         "seq": seq, "team": team_name, "notifier": notifier, "to": to, "to_role": to_role, "kind": args.kind,
         "author": {"name": author.name, "via": author.via, "verified": bool(author.verified)},
@@ -1331,7 +1331,7 @@ def _run_board(args: argparse.Namespace) -> int:
         if args.new or args.peek:
             footer += " for {} (cursor {} -> {})".format(reader, cursor_before, highest if advance else cursor_before)
         if truncated:
-            footer += "; more pending, run: herdr-team board --new"
+            footer += "; more pending, run: herdr-synapse board --new"
         out.write(text + "\n" + footer + "\n")
     out.flush()
     if advance:
@@ -1432,7 +1432,7 @@ def _run_say(args: argparse.Namespace) -> int:
     name = str(member["name"])
     kind = str(member.get("kind") or "")
     if not (bool(member.get("verified_kind")) or _roster.kind_trusted(store.read_json(layout.session.kinds_json, default=None), kind)):
-        raise HerdrTeamError("kind_unverified", "{} is a {} agent and that kind is not trusted for delivery yet; run: herdr-team kinds trust {}".format(name, kind, kind), EXIT_REFUSED, {"member": name, "kind": kind})
+        raise HerdrTeamError("kind_unverified", "{} is a {} agent and that kind is not trusted for delivery yet; run: herdr-synapse kinds trust {}".format(name, kind, kind), EXIT_REFUSED, {"member": name, "kind": kind})
     text = prepare_say_text(args.text, args.force)
     require_daemon(layout.session)
     record = build_record(author, [name], "direct", text, urgent=False, socket_path=os.fspath(layout.socket), from_gen=member_generation(doc, author))
@@ -1441,7 +1441,7 @@ def _run_say(args: argparse.Namespace) -> int:
     job = enqueue_job(team, "say", name, author, force=args.force, extra={"seq": seq})
     outcome_record = wait_for_typed(team, seq, args.timeout) if args.wait else None
     if args.wait and outcome_record is None:
-        raise HerdrTeamError("say_timeout", "#{} was recorded and job {} queued for {}, but no typed outcome arrived within {:g}s (see herdr-team notifier stats)".format(seq, job, name, args.timeout), EXIT_REFUSED, {"seq": seq, "job": job, "member": name, "timeout_s": args.timeout})
+        raise HerdrTeamError("say_timeout", "#{} was recorded and job {} queued for {}, but no typed outcome arrived within {:g}s (see herdr-synapse notifier stats)".format(seq, job, name, args.timeout), EXIT_REFUSED, {"seq": seq, "job": job, "member": name, "timeout_s": args.timeout})
     payload: Dict[str, Any] = {
         "seq": seq, "team": team_name, "member": name, "job": job, "force": bool(args.force), "text": text,
         "author": {"name": author.name, "via": author.via, "verified": bool(author.verified)},

@@ -99,7 +99,7 @@ def require_human(layout: Layout, team: str, author: Author, action: str) -> Non
     """Charter, rules and instructions writes carry the operator's authority.
 
     The operator passes, and so does a member the operator has explicitly
-    delegated to (``herdr-team operator grant``), which is what lets an agent
+    delegated to (``herdr-synapse operator grant``), which is what lets an agent
     build and run a team end to end. A delegated write is audited as one, so
     the trail says who really typed it. Everything else is
     ``author_mismatch``, also audited.
@@ -482,7 +482,7 @@ def set_instructions(layout: Layout, team: str, author: Author, member_name: str
     if announce:
         seq = _roster.append_system_record(
             team_paths, "instructions_updated",
-            "{}'s instructions updated: {} (read them: herdr-team instructions {})".format(member.name, what, member.name),
+            "{}'s instructions updated: {} (read them: herdr-synapse instructions {})".format(member.name, what, member.name),
             to=[member.name, "all"],
             extra={"urgent": bool(urgent), "member": member.name, "chars": len(stored), "instructions_seq": revision},
             socket=os.fspath(layout.socket),
@@ -581,7 +581,7 @@ def set_rules(layout: Layout, team: str, author: Author, text: Optional[str], fi
     headline = _one_line(body, 200) if body else "the team rules were cleared"
     seq = _roster.append_system_record(
         team_paths, "knowledge_updated",
-        "team rules updated: {} (full text: herdr-team knowledge)".format(headline),
+        "team rules updated: {} (full text: herdr-synapse knowledge)".format(headline),
         to=["all"], extra={"urgent": bool(urgent), "chars": len(body), "rules_seq": revision}, socket=os.fspath(layout.socket),
     )
     audit(layout, team, "knowledge_set", author, {"chars": len(body), "urgent": bool(urgent), "rules_seq": revision})
@@ -645,7 +645,7 @@ def add_finding(layout: Layout, team: str, author: Author, text: str) -> Dict[st
     # member, addressed to everyone, and never phrased as an instruction.
     seq = _roster.append_system_record(
         team_paths, "knowledge_finding",
-        "{} recorded a finding: {} (all of them: herdr-team knowledge)".format(author.name, body),
+        "{} recorded a finding: {} (all of them: herdr-synapse knowledge)".format(author.name, body),
         # Not a "text" key: ``extra`` is merged into the record and would clobber it.
         to=["all"], extra={"author": author.name, "finding": body}, socket=os.fspath(layout.socket),
     )

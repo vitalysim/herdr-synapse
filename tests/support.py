@@ -151,7 +151,7 @@ def fake_process_info(pane_id: str, shell_pid: Optional[int] = 4000, fg_pgid: Op
     }
 
 
-def fake_plugin_info(plugin_id: str = "herdr-team", enabled: bool = True, root: str = "/x/herdr-team", warnings: Optional[List[str]] = None) -> Dict[str, Any]:
+def fake_plugin_info(plugin_id: str = "herdr-synapse", enabled: bool = True, root: str = "/x/herdr-synapse", warnings: Optional[List[str]] = None) -> Dict[str, Any]:
     """One ``InstalledPluginInfo`` row of ``plugin.list``."""
     return {
         "plugin_id": plugin_id, "name": plugin_id, "version": "0.1.0", "description": None,
@@ -161,7 +161,7 @@ def fake_plugin_info(plugin_id: str = "herdr-team", enabled: bool = True, root: 
     }
 
 
-def fake_plugin_pane_opened(entrypoint: str, pane: Dict[str, Any], plugin_id: str = "herdr-team", kind: str = "opened") -> Dict[str, Any]:
+def fake_plugin_pane_opened(entrypoint: str, pane: Dict[str, Any], plugin_id: str = "herdr-synapse", kind: str = "opened") -> Dict[str, Any]:
     """``plugin_pane_opened`` / ``plugin_pane_focused``: the pane is at ``plugin_pane.pane``."""
     return {"type": "plugin_pane_" + kind, "plugin_pane": {"plugin_id": plugin_id, "entrypoint": entrypoint, "pane": dict(pane)}}
 
@@ -299,7 +299,7 @@ def _plugin_pane_open(params: Dict[str, Any]) -> Dict[str, Any]:
     if params.get("placement") == "popup":
         return {"type": "ok"}
     pane = fake_pane("w1:p9", "term_plugin", None, "Team console", "unknown")
-    return fake_plugin_pane_opened(str(params.get("entrypoint") or "console"), pane, str(params.get("plugin_id") or "herdr-team"))
+    return fake_plugin_pane_opened(str(params.get("entrypoint") or "console"), pane, str(params.get("plugin_id") or "herdr-synapse"))
 
 
 class FakeError(Exception):

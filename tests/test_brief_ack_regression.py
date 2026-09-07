@@ -1,7 +1,7 @@
 """Sandbox regression (2026-09-05): an ack at an unchanged cursor seq was invisible to the daemon.
 
 The join sets a member's cursor at the board max. When nothing is posted before the
-briefing lands, ``herdr-team ack`` moves the cursor from N to N, the monotone store did
+briefing lands, ``herdr-synapse ack`` moves the cursor from N to N, the monotone store did
 not rewrite the file, its ``updated`` stayed at the join time, and the daemon concluded
 "did not ack the briefing; re-briefing once" 90 s later. ``touch`` makes the ack a write.
 """
@@ -58,7 +58,7 @@ class BriefAckRegressionTests(unittest.TestCase):
         brief_seq = team.rt("alpha-reviewer").brief_seq
         # empty board: the join cursor already equals the board max, so the ack moves nothing
         self.assertEqual(store.Cursors(self.ts.team).get("alpha-reviewer")["seq"], brief_seq or 0)
-        store.Cursors(self.ts.team).advance("alpha-reviewer", brief_seq or 0, "term_r1", "cli", touch=True)  # what `herdr-team ack` does
+        store.Cursors(self.ts.team).advance("alpha-reviewer", brief_seq or 0, "term_r1", "cli", touch=True)  # what `herdr-synapse ack` does
         self.clock.advance(1)
         self.d.tick()
         self.assertNotIn("alpha-reviewer", team.pending, self.d.logged)

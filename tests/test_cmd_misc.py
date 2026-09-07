@@ -111,7 +111,7 @@ class DoctorTests(unittest.TestCase):
             self.assertEqual(payload["herdr"]["version"], "0.8.2")
             self.assertEqual(payload["herdr"]["protocol"], 20)
             self.assertEqual(payload["herdr"]["bin"], "/opt/fake/herdr")
-            self.assertTrue(payload["pointer"].endswith("plugins/config/herdr-team/state-dir"))
+            self.assertTrue(payload["pointer"].endswith("plugins/config/herdr-synapse/state-dir"))
             self.assertTrue(payload["daemon"]["alive"])
             self.assertEqual(payload["daemon"]["pid"], os.getpid())
 
@@ -119,12 +119,12 @@ class DoctorTests(unittest.TestCase):
         with TempState() as ts:
             api = FakeApi()
             # The real CLI prints the socket envelope; run_json strips it.
-            api.set_cli_result(["plugin", "list", "--json"], {"type": "plugin_list", "plugins": [{"plugin_id": "herdr-team", "enabled": True, "plugin_root": "/x/herdr-team", "warnings": ["manifest moved"]}]}, "cli:plugin")
+            api.set_cli_result(["plugin", "list", "--json"], {"type": "plugin_list", "plugins": [{"plugin_id": "herdr-synapse", "enabled": True, "plugin_root": "/x/herdr-synapse", "warnings": ["manifest moved"]}]}, "cli:plugin")
             code, payload, _ = json_out(run_cli(["--json", "doctor"], ts.env, api))
             self.assertFalse(api.runs)
             code, payload, _ = json_out(run_cli(["--json", "doctor"], ts.env_with(HERDR_TEAM_ALLOW_HERDR="1"), api))
             self.assertEqual(api.runs, [["plugin", "list", "--json"]])
-            self.assertEqual(payload["plugin"], {"installed": True, "enabled": True, "path": "/x/herdr-team", "warnings": ["manifest moved"], "source": "plugin list --json"})
+            self.assertEqual(payload["plugin"], {"installed": True, "enabled": True, "path": "/x/herdr-synapse", "warnings": ["manifest moved"], "source": "plugin list --json"})
             self.assertIn("plugin: manifest moved", payload["warnings"])
 
 
@@ -135,7 +135,7 @@ class SetupAndKeys(unittest.TestCase):
             self.assertEqual(code, 0, err)
             self.assertTrue(payload["required"].startswith(PLAN_SIDEBAR_SNIPPET))
             self.assertIn('{ token = "$team_c1", fg = "#fb4934" }', payload["required"])
-            self.assertIn("[[keys.command]]\nkey = \"prefix+t\"\ntype = \"plugin_action\"\ncommand = \"herdr-team.team-up\"", payload["required"])
+            self.assertIn("[[keys.command]]\nkey = \"prefix+t\"\ntype = \"plugin_action\"\ncommand = \"herdr-synapse.team-up\"", payload["required"])
             self.assertIn('status_indicators = "symbols"', payload["optional"])
             self.assertIn("sidebar_width", payload["optional"])
             self.assertTrue(payload["notes"])
@@ -154,7 +154,7 @@ class SetupAndKeys(unittest.TestCase):
             snippet = payload["snippet"]
             self.assertEqual(snippet.count("[[keys.command]]"), 6)
             self.assertEqual(snippet.count('type = "plugin_action"'), 6)
-            for action in ("herdr-team.team-up", "herdr-team.compose", "herdr-team.console", "herdr-team.toggle-view", "herdr-team.usage"):
+            for action in ("herdr-synapse.team-up", "herdr-synapse.compose", "herdr-synapse.console", "herdr-synapse.toggle-view", "herdr-synapse.usage"):
                 self.assertIn('command = "{}"'.format(action), snippet)
             code, out, _ = run_cli(["keys", "print"], ts.env)
             self.assertEqual(out.strip(), snippet.strip())
@@ -191,12 +191,12 @@ class InstallCli(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertTrue(payload["dry_run"])
             self.assertFalse(payload["created"])
-            self.assertEqual(payload["path"], os.fspath(ts.home / ".local" / "bin" / "herdr-team"))
-            self.assertTrue(payload["target"].endswith("bin/herdr-team"))
-            self.assertFalse((ts.home / ".local" / "bin" / "herdr-team").exists())
+            self.assertEqual(payload["path"], os.fspath(ts.home / ".local" / "bin" / "herdr-synapse"))
+            self.assertTrue(payload["target"].endswith("bin/herdr-synapse"))
+            self.assertFalse((ts.home / ".local" / "bin" / "herdr-synapse").exists())
             code, payload, _ = json_out(run_cli(["--json", "install-cli", "--yes"], ts.env))
             self.assertTrue(payload["created"])
-            link = ts.home / ".local" / "bin" / "herdr-team"
+            link = ts.home / ".local" / "bin" / "herdr-synapse"
             self.assertTrue(link.is_symlink())
             self.assertEqual(os.path.realpath(link), os.path.realpath(payload["target"]))
             code, payload, _ = json_out(run_cli(["--json", "install-cli", "--yes"], ts.env))
@@ -212,7 +212,7 @@ class InstallCli(unittest.TestCase):
         with TempState() as ts:
             target = ts.home / "bin"
             target.mkdir()
-            (target / "herdr-team").write_text("#!/bin/sh\n")
+            (target / "herdr-synapse").write_text("#!/bin/sh\n")
             code, _, err = json_out(run_cli(["--json", "install-cli", "--yes", "--dir", os.fspath(target)], ts.env))
             self.assertEqual(code, 1)
             self.assertEqual(err["code"], "path_exists")
@@ -272,7 +272,7 @@ class GcAndPrune(unittest.TestCase):
 class ViewAndTeardown(unittest.TestCase):
     def test_view_request_shape(self):
         request = cmd_misc.view_request(["alpha"])
-        self.assertEqual(request["source"], "plugin:herdr-team")
+        self.assertEqual(request["source"], "plugin:herdr-synapse")
         self.assertEqual(request["label"], "team:alpha")
         self.assertEqual(request["filter"], {"op": "any", "filters": [{"op": "eq", "field": {"token": "team"}, "value": "alpha"}, {"op": "in", "field": "status", "values": ["blocked"]}]})
         self.assertEqual(request["sort"][0], {"field": "attention", "order": "desc"})
@@ -301,8 +301,8 @@ class ViewAndTeardown(unittest.TestCase):
             api.set_response("agent.view.set", set_view)
             code, payload, err = json_out(run_cli(["--json", "view", "on"], ts.env, api))
             self.assertEqual(code, 0, err)
-            self.assertEqual(payload, {"view": "on", "source": "plugin:herdr-team", "label": "team:alpha", "owner": "none", "previous": "off"})
-            self.assertEqual(state["source"], "plugin:herdr-team")
+            self.assertEqual(payload, {"view": "on", "source": "plugin:herdr-synapse", "label": "team:alpha", "owner": "none", "previous": "off"})
+            self.assertEqual(state["source"], "plugin:herdr-synapse")
             self.assertEqual(store.read_json(ts.session.view_json)["view"], "on")
             code, payload, _ = json_out(run_cli(["--json", "view", "toggle"], ts.env, api))
             self.assertEqual(payload["view"], "off")
@@ -316,7 +316,7 @@ class ViewAndTeardown(unittest.TestCase):
             code, payload, _ = json_out(run_cli(["--json", "view", "on", "--force"], ts.env, api))
             self.assertEqual(code, 0)
             self.assertEqual(payload["owner"], "foreign")
-            api.set_error("agent.view.clear", "plugin_disabled", "plugin herdr-team is disabled")
+            api.set_error("agent.view.clear", "plugin_disabled", "plugin herdr-synapse is disabled")
             code, _, err = json_out(run_cli(["--json", "view", "on"], ts.env, api))
             self.assertEqual(err["code"], "plugin_disabled")
 

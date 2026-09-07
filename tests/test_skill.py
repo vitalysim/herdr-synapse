@@ -1,4 +1,4 @@
-"""``skills/herdr-team/SKILL.md`` contract (plan 9.1) and ``skill install|check`` (plan 9.3)."""
+"""``skills/herdr-synapse/SKILL.md`` contract (plan 9.1) and ``skill install|check`` (plan 9.3)."""
 
 from __future__ import annotations
 
@@ -39,10 +39,10 @@ class SkillFileTests(unittest.TestCase):
 
     def test_frontmatter_name_and_gated_description(self):
         fm = self.frontmatter()
-        self.assertEqual(fm["name"], "herdr-team")
+        self.assertEqual(fm["name"], "herdr-synapse")
         description = fm["description"]
         self.assertIn("HERDR_ENV=1", description)
-        self.assertIn("herdr-team me", description)
+        self.assertIn("herdr-synapse me", description)
         self.assertIn("[herdr-team", description)
         self.assertRegex(description, r"[Oo]nly when|[Oo]nly if|[Oo]nly use")
 
@@ -50,7 +50,7 @@ class SkillFileTests(unittest.TestCase):
         self.assertLessEqual(len(self.lines), 150, "SKILL.md body must stay at or under 150 lines")
         import re
 
-        found = re.search(r"<!-- herdr-team skill v(\d+), cli >= ([0-9]+\.[0-9]+) -->", self.text)
+        found = re.search(r"<!-- herdr-synapse skill v(\d+), cli >= ([0-9]+\.[0-9]+) -->", self.text)
         self.assertIsNotNone(found, "SKILL.md must carry the version marker")
         assert found is not None
         self.assertEqual(int(found.group(1)), SKILL_VERSION)
@@ -63,8 +63,8 @@ class SkillFileTests(unittest.TestCase):
         self.assertLessEqual(floor, current, "the marker's cli floor is newer than the plugin version")
 
     def test_gate_and_commands(self):
-        self.assertIn('test "${HERDR_ENV:-}" = 1 && herdr-team me', self.text)
-        for command in ("herdr-team me", "herdr-team who", "herdr-team charter", "herdr-team board --new", "herdr-team post", "herdr-team task", "herdr-team ack"):
+        self.assertIn('test "${HERDR_ENV:-}" = 1 && herdr-synapse me', self.text)
+        for command in ("herdr-synapse me", "herdr-synapse who", "herdr-synapse charter", "herdr-synapse board --new", "herdr-synapse post", "herdr-synapse task", "herdr-synapse ack"):
             self.assertIn(command, self.text, command)
         self.assertIn("--help", self.text)
         self.assertRegex(self.text, r"--help[^\n]*authority")
@@ -145,15 +145,15 @@ class SkillInstallTests(SkillInstallCase):
         self.assertEqual(code, 0, payload)
         self.assertTrue(payload["ok"], payload)
         self.assertEqual(payload["version"], SKILL_VERSION)
-        canonical = self.path(".agents", "skills", "herdr-team", "SKILL.md")
+        canonical = self.path(".agents", "skills", "herdr-synapse", "SKILL.md")
         self.assertEqual(payload["canonical"], os.fspath(canonical))
         self.assertEqual(canonical.read_text(encoding="utf-8"), self.source)
         self.assertFalse(canonical.parent.is_symlink())
-        claude_copy = self.path(".claude", "skills", "herdr-team", "SKILL.md")
+        claude_copy = self.path(".claude", "skills", "herdr-synapse", "SKILL.md")
         self.assertTrue(claude_copy.is_file() and not claude_copy.parent.is_symlink(), "real copy in ~/.claude/skills")
         self.assertEqual(claude_copy.read_text(encoding="utf-8"), self.source)
         for agent in (".codex", ".gemini"):
-            link = self.path(agent, "skills", "herdr-team")
+            link = self.path(agent, "skills", "herdr-synapse")
             self.assertTrue(link.is_symlink(), agent)
             self.assertEqual(Path(os.path.realpath(link)), Path(os.path.realpath(canonical.parent)))
             self.assertEqual((link / "SKILL.md").read_text(encoding="utf-8"), self.source)
@@ -162,9 +162,9 @@ class SkillInstallTests(SkillInstallCase):
         by_path = {e["path"]: e for e in payload["installed"]}
         self.assertEqual(by_path[os.fspath(canonical)]["kind"], "canonical")
         self.assertEqual(by_path[os.fspath(claude_copy)]["kind"], "copy")
-        self.assertEqual(by_path[os.fspath(self.path(".codex", "skills", "herdr-team"))]["kind"], "symlink")
+        self.assertEqual(by_path[os.fspath(self.path(".codex", "skills", "herdr-synapse"))]["kind"], "symlink")
         skipped = {s["path"]: s["reason"] for s in payload["skipped"]}
-        self.assertEqual(skipped, {os.fspath(self.path(".copilot", "skills", "herdr-team")): "agent_dir_missing"})
+        self.assertEqual(skipped, {os.fspath(self.path(".copilot", "skills", "herdr-synapse")): "agent_dir_missing"})
         self.assertEqual(payload["stale"], [])
 
     def test_install_is_idempotent_and_check_passes(self):
@@ -187,7 +187,7 @@ class SkillInstallTests(SkillInstallCase):
         self.assertTrue(all(s["reason"] in ("missing", "agent_dir_missing") for s in payload["skipped"]), payload["skipped"])
         self.assertEqual(payload["installed"], [])
         self.skill("install")
-        stale_copy = self.path(".claude", "skills", "herdr-team", "SKILL.md")
+        stale_copy = self.path(".claude", "skills", "herdr-synapse", "SKILL.md")
         stale_copy.write_text(self.source.replace("skill v{}".format(SKILL_VERSION), "skill v0", 1) + "\n# edited\n", encoding="utf-8")
         code, payload, _ = self.skill("check")
         self.assertFalse(payload["ok"])
@@ -212,18 +212,18 @@ class SkillInstallTests(SkillInstallCase):
 
     def test_foreign_directory_refused_without_force(self):
         self.agent_dirs(".claude")
-        foreign = self.path(".agents", "skills", "herdr-team")
+        foreign = self.path(".agents", "skills", "herdr-synapse")
         foreign.mkdir(parents=True)
-        (foreign / "SKILL.md").write_text("---\nname: herdr-team\n---\nsomeone else's skill\n", encoding="utf-8")
+        (foreign / "SKILL.md").write_text("---\nname: herdr-synapse\n---\nsomeone else's skill\n", encoding="utf-8")
         (foreign / "extra.txt").write_text("keep", encoding="utf-8")
         code, payload, _ = self.skill("install")
         self.assertEqual(code, 0)
         self.assertFalse(payload["ok"])
         self.assertIn({"path": os.fspath(foreign), "reason": "foreign"}, payload["skipped"])
-        self.assertEqual((foreign / "SKILL.md").read_text(encoding="utf-8"), "---\nname: herdr-team\n---\nsomeone else's skill\n")
+        self.assertEqual((foreign / "SKILL.md").read_text(encoding="utf-8"), "---\nname: herdr-synapse\n---\nsomeone else's skill\n")
         self.assertTrue((foreign / "extra.txt").exists())
         # the claude copy still lands; only the foreign target is skipped
-        self.assertTrue(self.path(".claude", "skills", "herdr-team", "SKILL.md").is_file())
+        self.assertTrue(self.path(".claude", "skills", "herdr-synapse", "SKILL.md").is_file())
         code, payload, _ = self.skill("check")
         self.assertFalse(payload["ok"])
         self.assertIn("foreign", {s["reason"] for s in payload["skipped"]})
@@ -237,7 +237,7 @@ class SkillInstallTests(SkillInstallCase):
         elsewhere = self.tmp / "elsewhere"
         elsewhere.mkdir()
         (elsewhere / "SKILL.md").write_text("other\n", encoding="utf-8")
-        link = self.path(".codex", "skills", "herdr-team")
+        link = self.path(".codex", "skills", "herdr-synapse")
         link.parent.mkdir(parents=True)
         os.symlink(os.fspath(elsewhere), os.fspath(link))
         code, payload, _ = self.skill("install")
@@ -246,7 +246,7 @@ class SkillInstallTests(SkillInstallCase):
         self.assertEqual(Path(os.path.realpath(link)), Path(os.path.realpath(elsewhere)))
         code, payload, _ = self.skill("install", "--force")
         self.assertTrue(payload["ok"], payload)
-        self.assertEqual(Path(os.path.realpath(link)), Path(os.path.realpath(self.path(".agents", "skills", "herdr-team"))))
+        self.assertEqual(Path(os.path.realpath(link)), Path(os.path.realpath(self.path(".agents", "skills", "herdr-synapse"))))
         self.assertEqual((elsewhere / "SKILL.md").read_text(encoding="utf-8"), "other\n", "the link target is never touched")
 
     def test_symlinked_canonical_is_foreign(self):
@@ -254,7 +254,7 @@ class SkillInstallTests(SkillInstallCase):
         elsewhere = self.tmp / "elsewhere"
         elsewhere.mkdir()
         (elsewhere / "SKILL.md").write_text(self.source, encoding="utf-8")
-        canonical = self.path(".agents", "skills", "herdr-team")
+        canonical = self.path(".agents", "skills", "herdr-synapse")
         canonical.parent.mkdir(parents=True)
         os.symlink(os.fspath(elsewhere), os.fspath(canonical))
         code, payload, _ = self.skill("install")
@@ -264,7 +264,7 @@ class SkillInstallTests(SkillInstallCase):
 
     def test_old_copy_where_a_symlink_belongs_is_reported_stale(self):
         self.agent_dirs(".gemini")
-        old = self.path(".gemini", "skills", "herdr-team")
+        old = self.path(".gemini", "skills", "herdr-synapse")
         old.mkdir(parents=True)
         (old / "SKILL.md").write_text(self.source, encoding="utf-8")
         code, payload, _ = self.skill("check")
@@ -278,7 +278,7 @@ class SkillInstallTests(SkillInstallCase):
         (other / ".claude").mkdir(parents=True)
         code, payload, _ = self.skill("install", home=other)
         self.assertTrue(payload["ok"])
-        self.assertTrue((other / ".agents" / "skills" / "herdr-team" / "SKILL.md").is_file())
+        self.assertTrue((other / ".agents" / "skills" / "herdr-synapse" / "SKILL.md").is_file())
         self.assertFalse(self.path(".agents").exists())
         code, out, err = run_cli(["skill", "check", "--home", os.fspath(other)], self.env)
         self.assertEqual(code, 0, err)
@@ -293,7 +293,7 @@ class SkillInstallTests(SkillInstallCase):
         self.assertEqual(code, 2)
 
     def test_version_marker_helper(self):
-        self.assertEqual(cmd_skill.skill_version_of("<!-- herdr-team skill v7, cli >= 0.3 -->"), 7)
+        self.assertEqual(cmd_skill.skill_version_of("<!-- herdr-synapse skill v7, cli >= 0.3 -->"), 7)
         self.assertIsNone(cmd_skill.skill_version_of("no marker"))
         self.assertEqual(cmd_skill.sha256("a"), "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb")
 

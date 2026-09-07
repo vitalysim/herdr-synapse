@@ -1,4 +1,4 @@
-"""``herdr-team export``: the board saved as a file that outlives the session."""
+"""``herdr-synapse export``: the board saved as a file that outlives the session."""
 
 from __future__ import annotations
 

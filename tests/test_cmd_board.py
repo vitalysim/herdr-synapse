@@ -577,7 +577,7 @@ class Helpers(unittest.TestCase):
         root = Path(__file__).resolve().parent.parent
         proc = subprocess.run([os.environ.get("PYTHON", "python3"), "-m", "herdr_team.cli", "--version"], cwd=os.fspath(root), stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, timeout=30, env=dict(os.environ, PYTHONPATH=os.fspath(root)))
         self.assertEqual(proc.returncode, 0, proc.stderr.decode())
-        self.assertIn(b"herdr-team", proc.stdout)
+        self.assertIn(b"herdr-synapse", proc.stdout)
 
 
 if __name__ == "__main__":

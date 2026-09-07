@@ -7,14 +7,14 @@ file), per member role, name, and brief; confirm screen; the popup exits
 and the action performs create, rename, label, tokens, briefing jobs, view.
 When teams exist, a target stage follows the selection: a numbered list of
 "add to team X" rows and "create a new team". Adding skips the charter stage
-and joins the selected agents through one ``herdr-team add`` each.
+and joins the selected agents through one ``herdr-synapse add`` each.
 Esc and Ctrl-C exit; 10 min idle watchdog; refreshes on ``who.json``.
 
 The state machine lives in ``tui_model`` (``PickerModel``,
 ``picker_apply_key``); this module reads ``agent.list`` once through
 ``api`` (plus on ``r``), marks agents already in a roster from the session's
 ``team.json`` files, runs the curses loop, and finally executes the
-``create`` spec through the ``herdr-team`` CLI so the join routine runs in
+``create`` spec through the ``herdr-synapse`` CLI so the join routine runs in
 exactly one code path.
 """
 
@@ -189,7 +189,7 @@ def load_charter_file(model: PickerModel, path: str) -> None:
 
 
 def create_args(spec: Dict[str, Any]) -> List[str]:
-    """``herdr-team create`` argv for a picker spec."""
+    """``herdr-synapse create`` argv for a picker spec."""
     args: List[str] = ["create", str(spec["team"])]
     if spec.get("charter"):
         args += ["--charter", str(spec["charter"])]
@@ -204,7 +204,7 @@ def create_args(spec: Dict[str, Any]) -> List[str]:
 
 
 def add_args(spec: Dict[str, Any], member: Dict[str, Any]) -> List[str]:
-    """``herdr-team add`` argv for one member of a picker spec in ``add`` mode (an existing team)."""
+    """``herdr-synapse add`` argv for one member of a picker spec in ``add`` mode (an existing team)."""
     args: List[str] = ["add", str(spec["team"]), str(member["target"]), "--role", str(member["role"]), "--as", str(member["name"])]
     if member.get("brief"):
         args += ["--brief", str(member["brief"])]
@@ -359,7 +359,7 @@ def action_failure_status(intent: Any, err: Dict[str, Any]) -> str:
         if code == "author_mismatch":
             return "setting a team folder is human only"
     if code == "daemon_down":
-        tail = "the goal is saved; only sending it needs the notifier" if intent.kind == "member_send_goal" else "start it with: herdr-team daemon start"
+        tail = "the goal is saved; only sending it needs the notifier" if intent.kind == "member_send_goal" else "start it with: herdr-synapse daemon start"
         return "the team notifier is not running ({})".format(tail)
     if code == "agent_name_taken":
         candidates = err.get("candidates")
@@ -404,7 +404,7 @@ def action_success_status(intent: Any, out: Any) -> str:
         return "briefing queued for {}; it lands once the agent is idle".format(member)
     if intent.kind == "member_resume":
         command = (out or {}).get("command") if isinstance(out, dict) else None
-        return "in a shell pane run: herdr-team resume {}  ({})".format(member, command or "no command")
+        return "in a shell pane run: herdr-synapse resume {}  ({})".format(member, command or "no command")
     if intent.kind == "member_remove":
         kept = " (its Herdr agent name was kept)" if args.get("keep_name") else ""
         return "{} removed from {}{}".format(member, args.get("team"), kept)
@@ -463,7 +463,7 @@ def execute_action(intent: Any, model: PickerModel, api: Any, layout: Optional[L
 
 
 def execute_add(spec: Dict[str, Any], env: Dict[str, str]) -> int:
-    """One ``herdr-team add`` per selected agent (the join routine briefs each); stops at the first refusal."""
+    """One ``herdr-synapse add`` per selected agent (the join routine briefs each); stops at the first refusal."""
     from herdr_team.console import run_cli
 
     added: List[Dict[str, Any]] = []
@@ -508,10 +508,10 @@ def run_args(args: argparse.Namespace) -> int:
     env = dict(args.env)
     layout = _cli.layout_for(args)
     if env.get("HERDR_PLUGIN_ENTRYPOINT_ID") != ENTRYPOINT and not getattr(args, "force", False):
-        raise HerdrTeamError("not_a_plugin_pane", "picker runs in the team-up popup; use `herdr-team ui picker` or pass --force", EXIT_REFUSED)
+        raise HerdrTeamError("not_a_plugin_pane", "picker runs in the team-up popup; use `herdr-synapse ui picker` or pass --force", EXIT_REFUSED)
     if not _paths.socket_allowed(layout.config_dir, layout.socket):
         # Plan 4.1 / PK-07: an unlisted socket makes the pane a no-op before any socket call.
-        sys.stderr.write("herdr-team picker skipped: socket not allowed\n")
+        sys.stderr.write("herdr-synapse picker skipped: socket not allowed\n")
         return EXIT_OK
     if not sys.stdout.isatty():
         raise HerdrTeamError("no_tty", "picker needs a terminal", EXIT_REFUSED)
@@ -526,7 +526,7 @@ def run_args(args: argparse.Namespace) -> int:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    parser = argparse.ArgumentParser(prog="herdr-team picker", allow_abbrev=False)
+    parser = argparse.ArgumentParser(prog="herdr-synapse picker", allow_abbrev=False)
     parser.add_argument("--team")
     parser.add_argument("--session")
     parser.add_argument("--socket")

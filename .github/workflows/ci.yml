@@ -23,6 +23,6 @@ jobs:
         run: python -m unittest discover -s tests
       - name: Launcher and manifest sanity
         run: |
-          sh -n bin/herdr-team bin/hook bin/herdr-team-sandbox
-          ./bin/herdr-team --version
-          ./bin/herdr-team --skill | head -n 3
+          sh -n bin/herdr-synapse bin/hook bin/herdr-synapse-sandbox
+          ./bin/herdr-synapse --version
+          ./bin/herdr-synapse --skill | head -n 3

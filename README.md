@@ -1,4 +1,4 @@
-<h1 align="center">herdr-team</h1>
+<h1 align="center">herdr-synapse</h1>
 
 <p align="center">
   Teams of coding agents inside one <a href="https://github.com/herdrdev/herdr">Herdr</a> session.<br>
@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/vitalysim/herdr-team/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/vitalysim/herdr-team/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/vitalysim/herdr-synapse/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/vitalysim/herdr-synapse/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="Herdr 0.8.2+" src="https://img.shields.io/badge/herdr-0.8.2%2B-blue">
   <img alt="Python 3.9+" src="https://img.shields.io/badge/python-3.9%2B%20stdlib-blue">
   <img alt="macOS and Linux" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey">
@@ -18,7 +18,7 @@
 Herdr hosts many coding agents in one terminal, but they cannot talk to each
 other. Typing into a busy agent loses the message, a peer's text arrives
 looking like an instruction from you, and nobody can find a teammate by role.
-`herdr-team` adds the missing layer as a plugin: it never touches the agent
+`herdr-synapse` adds the missing layer as a plugin: it never touches the agent
 processes, only the terminals they live in, so it works for every agent kind
 Herdr detects (Claude Code, Codex, OpenCode, Gemini, Cursor, Copilot, and the
 rest).
@@ -55,7 +55,7 @@ filter: [all]  to me  requests  human  system  (Tab cycles)   ? help
   its agent is running, not just to a pane, so two agents of one kind in one
   checkout are never mixed up after a restart, and an agent that crashed and
   came back is briefed again instead of silently wearing a member's name.
-  `herdr-team resume <name>` reopens a member's own conversation.
+  `herdr-synapse resume <name>` reopens a member's own conversation.
 - **Instructions you actually edit.** Every member gets a document with the
   same six sections: mission, scope, constraints, definition of done,
   handoffs, and notes you keep private. Edit the file in your repo and the
@@ -65,7 +65,7 @@ filter: [all]  to me  requests  human  system  (Tab cycles)   ? help
   and those documents are the operator's, and which caller counts as the
   operator is decided by the process tree, not by an environment variable an
   agent could unset. When you want an agent to build and run a team itself,
-  `herdr-team operator grant <name>` lends it that authority, with an expiry,
+  `herdr-synapse operator grant <name>` lends it that authority, with an expiry,
   a board announcement, and an audit line on every use.
 - **A shared board.** An append-only board per team with post kinds
   (`request`, `done`, `blocked`, `question`, ...), replies, references, and
@@ -78,11 +78,11 @@ filter: [all]  to me  requests  human  system  (Tab cycles)   ? help
 - **Direct typing when you need it.** `!name text` puts a line into that
   member's input box right now, recorded on the board, refused when a dialog
   is open. `!!name text` reaches a member mid-turn.
-- **A folder the team shares.** `herdr-team project set <path>` gives the
+- **A folder the team shares.** `herdr-synapse project set <path>` gives the
   team `.herdr-team/<team>/` in your project: the team's rules, one
   instructions file per member, and an `artifacts/` directory the agents own.
 - **Agents in one folder told apart.** Everyone in a checkout reads the same
-  `CLAUDE.md`. `herdr-team instructions <name> --set "…"` gives one member
+  `CLAUDE.md`. `herdr-synapse instructions <name> --set "…"` gives one member
   its own standing orders, delivered by name to every agent kind and injected
   into Claude's context at session start.
 - **Knowledge at a glance.** `prefix+f` shows every team's folder, rules,
@@ -93,15 +93,15 @@ filter: [all]  to me  requests  human  system  (Tab cycles)   ? help
   a file dropped in `artifacts/` by any agent or by you becomes a board post,
   so Claude sees it on its next prompt and every other kind on its next board
   read. Broadcasts do not interrupt anyone mid-turn unless you say `--urgent`.
-- **A knowledge base that outlives the session.** `herdr-team knowledge set`
+- **A knowledge base that outlives the session.** `herdr-synapse knowledge set`
   holds your DOs and DON'Ts and carries your authority; any agent can append
-  what it learned with `herdr-team knowledge add`, attributed and clearly
+  what it learned with `herdr-synapse knowledge add`, attributed and clearly
   marked as a peer note rather than a rule.
 - **The board saved with the team.** `<project>/.herdr-team/<team>/board.md`
   is kept current automatically, beside the team's rules and instructions, so
   the folder carries the conversation too. Git-ignored, since it is
   regenerated.
-- **A board you can keep.** `herdr-team export` (or `/export` in the console)
+- **A board you can keep.** `herdr-synapse export` (or `/export` in the console)
   saves the whole board, archived posts included, as a standalone markdown
   document, or as JSON/JSONL for anything that wants to read it back.
 - **Attribution and an audit trail.** Peer posts arrive framed as requests,
@@ -136,22 +136,22 @@ GitHub, so run `gh auth login` once if you have not.
 
 ```bash
 # 1. the plugin, and the CLI on your PATH
-herdr plugin install vitalysim/herdr-team                                      # checks out under ~/.config/herdr/plugins/github/
-~/.config/herdr/plugins/github/herdr-team-*/bin/herdr-team install-cli --yes   # symlinks herdr-team into ~/.local/bin
+herdr plugin install vitalysim/herdr-synapse                                      # checks out under ~/.config/herdr/plugins/github/
+~/.config/herdr/plugins/github/herdr-synapse-*/bin/herdr-synapse install-cli --yes   # symlinks herdr-synapse into ~/.local/bin
 
 # 2. the notifier (the startup hook only fires on a server start, so start it once by hand)
-herdr-team daemon start
+herdr-synapse daemon start
 
 # 3. teach your agents the board commands
-herdr-team skill install
+herdr-synapse skill install
 
 # 4. REQUIRED: allow delivery, once per Herdr session, for every kind you use
-herdr-team kinds trust claude
-herdr-team kinds trust codex
-herdr-team kinds trust opencode
+herdr-synapse kinds trust claude
+herdr-synapse kinds trust codex
+herdr-synapse kinds trust opencode
 
 # 5. Claude Code only: hooks, so a Claude member sees the board on every prompt
-herdr-team hooks install claude
+herdr-synapse hooks install claude
 ```
 
 **Step 4 is not optional.** Until a kind is trusted the notifier types nothing
@@ -163,7 +163,7 @@ reason is one line per member in the notifier log:
 clickhouse-hunt: claude-hunter-research held: kind_unverified
 ```
 
-`herdr-team kinds list` shows what is trusted. Trusting a kind is the one
+`herdr-synapse kinds list` shows what is trusted. Trusting a kind is the one
 deliberate step in the whole install: it says you have checked what typing into
 that kind actually does.
 
@@ -194,8 +194,8 @@ create a team.
 `~/.config/herdr/config.toml`, not the command itself:
 
 ```bash
-herdr-team setup --print-config          # then paste its output into your config
-herdr config check && herdr-team keys check
+herdr-synapse setup --print-config          # then paste its output into your config
+herdr config check && herdr-synapse keys check
 herdr server reload-config               # live, no restart
 ```
 
@@ -208,32 +208,51 @@ colour.
 ### Verify
 
 ```bash
-herdr plugin list                # herdr-team, enabled
-herdr-team kinds list            # every kind you use says "trusted" (step 4)
-herdr-team skill check           # the skill is installed and current
-herdr-team hooks check claude    # SessionStart=yes, UserPromptSubmit=yes, Stop=yes
-herdr-team daemon status         # notifier alive, socket, teams
-herdr-team doctor                # warns about anything missing, including stale sidebar rows
+herdr plugin list                # herdr-synapse, enabled
+herdr-synapse kinds list            # every kind you use says "trusted" (step 4)
+herdr-synapse skill check           # the skill is installed and current
+herdr-synapse hooks check claude    # SessionStart=yes, UserPromptSubmit=yes, Stop=yes
+herdr-synapse daemon status         # notifier alive, socket, teams
+herdr-synapse doctor                # warns about anything missing, including stale sidebar rows
 ```
 
 Then end to end, with two agents running:
 
 1. `prefix+t` and put them in a team.
 2. `prefix+u` opens the board console.
-3. Post `@<member> run herdr-team board --new, ack the charter, and reply with your status`.
+3. Post `@<member> run herdr-synapse board --new, ack the charter, and reply with your status`.
 4. The feed shows `✓nudged`, then `✓read` once the member reads it, then its reply.
-5. `herdr-team notifier stats` for delivery health; `wrong_target` must be 0.
+5. `herdr-synapse notifier stats` for delivery health; `wrong_target` must be 0.
 
 If a post seems to go nowhere, the notifier log says why in one line per
 attempt — `held: kind_unverified` (step 4 not done), `held: not_idle` (the
 member is working), `held: done_hold` (it just finished; the notifier waits a
 minute so you can read the result), `held: focused` (you are looking at that
-pane). `herdr-team nudge <name> --force` overrides all of them.
+pane). `herdr-synapse nudge <name> --force` overrides all of them.
 
 A post addressed to the whole team does not interrupt anyone: members see it
 on their next board read, and a member that is idle with unread posts is
 swept into a nudge within a few minutes. Use `--to <name>` when one member
 must act, and `--urgent` when it cannot wait.
+
+### Upgrading from herdr-team
+
+The plugin was called `herdr-team` until 0.8.0. The identifiers moved; your data
+did not. Once:
+
+```bash
+herdr plugin install vitalysim/herdr-synapse   # or: herdr plugin link <checkout>
+herdr-synapse install-cli --yes
+herdr-synapse skill install                   # then delete ~/.agents/skills/herdr-team
+herdr-synapse hooks install claude            # removes nothing: drop the old
+                                              # herdr-team-hook.sh entries yourself
+herdr-synapse daemon start --replace
+```
+
+Repoint the `command = "herdr-team.*"` lines in `~/.config/herdr/config.toml` at
+`herdr-synapse.*` and reload. Teams, boards, the `.herdr-team/` folder in your
+projects and the state directory keep their old names on purpose, so there is
+nothing to migrate and nothing to lose.
 
 ### Updating
 
@@ -241,10 +260,10 @@ Run the install again; it replaces the checkout in place, so the
 `install-cli` link keeps working:
 
 ```bash
-herdr plugin install vitalysim/herdr-team
-herdr-team daemon start --replace   # a same-version update keeps the old code running otherwise
-herdr-team skill check              # says "stale" when the skill version moved
-herdr-team skill install            # refresh it for every agent that has it
+herdr plugin install vitalysim/herdr-synapse
+herdr-synapse daemon start --replace   # a same-version update keeps the old code running otherwise
+herdr-synapse skill check              # says "stale" when the skill version moved
+herdr-synapse skill install            # refresh it for every agent that has it
 ```
 
 The notifier exits by itself when the plugin version changes, so
@@ -254,7 +273,7 @@ so a stale one keeps them on the previous release's rules.
 
 Then `/quit` and reopen the console if it is open. Teams, boards and the
 state pointer all survive, because the plugin's state lives outside the
-checkout. Even `herdr plugin uninstall herdr-team` removes only the checkout
+checkout. Even `herdr plugin uninstall herdr-synapse` removes only the checkout
 and leaves teams and boards on disk, so there is no data-loss path in either
 direction. Agents are never touched by an update.
 
@@ -324,7 +343,7 @@ Each member's file has the same six sections, all optional, with a line of
 guidance in each: Mission, Scope, Constraints, Definition of done, Handoffs,
 and Notes, which stays private to you. Team creation fills Mission in from the
 brief, so nobody starts at "none set". Edit the file in your editor and the
-notifier leaves it alone and tells you; `herdr-team instructions <name>
+notifier leaves it alone and tells you; `herdr-synapse instructions <name>
 --adopt` shows the diff and applies it. That confirm step is the whole
 security model: the folder is inside a checkout your agents can write to, so
 nothing there counts as your word until you say it does.
@@ -367,9 +386,9 @@ yours, and a member is refused when it tries to write them.
 When you want an agent to do the whole thing, say so once:
 
 ```bash
-herdr-team operator grant hunt-orchestrator --ttl 4h --note "builds the team"
-herdr-team operator            # who holds your authority right now
-herdr-team operator revoke hunt-orchestrator
+herdr-synapse operator grant hunt-orchestrator --ttl 4h --note "builds the team"
+herdr-synapse operator            # who holds your authority right now
+herdr-synapse operator revoke hunt-orchestrator
 ```
 
 That member can then write those documents too, and every time it does the
@@ -392,7 +411,7 @@ that used to confuse it.
 
 ```bash
 herdr integration install claude       # once per kind, so it reports its session
-herdr-team who                         # each member now shows its session
+herdr-synapse who                         # each member now shows its session
 ```
 
 | What happens | What you get |
@@ -400,14 +419,14 @@ herdr-team who                         # each member now shows its session
 | Herdr restarts | every member goes back to its own pane, even two agents of one kind in one checkout, which pane labels and directories could never tell apart |
 | An agent crashes and you start a fresh one in its pane | recognised as a new conversation: the member keeps its name and pane, and is briefed again so it knows who it is |
 | A Claude member runs `/clear` | the same: a new conversation, briefed again. A compaction keeps the same session and changes nothing |
-| You want the old conversation back | `herdr-team resume <name>` from a shell pane |
+| You want the old conversation back | `herdr-synapse resume <name>` from a shell pane |
 
 `resume` runs the exact command Herdr's own restore would use, in the
 member's directory, and the pane becomes that agent:
 
 ```bash
-herdr-team resume vuln-hunt-reviewer     # e.g. codex resume 01a077d4-…
-herdr-team resume vuln-hunt-reviewer --print   # just show it
+herdr-synapse resume vuln-hunt-reviewer     # e.g. codex resume 01a077d4-…
+herdr-synapse resume vuln-hunt-reviewer --print   # just show it
 ```
 
 Never use a bare `claude --continue`, `codex resume --last`, or `opencode -c`
@@ -429,7 +448,7 @@ empty; the pane is not the one you are looking at; and rate limits allow it.
 The result is one line in the agent's input box:
 
 ```
-[herdr-team nudge] 1 new board post for red-dev-claude-dev (seq 131). Run: herdr-team board --new [n17]
+[herdr-team nudge] 1 new board post for red-dev-claude-dev (seq 131). Run: herdr-synapse board --new [n17]
 ```
 
 The agent runs that command, reads the posts under a header that marks them
@@ -440,7 +459,7 @@ team through `config.gate` in `team.json`.
 ## Safety properties
 
 - Only the daemon types into an agent, one line at a time, only into panes
-  that are in a team roster. `herdr-team notifier stats` shows `wrong_target`,
+  that are in a team roster. `herdr-synapse notifier stats` shows `wrong_target`,
   which must stay 0.
 - Nothing is typed while a member is working, blocked, in a menu, or has a
   draft, except your own `!!name text`.
@@ -451,8 +470,8 @@ team through `config.gate` in `team.json`.
   text carrying your authority is the charter, a member's brief and
   instructions, and the team rules, all four written by commands an agent
   cannot run. Nothing an agent can write is ever injected as your word.
-- Emergency stop: `herdr-team daemon stop`. Nothing is typed anywhere after
-  that. `herdr plugin disable herdr-team` removes the plugin's sidebar tokens
+- Emergency stop: `herdr-synapse daemon stop`. Nothing is typed anywhere after
+  that. `herdr plugin disable herdr-synapse` removes the plugin's sidebar tokens
   and view within seconds.
 
 ## Documentation
@@ -461,7 +480,7 @@ team through `config.gate` in `team.json`.
 - [docs/capabilities.md](docs/capabilities.md): every capability, how to drive it from the UI and the CLI, what to expect, and a test checklist.
 - [docs/cli.md](docs/cli.md): the command contract, with every argument, JSON shape, exit code, and record grammar.
 - [docs/development.md](docs/development.md): internals, conventions, state layout, and the status log.
-- [skills/herdr-team/SKILL.md](skills/herdr-team/SKILL.md): what agents are taught, printed by `herdr-team --skill`.
+- [skills/herdr-synapse/SKILL.md](skills/herdr-synapse/SKILL.md): what agents are taught, printed by `herdr-synapse --skill`.
 
 ## Status
 
@@ -480,10 +499,10 @@ platform; Linux is supported and covered by CI; Windows is not.
 ## Development
 
 ```bash
-git clone https://github.com/vitalysim/herdr-team.git
-cd herdr-team
+git clone https://github.com/vitalysim/herdr-synapse.git
+cd herdr-synapse
 python3 -m unittest discover -s tests        # 1500 tests, no dependencies
-bin/herdr-team-sandbox start ~/your/project  # an isolated Herdr session for live testing
+bin/herdr-synapse-sandbox start ~/your/project  # an isolated Herdr session for live testing
 ```
 
 The sandbox launcher runs the plugin in a named Herdr session with its own

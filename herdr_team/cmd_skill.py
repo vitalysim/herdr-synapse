@@ -2,10 +2,10 @@
 
 Reproduces the layout ``npx skills add … -g`` leaves behind, offline:
 
-* canonical copy ``~/.agents/skills/herdr-team/SKILL.md``
-* a real copy in ``~/.claude/skills/herdr-team/SKILL.md``
-* symlinks ``~/.codex/skills/herdr-team``, ``~/.copilot/skills/herdr-team``,
-  ``~/.gemini/skills/herdr-team`` -> the canonical directory, created only
+* canonical copy ``~/.agents/skills/herdr-synapse/SKILL.md``
+* a real copy in ``~/.claude/skills/herdr-synapse/SKILL.md``
+* symlinks ``~/.codex/skills/herdr-synapse``, ``~/.copilot/skills/herdr-synapse``,
+  ``~/.gemini/skills/herdr-synapse`` -> the canonical directory, created only
   when the agent's home dir (``~/.codex`` etc.) exists; ``~/.codex/skills/.system``
   is never touched.
 
@@ -31,9 +31,9 @@ from herdr_team import cli as _cli
 from herdr_team.cli import emit, read_skill_text
 from herdr_team.errors import EXIT_REFUSED, HerdrTeamError
 
-SKILL_NAME = "herdr-team"
+SKILL_NAME = "herdr-synapse"
 SKILL_FILE = "SKILL.md"
-MARKER_RE = re.compile(r"<!--\s*herdr-team skill v(\d+)")
+MARKER_RE = re.compile(r"<!--\s*herdr-synapse skill v(\d+)")
 CANONICAL_ROOT = ".agents"
 COPY_ROOTS = (".claude",)
 SYMLINK_ROOTS = (".codex", ".copilot", ".gemini")
@@ -42,7 +42,7 @@ SKIP_ENTRIES = (".system",)
 
 
 def skill_version_of(text: str) -> Optional[int]:
-    """The ``<!-- herdr-team skill vN … -->`` marker's N, or None when absent."""
+    """The ``<!-- herdr-synapse skill vN … -->`` marker's N, or None when absent."""
     match = MARKER_RE.search(text)
     return int(match.group(1)) if match else None
 
@@ -291,9 +291,9 @@ Command = _cli.Command
 COMMANDS: List[Command] = [
     Command(
         name="skill",
-        help="install the herdr-team skill into the agents' skill dirs, or check it",
+        help="install the herdr-synapse skill into the agents' skill dirs, or check it",
         add_arguments=_skill_args,
         run=run_skill,
-        description="skill install [--check] [--force] | skill check. Canonical ~/.agents/skills/herdr-team, copy in ~/.claude/skills, symlinks from ~/.codex, ~/.copilot, ~/.gemini when those dirs exist.",
+        description="skill install [--check] [--force] | skill check. Canonical ~/.agents/skills/herdr-synapse, copy in ~/.claude/skills, symlinks from ~/.codex, ~/.copilot, ~/.gemini when those dirs exist.",
     ),
 ]

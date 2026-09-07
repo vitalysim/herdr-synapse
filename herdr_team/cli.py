@@ -1,4 +1,4 @@
-"""``herdr-team`` argparse root and command registry.
+"""``herdr-synapse`` argparse root and command registry.
 
 Every ``herdr_team/cmd_*.py`` module exposes ``COMMANDS: List[Command]``.
 ``load_commands`` imports the fixed module list, checks for duplicate names,
@@ -28,7 +28,7 @@ from herdr_team import SKILL_VERSION, VERSION
 from herdr_team.errors import EXIT_OK, EXIT_USAGE, HerdrTeamError, UsageError, emit_error
 from herdr_team import paths as _paths
 
-PROG = "herdr-team"
+PROG = "herdr-synapse"
 
 COMMAND_MODULES: Tuple[str, ...] = (
     "herdr_team.cmd_roster",
@@ -109,7 +109,7 @@ def build_parser(commands: Optional[List[Command]] = None) -> argparse.ArgumentP
         allow_abbrev=False,
     )
     parser.add_argument("--version", action="store_true", help="print the plugin version and exit")
-    parser.add_argument("--skill", action="store_true", help="print skills/herdr-team/SKILL.md and exit")
+    parser.add_argument("--skill", action="store_true", help="print skills/herdr-synapse/SKILL.md and exit")
     add_global_arguments(parser)
     subparsers = parser.add_subparsers(dest="command", metavar="<command>", parser_class=_Parser)
     for command in commands if commands is not None else load_commands():
@@ -198,7 +198,7 @@ def main(
         args.stdout = out
         args.stderr = err
         if args.version:
-            return emit(args, {"version": VERSION, "skill_version": SKILL_VERSION, "plugin_id": "herdr-team"}, "{} {}".format(PROG, VERSION))
+            return emit(args, {"version": VERSION, "skill_version": SKILL_VERSION, "plugin_id": "herdr-synapse"}, "{} {}".format(PROG, VERSION))
         if args.skill:
             text = read_skill_text()
             if args.json:

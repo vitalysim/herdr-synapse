@@ -1,11 +1,11 @@
 #!/bin/sh
-# herdr-team manifest event gate.
+# herdr-synapse manifest event gate.
 #
 # Herdr runs this for pane.agent_detected, pane.closed, and pane.exited.
 # The notifier daemon already watches those events over its own subscription,
 # so when a live daemon serves this session the hook must exit 0 in about
 # 10 ms without starting Python. Only when no daemon is alive does the hook
-# exec the Python reconciler through the launcher (`herdr-team hook-event`).
+# exec the Python reconciler through the launcher (`herdr-synapse hook-event`).
 #
 # Liveness is `<session>/daemon.json` naming a pid that is alive and whose
 # process start time (ps -o lstart=) matches the recorded one. Everything but
@@ -77,5 +77,5 @@ fi
 # the launcher itself cannot run (no python3, too old) its JSON error stays on
 # stderr for the plugin log, but the event hook still succeeds.
 
-"$root/bin/herdr-team" hook-event "$event"
+"$root/bin/herdr-synapse" hook-event "$event"
 exit 0

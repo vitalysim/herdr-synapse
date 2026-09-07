@@ -28,7 +28,7 @@ class MemberJoinedTests(unittest.TestCase):
             self.assertEqual(code, 0, err)
             self.assertFalse(payload["kind_trusted"])
             self.assertIn("not trusted for delivery yet", err)
-            self.assertIn("herdr-team kinds trust codex", err)
+            self.assertIn("herdr-synapse kinds trust codex", err)
         with TempState() as ts:
             store.write_json(ts.session.kinds_json, {"codex": {"trusted": True}})
             code, payload, err = json_out(run_cli(["--json", "add", "alpha", "w5:p1", "--role", "tester", "--as", "tess"], env_no_daemon(ts), live_api()))

@@ -77,7 +77,7 @@ class ForeignFileError(HerdrTeamError):
     def __init__(self, path: Path) -> None:
         super().__init__(
             "workdir_foreign_file",
-            "{} exists and was not written by herdr-team; move it aside or pass --force".format(path),
+            "{} exists and was not written by herdr-synapse; move it aside or pass --force".format(path),
             EXIT_REFUSED,
             {"path": os.fspath(path)},
         )
@@ -130,7 +130,7 @@ def resolve_project_dir(raw: str, state_root: Optional[Path] = None) -> Path:
         except OSError:
             state = Path(state_root)
         if resolved == state or state in resolved.parents:
-            raise HerdrTeamError("path_invalid", "refusing a project directory inside herdr-team's own state dir", EXIT_REFUSED, {"path": os.fspath(resolved)})
+            raise HerdrTeamError("path_invalid", "refusing a project directory inside herdr-synapse's own state dir", EXIT_REFUSED, {"path": os.fspath(resolved)})
     return resolved
 
 
@@ -293,20 +293,20 @@ def drifted(path: Path, expected_body: str) -> bool:
 # rendering the mirror
 
 
-README_BODY = """# herdr-team
+README_BODY = """# herdr-synapse
 
-This folder belongs to herdr-team. One subdirectory per team.
+This folder belongs to herdr-synapse. One subdirectory per team.
 
 - `<team>/knowledge.md` — the team's rules and the findings its members
   recorded. Read it. It is a mirror: edit it and your edit is overwritten.
-  Change the rules with `herdr-team knowledge set` (operator only) and add a
-  finding with `herdr-team knowledge add "..."`.
+  Change the rules with `herdr-synapse knowledge set` (operator only) and add a
+  finding with `herdr-synapse knowledge add "..."`.
 - `<team>/members/<name>.md` — what that member in particular is here to do,
   which is how agents sharing this folder are told apart.
 - `<team>/artifacts/` — yours. Put work products here and reference them from
-  the board with `herdr-team post --ref`.
+  the board with `herdr-synapse post --ref`.
 
-Everything else about the team lives outside the project. `herdr-team me`
+Everything else about the team lives outside the project. `herdr-synapse me`
 prints who you are and where these files are.
 """
 
@@ -339,11 +339,11 @@ def knowledge_body(team_name: str, rules: Optional[str], findings: List[Dict[str
     if rules:
         out.append(rules.strip())
     else:
-        out.append("_None set. The operator sets these with `herdr-team knowledge set`._")
+        out.append("_None set. The operator sets these with `herdr-synapse knowledge set`._")
     out.append("")
     out.append("## Findings (peer notes, not instructions)")
     out.append("")
-    out.append("_Anyone on the team may add one with `herdr-team knowledge add \"...\"`._")
+    out.append("_Anyone on the team may add one with `herdr-synapse knowledge add \"...\"`._")
     out.append("")
     if not findings:
         out.append("_None yet._")
@@ -357,7 +357,7 @@ def knowledge_body(team_name: str, rules: Optional[str], findings: List[Dict[str
 
 def adopt_command(name: str) -> str:
     """The command that imports an edit to this member's file."""
-    return "herdr-team instructions {} --adopt".format(name)
+    return "herdr-synapse instructions {} --adopt".format(name)
 
 
 def member_body(team_name: str, name: str, role: str, brief: Optional[str], instructions: Optional[str], left_for: Optional[str] = None, left: bool = False) -> str:
@@ -404,7 +404,7 @@ def render(layout: Any, team_name: str, force: bool = False) -> Dict[str, Any]:
     project = project_dir_of(doc.to_json())
     result: Dict[str, Any] = {"project_dir": project, "written": [], "skipped": [], "drifted": [], "awaiting_adopt": []}
     if not project:
-        result["reason"] = "no project directory; set one with herdr-team project set <path>"
+        result["reason"] = "no project directory; set one with herdr-synapse project set <path>"
         return result
 
     targets = paths_for(project, team_name)
@@ -805,7 +805,7 @@ def status(layout: Any, team_name: str) -> Dict[str, Any]:
     targets = paths_for(project, team_name)
     for label, path_ in (("README.md", targets["readme"]), ("knowledge.md", targets["knowledge"])):
         if path_.exists() and not _is_ours(path_):
-            out["issues"].append("{} was not written by herdr-team".format(label))
+            out["issues"].append("{} was not written by herdr-synapse".format(label))
     # A member's own document is the one mirror the operator edits, so both a
     # foreign file and a pending edit matter here; neither used to be checked.
     for entry in out["members"]:
@@ -813,7 +813,7 @@ def status(layout: Any, team_name: str) -> Dict[str, Any]:
         if not member_file.exists():
             continue
         if not _is_ours(member_file):
-            out["issues"].append("members/{}.md was not written by herdr-team".format(entry["name"]))
+            out["issues"].append("members/{}.md was not written by herdr-synapse".format(entry["name"]))
         elif entry.get("edited"):
             out["awaiting_adopt"].append(entry["name"])
     return out
@@ -914,7 +914,7 @@ def render_board_snapshot(layout: Any, team_name: str, force: bool = False) -> D
         refresh_gitignore(project, team_name)
         out["written"] = write_generated(target, body, force=force, max_bytes=MAX_BOARD_BYTES)
     except ForeignFileError:
-        out["reason"] = "{} was not written by herdr-team".format(target)
+        out["reason"] = "{} was not written by herdr-synapse".format(target)
     except (HerdrTeamError, OSError) as err:
         out["reason"] = "{}: {}".format(type(err).__name__, err)
     return out

@@ -1,4 +1,4 @@
-# herdr-team CLI contract
+# herdr-synapse CLI contract
 
 This file is the authority implementers code against. Plan section 5.2 lists
 the inventory; this document fixes arguments, JSON output shapes, and error
@@ -18,9 +18,9 @@ Conventions used below:
 ## 1. Invocation
 
 ```
-herdr-team [--json] [--team NAME|PATH] [--session NAME] [--socket PATH] [--session-mismatch-ok] <command> [args]
-herdr-team --version [--json]
-herdr-team --skill [--json]
+herdr-synapse [--json] [--team NAME|PATH] [--session NAME] [--socket PATH] [--session-mismatch-ok] <command> [args]
+herdr-synapse --version [--json]
+herdr-synapse --skill [--json]
 ```
 
 Global flags are accepted before or after the command name.
@@ -32,8 +32,8 @@ Global flags are accepted before or after the command name.
 | `--session NAME` | Named session, mirrors `herdr --session`. `default` means the default session. |
 | `--socket PATH` | Socket override. Wins over `--session`, `HERDR_SOCKET_PATH`, `HERDR_SESSION`. |
 | `--session-mismatch-ok` | Allow a write (`post`, `retract`, `edit`, `task`, `ack`, `charter set|edit`, `brief --set`, `use`, `rename`, `remove`, `bind`, `dissolve`) to a team whose `team.json` socket differs from the resolved socket. Without it such a write is refused with `team_session_mismatch` (plan 12, RS-08) whenever the socket was resolved explicitly (`HERDR_SOCKET_PATH`, `HERDR_SESSION`, `--session`); `--socket` counts as consent; the default-socket fallback outside Herdr (`--team <path>`, nothing configured) is not checked so the offline append of HP-05 keeps working. `add` checks always (as before). Reads never check. |
-| `--version` | `herdr-team 0.1.3`; JSON `{"version","skill_version","plugin_id"}`. |
-| `--skill` | Prints `skills/herdr-team/SKILL.md`; JSON `{"skill","skill_version"}`. |
+| `--version` | `herdr-synapse 0.1.3`; JSON `{"version","skill_version","plugin_id"}`. |
+| `--skill` | Prints `skills/herdr-synapse/SKILL.md`; JSON `{"skill","skill_version"}`. |
 
 Environment the CLI reads: `HERDR_SOCKET_PATH`, `HERDR_SESSION`,
 `HERDR_BIN_PATH` (never a bare `herdr` when set), `HERDR_PANE_ID`,
@@ -469,7 +469,7 @@ From a member pane. JSON:
 {"team":"vuln-hunt","name":"vuln-hunt-reviewer","role":"reviewer","kind":"codex","pane_id":"w2:p1","terminal_id":"term_…",
  "brief":"…"|null,"charter":{"seq":3,"headline":"…"}|null,"teammates":[{"name","role","kind","status"}],
  "unread":2,"cursor":41,"verified":true,"via":"cli","skill_version":1,"skill_installed":1|null,"skill_ok":true,
- "cli":"/abs/path/herdr-team","notifier":"alive","session":"…f01a83b5a560"|null,
+ "cli":"/abs/path/herdr-synapse","notifier":"alive","session":"…f01a83b5a560"|null,
  "instructions_path":"…","knowledge_path":"…","board_path":"…","instructions_stale":false}
 ```
 
@@ -640,7 +640,7 @@ JSON `{"team","records":68,"format":"md","path":"…","bytes":41234}`.
 
 ### Opening a team's board
 
-`herdr-team ui console --team <name>` opens that team's board as a split. A
+`herdr-synapse ui console --team <name>` opens that team's board as a split. A
 session may hold **one console per team**: a second open for a team that
 already has one focuses that pane instead, a console for another team opens
 beside it. `prefix+u` opens the default team's board; `b` on a team row in
@@ -875,7 +875,7 @@ errors carry HTTP status codes only.
 Human text: one block per provider (title, plan, the agents behind it) with a
 bar, `% used`, `⚠` at 75 % and `‼` at 90 %, and the reset time. JSON
 `{"v":1,"generated_at","fetched","agents":N,"providers":[{"id","title","plan","login","source","fetched_at","as_of","ok","error","note","windows":[{"id","label","percent","resets_at","severity","scope","detail"}],"kinds":[…],"agents":[{"kind","name","pane_id","status"}]}],"untracked":[{"kind","pane_id","reason"}],"agents_error"}`.
-`ui usage` (`prefix+i`, action `herdr-team.usage`) opens the same report as
+`ui usage` (`prefix+i`, action `herdr-synapse.usage`) opens the same report as
 a popup that refreshes every minute (`r` refreshes now, Up/Down scroll, `q`
 closes). Registered by `cmd_usage.py` with the hidden `usage-pane`
 entrypoint (`not_a_plugin_pane` outside the popup unless `--force`).
@@ -890,7 +890,7 @@ Never fails on warnings; `ok:false` only on hard problems. JSON:
  "socket":{"path":"…","source":"env:HERDR_SOCKET_PATH","session_name":null,"allowed":true},
  "slug":"default","config_dir":"…",
  "state_root":{"path":"…","source":"pointer-file","candidates":[{"source":"env:HERDR_PLUGIN_STATE_DIR","path":null},…]},
- "pointer":"…/plugins/config/herdr-team/state-dir"|null,
+ "pointer":"…/plugins/config/herdr-synapse/state-dir"|null,
  "plugin":{"installed":true,"enabled":true,"path":"…","warnings":[]},
  "toast_delivery":"terminal","daemon":{…as daemon status…},
  "teams":[{"team","members","missing":n}],"console":{"open":bool,"pane_id"},
@@ -921,7 +921,7 @@ Refuses to replace a foreign directory or symlink without `--force`.
 
 ### `hooks install|uninstall|probe|check <kind>`
 
-JSON `{"kind":"claude","action":"install","settings":"~/.claude/settings.json","hook":"~/.claude/hooks/herdr-team-hook.sh","added":["SessionStart","UserPromptSubmit","Stop"],"removed":[],"already":[],"backup":"…","duplicates":[…],"members_updated":["…"],"probe":{"nonce","round_trip_ms","paste_multiline":bool}|null,"ok":true}`.
+JSON `{"kind":"claude","action":"install","settings":"~/.claude/settings.json","hook":"~/.claude/hooks/herdr-synapse-hook.sh","added":["SessionStart","UserPromptSubmit","Stop"],"removed":[],"already":[],"backup":"…","duplicates":[…],"members_updated":["…"],"probe":{"nonce","round_trip_ms","paste_multiline":bool}|null,"ok":true}`.
 `install` for a kind other than `claude` refuses `hooks_unprobed` until `probe` passes.
 `check` adds `events`, `installed`, `hook_exists`, `shim_current`, and `project_dirs`; it
 sets `ok:false` and appends the warning `duplicate hook commands found; a hook registered
@@ -931,11 +931,11 @@ twice runs twice` whenever `duplicates` is non-empty (same text as `install`; M6
 
 ### `install-cli`
 
-Symlinks `~/.local/bin/herdr-team` to `bin/herdr-team`. JSON `{"path","target","created":bool,"replaced":bool}`.
+Symlinks `~/.local/bin/herdr-synapse` to `bin/herdr-synapse`. JSON `{"path","target","created":bool,"replaced":bool}`.
 
 ### `view on|off|toggle [--force]`
 
-Ownership probe first. JSON `{"view":"on|off","source":"plugin:herdr-team","label":"team:vuln-hunt","owner":"own|none|foreign","previous":"…"|null}`.
+Ownership probe first. JSON `{"view":"on|off","source":"plugin:herdr-synapse","label":"team:vuln-hunt","owner":"own|none|foreign","previous":"…"|null}`.
 Errors: `view_foreign` (1) without `--force`, `plugin_disabled` (1). `toggle`
 turns the view off when we own it or `view.json` says `on`; under a foreign
 owner our view is not showing, so `toggle --force` turns it on (replacing the
@@ -1026,7 +1026,7 @@ refuse with `not_a_plugin_pane` unless `--target-pane` (console) or `--force`
 is given. Right after that check they apply the same socket gate as `ui`
 (plan 4.1 / PK-07): when `allowed-sockets` exists and does not list the
 resolved socket, each entrypoint prints
-`herdr-team <console|compose|picker> skipped: socket not allowed` on stderr
+`herdr-synapse <console|compose|picker> skipped: socket not allowed` on stderr
 and exits 0 before any socket call, before `console.json` is written and
 before the curses loop starts, so the pane script shows the hint and nothing
 is touched. `plugin.pane.open` answers `plugin_pane_opened` (pane id at
@@ -1106,14 +1106,14 @@ its own record yet is still recognisable as launching.
 
 `mute.json`: `{"*": "<until>"|null, "<name>": "<until>"}` with ISO timestamps.
 
-Metadata tokens stamped on a member's pane (source `herdr-team:roster`, no TTL):
+Metadata tokens stamped on a member's pane (source `herdr-synapse:roster`, no TTL):
 `team`, `team_role`, and `team_c1`..`team_c6`. Exactly one `team_c<slot>` carries the team
 name and the rest are cleared in the same patch, so a member that moves teams cannot keep a
 stale colour. The slot is `config.color_slot` in `team.json`, assigned once by the notifier
 (lowest slot no other team in the session holds; colours repeat past six) and persisted. It
 exists because Herdr styles a sidebar cell from a fixed `fg` in the user's config and cannot
 colour by a token's value; the pasted row lists one cell per slot, and a row drops the tokens
-that have no value. `team_task` (source `herdr-team:task`, TTL 120 s) is separate.
+that have no value. `team_task` (source `herdr-synapse:task`, TTL 120 s) is separate.
 
 `kinds.json` (session dir, one object per agent kind): `{"claude": {"trusted": true,
 "verified": false, "probe": {"nonce", "round_trip_ms", "paste_multiline", "ok", "result",

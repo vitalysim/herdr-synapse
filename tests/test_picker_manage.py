@@ -291,7 +291,7 @@ class ActionArgvTests(unittest.TestCase):
         rename = Intent("member_rename", {"team": "alpha", "member": "alpha-reviewer", "new": "alpha-lead"})
         send = Intent("member_send_goal", {"team": "alpha", "member": "alpha-reviewer"})
         self.assertIn("only sending it needs the notifier", picker.action_failure_status(send, {"code": "daemon_down", "message": "x"}))
-        self.assertIn("herdr-team daemon start", picker.action_failure_status(Intent("member_focus", send.args), {"code": "daemon_down", "message": "x"}))
+        self.assertIn("herdr-synapse daemon start", picker.action_failure_status(Intent("member_focus", send.args), {"code": "daemon_down", "message": "x"}))
         self.assertEqual(picker.action_failure_status(rename, {"code": "agent_name_taken", "message": "x", "candidates": ["alpha-lead-2"]}),
                          "Herdr already has an agent called alpha-lead; try alpha-lead-2")
         self.assertEqual(picker.action_failure_status(rename, {"code": "name_reserved", "message": "human is reserved"}), "human is reserved")

@@ -382,7 +382,7 @@ class HookSlowPathSessionTests(unittest.TestCase):
         env = self.ts.env_with(
             HERDR_PLUGIN_EVENT="pane.agent_detected",
             HERDR_PLUGIN_EVENT_JSON=json.dumps({"type": "pane_agent_detected", "data": {"pane_id": pane_id}}),
-            HERDR_PLUGIN_ID="herdr-team", HERDR_PANE_ID="wA:p6", HERDR_WORKSPACE_ID="wA", HERDR_TAB_ID="wA:t1",
+            HERDR_PLUGIN_ID="herdr-synapse", HERDR_PANE_ID="wA:p6", HERDR_WORKSPACE_ID="wA", HERDR_TAB_ID="wA:t1",
         )
         out = io.StringIO()
         code = hooks.run_hook_event(["agent_detected"], env, api=self.api, stdout=out)
@@ -558,7 +558,7 @@ class SessionDisplayTests(unittest.TestCase):
 
     def test_me_and_the_tree_show_the_session(self):
         text = render.render_me({"team": "alpha", "name": "alpha-reviewer", "role": "reviewer", "kind": "codex", "pane_id": "w2:p1", "session": "…-session", "teammates": [], "unread": 0}, {"team": "alpha"})
-        self.assertIn("session …-session (herdr-team resume alpha-reviewer reopens it)", text)
+        self.assertIn("session …-session (herdr-synapse resume alpha-reviewer reopens it)", text)
         line = tui_model.roster_line({"name": "alpha-reviewer", "kind": "codex", "pane_id": "w2:p1", "agent_status": "idle", "session": sess("0199-reviewer-session")}, width=120)
         self.assertIn("sess -session", line)
         line = tui_model.roster_line({"name": "alpha-reviewer", "kind": "codex", "pane_id": "w2:p1", "agent_status": "idle", "session": "…-session"}, width=120)

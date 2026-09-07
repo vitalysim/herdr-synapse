@@ -897,7 +897,7 @@ TASK_MAX_AGE_S = 1800.0
 
 
 def read_task_file(team_paths: TeamPaths, member_name: str) -> Optional[Dict[str, Any]]:
-    """The member's ``tasks/<name>.json`` written by ``herdr-team task`` (plan 5.3), or None.
+    """The member's ``tasks/<name>.json`` written by ``herdr-synapse task`` (plan 5.3), or None.
 
     RS-01/RS-04 regression: the CLI stores the task in the team dir, not on
     the roster member, so the heartbeat must read this file to stamp
@@ -1280,7 +1280,7 @@ class Daemon:
         self.counters: Dict[str, int] = {"events": 0, "polls": 0, "reconnects": 0, "nudges": 0, "toasts": 0, "wrong_target": 0, "jobs": 0, "unverified_skipped": 0, "phase_errors": 0, "says": 0}
         self.iterations = 0
         self.max_iterations: Optional[int] = None
-        self.cli_path = os.fspath(plugin_root() / "bin" / "herdr-team")
+        self.cli_path = os.fspath(plugin_root() / "bin" / "herdr-synapse")
         self._signals_installed = False
         self._previous_signals: Dict[int, Any] = {}
         #: An ``agent.prompt`` whose wait returns faster than this was already inside a turn (plan 8.3).
@@ -1899,7 +1899,7 @@ class Daemon:
             self.log("{}: {} was edited; waiting for adopt".format(team.name, path))
             self._append_system(
                 team, "instructions_edited",
-                "{} was edited. Review and apply it: herdr-team instructions {} --adopt".format(path, name),
+                "{} was edited. Review and apply it: herdr-synapse instructions {} --adopt".format(path, name),
                 ["human"], {"member": name, "path": path},
             )
         for path in [p for p in team.adopt_announced if p not in live]:
@@ -2482,7 +2482,7 @@ class Daemon:
             if err.code == "agent_name_taken":
                 self.log("{}: name {} taken during re-application; name_conflict".format(team.name, name))
                 self._apply_changes(team, [(name, {"status": "name_conflict"})])
-                self.enqueue_toast(team.name, [], "herdr-team {}: name conflict".format(team.name), "{} could not be renamed: {}".format(name, err.message), "none", kind="roster")
+                self.enqueue_toast(team.name, [], "herdr-synapse {}: name conflict".format(team.name), "{} could not be renamed: {}".format(name, err.message), "none", kind="roster")
             else:
                 self.log("{}: agent.rename {} failed: {}".format(team.name, name, err.code))
 
@@ -2518,7 +2518,7 @@ class Daemon:
         identity: Dict[str, Any] = {"team": team.name, "team_role": role}
         identity.update(roster.color_slot_tokens(team.name, roster.color_slot_of(team.roster)))
         try:
-            self.api.request("pane.report_metadata", {"pane_id": pane_id, "source": "herdr-team:roster", "tokens": identity}, timeout=5.0)
+            self.api.request("pane.report_metadata", {"pane_id": pane_id, "source": "herdr-synapse:roster", "tokens": identity}, timeout=5.0)
         except HerdrTeamError as err:
             self.log("{}: token stamp on {} failed: {}".format(team.name, pane_id, err.code))
             return
@@ -2534,7 +2534,7 @@ class Daemon:
             if unchanged:
                 return
             try:
-                self.api.request("pane.report_metadata", {"pane_id": pane_id, "source": "herdr-team:task", "tokens": {"team_task": value}, "ttl_ms": TASK_TTL_MS}, timeout=5.0)
+                self.api.request("pane.report_metadata", {"pane_id": pane_id, "source": "herdr-synapse:task", "tokens": {"team_task": value}, "ttl_ms": TASK_TTL_MS}, timeout=5.0)
                 rt.last_task_value = value
                 rt.last_task_stamp_ms = now
             except HerdrTeamError as err:
@@ -2544,8 +2544,8 @@ class Daemon:
         cleared: Dict[str, Any] = {"team": None, "team_role": None}
         cleared.update(roster.color_slot_tokens(None, None))
         try:
-            self.api.request("pane.report_metadata", {"pane_id": pane_id, "source": "herdr-team:roster", "tokens": cleared}, timeout=5.0)
-            self.api.request("pane.report_metadata", {"pane_id": pane_id, "source": "herdr-team:task", "tokens": {"team_task": None}}, timeout=5.0)
+            self.api.request("pane.report_metadata", {"pane_id": pane_id, "source": "herdr-synapse:roster", "tokens": cleared}, timeout=5.0)
+            self.api.request("pane.report_metadata", {"pane_id": pane_id, "source": "herdr-synapse:task", "tokens": {"team_task": None}}, timeout=5.0)
         except HerdrTeamError as err:
             self.log("clear tokens on {} failed: {}".format(pane_id, err.code))
 
@@ -2838,7 +2838,7 @@ class Daemon:
             self._enqueue_briefing(team, member, now)
         elif kind == "toast":
             # The CLI never calls notification.show; it asks the daemon (create --new failures, plan 12).
-            title = str(job.get("title") or "herdr-team {}".format(team.name))
+            title = str(job.get("title") or "herdr-synapse {}".format(team.name))
             body = str(job.get("body") or "")
             seqs = [int(s) for s in job.get("seqs") or [] if isinstance(s, int)]
             self.enqueue_toast(team.name, seqs, title, body, str(job.get("sound") or "none"), kind=str(job.get("toast_kind") or "roster"))
@@ -3012,7 +3012,7 @@ class Daemon:
                 self._note_hold(team, name, pending, gate.HOLD_STOP_BLOCKED, stop_block, now)
                 return
         elif pending.kind == "brief" and pending.landed_ms is not None:
-            # Plan 9.2: an ack is a cursor write (``surfaced_by: cli``, or ``herdr-team ack``) made after
+            # Plan 9.2: an ack is a cursor write (``surfaced_by: cli``, or ``herdr-synapse ack``) made after
             # the landing with seq >= briefing_seq; an untouched cursor on an empty board is not one.
             try:
                 cursor_doc = store.Cursors(team.paths).get(name)
@@ -3032,7 +3032,7 @@ class Daemon:
                     self.log("{}: {} did not ack the briefing; re-briefing once".format(team.name, name))
                 else:
                     del team.pending[name]
-                    self.enqueue_toast(team.name, [], "herdr-team {}: {} unbriefed".format(team.name, name), "{} never acknowledged its briefing".format(name), "none", kind="outcome")
+                    self.enqueue_toast(team.name, [], "herdr-synapse {}: {} unbriefed".format(team.name, name), "{} never acknowledged its briefing".format(name), "none", kind="outcome")
                     self._requeue_deferred(team, name, pending, cursor, now)
                     return
             else:
@@ -3188,7 +3188,7 @@ class Daemon:
         elif pending.hold_since_ms is not None and now - pending.hold_since_ms > DIALOG_TOAST_AFTER_S * 1000.0 and not pending.hold_toasted:
             if hold in (gate_mod.HOLD_DIALOG, gate_mod.HOLD_FOCUSED, gate_mod.HOLD_DRAFT_PRESENT, gate_mod.HOLD_BLOCKED):
                 pending.hold_toasted = True
-                self.enqueue_toast(team.name, pending.seqs, "herdr-team {}: {} waiting".format(team.name, name), "{} has been held for 10 min: {}".format(name, hold), "none", kind="outcome")
+                self.enqueue_toast(team.name, pending.seqs, "herdr-synapse {}: {} waiting".format(team.name, name), "{} has been held for 10 min: {}".format(name, hold), "none", kind="outcome")
         if hold in (gate_mod.HOLD_PAIR_BUDGET, gate_mod.HOLD_KIND_MISMATCH):
             # Plan 8.2 gates 3 and 11 (``gate.TOAST_HOLDS``): the human learns about a ping-pong pause or a
             # kind mismatch once, coalesced per (member, reason) per hour (M5 ND-08: no toast was ever sent).
@@ -3197,17 +3197,17 @@ class Daemon:
             if last is None or now - last > KIND_UNVERIFIED_TOAST_S * 1000.0:
                 rt.hold_toast_ms[hold] = now
                 if hold == gate_mod.HOLD_PAIR_BUDGET:
-                    title = "herdr-team {}: {} ping-pong paused".format(team.name, name)
+                    title = "herdr-synapse {}: {} ping-pong paused".format(team.name, name)
                     body = "{} and {} hit the pair budget ({}); posts wait for the window".format(name, ", ".join(sorted(pending.authors)) or "a teammate", detail or "")
                 else:
-                    title = "herdr-team {}: {} not nudged".format(team.name, name)
+                    title = "herdr-synapse {}: {} not nudged".format(team.name, name)
                     body = "{}'s pane hosts another agent kind ({}); posts wait for a rebind".format(name, detail or "kind_mismatch")
                 self.enqueue_toast(team.name, pending.seqs, title, body, "none", kind="outcome")
         if hold == gate_mod.HOLD_KIND_UNVERIFIED:
             rt = team.rt(name)
             if rt.kind_unverified_toast_ms is None or now - rt.kind_unverified_toast_ms > KIND_UNVERIFIED_TOAST_S * 1000.0:
                 rt.kind_unverified_toast_ms = now
-                self.enqueue_toast(team.name, pending.seqs, "herdr-team {}: {} not nudged".format(team.name, name), "kind {} is unverified; posts wait for the next read".format(team.member(name).get("kind") if team.member(name) else "?"), "none", kind="outcome")
+                self.enqueue_toast(team.name, pending.seqs, "herdr-synapse {}: {} not nudged".format(team.name, name), "kind {} is unverified; posts wait for the next read".format(team.member(name).get("kind") if team.member(name) else "?"), "none", kind="outcome")
         pending.next_eligible_ms = max(pending.next_eligible_ms, now + HOLD_REEVALUATE_S * 1000.0 if hold in (gate_mod.HOLD_DIALOG, gate_mod.HOLD_DRAFT_PRESENT, gate_mod.HOLD_FOCUSED, gate_mod.HOLD_SKIP_STATE_UPDATE, gate_mod.HOLD_VISIBLE_BLOCKER, gate_mod.HOLD_STOP_BLOCKED) else now)
 
     def _snapshot(self, team: TeamState, member: Dict[str, Any], agent: Optional[Dict[str, Any]], rt: MemberRuntime, now: float, pending: Optional[Pending] = None) -> Any:
@@ -3643,7 +3643,7 @@ class Daemon:
             return refuse("absent", "{} has no pane or terminal on the roster".format(name))
         kind = str(member.get("kind") or "")
         if not (bool(member.get("verified_kind")) or self._kind_trusted(kind)):
-            return refuse("kind_unverified", "kind {} is not trusted; run: herdr-team kinds trust {}".format(kind, kind))
+            return refuse("kind_unverified", "kind {} is not trusted; run: herdr-synapse kinds trust {}".format(kind, kind))
         rt = team.rt(name)
         if rt.in_flight or name in team.say_inflight:
             return refuse("in_flight", "another line is being typed into {}".format(name))
@@ -3795,7 +3795,7 @@ class Daemon:
         if pending.attempt_id:
             team.ledger.record_outcome(pending.attempt_id, False, None)
         self._append_system(team, event, text, ["human"], {"seqs": list(pending.seqs)})
-        self.enqueue_toast(team.name, pending.seqs, "herdr-team {}: {}".format(team.name, event), text, "none", kind="outcome")
+        self.enqueue_toast(team.name, pending.seqs, "herdr-synapse {}: {}".format(team.name, event), text, "none", kind="outcome")
         self.log("{}: {} {}".format(team.name, event, text))
         self.who_dirty = True
 

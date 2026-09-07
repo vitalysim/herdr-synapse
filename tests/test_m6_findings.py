@@ -59,16 +59,16 @@ class HooksCheckDuplicateWarningTests(unittest.TestCase):
             claude_dir = ts.home / ".claude"
             hooks_dir = claude_dir / "hooks"
             hook_path = hooks_dir / claude_settings.HOOK_FILE_NAME
-            claude_settings.write_shim(hooks_dir, ts.tmp / "herdr-team")
+            claude_settings.write_shim(hooks_dir, ts.tmp / "herdr-synapse")
             claude_settings.install(claude_dir / "settings.json", hook_path)
             claude_settings.install(claude_dir / "settings.local.json", hook_path)
-            args = ["--json", "hooks", "check", "claude", "--claude-dir", os.fspath(claude_dir), "--cli", os.fspath(ts.tmp / "herdr-team")]
+            args = ["--json", "hooks", "check", "claude", "--claude-dir", os.fspath(claude_dir), "--cli", os.fspath(ts.tmp / "herdr-synapse")]
             code, payload, err = json_out(run_cli(args, ts.env_with(PWD=os.fspath(ts.tmp)), FakeApi()))
             self.assertEqual(code, 0, err)
             self.assertFalse(payload["ok"])
             self.assertTrue(payload["duplicates"])
             self.assertIn("duplicate hook commands found; a hook registered twice runs twice", payload["warnings"])
-            code, out, _ = run_cli(["hooks", "check", "claude", "--claude-dir", os.fspath(claude_dir), "--cli", os.fspath(ts.tmp / "herdr-team")], ts.env_with(PWD=os.fspath(ts.tmp)), FakeApi())
+            code, out, _ = run_cli(["hooks", "check", "claude", "--claude-dir", os.fspath(claude_dir), "--cli", os.fspath(ts.tmp / "herdr-synapse")], ts.env_with(PWD=os.fspath(ts.tmp)), FakeApi())
             self.assertIn("warning: duplicate hook commands found", out)
 
     def test_check_without_duplicates_has_no_duplicate_warning(self):
@@ -76,9 +76,9 @@ class HooksCheckDuplicateWarningTests(unittest.TestCase):
             claude_dir = ts.home / ".claude"
             hooks_dir = claude_dir / "hooks"
             hook_path = hooks_dir / claude_settings.HOOK_FILE_NAME
-            claude_settings.write_shim(hooks_dir, ts.tmp / "herdr-team")
+            claude_settings.write_shim(hooks_dir, ts.tmp / "herdr-synapse")
             claude_settings.install(claude_dir / "settings.json", hook_path)
-            args = ["--json", "hooks", "check", "claude", "--claude-dir", os.fspath(claude_dir), "--cli", os.fspath(ts.tmp / "herdr-team")]
+            args = ["--json", "hooks", "check", "claude", "--claude-dir", os.fspath(claude_dir), "--cli", os.fspath(ts.tmp / "herdr-synapse")]
             code, payload, err = json_out(run_cli(args, ts.env_with(PWD=os.fspath(ts.tmp)), FakeApi()))
             self.assertEqual(code, 0, err)
             self.assertEqual(payload["duplicates"], [])

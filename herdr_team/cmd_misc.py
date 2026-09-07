@@ -111,7 +111,7 @@ SETUP_NOTES = [
     "Paste the required block into ~/.config/herdr/config.toml, then run: herdr server reload-config (an invalid snippet rejects the whole config; check with: herdr config check).",
     "Sidebar rows only appear after the first pane.report_metadata write; members are stamped at join.",
     "The optional block is cosmetic; status_indicators = \"symbols\" changes glyphs for every agent, not only team members.",
-    "Key bindings are never installed automatically; herdr-team keys check validates the snippet against your config.",
+    "Key bindings are never installed automatically; herdr-synapse keys check validates the snippet against your config.",
 ]
 
 
@@ -288,7 +288,7 @@ def unwritable_project_dirs(layout: Any) -> List[str]:
             continue
         path = Path(project)
         if not path.is_dir():
-            out.append("team {}: project directory {} is gone; run: herdr-team project set <path> or project clear".format(name, project))
+            out.append("team {}: project directory {} is gone; run: herdr-synapse project set <path> or project clear".format(name, project))
         elif not os.access(os.fspath(path), os.W_OK):
             out.append("team {}: project directory {} is not writable; the team folder has stopped updating".format(name, project))
     return out
@@ -397,7 +397,7 @@ def _plugin_state(args: argparse.Namespace, layout: Layout, env: Dict[str, str],
 def _toast_probe(api: Any) -> Dict[str, Any]:
     """One ``notification.show`` (plan 7.2: ``doctor`` probes once and prints the effective mode)."""
     try:
-        result = api.request("notification.show", {"title": "herdr-team doctor", "body": "toast probe; nothing to do", "sound": "none"})
+        result = api.request("notification.show", {"title": "herdr-synapse doctor", "body": "toast probe; nothing to do", "sound": "none"})
     except HerdrTeamError as err:
         return {"probed": True, "shown": False, "reason": err.code}
     reason = result.get("reason") if isinstance(result, dict) else None
@@ -435,12 +435,12 @@ def _run_doctor(args: argparse.Namespace) -> int:
         warnings.append("state root lives in a cloud-synced directory")
     stale = sidebar_missing_team_colors(layout.config_dir)
     if stale:
-        warnings.append("sidebar rows predate team colours; run: herdr-team setup --print-config, re-paste the block, then herdr server reload-config")
+        warnings.append("sidebar rows predate team colours; run: herdr-synapse setup --print-config, re-paste the block, then herdr server reload-config")
     for line in unwritable_project_dirs(layout):
         warnings.append(line)
     for grant in _operator.active_all(layout.session):
         # Authority nobody remembers granting is the failure mode worth naming.
-        warnings.append("{} acts with your authority in team {} ({}); revoke: herdr-team operator revoke {} --team {}".format(
+        warnings.append("{} acts with your authority in team {} ({}); revoke: herdr-synapse operator revoke {} --team {}".format(
             grant.get("member"), grant.get("team"),
             "until {}".format(grant["expires_at"]) if grant.get("expires_at") else "no expiry",
             grant.get("member"), grant.get("team")))
@@ -498,7 +498,7 @@ def _run_doctor(args: argparse.Namespace) -> int:
 
     def human() -> str:
         lines = [
-            "herdr-team {} (python {})".format(VERSION, payload["python"]),
+            "herdr-synapse {} (python {})".format(VERSION, payload["python"]),
             "herdr: {} {} protocol {} ({})".format(herdr["bin"], herdr["version"] or "?", herdr["protocol"] or "?", "reachable" if herdr["reachable"] else "unreachable"),
             "socket: {} ({}){}".format(socket_info["path"], socket_info["source"], "" if allowed else " NOT ALLOWED"),
             "slug: {}    config dir: {}".format(layout.slug, layout.config_dir),
@@ -538,9 +538,9 @@ def _add_install_cli_arguments(parser: argparse.ArgumentParser) -> None:
 def _run_install_cli(args: argparse.Namespace) -> int:
     env = env_of(args)
     home = _paths.home_dir(env)
-    target = _paths.plugin_root() / "bin" / "herdr-team"
+    target = _paths.plugin_root() / "bin" / "herdr-synapse"
     directory = Path(os.path.expanduser(args.dir)) if args.dir else home / ".local" / "bin"
-    link = directory / "herdr-team"
+    link = directory / "herdr-synapse"
     created = False
     replaced = False
     existing = None
@@ -841,7 +841,7 @@ def _member_or_raise(doc: Dict[str, Any], name: str, team_name: str) -> Dict[str
 def _require_daemon(layout: Layout) -> None:
     status = daemon_status(layout.session)
     if not status["alive"]:
-        raise HerdrTeamError("daemon_down", "the team notifier is not running ({}); run: herdr-team daemon start".format(status.get("reason")), EXIT_DAEMON_DOWN)
+        raise HerdrTeamError("daemon_down", "the team notifier is not running ({}); run: herdr-synapse daemon start".format(status.get("reason")), EXIT_DAEMON_DOWN)
 
 
 def _add_nudge_arguments(parser: argparse.ArgumentParser) -> None:
@@ -1128,7 +1128,7 @@ def _run_kinds(args: argparse.Namespace) -> int:
     if args.action == "list":
         rows = [_kinds_row(kind, doc.get(kind)) for kind in sorted(doc)]
         lines = ["{:<12} {:<9} {}".format(r["kind"], "delivers" if r["delivers"] else "held", ", ".join(k for k in ("trusted", "verified", "probe_ok") if r[k]) or "-") for r in rows]
-        return emit(args, {"kinds": rows, "path": os.fspath(path)}, "\n".join(lines) if lines else "no kinds recorded yet: run `herdr-team kinds trust <kind>` for the kinds you have verified")
+        return emit(args, {"kinds": rows, "path": os.fspath(path)}, "\n".join(lines) if lines else "no kinds recorded yet: run `herdr-synapse kinds trust <kind>` for the kinds you have verified")
     kind = (args.kind or "").strip().lower()
     if not kind:
         raise UsageError("kinds {} needs a kind label".format(args.action))
@@ -1156,7 +1156,7 @@ COMMANDS: List[Command] = [
     Command("inbox", "posts addressed to the human plus the notifier's attention file (--human)", _add_inbox_arguments, _run_inbox),
     Command("setup", "print the config blocks to paste (--print-config); never edits config", _add_setup_arguments, _run_setup),
     Command("keys", "print the key-binding snippet or check it against your config", _add_keys_arguments, _run_keys),
-    Command("install-cli", "symlink ~/.local/bin/herdr-team to this plugin (--yes)", _add_install_cli_arguments, _run_install_cli),
+    Command("install-cli", "symlink ~/.local/bin/herdr-synapse to this plugin (--yes)", _add_install_cli_arguments, _run_install_cli),
     Command("interrupts", "show or set which kinds a teammate's post --interrupt may reach mid-turn (human only to change)", _add_interrupts_arguments, _run_interrupts),
     Command("gc", "remove session trees whose socket is gone, lock free, older than 7 days", _no_arguments, _run_gc),
     Command("prune", "archive old board segments into _archive", _add_prune_arguments, _run_prune),

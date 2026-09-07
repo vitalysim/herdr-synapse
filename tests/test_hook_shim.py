@@ -81,14 +81,14 @@ class ShimCase(unittest.TestCase):
     def real_cli(self) -> Path:
         driver = self.tmp / "driver.py"
         driver.write_text(DRIVER.format(root=os.fspath(PLUGIN_ROOT)), encoding="utf-8")
-        wrapper = self.tmp / "herdr-team"
+        wrapper = self.tmp / "herdr-synapse"
         wrapper.write_text("#!/bin/sh\nexec {} {} \"$@\"\n".format(sys.executable, os.fspath(driver)), encoding="utf-8")
         os.chmod(wrapper, 0o700)
         return wrapper
 
-    def sentinel_cli(self, rc: int = 7, message: str = "[herdr-team stop] 2 unread board posts for alpha-worker (seq 1-2). Run: herdr-team board --new") -> Path:
+    def sentinel_cli(self, rc: int = 7, message: str = "[herdr-team stop] 2 unread board posts for alpha-worker (seq 1-2). Run: herdr-synapse board --new") -> Path:
         """A CLI that records every invocation and answers every action like a blocking stop."""
-        wrapper = self.tmp / "herdr-team"
+        wrapper = self.tmp / "herdr-synapse"
         wrapper.write_text(
             "#!/bin/sh\nprintf '%s\\n' \"$*\" >>{}\nprintf '%s\\n' {}\nexit {}\n".format(
                 cs.shell_single_quote(os.fspath(self.sentinel)), cs.shell_single_quote(message), rc
@@ -143,7 +143,7 @@ class ShimSourceTests(unittest.TestCase):
         self.assertGreater(code.index("exit 2"), code.index("stop)"), "the exit 2 sits inside the stop branch")
         self.assertIn("|| true", text)
         self.assertIn(cs.CLI_PLACEHOLDER, text)
-        self.assertIn("command -v herdr-team", text)
+        self.assertIn("command -v herdr-synapse", text)
         self.assertIn(cs.SHIM_MARKER + str(cs.SHIM_VERSION), text)
         for gate in ("HERDR_ENV", "HERDR_PANE_ID", "HERDR_SOCKET_PATH", "HERDR_TEAM_HOOKS", "CURSOR_VERSION"):
             self.assertIn(gate, text)
@@ -194,7 +194,7 @@ class GateTests(ShimCase):
         proc = self.run_shim(shim, "stop")
         self.assertEqual(proc.returncode, 2)
         self.assertIn(b"[herdr-team stop] 2 unread board posts", proc.stderr)
-        self.assertIn(b"herdr-team board --new", proc.stderr)
+        self.assertIn(b"herdr-synapse board --new", proc.stderr)
         self.assertEqual(proc.stdout, b"")
         calls = self.sentinel.read_text(encoding="utf-8").splitlines()
         self.assertEqual(calls, ["hook-input session-start", "hook-input prompt-submit", "hook-input stop"])
@@ -214,22 +214,22 @@ class GateTests(ShimCase):
 
 class BrokenEnvironmentTests(ShimCase):
     def test_broken_cli_path_exits_zero_and_logs(self):
-        shim = self.write_shim("/nonexistent/dir/herdr-team")
+        shim = self.write_shim("/nonexistent/dir/herdr-synapse")
         for action in ("session-start", "prompt-submit", "stop"):
             proc = self.run_shim(shim, action)
             self.assertEqual(proc.returncode, 0, (action, proc.stderr))
             self.assertEqual(proc.stdout, b"")
             self.assertEqual(proc.stderr, b"")
         log = self.log.read_text(encoding="utf-8")
-        self.assertEqual(log.count("herdr-team CLI not found"), 3)
-        self.assertIn("/nonexistent/dir/herdr-team", log)
+        self.assertEqual(log.count("herdr-synapse CLI not found"), 3)
+        self.assertIn("/nonexistent/dir/herdr-synapse", log)
 
     def test_path_fallback_finds_herdr_team(self):
         bindir = self.tmp / "bin"
         bindir.mkdir()
         wrapper = self.sentinel_cli()
-        shutil.move(os.fspath(wrapper), os.fspath(bindir / "herdr-team"))
-        shim = self.write_shim("/nonexistent/herdr-team")
+        shutil.move(os.fspath(wrapper), os.fspath(bindir / "herdr-synapse"))
+        shim = self.write_shim("/nonexistent/herdr-synapse")
         proc = self.run_shim(shim, "stop", env=self.env(PATH="{}:/usr/bin:/bin".format(bindir)))
         self.assertEqual(proc.returncode, 2, proc.stderr)
         self.assertTrue(self.sentinel.exists())
@@ -237,7 +237,7 @@ class BrokenEnvironmentTests(ShimCase):
     def test_read_only_hooks_dir_and_log(self):
         ro = self.tmp / "ro"
         ro.mkdir()
-        shim = self.write_shim("/nonexistent/herdr-team", directory=ro)
+        shim = self.write_shim("/nonexistent/herdr-synapse", directory=ro)
         os.chmod(ro, 0o500)
         if os.access(ro / "x", os.W_OK) or os.geteuid() == 0:
             self.skipTest("cannot make a read-only dir as this user")
@@ -300,8 +300,8 @@ class RealCliTests(ShimCase):
         self.assertEqual(proc.stdout, b"")
         message = proc.stderr.decode("utf-8")
         self.assertTrue(message.startswith("[herdr-team stop] 1 unread board post for alpha-worker (seq {})".format(seq)), message)
-        self.assertIn("herdr-team board --new", message)
-        self.assertIn("herdr-team ack", message)
+        self.assertIn("herdr-synapse board --new", message)
+        self.assertIn("herdr-synapse ack", message)
         state = store.read_json(self.ts.team.root / "hooks" / "alpha-worker.last_stop_block")
         self.assertEqual(state["seq"], seq)
         self.assertEqual(len(state["blocks"]), 1)
@@ -495,7 +495,7 @@ class RenderContextTests(unittest.TestCase):
     def test_live_renderer_respects_caps(self):
         text = cmd_hooks.render_board_context(_records(10, 400), max_posts=20, max_bytes=1500)
         self.assert_contract(text, 1500)
-        self.assertIn("herdr-team board --new", text, "omitted posts point at the CLI")
+        self.assertIn("herdr-synapse board --new", text, "omitted posts point at the CLI")
         text = cmd_hooks.render_board_context(_records(5), max_posts=2, max_bytes=4096)
         self.assert_contract(text, 4096)
         self.assertEqual(len([l for l in text.splitlines() if l.startswith("```text")]), 2)
@@ -527,7 +527,7 @@ class HooksCommandTests(unittest.TestCase):
         self.claude_dir = self.ts.home / ".claude"
         self.claude_dir.mkdir()
         self.settings = self.claude_dir / "settings.json"
-        self.cli_path = self.ts.tmp / "herdr-team"
+        self.cli_path = self.ts.tmp / "herdr-synapse"
         self.cli_path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
         os.chmod(self.cli_path, 0o700)
 

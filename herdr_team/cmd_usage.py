@@ -1,6 +1,6 @@
 """Command group: ``usage`` (the report) and the ``usage-pane`` popup entrypoint (docs/cli.md section 9).
 
-``herdr-team usage`` lists every agent of the session grouped by the provider
+``herdr-synapse usage`` lists every agent of the session grouped by the provider
 account it draws on and prints that provider's limit windows (session, week,
 per model) the way ``/usage`` in Claude Code or ``/status`` in Codex do, for
 all agents at once. ``ui usage`` (``prefix+i``) opens the same report as a
@@ -98,7 +98,7 @@ def _refresh_in_background(state: PaneState, args: argparse.Namespace, timeout: 
         if state.refreshing:
             return
         state.refreshing = True
-    threading.Thread(target=work, name="herdr-team-usage-refresh", daemon=True).start()
+    threading.Thread(target=work, name="herdr-synapse-usage-refresh", daemon=True).start()
 
 
 def _style_attrs(has_colors: bool) -> Dict[str, int]:
@@ -217,12 +217,12 @@ def _run_pane(args: argparse.Namespace) -> int:
     env = dict(args.env)
     layout = layout_for(args)
     if env.get("HERDR_PLUGIN_ENTRYPOINT_ID") != ENTRYPOINT and not getattr(args, "force", False):
-        raise HerdrTeamError("not_a_plugin_pane", "usage-pane runs in the usage popup; use `herdr-team ui usage`, `herdr-team usage`, or pass --force", EXIT_REFUSED)
+        raise HerdrTeamError("not_a_plugin_pane", "usage-pane runs in the usage popup; use `herdr-synapse ui usage`, `herdr-synapse usage`, or pass --force", EXIT_REFUSED)
     if not _paths.socket_allowed(layout.config_dir, layout.socket):
-        sys.stderr.write("herdr-team usage-pane skipped: socket not allowed\n")
+        sys.stderr.write("herdr-synapse usage-pane skipped: socket not allowed\n")
         return EXIT_OK
     if not sys.stdout.isatty():
-        raise HerdrTeamError("no_tty", "usage-pane needs a terminal (use `herdr-team usage`)", EXIT_REFUSED)
+        raise HerdrTeamError("no_tty", "usage-pane needs a terminal (use `herdr-synapse usage`)", EXIT_REFUSED)
     import curses
 
     return int(curses.wrapper(_loop, args, max(1.0, float(args.timeout)), bool(args.ascii)))

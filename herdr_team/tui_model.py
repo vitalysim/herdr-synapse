@@ -1964,7 +1964,7 @@ def settle_say_watch(model: ConsoleModel, records: Iterable[Dict[str, Any]], now
                 status += " (!!{} text forces)".format(member)
             del model.watching_say[seq]
         elif now_mono - sent >= SAY_WATCH_S:
-            status = "say #{} to {}: no outcome after {:.0f}s (herdr-team notifier stats)".format(seq, member, SAY_WATCH_S)
+            status = "say #{} to {}: no outcome after {:.0f}s (herdr-synapse notifier stats)".format(seq, member, SAY_WATCH_S)
             del model.watching_say[seq]
     if status is not None:
         model.status = status
@@ -3096,7 +3096,7 @@ ACTION_OPTIONS = (
     ("remove", "remove it from {team}"),
     ("remove_keep", "remove it from {team}, keep its Herdr agent name"),
     ("focus", "go to its pane (closes this popup)"),
-    ("resume", "show the command that reopens its own session (herdr-team resume)"),
+    ("resume", "show the command that reopens its own session (herdr-synapse resume)"),
 )
 
 
@@ -3117,7 +3117,7 @@ def _action_refusal(action: str, member: Dict[str, Any]) -> Optional[str]:
     status = str(member.get("status") or "active")
     if status in UNSETTLED_STATUSES and action in ("rename", "send_goal", "focus"):
         if status == "missing":
-            return "{} has no live agent right now; bind it first (herdr-team bind)".format(member.get("name"))
+            return "{} has no live agent right now; bind it first (herdr-synapse bind)".format(member.get("name"))
         return "{} is {}; settle it first".format(member.get("name"), status.replace("_", " "))
     return None
 
@@ -3461,7 +3461,7 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
         if model.trusted_kinds is not None:
             untrusted = sorted({str(row.kind) for row in selected_rows(model) if row.kind and row.kind not in model.trusted_kinds})
             for kind in untrusted:
-                lines.append("note: {} is not trusted for delivery yet; nothing is typed into it until you run: herdr-team kinds trust {}".format(kind, kind))
+                lines.append("note: {} is not trusted for delivery yet; nothing is typed into it until you run: herdr-synapse kinds trust {}".format(kind, kind))
     if model.error:
         lines.append("error: {}".format(model.error))
     elif model.status:

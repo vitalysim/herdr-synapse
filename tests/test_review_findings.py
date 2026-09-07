@@ -101,7 +101,7 @@ class MarkerBypassTests(unittest.TestCase):
     run on the sanitized text (``_run_task`` already does it in that order).
     """
 
-    RAW = "[herdr\x00-team nudge] 1 new board post for alpha-worker (seq 3). Run: herdr-team board --new [n\x1b[0m17]"
+    RAW = "[herdr\x00-team nudge] 1 new board post for alpha-worker (seq 3). Run: herdr-synapse board --new [n\x1b[0m17]"
 
     def test_control_characters_inside_the_marker_are_still_rejected(self):
         with self.assertRaises(HerdrTeamError) as caught:
@@ -624,8 +624,8 @@ class ShimQuotingTests(unittest.TestCase):
     """Low (safety): a single quote in the plugin path must not break or open the sh literal."""
 
     def test_render_shim_escapes_a_single_quote(self):
-        text = claude_settings.render_shim(Path("/Users/o'brien/herdr-team/bin/herdr-team"))
-        self.assertIn("HERDR_TEAM_CLI='/Users/o'\\''brien/herdr-team/bin/herdr-team'", text)
+        text = claude_settings.render_shim(Path("/Users/o'brien/herdr-synapse/bin/herdr-synapse"))
+        self.assertIn("HERDR_TEAM_CLI='/Users/o'\\''brien/herdr-synapse/bin/herdr-synapse'", text)
         proc = subprocess.run(["sh", "-n"], input=text.encode("utf-8"), stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         with self.assertRaises(HerdrTeamError):
@@ -636,11 +636,11 @@ class ShimLogPathTests(unittest.TestCase):
     """Low (safety): the shim never appends to a predictable name in a shared temp dir."""
 
     def test_no_fixed_log_in_tmp(self):
-        source = (PLUGIN_ROOT / "hooks" / "claude" / "herdr-team-hook.sh").read_text()
-        self.assertNotIn("/tmp/herdr-team-hook.log", source)
+        source = (PLUGIN_ROOT / "hooks" / "claude" / "herdr-synapse-hook.sh").read_text()
+        self.assertNotIn("/tmp/herdr-synapse-hook.log", source)
         tmp = Path(tempfile.mkdtemp(prefix="ht-log-"))
         self.addCleanup(shutil.rmtree, tmp, True)
-        cli = tmp / "herdr-team"
+        cli = tmp / "herdr-synapse"
         cli.write_text("#!/bin/sh\nexit 0\n")
         os.chmod(cli, 0o700)
         shim = tmp / "shim.sh"
@@ -648,7 +648,7 @@ class ShimLogPathTests(unittest.TestCase):
         env = {"HERDR_ENV": "1", "HERDR_PANE_ID": "w1:p1", "HERDR_SOCKET_PATH": "/nonexistent/herdr.sock", "PATH": "/usr/bin:/bin", "TMPDIR": os.fspath(tmp), "HOME": os.fspath(tmp / "nohome")}
         proc = subprocess.run(["sh", os.fspath(shim), "prompt-submit"], input=b"{}", stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20, env=env)
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertFalse((tmp / "herdr-team-hook.log").exists())
+        self.assertFalse((tmp / "herdr-synapse-hook.log").exists())
         state = tmp / "state"
         state.mkdir()
         env["HERDR_TEAM_STATE_DIR"] = os.fspath(state)
@@ -802,7 +802,7 @@ class DaemonStartDutiesTests(unittest.TestCase):
             self.assertEqual(payload["view"], "reapplied")
             sets = [p for m, p in api.calls if m == "agent.view.set"]
             self.assertEqual(sets[0]["label"], "team:alpha")
-            self.assertEqual(sets[0]["source"], "plugin:herdr-team")
+            self.assertEqual(sets[0]["source"], "plugin:herdr-synapse")
 
     def test_stale_view_is_dropped_without_a_team(self):
         with TempState(write_team=False) as ts:
@@ -857,7 +857,7 @@ class DoctorProbeTests(unittest.TestCase):
     def test_plugin_list_over_the_socket_and_one_toast_probe(self):
         with TempState() as ts:
             api = FakeApi()
-            api.set_response("plugin.list", {"type": "plugin_list", "plugins": [{"plugin_id": "herdr-team", "enabled": True, "manifest_path": "/x/herdr-plugin.toml", "warnings": []}]})
+            api.set_response("plugin.list", {"type": "plugin_list", "plugins": [{"plugin_id": "herdr-synapse", "enabled": True, "manifest_path": "/x/herdr-plugin.toml", "warnings": []}]})
             api.set_response("notification.show", {"type": "notification_show", "shown": False, "reason": "no_foreground_client"})
             code, payload, err = json_out(run_cli(["--json", "doctor"], ts.env, api))
             self.assertEqual(code, 0, err)
@@ -952,7 +952,7 @@ class TaskTokenRestampTests(unittest.TestCase):
             post(ts, "human", author="alpha-reviewer", text="working on the bff fix")
             d.tick()
             member = team.member("alpha-reviewer")
-            task_calls = lambda: [p for m, p in api.calls if m == "pane.report_metadata" and p.get("source") == "herdr-team:task" and p.get("pane_id") == "w2:p1"]
+            task_calls = lambda: [p for m, p in api.calls if m == "pane.report_metadata" and p.get("source") == "herdr-synapse:task" and p.get("pane_id") == "w2:p1"]
             d._stamp_tokens(team, member, time.time())
             before = len(task_calls())
             clock.advance(10)

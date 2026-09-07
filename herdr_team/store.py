@@ -1156,7 +1156,7 @@ class Cursors:
         unread is ever skipped (plan 6.2).
 
         ``touch`` rewrites the file (fresh ``updated``, ``surfaced_by``,
-        ``terminal_id``) even when nothing moves. ``herdr-team ack`` uses it:
+        ``terminal_id``) even when nothing moves. ``herdr-synapse ack`` uses it:
         the daemon recognises an acknowledgement by a cursor write after the
         briefing landed, and a member whose cursor was already at the board
         max (the join sets it there) would otherwise never produce one.

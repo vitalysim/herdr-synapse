@@ -86,7 +86,7 @@ class TwoConsolesVerifyTests(unittest.TestCase):
     """The HP-07 regression, inverted: a second console must not demote the first."""
 
     def _env(self, ts: TempState, pane_id: str) -> Dict[str, str]:
-        return ts.env_with(HERDR_PLUGIN_ENTRYPOINT_ID="console", HERDR_PLUGIN_ID="herdr-team", HERDR_PANE_ID=pane_id)
+        return ts.env_with(HERDR_PLUGIN_ENTRYPOINT_ID="console", HERDR_PLUGIN_ID="herdr-synapse", HERDR_PANE_ID=pane_id)
 
     def _author(self, ts: TempState, pane_id: str, terminal: str, focused: bool = True):
         api = make_api()

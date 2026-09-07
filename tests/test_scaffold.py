@@ -19,7 +19,7 @@ except ImportError:  # pragma: no cover - 3.9/3.10
     tomllib = None
 
 MANIFEST = PLUGIN_ROOT / "herdr-plugin.toml"
-LAUNCHER = PLUGIN_ROOT / "bin" / "herdr-team"
+LAUNCHER = PLUGIN_ROOT / "bin" / "herdr-synapse"
 HOOK = PLUGIN_ROOT / "bin" / "hook"
 CONSOLE_SH = PLUGIN_ROOT / "console.sh"
 
@@ -41,29 +41,29 @@ def run(cmd, env=None, timeout=20):
 
 class LauncherTests(unittest.TestCase):
     def test_launcher_works_through_a_symlink(self):
-        """``install-cli`` symlinks ~/.local/bin/herdr-team to bin/herdr-team; the launcher must follow the link."""
+        """``install-cli`` symlinks ~/.local/bin/herdr-synapse to bin/herdr-synapse; the launcher must follow the link."""
         import subprocess
         import sys
         import tempfile
 
         with tempfile.TemporaryDirectory() as tmp:
-            link = Path(tmp) / "bin" / "herdr-team"
+            link = Path(tmp) / "bin" / "herdr-synapse"
             link.parent.mkdir()
-            link.symlink_to(PLUGIN_ROOT / "bin" / "herdr-team")
+            link.symlink_to(PLUGIN_ROOT / "bin" / "herdr-synapse")
             nested = Path(tmp) / "nested"
             nested.symlink_to(link)  # a link to a link
             env = {"PATH": "/usr/bin:/bin", "HOME": tmp, "HERDR_TEAM_PYTHON": sys.executable}
             for path in (link, nested):
                 proc = subprocess.run([os.fspath(path), "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, timeout=30)
                 self.assertEqual(proc.returncode, 0, proc.stderr.decode())
-                self.assertEqual(proc.stdout.decode().strip(), "herdr-team {}".format(VERSION))
+                self.assertEqual(proc.stdout.decode().strip(), "herdr-synapse {}".format(VERSION))
 
 
 class ManifestTests(unittest.TestCase):
     def test_manifest_is_regular_file_with_expected_entries(self):
         self.assertTrue(MANIFEST.is_file() and not MANIFEST.is_symlink())
         text = MANIFEST.read_text(encoding="utf-8")
-        self.assertIn('id = "herdr-team"', text)
+        self.assertIn('id = "herdr-synapse"', text)
         self.assertIn('min_herdr_version = "0.8.2"', text)
         self.assertIn('version = "{}"'.format(VERSION), text)
         ons = re.findall(r'^on = "([^"]+)"', text, re.M)
@@ -81,15 +81,15 @@ class ManifestTests(unittest.TestCase):
     @unittest.skipIf(tomllib is None, "tomllib needs Python 3.11+")
     def test_manifest_parses_as_toml(self):
         doc = tomllib.loads(MANIFEST.read_text(encoding="utf-8"))
-        self.assertEqual(doc["id"], "herdr-team")
+        self.assertEqual(doc["id"], "herdr-synapse")
         self.assertEqual(doc["platforms"], ["macos", "linux"])
-        self.assertEqual(doc["startup"], [{"command": ["./bin/herdr-team", "daemon", "start"]}])
+        self.assertEqual(doc["startup"], [{"command": ["./bin/herdr-synapse", "daemon", "start"]}])
         self.assertEqual([a["contexts"] for a in doc["actions"]], [["global"], ["pane"], ["global"], ["global"], ["global"], ["global"], ["global"], ["global"]])
         self.assertEqual(doc["panes"][0]["command"], ["sh", "console.sh"])
         self.assertEqual(doc["panes"][1]["width"], "80%")
         self.assertEqual(doc["panes"][1]["height"], 12)
         self.assertEqual(doc["panes"][2]["height"], 28)
-        self.assertEqual((doc["panes"][3]["id"], doc["panes"][3]["command"]), ("usage", ["./bin/herdr-team", "usage-pane"]))
+        self.assertEqual((doc["panes"][3]["id"], doc["panes"][3]["command"]), ("usage", ["./bin/herdr-synapse", "usage-pane"]))
         for pane in doc["panes"][1:]:
             self.assertEqual(pane["placement"], "popup")
         self.assertEqual(doc["panes"][0]["placement"], "split")
@@ -112,7 +112,7 @@ class LauncherTests(unittest.TestCase):
     def test_version_through_launcher(self):
         proc = run([os.fspath(LAUNCHER), "--version"])
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertEqual(proc.stdout.decode().strip(), "herdr-team {}".format(VERSION))
+        self.assertEqual(proc.stdout.decode().strip(), "herdr-synapse {}".format(VERSION))
 
     def test_json_error_through_launcher(self):
         proc = run([os.fspath(LAUNCHER), "nope", "--json"])
@@ -157,7 +157,7 @@ class HookGateTests(unittest.TestCase):
             "HERDR_SOCKET_PATH": os.fspath(self.ts.socket_path),
             "HERDR_PLUGIN_EVENT": "pane.agent_detected",
             "HERDR_PLUGIN_EVENT_JSON": json.dumps({"type": "pane_agent_detected", "pane_id": "w2:p1"}),
-            "HERDR_PLUGIN_ID": "herdr-team",
+            "HERDR_PLUGIN_ID": "herdr-synapse",
             "HERDR_BIN_PATH": os.fspath(self.fake_herdr),
         })
 
@@ -187,7 +187,7 @@ class HookGateTests(unittest.TestCase):
         self.assertLess(elapsed, 0.2, "gate took {:.3f}s".format(elapsed))
 
     def assert_reconciler_ran(self, result):
-        # The slow path runs `herdr-team hook-event`, which exits 0 in every non-bug case and prints one JSON line.
+        # The slow path runs `herdr-synapse hook-event`, which exits 0 in every non-bug case and prints one JSON line.
         self.assertEqual(result.returncode, 0, result.stderr)
         payload = json.loads(result.stdout.decode().strip().splitlines()[-1])
         self.assertEqual(payload["event"], "agent_detected")
@@ -233,7 +233,7 @@ class ConsoleWrapperTests(unittest.TestCase):
         self.assertIn(b"not_a_plugin_pane", proc.stderr)
         out = proc.stdout.decode()
         self.assertIn("exited with status 1", out)
-        self.assertIn("herdr-team ui console", out)
+        self.assertIn("herdr-synapse ui console", out)
 
 
 class StubModuleTests(unittest.TestCase):

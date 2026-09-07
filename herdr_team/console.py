@@ -9,7 +9,7 @@ itself reports ``focused: true`` at Enter.
 Everything decision-like lives in ``tui_model``. This module owns: file
 reads (``who.json``, ``mute.json``, cursors, ``console.json``, the board
 tail with the plan 6.3 contract), the curses loop, and executing intents by
-shelling out to the ``herdr-team`` CLI (so author resolution, validation,
+shelling out to the ``herdr-synapse`` CLI (so author resolution, validation,
 and locking happen in exactly one code path) or, for ``/peek``, calling
 ``agent read --source visible`` through ``api``.
 
@@ -233,8 +233,8 @@ def pick_team(layout: Layout, requested: Optional[str], env: Dict[str, str]) -> 
     if len(teams) == 1:
         return teams[0]
     if not teams:
-        raise HerdrTeamError("team_not_found", "no team in session {}; create one first (herdr-team create or the team-up action)".format(layout.slug), EXIT_REFUSED)
-    raise HerdrTeamError("team_ambiguous", "several teams in this session; pass --team or run herdr-team use <team>", EXIT_REFUSED, {"teams": teams})
+        raise HerdrTeamError("team_not_found", "no team in session {}; create one first (herdr-synapse create or the team-up action)".format(layout.slug), EXIT_REFUSED)
+    raise HerdrTeamError("team_ambiguous", "several teams in this session; pass --team or run herdr-synapse use <team>", EXIT_REFUSED, {"teams": teams})
 
 
 # --------------------------------------------------------------------------
@@ -381,16 +381,16 @@ def write_console_record(layout: Layout, record: Dict[str, Any]) -> None:
 
 
 def cli_path() -> Path:
-    return _paths.plugin_root() / "bin" / "herdr-team"
+    return _paths.plugin_root() / "bin" / "herdr-synapse"
 
 
 def run_cli(args: Sequence[str], env: Dict[str, str], timeout: float = CLI_TIMEOUT_S) -> Tuple[int, Any, Optional[Dict[str, Any]]]:
-    """Run ``herdr-team --json <args>``; returns ``(rc, stdout json or None, error json or None)``."""
+    """Run ``herdr-synapse --json <args>``; returns ``(rc, stdout json or None, error json or None)``."""
     argv = [os.fspath(cli_path()), "--json"] + [str(a) for a in args]
     try:
         proc = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout, env=dict(env))
     except subprocess.TimeoutExpired:
-        return 5, None, {"code": "cli_timeout", "message": "herdr-team {} took over {:g}s".format(args[0] if args else "", timeout)}
+        return 5, None, {"code": "cli_timeout", "message": "herdr-synapse {} took over {:g}s".format(args[0] if args else "", timeout)}
     except OSError as err:
         return 1, None, {"code": "cli_unavailable", "message": str(err)}
     out: Any = None
@@ -414,19 +414,19 @@ def run_cli(args: Sequence[str], env: Dict[str, str], timeout: float = CLI_TIMEO
 SAY_HINTS = {
     "author_mismatch": "only the human can type into a member",
     "member_not_found": "no such agent member (see /who)",
-    "echo_rejected": "the text looks like a herdr-team header; reword it",
+    "echo_rejected": "the text looks like a herdr-synapse header; reword it",
     "secret_detected": "the text looks like a secret; it is never typed",
-    "daemon_down": "the notifier is not running; run: herdr-team daemon start",
+    "daemon_down": "the notifier is not running; run: herdr-synapse daemon start",
     "say_unverified": "this console is not verified as the human (is its pane focused?); click it and retry",
     "say_control_command": "that would end, clear, or switch the member's session; !!{member} text forces it",
-    "kind_unverified": "that agent kind is not trusted yet; run: herdr-team kinds trust <kind>",
+    "kind_unverified": "that agent kind is not trusted yet; run: herdr-synapse kinds trust <kind>",
     "say_multiline": "one line only; post multi-line text with @name instead",
     "say_too_long": "500 characters at most; post longer text with @name instead",
 }
 
 
 def say_args(intent: Intent, team: str) -> List[str]:
-    """``herdr-team --json --team T say --no-wait [--force] -- <member> <text>``; the outcome comes from the board tail."""
+    """``herdr-synapse --json --team T say --no-wait [--force] -- <member> <text>``; the outcome comes from the board tail."""
     a = intent.args
     args: List[str] = ["--team", team, "say", "--no-wait"]
     if a.get("force"):
@@ -890,7 +890,7 @@ def _loop(stdscr: Any, state: ConsoleState, api: Any) -> int:
     state.height, state.width = stdscr.getmaxyx()
     model = build_model(state.layout, state.team, state, env=state.env)
     if state.env.get(START_VIEW_ENV) == "who":
-        # ``herdr-team ui who`` opens this entrypoint as a popup on the roster box.
+        # ``herdr-synapse ui who`` opens this entrypoint as a popup on the roster box.
         execute_intent(tui_model.Intent("who"), model, state, api)
     last_refresh = time.monotonic()
     try:
@@ -1039,11 +1039,11 @@ def run_args(args: argparse.Namespace) -> int:
     entry = env.get("HERDR_PLUGIN_ENTRYPOINT_ID")
     target = getattr(args, "target_pane", None)
     if entry != ENTRYPOINT and not target and not getattr(args, "force", False):
-        raise HerdrTeamError("not_a_plugin_pane", "console runs in the plugin pane; use `herdr-team ui console` or pass --target-pane <id>", EXIT_REFUSED)
+        raise HerdrTeamError("not_a_plugin_pane", "console runs in the plugin pane; use `herdr-synapse ui console` or pass --target-pane <id>", EXIT_REFUSED)
     if not _paths.socket_allowed(layout.config_dir, layout.socket):
         # Plan 4.1 / PK-07: an unlisted socket makes the pane a no-op before any
         # socket call or console.json write, so console.sh shows the hint.
-        sys.stderr.write("herdr-team console skipped: socket not allowed\n")
+        sys.stderr.write("herdr-synapse console skipped: socket not allowed\n")
         return EXIT_OK
     if target:
         env["HERDR_PANE_ID"] = target
@@ -1054,7 +1054,7 @@ def run_args(args: argparse.Namespace) -> int:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    parser = argparse.ArgumentParser(prog="herdr-team console", allow_abbrev=False)
+    parser = argparse.ArgumentParser(prog="herdr-synapse console", allow_abbrev=False)
     parser.add_argument("--team")
     parser.add_argument("--session")
     parser.add_argument("--socket")

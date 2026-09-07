@@ -20,7 +20,7 @@ def event_env(ts, event="pane.agent_detected", pane_id="w2:p1", **extra):
     env = ts.env_with(
         HERDR_PLUGIN_EVENT=event,
         HERDR_PLUGIN_EVENT_JSON=json.dumps({"type": event.replace(".", "_"), "data": {"pane_id": pane_id, "ignored": {"deep": True}}}),
-        HERDR_PLUGIN_ID="herdr-team",
+        HERDR_PLUGIN_ID="herdr-synapse",
         HERDR_PANE_ID="wA:p6",
         HERDR_WORKSPACE_ID="wA",
         HERDR_TAB_ID="wA:t1",

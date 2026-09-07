@@ -23,7 +23,7 @@ class SocketClientTests(unittest.TestCase):
         req = self.server.requests[0]
         self.assertEqual(req["method"], "ping")
         self.assertEqual(req["params"], {})
-        self.assertTrue(req["id"].startswith("herdr-team:"))
+        self.assertTrue(req["id"].startswith("herdr-synapse:"))
 
     def test_request_sends_params_and_returns_result(self):
         result = self.client.request("agent.get", {"target": "w2:p1"})

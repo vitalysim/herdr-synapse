@@ -27,7 +27,7 @@ from test_workdir import agent, human
 
 class DocumentTests(unittest.TestCase):
     def test_the_skeleton_names_every_section_and_explains_each_one(self):
-        body = _doc.document("alpha-worker", "alpha", "worker", _doc.skeleton(), adopt_command="herdr-team instructions alpha-worker --adopt")
+        body = _doc.document("alpha-worker", "alpha", "worker", _doc.skeleton(), adopt_command="herdr-synapse instructions alpha-worker --adopt")
         for title in _doc.SECTIONS:
             self.assertIn("## " + title, body)
             self.assertIn(_doc.HINTS[title], body)

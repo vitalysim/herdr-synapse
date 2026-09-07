@@ -93,8 +93,8 @@ DEFAULT_ROLE_FALLBACK = "agent"
 _sleep = _time.sleep
 _monotonic = _time.monotonic
 NO_DAEMON_ENV = "HERDR_TEAM_NO_DAEMON"
-SKILL_MARKER_RE = re.compile(r"<!--\s*herdr-team skill v(\d+)")
-SKILL_INSTALL_PATHS = (".agents/skills/herdr-team/SKILL.md", ".claude/skills/herdr-team/SKILL.md")
+SKILL_MARKER_RE = re.compile(r"<!--\s*herdr-synapse skill v(\d+)")
+SKILL_INSTALL_PATHS = (".agents/skills/herdr-synapse/SKILL.md", ".claude/skills/herdr-synapse/SKILL.md")
 
 
 # --------------------------------------------------------------------------
@@ -574,7 +574,7 @@ def _spawn_member(layout: Layout, api: Any, team: _roster.Team, team_paths: Team
     if resolved is None:
         failed = roster.set_status(name, "failed", last_seen_at=_roster.now_iso())
         warn(args, "{} did not settle in {} within {:g}s; marked failed (bind it once the dialog is answered)".format(name, pane_id, AGENT_START_TIMEOUT_MS / 1000.0))
-        _toast_job(team_paths, author, "herdr-team {}: {} failed to start".format(team.team, name), "{} in {} never settled; answer its dialog and run: herdr-team bind {} {} {}".format(name, pane_id, team.team, name, pane_id))
+        _toast_job(team_paths, author, "herdr-synapse {}: {} failed to start".format(team.team, name), "{} in {} never settled; answer its dialog and run: herdr-synapse bind {} {} {}".format(name, pane_id, team.team, name, pane_id))
         out["member"] = _member_json(failed, False)
         return out
     renamed = False
@@ -685,7 +685,7 @@ def _run_create(args: argparse.Namespace) -> int:
                     continue
                 specs.append(_JoinSpec(str(row.get("pane_id")), None, None))
             for row in still_pending:
-                warn(args, "skipping {}: still starting after {:g}s; add it later with: herdr-team add {} {}".format(row.get("pane_id"), FROM_WORKSPACE_SETTLE_S, team_name, row.get("pane_id")))
+                warn(args, "skipping {}: still starting after {:g}s; add it later with: herdr-synapse add {} {}".format(row.get("pane_id"), FROM_WORKSPACE_SETTLE_S, team_name, row.get("pane_id")))
             args._still_pending = [str(r.get("pane_id")) for r in still_pending]
             if not specs:
                 raise HerdrTeamError("agent_not_found", "no settled agents in workspace {}".format(args.from_workspace), EXIT_REFUSED, {"workspace_id": args.from_workspace, "pending": args._still_pending})
@@ -766,7 +766,7 @@ def _apply_workdir_setup(
     shared = _roster.member_roots(members_of(load_doc(team_paths)))
     if shared:
         out["hints"].append("team folder: none. All members are in {}; to give the team one, run:".format(shared[0]))
-        out["hints"].append("  herdr-team project set {} --team {}".format(shared[0], team_name))
+        out["hints"].append("  herdr-synapse project set {} --team {}".format(shared[0], team_name))
     return out
 
 
@@ -795,7 +795,7 @@ def _create_members(args: argparse.Namespace, layout: Layout, api: Any, env: Dic
             if outcome["member"].get("status") == "failed":
                 failed.append(outcome["member"])
         if failed and len(failed) == len(spawn):
-            warn(args, "no member started; the team {} is kept with {} failed member(s); fix the panes and run: herdr-team bind".format(team_name, len(failed)))
+            warn(args, "no member started; the team {} is kept with {} failed member(s); fix the panes and run: herdr-synapse bind".format(team_name, len(failed)))
     else:
         for spec in specs:
             member, job = perform_join(layout, api, team, spec, args.steal, args.rename, env, author)
@@ -812,7 +812,7 @@ def _create_members(args: argparse.Namespace, layout: Layout, api: Any, env: Dic
         _set_default_team(layout, team_name)
         set_default = True
     elif default_team != team_name:
-        warn(args, "default team stays {!r}; run: herdr-team use {}".format(default_team or (others[0] if others else "?"), team_name))
+        warn(args, "default team stays {!r}; run: herdr-synapse use {}".format(default_team or (others[0] if others else "?"), team_name))
     # After the roster exists, so the folder renders one file per member.
     workdir_result = _apply_workdir_setup(args, layout, team_name, team_paths, author, project_dir, instructions, members_out)
     payload = {
@@ -878,7 +878,7 @@ def _run_add(args: argparse.Namespace) -> int:
     kind_trusted = _roster.kind_trusted(store.read_json(layout.session.kinds_json, default=None), str(member.kind or ""))
     if not kind_trusted:
         # Gate 4 holds every delivery to an untrusted kind; say so now instead of leaving the member "unbriefed".
-        warn(args, "{} is a {} agent and that kind is not trusted for delivery yet: nothing is typed into it (no briefing, no nudges) until you run: herdr-team kinds trust {}".format(member.name, member.kind, member.kind))
+        warn(args, "{} is a {} agent and that kind is not trusted for delivery yet: nothing is typed into it (no briefing, no nudges) until you run: herdr-synapse kinds trust {}".format(member.name, member.kind, member.kind))
     payload = {"team": team_name, "member": _member_json(member, spec.renamed), "renamed": spec.renamed, "notifier": notifier_state(layout.session), "briefing_job": job, "joined_record": joined, "kind_trusted": kind_trusted}
     return emit(args, payload, "{} joined {} as {} ({})".format(member.name, team_name, member.role, member.pane_id))
 
@@ -1104,7 +1104,7 @@ def _run_dissolve(args: argparse.Namespace) -> int:
     view_cleared = False
     if view_state(layout.session) == "on":
         try:
-            api.request("agent.view.clear", {"source": "plugin:herdr-team"})
+            api.request("agent.view.clear", {"source": "plugin:herdr-synapse"})
         except HerdrTeamError:
             pass
         try:
@@ -1238,7 +1238,7 @@ def _run_me(args: argparse.Namespace) -> int:
         payload["knowledge_path"] = os.fspath(targets["knowledge"])
         payload["board_path"] = os.fspath(targets["board"])
     if installed is not None and installed != SKILL_VERSION:
-        warn(args, "installed skill v{} differs from v{}; run: herdr-team skill install".format(installed, SKILL_VERSION))
+        warn(args, "installed skill v{} differs from v{}; run: herdr-synapse skill install".format(installed, SKILL_VERSION))
     return emit(args, payload, lambda: _render.render_me(payload, doc))
 
 
@@ -1423,7 +1423,7 @@ def _editor_text(initial: str, env: Dict[str, str]) -> str:
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         raise HerdrTeamError("no_tty", "charter edit needs a terminal; use charter set --file", EXIT_REFUSED)
     argv = editor_command(env)
-    fd, name = tempfile.mkstemp(prefix="herdr-team-charter-", suffix=".md")
+    fd, name = tempfile.mkstemp(prefix="herdr-synapse-charter-", suffix=".md")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(initial)
@@ -1466,7 +1466,7 @@ def _run_charter(args: argparse.Namespace) -> int:
         _human_only(layout, team_name, author, "charter edit")
         current = charter_of(load_doc(team_paths))
         edited = _editor_text(str((current or {}).get("text") or ""), env_of(args))
-        fd, tmp = tempfile.mkstemp(prefix="herdr-team-charter-", suffix=".md", dir=os.fspath(team_paths.root))
+        fd, tmp = tempfile.mkstemp(prefix="herdr-synapse-charter-", suffix=".md", dir=os.fspath(team_paths.root))
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(edited)
         try:
@@ -1522,7 +1522,7 @@ def _run_brief(args: argparse.Namespace) -> int:
         return 0
     status = daemon_status(layout.session)
     if not status["alive"]:
-        raise HerdrTeamError("daemon_down", "the team notifier is not running ({}); run: herdr-team daemon start".format(status.get("reason")), 5)
+        raise HerdrTeamError("daemon_down", "the team notifier is not running ({}); run: herdr-synapse daemon start".format(status.get("reason")), 5)
     job = enqueue_job(team_paths, "brief", member["name"], author)
     return emit(args, {"team": team_name, "member": member["name"], "job": job}, "briefing job {} queued for {}".format(job, member["name"]))
 

@@ -1,15 +1,15 @@
-# herdr-team capabilities reference
+# herdr-synapse capabilities reference
 
 Everything the plugin can do, how to drive it from the Herdr UI and from the
 CLI, what you should observe, and how to check it. Written for the first
 human test in a real session and verified line by line against the code on
 2026-09-05. The CLI contract with every JSON shape is `docs/cli.md`; the
 guided first run is `docs/human-testing.md`; what agents are taught is
-`skills/herdr-team/SKILL.md`.
+`skills/herdr-synapse/SKILL.md`.
 
 Conventions: "UI" means keys and panes inside Herdr (needs the key snippet
-from `herdr-team keys print` pasted into your config once). "CLI" means
-`herdr-team …` from any pane, or from outside Herdr with `--team`. Every
+from `herdr-synapse keys print` pasted into your config once). "CLI" means
+`herdr-synapse …` from any pane, or from outside Herdr with `--team`. Every
 command accepts `--json`. Exit codes: 0 ok, 1 refused, 2 usage, 3 not a
 member or Herdr unreachable, 4 echo rejected, 5 daemon down or lock timeout.
 Each section ends with **Verified** (which rig test exercised it live on
@@ -22,7 +22,7 @@ identity fallback), `HERDR_TEAM_HOOKS=off` (disable the Claude hooks for an
 agent at launch), `HERDR_TEAM_NO_DAEMON=1` (never auto-start the daemon),
 `HERDR_TEAM_STATE_DIR` (state root override, for rigs).
 
-Where things live: `~/.local/state/herdr/plugins/herdr-team/sessions/<session>/`
+Where things live: `~/.local/state/herdr/plugins/herdr-synapse/sessions/<session>/`
 holds `daemon.json`, `daemon.log`, `who.json`, `kinds.json`, `view.json`,
 `console.json`, `mute.json`, and `teams/<team>/` with `team.json`,
 `board.jsonl`, `cursors/`, `payloads/`, `notifier/`, `audit.jsonl`.
@@ -31,9 +31,9 @@ holds `daemon.json`, `daemon.log`, `who.json`, `kinds.json`, `view.json`,
 
 | Capability | UI | CLI |
 | --- | --- | --- |
-| Create from live agents | `prefix+t` picker (section 7) | `herdr-team create <team> --member <pane\|name>[:<role>[:<name>]] … [--charter "…"\|--charter-file p] [--ref p] [--brief NAME=TEXT]… [--names plain] [--rename] [--reuse] [--use]` |
+| Create from live agents | `prefix+t` picker (section 7) | `herdr-synapse create <team> --member <pane\|name>[:<role>[:<name>]] … [--charter "…"\|--charter-file p] [--ref p] [--brief NAME=TEXT]… [--names plain] [--rename] [--reuse] [--use]` |
 | Create from every agent in a Space | picker: `w` then `a` | `create <team> --from-workspace <ws-id>`: waits up to 60 s for agents still launching and warns about the rest |
-| Add agents to an existing team | picker: select the agents, Enter; when teams exist a numbered choice follows (`1  add it to team <t>  (N members)`, last number `create a new team`; type the number or move with the arrows); adding skips the charter stage, asks role, name, and brief per agent, and confirms with `Add N agents to team <t>?`; every other member is nudged with a `member_joined` record and the newcomer is briefed. A kind that is not trusted yet (`kinds list`) is flagged on the confirm screen and by `add` (`kind_trusted: false`, a warning): nothing is typed into it until `herdr-team kinds trust <kind>` | `herdr-team add <team> <pane\|name> [--role <r>] [--as <name>] [--brief "…"]`, one per agent; each new member is briefed once idle |
+| Add agents to an existing team | picker: select the agents, Enter; when teams exist a numbered choice follows (`1  add it to team <t>  (N members)`, last number `create a new team`; type the number or move with the arrows); adding skips the charter stage, asks role, name, and brief per agent, and confirms with `Add N agents to team <t>?`; every other member is nudged with a `member_joined` record and the newcomer is briefed. A kind that is not trusted yet (`kinds list`) is flagged on the confirm screen and by `add` (`kind_trusted: false`, a warning): nothing is typed into it until `herdr-synapse kinds trust <kind>` | `herdr-synapse add <team> <pane\|name> [--role <r>] [--as <name>] [--brief "…"]`, one per agent; each new member is briefed once idle |
 | Create from scratch | | `create <team> --new [--workspace ID] --spawn <role>:<kind>[:<cwd>] …` lays out the panes and starts the agents |
 | Add a member later | | `add <team> <pane\|name> [--role r] [--as name] [--brief TEXT] [--rename] [--steal]` |
 | See who is on which team | `prefix+t`: teams with their agents underneath, then the agents in no team; Enter folds a team, `↑↓`/PgUp/PgDn move, the list scrolls | `who`, `teams` |
@@ -77,17 +77,17 @@ agent pane every write is refused `author_mismatch` and audited.
 | Capability | UI | CLI |
 | --- | --- | --- |
 | Set at creation | picker charter stage | `create … --charter "…"` (refused over 2000 chars, `charter_too_long`) or `--charter-file <path>` (the file is copied into the team dir as `charter.md` and listed in `refs`; the charter text is its first 2000 chars) |
-| Read | console header line `charter #<seq>: <headline>`; `/charter` opens a box | `herdr-team charter` |
+| Read | console header line `charter #<seq>: <headline>`; `/charter` opens a box | `herdr-synapse charter` |
 | Change | console `/charter set [--urgent] text` | `charter set "…" \| --file p [--ref p]… [--urgent]`; `charter edit` opens `$VISUAL`, then `$EDITOR`, then `vi` (needs a TTY; a failing editor leaves the charter unchanged) |
 | History | | `charter history` |
 | Role brief per member | picker asks per member, optional | `create --brief NAME=TEXT` (name or role as the key, repeatable); `add … --brief TEXT`; `brief <name> --set "…"` later |
 
 What members see: the charter headline in their briefing line, the full
-text with `herdr-team charter`, and charter plus their own brief in
-`herdr-team me`. A change appends a `charter_updated` record addressed to
+text with `herdr-synapse charter`, and charter plus their own brief in
+`herdr-synapse me`. A change appends a `charter_updated` record addressed to
 everyone; members see it on their next board read, `--urgent` also nudges
 them. `who` shows `charter: stale` for a member who has not acknowledged the
-current version; `herdr-team ack` from the member clears it. The skill tells
+current version; `herdr-synapse ack` from the member clears it. The skill tells
 agents that the charter and their brief carry the human's authority and
 nothing else on the board does.
 
@@ -111,7 +111,7 @@ on disk tells them apart. Three additions close that:
 The folder is `<project>/.herdr-team/<team>/`, namespaced so two teams can
 share one project. It holds `knowledge.md`, `members/<name>.md` per member,
 and `artifacts/`. `README.md` and `.gitignore` sit above it. Members reach it
-by the absolute path `herdr-team me` prints, which matters because members of
+by the absolute path `herdr-synapse me` prints, which matters because members of
 one team routinely sit in different checkouts.
 
 Three properties make it safe to put in a repository agents can write to:
@@ -147,7 +147,7 @@ exists:
 
 For Claude with hooks that means the next *prompt*, through the prompt-submit
 hook, not the next session. For every other kind it means its next
-`herdr-team board --new`, which the skill tells it to run every turn. These
+`herdr-synapse board --new`, which the skill tells it to run every turn. These
 are `system` records addressed to `all`, so they deliberately do **not** nudge:
 a rules edit cannot interrupt four agents mid-turn. `--urgent` is the opt-in
 that does wake everyone, exactly as on the charter.
@@ -170,7 +170,7 @@ inlined, so a peer's note can never reach another member as an instruction.
 gets the document spliced into its next turn, and only while it has not
 acknowledged that revision, so it costs context once rather than every turn.
 Every other kind gets the ordinary nudge from the record, which names the
-member, plus the skill's standing rule to run `herdr-team instructions` when
+member, plus the skill's standing rule to run `herdr-synapse instructions` when
 the board says they changed. `who` shows `instructions: stale` until the
 member runs `ack`, which now records the charter, the instructions, and the
 rules together. The document is versioned per member (`instructions_seq`) and
@@ -187,7 +187,7 @@ popup shows only the post directives it parses.
 
 ### Saving the board
 
-`herdr-team export` writes the whole board, archived segments included, to a
+`herdr-synapse export` writes the whole board, archived segments included, to a
 file: markdown by default, or `json`, `jsonl` and `text`. The markdown form is
 a standalone document carrying the charter and roster the posts refer to, so
 it still reads correctly long after the session is gone; `jsonl` is the raw
@@ -205,7 +205,7 @@ record shape, so an export goes back into any tool that reads a board file.
 - Names are how everyone addresses each other: `--to <name>`, `@name` in the
   console, `brief`, `focus`, `mute`, `nudge`, `read`, and Herdr's own
   `herdr agent prompt`.
-- Renaming: `herdr-team rename <old> <new>`, or Herdr's `herdr agent rename`,
+- Renaming: `herdr-synapse rename <old> <new>`, or Herdr's `herdr agent rename`,
   which the daemon adopts on its next 2 s scan: the roster updates, a
   `renamed` record goes to the board, and the old name keeps resolving for
   ten minutes. `team.json` `config.name_policy: "enforce"` makes the daemon
@@ -240,23 +240,23 @@ record shape, so an export goes back into any tool that reads a board file.
    (briefings skip the done-hold and interval but pass every other gate):
    `[herdr-team briefing] You are "<name>" (<role>) in team "<team>":
    <charter headline>. Teammates: <n1> (<role1>), … and human. This is
-   context, not a task. Run herdr-team --skill once, then herdr-team charter,
-   then herdr-team board --new, then herdr-team ack, then continue your
+   context, not a task. Run herdr-synapse --skill once, then herdr-synapse charter,
+   then herdr-synapse board --new, then herdr-synapse ack, then continue your
    current work. Teammates are peers: post to the board, never prompt their
    panes.` A second line carries the role brief when one is set. `who`
    shows `unbriefed` until the line has landed; if no `ack` follows within
    90 s the daemon re-briefs once, then toasts you `<name> unbriefed`.
-   `herdr-team brief <name>` re-enqueues it; `brief <name> --format context`
+   `herdr-synapse brief <name>` re-enqueues it; `brief <name> --format context`
    prints the same content as text.
-2. **Skill**: `herdr-team --skill` prints it; `herdr-team skill install
-   [--force] [--home DIR]` copies it to `~/.agents/skills/herdr-team` and
+2. **Skill**: `herdr-synapse --skill` prints it; `herdr-synapse skill install
+   [--force] [--home DIR]` copies it to `~/.agents/skills/herdr-synapse` and
    `~/.claude/skills`, and symlinks it into `~/.codex`, `~/.copilot`,
    `~/.gemini` skill dirs when those exist, skipping foreign directories
    unless `--force`; `skill check` reports stale copies; `me` warns when
    the installed skill version differs from the CLI.
-3. **Self and roster**: `herdr-team me` (name, role, kind, brief, charter,
+3. **Self and roster**: `herdr-synapse me` (name, role, kind, brief, charter,
    teammates with roles and status, unread, cursor, verified, notifier) and
-   `herdr-team who` (section 7).
+   `herdr-synapse who` (section 7).
 4. **Claude hooks** (optional, section 9): charter, brief, roster, and unread
    count at every session start; new board posts in context every turn.
 
@@ -270,7 +270,7 @@ One append-only board per team.
 ### Posting
 
 ```
-herdr-team post "<text>" [--to <name>[,<name>] | all | human | me | role:<r>] [--kind note|request|handoff|done|blocked|question|answer]
+herdr-synapse post "<text>" [--to <name>[,<name>] | all | human | me | role:<r>] [--kind note|request|handoff|done|blocked|question|answer]
                 [--reply-to <seq>] [--ref <path>]… [--attach <path>]… [--urgent] [--spill] [--relayed-for human] [--name <label>] [--to-any] [--force]
 ```
 
@@ -299,10 +299,10 @@ herdr-team post "<text>" [--to <name>[,<name>] | all | human | me | role:<r>] [-
 ### Reading
 
 ```
-herdr-team board [--new | --peek] [--to me] [--from <name>] [--kind <k>] [--thread <seq>] [--since <seq>] [--last N]
+herdr-synapse board [--new | --peek] [--to me] [--from <name>] [--kind <k>] [--thread <seq>] [--since <seq>] [--last N]
                  [--receipts] [--format text|json|context] [--limit N] [--max N] [--max-bytes N] [--ascii] [--name LABEL]
-herdr-team show <seq> [--cat] [--force]      # one post; --cat inlines refs under payloads/ or a member cwd (64 KiB each)
-herdr-team inbox --human [--last N] [--since <seq>]   # posts to you plus the notifier's attention file
+herdr-synapse show <seq> [--cat] [--force]      # one post; --cat inlines refs under payloads/ or a member cwd (64 KiB each)
+herdr-synapse inbox --human [--last N] [--since <seq>]   # posts to you plus the notifier's attention file
 ```
 
 With no mode `board` prints the last 30 without touching your cursor.
@@ -325,7 +325,7 @@ payloads into the member's `<cwd>/.herdr-team/`.
 `board --receipts` shows `✓nudged HH:MM:SS` (from the daemon's `nudged`
 record) and `✓read by <name>` (from cursors); a post to all shows `read by
 k/n`. Retracted posts render struck through with `(retracted by #M)`.
-`herdr-team audit [--last N]` lists refused attempts: `author_mismatch`
+`herdr-synapse audit [--last N]` lists refused attempts: `author_mismatch`
 (an agent tried `--as human`), `pane_mismatch` (a forged pane id).
 
 ### System records you will see on the board
@@ -344,7 +344,7 @@ tails every board and, for each post addressed to a member, types one line
 once that member is safe to interrupt:
 
 ```
-[herdr-team nudge] 2 new board posts for reviewer (seq 41-42). Run: herdr-team board --new [n17]
+[herdr-team nudge] 2 new board posts for reviewer (seq 41-42). Run: herdr-synapse board --new [n17]
 ```
 
 Posts arriving within 1 s of each other (`burst_window_ms`) become one
@@ -357,7 +357,7 @@ nudge covering the range. A broadcast to `all` from the human nudges every membe
 2. Not the sender, not the console, not the human; not muted.
 3. Member present in `agent list` with the roster's terminal, name, and kind
    (`absent`, `kind_mismatch`, `name_mismatch`, `launch_pending`).
-4. Kind trusted (`kind_unverified` otherwise): `herdr-team kinds trust
+4. Kind trusted (`kind_unverified` otherwise): `herdr-synapse kinds trust
    <kind>`, one passed `hooks probe`, or 20 clean round trips in the ledger.
    A fresh session holds everything until this is true.
 5. Status idle or done (`not_idle`).
@@ -397,7 +397,7 @@ hour.
 
 Holds are not in the ledger. They are in
 `<session>/daemon.log` as `<team>: <member> held: <reason> (<detail>)` and
-in `who --json` under `members[].hold`. `herdr-team notifier stats` reports
+in `who --json` under `members[].hold`. `herdr-synapse notifier stats` reports
 what was actually sent: intents, results, per-kind clean-landing rate,
 `open_intents`, and `wrong_target` (must be 0).
 
@@ -405,15 +405,15 @@ what was actually sent: intents, results, per-kind clean-landing rate,
 
 | Command | Effect |
 | --- | --- |
-| `herdr-team nudge <name> [--force]` | evaluate now; builds pending work from the member's unread posts (to it or to all) if none is pending; `--force` marks it urgent so broadcast-only unread posts become nudgeable and skips the done-hold and interval, never the dialog, draft, or focus checks |
-| `herdr-team mute <name> \| --all [--for 10m\|2h\|1d\|N]`, `unmute <name> \| --all`, `pause` | silence nudges (gate 2) and the Claude Stop hook; posts still land and **toasts are not muted** |
-| `herdr-team focus <name>` | focus the member's pane through the daemon |
-| `herdr-team say <name> "<text>" [--force]` (console: `!name text`, `!!name text`) | type one line into the member's input box now, with operator authority, recorded as a `direct` board record; refused while the member shows a dialog, a permission prompt, an overlay, or a draft, and while it is working unless `--force`; the outcome is a `typed` record and a feed tag (`✓typed`, `✗ not typed (working)`, …); human only, from the focused console only |
-| `herdr-team post --to <name> --interrupt "<text>"` (console: `/interrupt @name text`) | urgent, and when the recipient's kind is in `config.gate.interrupt_kinds` (default `claude`) and the sender is out of its cooldown for that teammate (10 min), the daemon types the nudge into the recipient's *running turn* instead of waiting for idle: `[herdr-team interrupt] <sender> could not wait: 1 urgent board post for <name> (seq N). Run: herdr-team board --new [nK]`. Dialog, overlay, draft, focus, and rate-limit gates still hold it; otherwise it is an ordinary urgent nudge. The feed shows `⚡INTERRUPT` on the post and `⚡interrupted` once typed; `who` shows `⚡armed`, `⚡cooldown`, or `⚡kind_not_allowed` next to `↪N`. Named recipients only; a member's repeat inside the cooldown is `interrupt_cooldown` at the CLI; the human has no cooldown |
-| `herdr-team interrupts [show\|off\|on\|<kind>,<kind>] [--cooldown 10m]` (console: `/interrupts …`) | show or set the team's interrupt kinds and cooldown (`config.gate`); changing them is human only |
-| `herdr-team read <name>` | the member's visible screen; `--lines` is refused for every member because scrolling an alternate screen types into it |
-| `herdr-team notifier stats [--team] [--kind]` | the delivery ledger |
-| `herdr-team kinds list \| trust <kind> [--reason "…"] \| untrust <kind>` | the trust override behind gate 4; `list` prints `<kind>  delivers\|held  <flags>`; a kind also becomes `verified` on its own after 20 clean round trips |
+| `herdr-synapse nudge <name> [--force]` | evaluate now; builds pending work from the member's unread posts (to it or to all) if none is pending; `--force` marks it urgent so broadcast-only unread posts become nudgeable and skips the done-hold and interval, never the dialog, draft, or focus checks |
+| `herdr-synapse mute <name> \| --all [--for 10m\|2h\|1d\|N]`, `unmute <name> \| --all`, `pause` | silence nudges (gate 2) and the Claude Stop hook; posts still land and **toasts are not muted** |
+| `herdr-synapse focus <name>` | focus the member's pane through the daemon |
+| `herdr-synapse say <name> "<text>" [--force]` (console: `!name text`, `!!name text`) | type one line into the member's input box now, with operator authority, recorded as a `direct` board record; refused while the member shows a dialog, a permission prompt, an overlay, or a draft, and while it is working unless `--force`; the outcome is a `typed` record and a feed tag (`✓typed`, `✗ not typed (working)`, …); human only, from the focused console only |
+| `herdr-synapse post --to <name> --interrupt "<text>"` (console: `/interrupt @name text`) | urgent, and when the recipient's kind is in `config.gate.interrupt_kinds` (default `claude`) and the sender is out of its cooldown for that teammate (10 min), the daemon types the nudge into the recipient's *running turn* instead of waiting for idle: `[herdr-team interrupt] <sender> could not wait: 1 urgent board post for <name> (seq N). Run: herdr-synapse board --new [nK]`. Dialog, overlay, draft, focus, and rate-limit gates still hold it; otherwise it is an ordinary urgent nudge. The feed shows `⚡INTERRUPT` on the post and `⚡interrupted` once typed; `who` shows `⚡armed`, `⚡cooldown`, or `⚡kind_not_allowed` next to `↪N`. Named recipients only; a member's repeat inside the cooldown is `interrupt_cooldown` at the CLI; the human has no cooldown |
+| `herdr-synapse interrupts [show\|off\|on\|<kind>,<kind>] [--cooldown 10m]` (console: `/interrupts …`) | show or set the team's interrupt kinds and cooldown (`config.gate`); changing them is human only |
+| `herdr-synapse read <name>` | the member's visible screen; `--lines` is refused for every member because scrolling an alternate screen types into it |
+| `herdr-synapse notifier stats [--team] [--kind]` | the delivery ledger |
+| `herdr-synapse kinds list \| trust <kind> [--reason "…"] \| untrust <kind>` | the trust override behind gate 4; `list` prints `<kind>  delivers\|held  <flags>`; a kind also becomes `verified` on its own after 20 clean round trips |
 | `team.json` → `config.gate` | `stable_ms_screen` 2000, `stable_ms_hook` 750, `stable_ms_hooks_delivery` 15000, `done_hold_ms` 60000, `min_interval_ms` 20000, `global_interval_ms` 1500, `focus_max_hold_ms` 300000, `focus_snapshot_stable_ms` 3000, `dialog_hold_cap_ms` 600000, `pair_budget` 10, `pair_window_ms` 600000, `sample_gap_reset_ms` 10000, `post_ttl_ms` 1800000, `burst_window_ms` 1000, `nudge_focused` `never\|always`, `interrupt_kinds` `["claude"]`, `interrupt_cooldown_ms` 600000; the daemon reloads it within 2 s and ignores the whole block if any key is invalid |
 | `daemon start --dry-nudge` | log nudges instead of typing them (for a dry run) |
 
@@ -430,9 +430,9 @@ produced a reply on the board), F-01 to F-04, SK-08.
 
 ### Console pane
 
-`prefix+u`, `herdr-team ui console`, or the `herdr-team.console` plugin
+`prefix+u`, `herdr-synapse ui console`, or the `herdr-synapse.console` plugin
 action. Opens as a split in the current tab; a second open focuses the
-existing console instead of opening another. `herdr-team ui who` opens it as
+existing console instead of opening another. `herdr-synapse ui who` opens it as
 a popup on the roster box.
 
 - **Header**: team, members, view on/off, nudges on/paused with countdown,
@@ -477,7 +477,7 @@ a popup on the roster box.
   line repeats the outcome (`(!!name text forces)` when `!!` would help) and
   the member's row reads `» typing` while the daemon confirms. Refused
   before anything is typed: a name that is not a member, text that looks
-  like a herdr-team header or a secret, more than one line or 500
+  like a herdr-synapse header or a secret, more than one line or 500
   characters, and `/clear`, `/exit`, `/quit`, `exit`, `quit`, `/logout`,
   `/login`, `/resume` unless `!!`. `@@path` anywhere in the line attaches
   that file to the post (`post --file`: a file the team can read is
@@ -523,7 +523,7 @@ a popup on the roster box.
 
 ### Compose popup
 
-`prefix+m`, `herdr-team ui compose`, or the `herdr-team.compose` action. One
+`prefix+m`, `herdr-synapse ui compose`, or the `herdr-synapse.compose` action. One
 line, console syntax. **Default recipient is the member whose pane you had
 focused when it opened** (shown as `default @<name>` in its header); plain
 text goes to `all` only when the focused pane is not a member. Esc closes;
@@ -538,9 +538,9 @@ it is you, and typing into an agent needs that proof.
 
 | Path | Identity recorded | Nudges members? |
 | --- | --- | --- |
-| `herdr-team post …` from a shell pane inside Herdr | `human`, verified (ancestry reaches the pane's shell) | yes |
+| `herdr-synapse post …` from a shell pane inside Herdr | `human`, verified (ancestry reaches the pane's shell) | yes |
 | From a pane where ancestry cannot be proven (tmux, screen, ssh) | `human`, `cli-unverified`, stderr says why, never refused | **no** (rendered `(unverified)`) |
-| Outside Herdr: `herdr-team --team <name> post …` | `human`, `outside`, unverified; works with the server down | yes |
+| Outside Herdr: `herdr-synapse --team <name> post …` | `human`, `outside`, unverified; works with the server down | yes |
 | Compose popup | `human`, `popup`, unverified | yes |
 | `--as human` from an agent's pane | refused `author_mismatch`, audited, console warning | |
 | A forged `HERDR_PANE_ID` naming an agent's pane | refused `pane_mismatch`, audited | |
@@ -553,7 +553,7 @@ Posts to `human`, plus delivery outcomes, are sent through Herdr's
 notification API by the daemon only (and one probe by `doctor` and `setup`
 unless `--no-probe`), coalesced per second. Titles: `#<seq> <kind> from
 <name>: <text>` (several: `N new posts for you #a-#b`); outcomes
-`herdr-team <team>: expired|abandoned|<name> waiting|<name> not nudged|<name>
+`herdr-synapse <team>: expired|abandoned|<name> waiting|<name> not nudged|<name>
 ping-pong paused|<name> unbriefed|name conflict`. Your config has
 `[ui.toast] delivery = "terminal"`, so they arrive as terminal notifications
 to the foreground client; `herdr` shows an in-app toast; `off` records
@@ -568,13 +568,13 @@ UI-01, UI-02 (peek never makes the console look like an agent).
 
 | Capability | How | Notes |
 | --- | --- | --- |
-| Key bindings | `herdr-team keys print` → paste → `herdr server reload-config`; `keys check` reports collisions | `prefix+t` teams, `prefix+m` compose, `prefix+u` console, `prefix+y` view toggle, `prefix+i` usage limits; all unbound in Herdr's defaults |
-| Plugin actions | `herdr plugin action invoke herdr-team.<team-up\|compose\|console\|who\|usage\|toggle-view\|daemon-start>` | same entrypoints as the keys |
-| Usage limits | `prefix+i`, `herdr-team ui usage`, or `herdr-team usage [--json]` | the session, weekly, and per-model windows of every provider account the session's agents draw on (Anthropic, OpenAI Codex, GitHub Copilot, Google Gemini; OpenCode Zen listed as billed per token), grouped with the agents behind each, bars with `⚠`/`‼` at 75/90 %, reset times; the popup refreshes every minute, `r` now, `q` closes; kinds with no known source are listed as not tracked |
-| Sidebar rows | `herdr-team setup --print-config` → paste the required block → reload | `$team_role` and `$team_task` per member; the optional block switches status glyphs to symbols for every agent |
+| Key bindings | `herdr-synapse keys print` → paste → `herdr server reload-config`; `keys check` reports collisions | `prefix+t` teams, `prefix+m` compose, `prefix+u` console, `prefix+y` view toggle, `prefix+i` usage limits; all unbound in Herdr's defaults |
+| Plugin actions | `herdr plugin action invoke herdr-synapse.<team-up\|compose\|console\|who\|usage\|toggle-view\|daemon-start>` | same entrypoints as the keys |
+| Usage limits | `prefix+i`, `herdr-synapse ui usage`, or `herdr-synapse usage [--json]` | the session, weekly, and per-model windows of every provider account the session's agents draw on (Anthropic, OpenAI Codex, GitHub Copilot, Google Gemini; OpenCode Zen listed as billed per token), grouped with the agents behind each, bars with `⚠`/`‼` at 75/90 %, reset times; the popup refreshes every minute, `r` now, `q` closes; kinds with no known source are listed as not tracked |
+| Sidebar rows | `herdr-synapse setup --print-config` → paste the required block → reload | `$team_role` and `$team_task` per member; the optional block switches status glyphs to symbols for every agent |
 | Team colours | automatic, after the sidebar block is pasted | each team holds one of six colour slots (`config.color_slot` in `team.json`, assigned by the notifier, lowest free slot first, colours repeat past six); its members are stamped with `team_c<slot>` carrying the team name, and the pasted row gives each slot its own colour, so the team name renders in the team's colour. Herdr colours a sidebar cell from a fixed `fg` in your config and cannot colour by a token's value, so this is what makes teams distinguishable. `doctor` warns when your config predates the colour cells |
 | Tokens | automatic | `team`, `team_role`, `team_c<slot>` stay while the team exists; `team_task` is the member's `task` text (under 30 min old) or its last post headline with a kind glyph, restamped at the 30 s heartbeat when it changed, TTL 120 s: it fading is the health signal |
-| Team view | `prefix+y`, or `herdr-team view on\|off\|toggle [--force]` | filters the Agents panel to the team plus any blocked agent elsewhere; refuses to replace a view another plugin owns unless `--force`; `plugin_disabled` when disabled |
+| Team view | `prefix+y`, or `herdr-synapse view on\|off\|toggle [--force]` | filters the Agents panel to the team plus any blocked agent elsewhere; refuses to replace a view another plugin owns unless `--force`; `plugin_disabled` when disabled |
 | Pane labels | automatic | `team:<team>/<role>`; the key for restart recovery |
 | Herdr's own commands | `herdr agent rename`, `herdr agent list` | renames are adopted; names and tokens are visible in `agent list` |
 
@@ -583,7 +583,7 @@ in the rig frame.
 
 ## 9. Claude Code hooks (optional)
 
-`herdr-team hooks install claude [--settings p] [--hooks-dir p] [--claude-dir p]
+`herdr-synapse hooks install claude [--settings p] [--hooks-dir p] [--claude-dir p]
 [--no-members]` writes three entries into `~/.claude/settings.json`, each in
 its own object so Herdr's own installer adds and removes only its entry
 (verified both ways), plus a shim under `~/.claude/hooks/`. It also switches
@@ -602,7 +602,7 @@ and warns that a running Claude picks the hooks up only after it restarts.
 - **Stop**: for **any unread post to the member or to all** (including
   system records such as `charter_updated`, excluding `nudged` and `toast`),
   Claude is held from finishing with `[herdr-team stop] N unread board
-  post(s) for <name> (seq a-b). Run: herdr-team board --new, then herdr-team
+  post(s) for <name> (seq a-b). Run: herdr-synapse board --new, then herdr-synapse
   ack, then finish.`, at most three times per ten minutes; not while muted;
   never on Esc or Ctrl+C.
 - Members on `delivery: hooks` are still nudged by the daemon, after a 15 s
@@ -623,17 +623,17 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
 
 | Capability | How | What to expect |
 | --- | --- | --- |
-| Daemon | `herdr-team daemon start [--replace] [--allow-version] [--dry-nudge] \| stop [--timeout N] \| status`, the `daemon-start` action; the plugin's startup hook starts it on every server start; `create`, `add`, `bind`, and `ui picker` start it if needed | one instance per session; refuses a Herdr other than 0.8.x without `--allow-version`; exits when the manifest version changes or the server stays unreachable for 60 s (the startup hook brings it back); `start` also re-applies the team view and reconciles the console |
+| Daemon | `herdr-synapse daemon start [--replace] [--allow-version] [--dry-nudge] \| stop [--timeout N] \| status`, the `daemon-start` action; the plugin's startup hook starts it on every server start; `create`, `add`, `bind`, and `ui picker` start it if needed | one instance per session; refuses a Herdr other than 0.8.x without `--allow-version`; exits when the manifest version changes or the server stays unreachable for 60 s (the startup hook brings it back); `start` also re-applies the team view and reconciles the console |
 | Cold server restart | nothing to do | panes come back as shells; members show `gone` after a 30 s grace; once the agents run again the daemon rebinds each member by harness session, then terminal, then label, then pane id and kind, then name, re-applies names, restamps tokens; a member that matches only by kind and directory is left `missing` with the candidate named in `daemon.log` until you `bind` it; unread posts are kept, their TTL restarts; pane records of terminals that no longer exist are dropped |
 | Agent crashes, restarts in its pane | nothing to do; `resume <name>` if you want the same conversation back | a new session on the member's terminal is detected within one scan: same name and pane, generation +1, `member_restarted` with the old and new session, a fresh briefing once it is idle. Without `resume` the new agent starts empty; with it the member's own conversation is reopened |
-| Resume by hand | `herdr-team resume <name>` in a shell pane | the exact `--resume <id>` command for that member; a bare `claude --continue` or `codex resume --last` in a shared checkout may bring back another member's conversation, and the roster then rebinds by session rather than by pane |
+| Resume by hand | `herdr-synapse resume <name>` in a shell pane | the exact `--resume <id>` command for that member; a bare `claude --continue` or `codex resume --last` in a shared checkout may bring back another member's conversation, and the roster then rebinds by session rather than by pane |
 | Live update or handoff | nothing to do | the daemon reconnects and reconciles; a surviving daemon is kept |
 | Console after restart | nothing to do | a console that was open is reopened; a dead `Team console` shell is detected by process info and replaced |
 | Member exits or pane closes | nothing to do | member `missing`, its tokens cleared, `member_gone` to you; the manifest event hooks do this when the daemon is dead |
-| Health | `herdr-team doctor [--no-probe] [--no-fix]` | socket, session, state dirs, plugin state, daemon ping age, toast mode and one probe, teams, warnings; may reopen the console |
-| Disable | `herdr plugin disable herdr-team` | within 10 s the daemon clears tokens and the view and exits; **pane labels remain** until `teardown`, `remove`, or `dissolve` |
-| Full cleanup | `herdr-team teardown` | any time: stops a live daemon, clears tokens, labels, the view, and a stale console record |
-| Housekeeping | `herdr-team gc` (session trees whose socket is gone, lock free, older than 7 days), `prune --keep-days N` (rotated board segments into `_archive/`) | |
+| Health | `herdr-synapse doctor [--no-probe] [--no-fix]` | socket, session, state dirs, plugin state, daemon ping age, toast mode and one probe, teams, warnings; may reopen the console |
+| Disable | `herdr plugin disable herdr-synapse` | within 10 s the daemon clears tokens and the view and exits; **pane labels remain** until `teardown`, `remove`, or `dissolve` |
+| Full cleanup | `herdr-synapse teardown` | any time: stops a live daemon, clears tokens, labels, the view, and a stale console record |
+| Housekeeping | `herdr-synapse gc` (session trees whose socket is gone, lock free, older than 7 days), `prune --keep-days N` (rotated board segments into `_archive/`) | |
 | Isolation | automatic | every team lives under its session's slug; a write to a team from a different socket is refused `team_session_mismatch` unless `--session-mismatch-ok` |
 
 **Verified**: PK-03 to PK-10, RT-01a, RT-02, RT-05, UI-05, F-04.
@@ -661,7 +661,7 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
   to be its descendant, and Herdr's focus is session-wide, so at most one
   board can type into an agent at any instant.
 - Only the daemon types into an agent, one line at a time, only into panes
-  that are in a team roster. `herdr-team notifier stats` reports
+  that are in a team roster. `herdr-synapse notifier stats` reports
   `wrong_target`; it must stay 0. The one exception to *waiting for idle* is
   `say`: the human, verified at the focused console, asks the daemon to type
   one recorded line now (`!name text`); a dialog, permission prompt, overlay,
@@ -681,16 +681,16 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
   --interrupt` when the team allows it for that kind (`interrupt_kinds`,
   default Claude only), at most once per sender and teammate per 10 min,
   always as the `[herdr-team interrupt]` envelope and never the post text,
-  so attribution is unchanged; `herdr-team interrupts off` turns it off.
-- `herdr-team usage` reads the agent CLIs' own login tokens only to query
+  so attribution is unchanged; `herdr-synapse interrupts off` turns it off.
+- `herdr-synapse usage` reads the agent CLIs' own login tokens only to query
   each provider's usage endpoint over HTTPS; tokens are never written,
   logged, or printed, and the report is read-only.
 - Authorship is stamped by the system from the pane and process, never
-  claimed by text. `herdr-team audit` shows refusals.
+  claimed by text. `herdr-synapse audit` shows refusals.
 - Every board line renders inside a quote under a system header; the hook
   context frames peer posts as requests; the skill says the charter and the
   member's brief are the only operator-authority text.
-- Emergency stop: `herdr-team daemon stop`. Nothing is typed anywhere after
+- Emergency stop: `herdr-synapse daemon stop`. Nothing is typed anywhere after
   that.
 
 ## 12. Not built or not verified yet
@@ -704,7 +704,7 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
   cursor-agent, kimi, agy need one `hooks probe` each (or `kinds trust`)
   before they receive nudges.
 - Codex under its default sandbox cannot reach the Herdr socket from a tool
-  call and asks to rerun unsandboxed; approve its read-only `herdr-team`
+  call and asks to rerun unsandboxed; approve its read-only `herdr-synapse`
   commands or start it with an approval policy that allows them.
 - Hooks exist for Claude only. The only briefing path is the typed line.
 - `!!name text` into a running turn is verified for Claude Code only (it
@@ -732,33 +732,33 @@ Each row: do this, expect that.
 
 | # | Do | Expect |
 | --- | --- | --- |
-| C1 | `herdr-team doctor` after linking and `daemon-start` | daemon alive, your socket, slug `default`, no errors |
-| C2 | `herdr-team kinds trust claude`; `kinds list` | a `claude` row in the `delivers` column with `trusted` in the flags (`--json`: `delivers: true, trusted: true`) |
+| C1 | `herdr-synapse doctor` after linking and `daemon-start` | daemon alive, your socket, slug `default`, no errors |
+| C2 | `herdr-synapse kinds trust claude`; `kinds list` | a `claude` row in the `delivers` column with `trusted` in the flags (`--json`: `delivers: true, trusted: true`) |
 | C3 | two fresh idle agents; `prefix+t`; Space on both; Enter; team name; charter; per member role, name, brief (fields are prefilled: Ctrl-U clears before typing, Enter accepts the default); confirm | `who` lists both with roles; `herdr agent list` shows names and tokens; `herdr pane list` shows labels `team:<t>/<role>` |
-| C4 | wait about a minute; `who` | the `unbriefed` tag disappears from both rows once the briefing lines landed; each screen shows the `[herdr-team briefing]` lines and the agent running `herdr-team ack` (otherwise one re-brief after 90 s, then a `<name> unbriefed` toast) |
+| C4 | wait about a minute; `who` | the `unbriefed` tag disappears from both rows once the briefing lines landed; each screen shows the `[herdr-team briefing]` lines and the agent running `herdr-synapse ack` (otherwise one re-brief after 90 s, then a `<name> unbriefed` toast) |
 | C5 | ask a member "what is this team for and what is your role" | it answers from `charter` and `me` with the right names |
-| C6 | `herdr-team post "hello team"` from a shell pane | `board --last 1`: from `human`, to `all`, no `(unverified)`; every member shows `↪1` and is nudged once idle (an agent's post to `all` nudges nobody) |
-| C7 | `herdr-team post --to <member> "reply on the board with pong"` | `who` shows `↪1`; the nudge lands after the member has been idle for the stable window plus the 60 s done-hold (lower `config.gate.done_hold_ms` to see it sooner); the member replies; `board --receipts` shows `✓nudged` and `✓read by <member>` |
+| C6 | `herdr-synapse post "hello team"` from a shell pane | `board --last 1`: from `human`, to `all`, no `(unverified)`; every member shows `↪1` and is nudged once idle (an agent's post to `all` nudges nobody) |
+| C7 | `herdr-synapse post --to <member> "reply on the board with pong"` | `who` shows `↪1`; the nudge lands after the member has been idle for the stable window plus the 60 s done-hold (lower `config.gate.done_hold_ms` to see it sooner); the member replies; `board --receipts` shows `✓nudged` and `✓read by <member>` |
 | C8 | same while the member is mid-turn | `daemon.log` shows `held: not_idle (working)` (or `who --json` `.members[].hold`); it lands after the turn plus the windows |
 | C9 | open the member's model picker (`/model`), post to it, wait 20 s | nothing typed; `daemon.log` shows `held: dialog (… select model …)` or `held: skip_state_update`; after Esc it lands within about 6 s |
 | C10 | make a member hit a permission prompt, post to it | nothing typed; `daemon.log` `held: not_idle (blocked)` or `held: blocked`; `notifier stats` shows no intent; after you answer the dialog it lands after the windows |
-| C11 | ask a member to run `herdr-team post --as human "x"` | exit 1 `author_mismatch`; `herdr-team audit` lists it; the console feed shows a warning line |
+| C11 | ask a member to run `herdr-synapse post --as human "x"` | exit 1 `author_mismatch`; `herdr-synapse audit` lists it; the console feed shows a warning line |
 | C12 | ask a member to post to its teammate by name | the teammate shows `↪1`, is nudged after its idle windows, and replies; `board --receipts` on the request shows `nudged` and `read by <teammate>` |
 | C13 | `post --to role:<r> "…"` with two holders | two `nudged` records at least 1.5 s apart; `board --json` shows `"to_role": "<r>"`; the header reads `-> role:<r> (a,b)` |
 | C14 | `prefix+u`; type `@member ping`; Enter | console status `posted #N to <member>`; `board --last 1` header `human -> <member>` without `(unverified)`; the member shows `↪1` |
 | C15 | in the console `/mute member 2m`; post to it | the member's row gains `muted`; `daemon.log` `held: muted (… ms left)`; `/unmute member` delivers (use `/pause 2m` to see the header countdown) |
 | C16 | `retract <seq>` of a pending directed post | `daemon.log` `retract of #N cancelled the pending nudge`; a `retracted` record; the feed shows it struck with `(retracted by #M)`; `who` drops the `↪` |
-| C17 | ask a member to run `herdr-team post --to human "ping"` | a terminal notification titled `#<seq> note from <member>: ping`; a `toast` record; `inbox --human` lists the post and an attention line |
+| C17 | ask a member to run `herdr-synapse post --to human "ping"` | a terminal notification titled `#<seq> note from <member>: ping`; a `toast` record; `inbox --human` lists the post and an attention line |
 | C18 | `charter set "new goal"`; then `who` | `charter_updated` on the board; members `charter: stale` until they `ack` |
 | C19 | `herdr agent rename <member> <new>` | within a few seconds `who` shows the new name, a `renamed` record appears, and `post --to <old>` still works for 10 min |
 | C20 | `prefix+y` | Agents panel shows only the team plus blocked agents; again restores |
 | C21 | paste the sidebar block, reload; have a member run `task "…"` | `$team_role` shows at once; `$team_task` within about 30 s |
-| C22 | `herdr-team daemon stop`; wait 2 min; `who` | `agent list` tokens lose `team_task`, keep `team` and `team_role`; `who` header says `notifier down` (`source: agent-list` in JSON); `daemon start` restores |
+| C22 | `herdr-synapse daemon stop`; wait 2 min; `who` | `agent list` tokens lose `team_task`, keep `team` and `team_role`; `who` header says `notifier down` (`source: agent-list` in JSON); `daemon start` restores |
 | C23 | stop and restart the Herdr server; restart the agents in their panes | `who` shows `gone <age>` after 30 s, then `active` once the agents idle; `member_restarted` records; names, labels, tokens back; an undelivered post is nudged after the normal gate (the restored Claude runs `claude --resume` without its launch flags) |
-| C24 | `herdr-team hooks install claude`; start a fresh Claude member; post to it | its next session start shows the briefing context block; its next prompt shows `[herdr-team board: 1 posts from peers; …]`; at Stop a `[herdr-team stop] 1 unread board post …` block once per new seq, at most 3 per 10 min; `daemon.log` shows `held: stop_blocked` instead of a second delivery |
-| C25 | `herdr plugin disable herdr-team` | tokens and the view gone within 10 s, daemon exited; pane labels remain until `teardown`; `enable` and `daemon start` recover |
-| C26 | `herdr-team notifier stats` at the end | `wrong_target 0`, `open_intents 0`, a clean rate per kind; hold reasons are in `daemon.log` and `who --json`, not here |
+| C24 | `herdr-synapse hooks install claude`; start a fresh Claude member; post to it | its next session start shows the briefing context block; its next prompt shows `[herdr-team board: 1 posts from peers; …]`; at Stop a `[herdr-team stop] 1 unread board post …` block once per new seq, at most 3 per 10 min; `daemon.log` shows `held: stop_blocked` instead of a second delivery |
+| C25 | `herdr plugin disable herdr-synapse` | tokens and the view gone within 10 s, daemon exited; pane labels remain until `teardown`; `enable` and `daemon start` recover |
+| C26 | `herdr-synapse notifier stats` at the end | `wrong_target 0`, `open_intents 0`, a clean rate per kind; hold reasons are in `daemon.log` and `who --json`, not here |
 | C27 | in the console, while a member is idle: `!<member> reply with the word pong` | the text is in its input box within about a second with no `[herdr-team` header and the member starts working; the feed shows a `»direct` entry with `… typing` then `✓typed`; `board --thread <seq>` shows the `typed` record under it; the member's `board --new` does not list it; `notifier stats` intents grow by one and the clean rate is unchanged |
-| C28 | `!<member> x` while it works; then `!!<member> summarize so far`; `!<member> /clear`; the compose popup `!<member> hi`; `herdr-team say <member> x` from a shell pane | `✗ not typed (working)` with the `!!` hint in the status line, nothing typed; the forced line lands as `✓typed (in running turn)` (`, unverified for codex` on Codex); `/clear` is refused `say_control_command`; the popup answers `direct typing is console-only`; the shell answers `say_unverified` and `herdr-team audit` lists it |
-| C29 | `prefix+i` (or `herdr-team usage`) | a popup lists every agent grouped by provider with session and weekly bars, `% used`, `⚠`/`‼` past 75/90 %, and reset times; `r` refreshes; `herdr-team usage --json` contains no token |
-| C30 | while a Claude member works, have another member run `herdr-team post --to <claude> --interrupt "stop, wrong branch"`; repeat within 10 min; then `/interrupts off` and once more | the feed shows `⚡INTERRUPT`; `[herdr-team interrupt] <sender> could not wait …` lands in the working member's input and it reads the board after its current step (`⚡interrupted`); the repeat is `interrupt_cooldown` at the CLI; after `/interrupts off` the post waits for idle (`who`: `⚡kind_not_allowed`) |
+| C28 | `!<member> x` while it works; then `!!<member> summarize so far`; `!<member> /clear`; the compose popup `!<member> hi`; `herdr-synapse say <member> x` from a shell pane | `✗ not typed (working)` with the `!!` hint in the status line, nothing typed; the forced line lands as `✓typed (in running turn)` (`, unverified for codex` on Codex); `/clear` is refused `say_control_command`; the popup answers `direct typing is console-only`; the shell answers `say_unverified` and `herdr-synapse audit` lists it |
+| C29 | `prefix+i` (or `herdr-synapse usage`) | a popup lists every agent grouped by provider with session and weekly bars, `% used`, `⚠`/`‼` past 75/90 %, and reset times; `r` refreshes; `herdr-synapse usage --json` contains no token |
+| C30 | while a Claude member works, have another member run `herdr-synapse post --to <claude> --interrupt "stop, wrong branch"`; repeat within 10 min; then `/interrupts off` and once more | the feed shows `⚡INTERRUPT`; `[herdr-team interrupt] <sender> could not wait …` lands in the working member's input and it reads the board after its current step (`⚡interrupted`); the repeat is `interrupt_cooldown` at the CLI; after `/interrupts off` the post waits for idle (`who`: `⚡kind_not_allowed`) |

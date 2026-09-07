@@ -96,7 +96,7 @@ def child_env(env: Mapping[str, str], socket_path: Optional[Path] = None) -> Dic
     return out
 
 
-def next_request_id(prefix: str = "herdr-team") -> str:
+def next_request_id(prefix: str = "herdr-synapse") -> str:
     return "{}:{}:{}".format(prefix, os.getpid(), next(_ids))
 
 
@@ -243,7 +243,7 @@ class HerdrApi:
         socket_path: Union[str, Path],
         timeout: float = DEFAULT_TIMEOUT_S,
         env: Optional[Mapping[str, str]] = None,
-        id_prefix: str = "herdr-team",
+        id_prefix: str = "herdr-synapse",
     ) -> None:
         self.socket_path = Path(socket_path)
         self.timeout = float(timeout)

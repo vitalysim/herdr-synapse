@@ -110,13 +110,13 @@ class StateRootTests(unittest.TestCase):
     def test_xdg_derivation_uses_config_dir_basename(self):
         res = paths.resolve_state_root(self.env, self.config)
         self.assertEqual(res.source, paths.STATE_SOURCE_XDG)
-        self.assertEqual(res.path, self.ts.state_home / "herdr" / "plugins" / "herdr-team")
+        self.assertEqual(res.path, self.ts.state_home / "herdr" / "plugins" / "herdr-synapse")
         res_dev = paths.resolve_state_root(self.env, self.ts.config_home / "herdr-dev")
-        self.assertEqual(res_dev.path, self.ts.state_home / "herdr-dev" / "plugins" / "herdr-team")
+        self.assertEqual(res_dev.path, self.ts.state_home / "herdr-dev" / "plugins" / "herdr-synapse")
 
     def test_xdg_home_fallback(self):
         res = paths.resolve_state_root({"HOME": os.fspath(self.ts.home)}, self.config)
-        self.assertEqual(res.path, self.ts.home / ".local" / "state" / "herdr" / "plugins" / "herdr-team")
+        self.assertEqual(res.path, self.ts.home / ".local" / "state" / "herdr" / "plugins" / "herdr-synapse")
 
     def test_pointer_file_beats_xdg(self):
         target = self.ts.tmp / "pointed"

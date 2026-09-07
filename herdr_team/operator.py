@@ -134,7 +134,7 @@ def refuse_without_grant(team: Optional[str], author: Any, action: str) -> Herdr
     return HerdrTeamError(
         "author_mismatch",
         "{} is the operator's; {!r} holds no delegation. The operator grants one with: "
-        "herdr-team operator grant {} --team {}".format(action, getattr(author, "name", "?"), getattr(author, "name", "<member>"), team or "<team>"),
+        "herdr-synapse operator grant {} --team {}".format(action, getattr(author, "name", "?"), getattr(author, "name", "<member>"), team or "<team>"),
         EXIT_REFUSED,
         {"action": action, "author": getattr(author, "name", None), "via": getattr(author, "via", None), "needs": "operator_grant"},
     )

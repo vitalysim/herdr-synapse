@@ -1,60 +1,60 @@
-id = "herdr-team"
-name = "Herdr Team"
-version = "0.7.0"
+id = "herdr-synapse"
+name = "Herdr Synapse"
+version = "0.8.0"
 min_herdr_version = "0.8.2"
 description = "Teams of agents in one Herdr session: roster, charter, shared board, idle-gated nudges"
 platforms = ["macos", "linux"]
 
 [[startup]]
-command = ["./bin/herdr-team", "daemon", "start"]
+command = ["./bin/herdr-synapse", "daemon", "start"]
 
 [[actions]]
 id = "team-up"
 title = "Teams: manage agents and teams"
 contexts = ["global"]
-command = ["./bin/herdr-team", "ui", "picker"]
+command = ["./bin/herdr-synapse", "ui", "picker"]
 
 [[actions]]
 id = "compose"
 title = "Post to the team board"
 contexts = ["pane"]
-command = ["./bin/herdr-team", "ui", "compose"]
+command = ["./bin/herdr-synapse", "ui", "compose"]
 
 [[actions]]
 id = "console"
 title = "Open the team console"
 contexts = ["global"]
-command = ["./bin/herdr-team", "ui", "console"]
+command = ["./bin/herdr-synapse", "ui", "console"]
 
 [[actions]]
 id = "who"
 title = "Who is on the team"
 contexts = ["global"]
-command = ["./bin/herdr-team", "ui", "who"]
+command = ["./bin/herdr-synapse", "ui", "who"]
 
 [[actions]]
 id = "usage"
 title = "Usage limits across agents"
 contexts = ["global"]
-command = ["./bin/herdr-team", "ui", "usage"]
+command = ["./bin/herdr-synapse", "ui", "usage"]
 
 [[actions]]
 id = "knowledge"
 title = "Team knowledge bases"
 contexts = ["global"]
-command = ["./bin/herdr-team", "ui", "knowledge"]
+command = ["./bin/herdr-synapse", "ui", "knowledge"]
 
 [[actions]]
 id = "toggle-view"
 title = "Toggle the team Agents view"
 contexts = ["global"]
-command = ["./bin/herdr-team", "view", "toggle"]
+command = ["./bin/herdr-synapse", "view", "toggle"]
 
 [[actions]]
 id = "daemon-start"
 title = "Start the team notifier"
 contexts = ["global"]
-command = ["./bin/herdr-team", "daemon", "start"]
+command = ["./bin/herdr-synapse", "daemon", "start"]
 
 [[events]]
 on = "pane.agent_detected"
@@ -80,7 +80,7 @@ title = "Post"
 placement = "popup"
 width = "80%"
 height = 12
-command = ["./bin/herdr-team", "compose"]
+command = ["./bin/herdr-synapse", "compose"]
 
 [[panes]]
 id = "picker"
@@ -88,7 +88,7 @@ title = "Teams"
 placement = "popup"
 width = "80%"
 height = 28
-command = ["./bin/herdr-team", "picker"]
+command = ["./bin/herdr-synapse", "picker"]
 
 [[panes]]
 id = "usage"
@@ -96,7 +96,7 @@ title = "Usage limits"
 placement = "popup"
 width = "90%"
 height = 28
-command = ["./bin/herdr-team", "usage-pane"]
+command = ["./bin/herdr-synapse", "usage-pane"]
 
 [[panes]]
 id = "knowledge"
@@ -104,4 +104,4 @@ title = "Team knowledge"
 placement = "popup"
 width = "90%"
 height = 28
-command = ["./bin/herdr-team", "knowledge-pane"]
+command = ["./bin/herdr-synapse", "knowledge-pane"]

@@ -5,9 +5,9 @@ refuses any text starting with ``[herdr-team`` or containing ``[n<digits>]``
 (``is_echo`` is that rule).
 
 Nudge, exact: ``[herdr-team nudge] 2 new board posts for reviewer (seq
-41-42). Run: herdr-team board --new [n17]`` (singular for one post,
+41-42). Run: herdr-synapse board --new [n17]`` (singular for one post,
 ``<= 120`` chars). Briefing: one line ``<= 400`` chars, no newlines, the
-teammate list collapsing to ``<n> teammates, run herdr-team who`` when the
+teammate list collapsing to ``<n> teammates, run herdr-synapse who`` when the
 roster is long, then an optional second line with the member's role brief
 (``<= 300`` chars of it). Probe: ``[herdr-team probe <nonce>]``.
 
@@ -36,7 +36,7 @@ MAX_INTERRUPT_CHARS = 160
 MAX_BRIEFING_CHARS = 400
 MAX_BRIEF_LINE_CHARS = 300
 MAX_CHARTER_HEADLINE_CHARS = 120
-DEFAULT_CLI = "herdr-team"
+DEFAULT_CLI = "herdr-synapse"
 NO_CHARTER_HEADLINE = "no charter yet, ask human"
 
 NONCE_RE = re.compile(r"\[n[0-9]+\]")
@@ -51,8 +51,8 @@ _WS_RE = re.compile(r"[\s\x00-\x1f\x7f]+")
 #: pre-0.6 wording, because the whole line has a 400-character budget and a
 #: long name with a long role already sits close to it.
 BRIEFING_TAIL = (
-    " This is context, not a task. Run {cli} --skill once, then {cli} charter, "
-    "{cli} instructions, {cli} board --new, {cli} ack, then continue. "
+    " This is context, not a task. Run {cli} --skill once, then charter, "
+    "instructions, board --new, ack, then continue. "
     "Teammates are peers: post to the board, never prompt their panes."
 )
 _rng = random.SystemRandom()
@@ -100,7 +100,7 @@ def _cut(text: str, limit: int, ellipsis: str = "…") -> str:
 
 
 def nudge_text(name: str, seqs: Sequence[int], nonce: int) -> str:
-    """``[herdr-team nudge] 2 new board posts for reviewer (seq 41-42). Run: herdr-team board --new [n17]``."""
+    """``[herdr-team nudge] 2 new board posts for reviewer (seq 41-42). Run: herdr-synapse board --new [n17]``."""
     safe_name = validate_name(name)
     values = sorted({_validate_int(s, "seq") for s in seqs})
     if not values:
@@ -127,7 +127,7 @@ def build(name: str, seqs: Sequence[int], ledger_id: int) -> str:
 
 
 def interrupt_text(name: str, seqs: Sequence[int], nonce: int, sender: str) -> str:
-    """``[herdr-team interrupt] reviewer could not wait: 1 urgent board post for worker (seq 41). Run: herdr-team board --new [n17]``.
+    """``[herdr-team interrupt] reviewer could not wait: 1 urgent board post for worker (seq 41). Run: herdr-synapse board --new [n17]``.
 
     The line the daemon types into a member's running turn for a teammate's
     ``post --interrupt``. Same shape as a nudge, so the recipient's skill
@@ -165,7 +165,7 @@ def _teammate_list(teammates: List[Tuple[str, str]]) -> str:
 
 
 def briefing_lines(name: str, role: str, team: str, charter_headline: Optional[str], teammates: List[Tuple[str, str]], brief: Optional[str], cli_path: str) -> List[str]:
-    """One or two lines; the roster collapses to ``<n> teammates, run herdr-team who`` past 400 chars."""
+    """One or two lines; the roster collapses to ``<n> teammates, run herdr-synapse who`` past 400 chars."""
     safe_name = validate_name(name)
     if not isinstance(role, str) or not ROLE_NAME_RE.match(role):
         raise NudgeTextError("invalid role: {!r}".format(role))

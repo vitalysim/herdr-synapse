@@ -120,7 +120,7 @@ class ViewToggleForeignTests(unittest.TestCase):
     def test_toggle_force_replaces_a_foreign_view_when_view_json_is_stale(self):
         with TempState() as ts:
             api = FakeApi()
-            state = {"source": "plugin:herdr-team"}
+            state = {"source": "plugin:herdr-synapse"}
 
             def clear(params):
                 if state["source"] is None:
@@ -136,7 +136,7 @@ class ViewToggleForeignTests(unittest.TestCase):
 
             api.set_response("agent.view.clear", clear)
             api.set_response("agent.view.set", set_view)
-            store.write_json(ts.session.view_json, {"view": "on", "source": "plugin:herdr-team", "label": "team:alpha"})
+            store.write_json(ts.session.view_json, {"view": "on", "source": "plugin:herdr-synapse", "label": "team:alpha"})
             state["source"] = "test.foreign"  # another source replaced our view; view.json still says on
             code, _, err = json_out(run_cli(["--json", "view", "toggle"], ts.env, api))
             self.assertEqual(code, 1)
@@ -147,13 +147,13 @@ class ViewToggleForeignTests(unittest.TestCase):
             self.assertEqual(code, 0, err)
             self.assertEqual(payload["view"], "on")
             self.assertEqual(payload["owner"], "foreign")
-            self.assertEqual(state["source"], "plugin:herdr-team", "--force replaces the foreign view with ours")
+            self.assertEqual(state["source"], "plugin:herdr-synapse", "--force replaces the foreign view with ours")
             self.assertEqual(store.read_json(ts.session.view_json)["view"], "on")
 
     def test_toggle_still_turns_own_view_off(self):
         with TempState() as ts:
             api = FakeApi()
-            state = {"source": "plugin:herdr-team"}
+            state = {"source": "plugin:herdr-synapse"}
 
             def clear(params):
                 if params.get("source") not in (None, state["source"]):
@@ -162,7 +162,7 @@ class ViewToggleForeignTests(unittest.TestCase):
                 return {"type": "ok"}
 
             api.set_response("agent.view.clear", clear)
-            store.write_json(ts.session.view_json, {"view": "on", "source": "plugin:herdr-team", "label": "team:alpha"})
+            store.write_json(ts.session.view_json, {"view": "on", "source": "plugin:herdr-synapse", "label": "team:alpha"})
             code, payload, err = json_out(run_cli(["--json", "view", "toggle"], ts.env, api))
             self.assertEqual(code, 0, err)
             self.assertEqual(payload["view"], "off")

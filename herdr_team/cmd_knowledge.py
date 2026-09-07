@@ -77,7 +77,7 @@ def _run_project(args: argparse.Namespace) -> int:
         return emit(args, payload, lambda: (
             "project: {}\nfolder:  {}{}".format(project, payload.get("folder"), "" if payload.get("exists") else "  (not created yet)")
             if project else
-            "project: none. Set one with: herdr-team project set <path>"
+            "project: none. Set one with: herdr-synapse project set <path>"
         ))
 
     check_write_session(args, layout, team_name)
@@ -96,7 +96,7 @@ def _run_project(args: argparse.Namespace) -> int:
         return emit(args, {"team": team_name, "project_dir": None}, "project cleared. Files already written were left in place.")
 
     if not args.path:
-        raise UsageError("project set needs a directory: herdr-team project set <path>")
+        raise UsageError("project set needs a directory: herdr-synapse project set <path>")
     resolved = _workdir.resolve_project_dir(args.path, state_root=layout.state_root.path)
 
     def apply(doc: _roster.Team) -> None:
@@ -161,7 +161,7 @@ def _run_instructions(args: argparse.Namespace) -> int:
     team_name = resolved_team
     member_name = args.member or (author.name if author.is_member else None)
     if not member_name:
-        raise UsageError("which member? herdr-team instructions <name>")
+        raise UsageError("which member? herdr-synapse instructions <name>")
 
     modes = [name for name, on in (("--set", args.text is not None), ("--file", args.file is not None),
                                    ("--edit", args.edit), ("--adopt", args.adopt),
@@ -259,9 +259,9 @@ def _adopt_instructions(args: argparse.Namespace, layout: Any, team_name: str, a
     _human_only(layout, team_name, author, "instructions --adopt")
     path = _mirror_path(layout, team_name, member_name)
     if path is None:
-        raise HerdrTeamError("no_project_dir", "team {} has no project folder; set one with herdr-team project set <path>".format(team_name), EXIT_REFUSED, {"team": team_name})
+        raise HerdrTeamError("no_project_dir", "team {} has no project folder; set one with herdr-synapse project set <path>".format(team_name), EXIT_REFUSED, {"team": team_name})
     if not _workdir._is_ours(path):
-        raise HerdrTeamError("workdir_foreign_file", "{} was not written by herdr-team; move it aside first".format(path), EXIT_REFUSED, {"path": _os.fspath(path)})
+        raise HerdrTeamError("workdir_foreign_file", "{} was not written by herdr-synapse; move it aside first".format(path), EXIT_REFUSED, {"path": _os.fspath(path)})
     sections = _doc.parse(_read_mirror(path))
     incoming = _doc.to_text(sections) if not _doc.is_empty(sections) else ""
     current = _charter.get_instructions(layout, team_name, member_name) or ""
@@ -324,7 +324,7 @@ def _run_knowledge(args: argparse.Namespace) -> int:
 
     if args.action == "add":
         if not args.text:
-            raise UsageError('knowledge add needs text: herdr-team knowledge add "<what you learned>"')
+            raise UsageError('knowledge add needs text: herdr-synapse knowledge add "<what you learned>"')
         result = _charter.add_finding(layout, team_name, author, args.text)
         _render_quietly(layout, team_name)
         return emit(args, result, lambda: "finding recorded as {}".format(result["finding"]["author"]))
@@ -409,7 +409,7 @@ def format_status(report: Dict[str, Any], width: int = 100, ascii_only: bool = F
     lines: List[str] = []
     teams = report.get("teams") or []
     if not teams:
-        return ["No teams in this session.", "", "Create one with the picker (prefix+t) or: herdr-team create <name> --member <pane>"]
+        return ["No teams in this session.", "", "Create one with the picker (prefix+t) or: herdr-synapse create <name> --member <pane>"]
     for info in teams:
         if info.get("error"):
             lines.append("{}  {} {}".format(info["team"], warn_mark, info["error"]))
@@ -418,12 +418,12 @@ def format_status(report: Dict[str, Any], width: int = 100, ascii_only: bool = F
         lines.append("{}  {}".format(info["team"], _workdir.status_summary(info)))
         if not info.get("project_dir"):
             lines.append("    no team folder. To give it one:")
-            lines.append("      herdr-team project set <path> --team {}".format(info["team"]))
+            lines.append("      herdr-synapse project set <path> --team {}".format(info["team"]))
             lines.append("    then the team gets rules, per-member instructions, and an artifacts/ dir.")
             lines.append("")
             continue
         lines.append("    folder:   {}".format(info.get("folder")))
-        lines.append("    rules:    {}".format("{} chars".format(info["rules_chars"]) if info.get("rules") else "none set  (herdr-team knowledge set \"…\")"))
+        lines.append("    rules:    {}".format("{} chars".format(info["rules_chars"]) if info.get("rules") else "none set  (herdr-synapse knowledge set \"…\")"))
         lines.append("    findings: {}".format(info.get("findings", 0)))
         last = info.get("last_finding")
         if last:
@@ -433,7 +433,7 @@ def format_status(report: Dict[str, Any], width: int = 100, ascii_only: bool = F
             lines.append("    instructions:")
             for member in members:
                 mark = bullet if member.get("instructions") else " "
-                detail = "{} chars".format(member["chars"]) if member.get("instructions") else "none  (herdr-team instructions {} --set \"…\")".format(member["name"])
+                detail = "{} chars".format(member["chars"]) if member.get("instructions") else "none  (herdr-synapse instructions {} --set \"…\")".format(member["name"])
                 lines.append("      {} {:<24} {}".format(mark, member["name"], detail))
         if info.get("artifacts"):
             lines.append("    artifacts: {} file(s)".format(info["artifacts"]))
@@ -479,12 +479,12 @@ def _run_pane(args: argparse.Namespace) -> int:
     env = dict(args.env)
     layout = layout_for(args)
     if env.get("HERDR_PLUGIN_ENTRYPOINT_ID") != ENTRYPOINT and not getattr(args, "force", False):
-        raise HerdrTeamError("not_a_plugin_pane", "knowledge-pane runs in the knowledge popup; use `herdr-team ui knowledge`, `herdr-team knowledge-status`, or pass --force", 1)
+        raise HerdrTeamError("not_a_plugin_pane", "knowledge-pane runs in the knowledge popup; use `herdr-synapse ui knowledge`, `herdr-synapse knowledge-status`, or pass --force", 1)
     if not _p.socket_allowed(layout.config_dir, layout.socket):
-        sys.stderr.write("herdr-team knowledge-pane skipped: socket not allowed\n")
+        sys.stderr.write("herdr-synapse knowledge-pane skipped: socket not allowed\n")
         return EXIT_OK
     if not sys.stdout.isatty():
-        raise HerdrTeamError("no_tty", "knowledge-pane needs a terminal (use `herdr-team knowledge-status`)", 1)
+        raise HerdrTeamError("no_tty", "knowledge-pane needs a terminal (use `herdr-synapse knowledge-status`)", 1)
     import curses
 
     return int(curses.wrapper(_pane_loop, layout, bool(args.ascii)))

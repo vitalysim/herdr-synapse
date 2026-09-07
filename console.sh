@@ -8,13 +8,13 @@
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P) || exit 1
 
-"$root/bin/herdr-team" console "$@"
+"$root/bin/herdr-synapse" console "$@"
 rc=$?
 
 if [ "$rc" -ne 0 ]; then
-    printf '\nherdr-team console exited with status %s.\n' "$rc"
-    printf 'Relaunch with: herdr-team ui console   (or: herdr plugin action invoke herdr-team.console)\n'
-    printf 'Logs: herdr-team doctor; herdr plugin log list --plugin herdr-team\n'
+    printf '\nherdr-synapse console exited with status %s.\n' "$rc"
+    printf 'Relaunch with: herdr-synapse ui console   (or: herdr plugin action invoke herdr-synapse.console)\n'
+    printf 'Logs: herdr-synapse doctor; herdr plugin log list --plugin herdr-synapse\n'
     printf 'Press any key to close this pane.\n'
     if [ -t 0 ]; then
         saved=$(stty -g 2>/dev/null)

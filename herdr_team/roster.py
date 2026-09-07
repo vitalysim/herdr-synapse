@@ -71,8 +71,8 @@ DELIVERIES = ("nudge", "hooks")
 NAME_HISTORY_TTL_S = 600.0
 NAMING_MODES = ("prefixed", "plain")
 
-TOKEN_SOURCE_ROSTER = "herdr-team:roster"
-TOKEN_SOURCE_TASK = "herdr-team:task"
+TOKEN_SOURCE_ROSTER = "herdr-synapse:roster"
+TOKEN_SOURCE_TASK = "herdr-synapse:task"
 TASK_TOKEN_TTL_MS = 120000
 TASK_TOKEN_MAX_COLUMNS = 24
 TOKEN_VALUE_MAX_CHARS = 80
@@ -1755,7 +1755,7 @@ class Roster:
         return {"team": self.name, "archived_to": os.fspath(destination), "members_cleared": cleared}
 
     def adopt_rename(self, member_name: str, new_name: str, socket: Optional[str] = None) -> Member:
-        """The roster follows a rename by hand (or ``herdr-team rename``): history plus a board note."""
+        """The roster follows a rename by hand (or ``herdr-synapse rename``): history plus a board note."""
         validate_member_name(new_name)
         adopted: List[Member] = []
 

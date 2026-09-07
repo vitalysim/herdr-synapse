@@ -35,7 +35,7 @@ HOOK_EVENTS = {"SessionStart": 10, "UserPromptSubmit": 5, "Stop": 10}
 HOOK_ACTIONS = {"SessionStart": "session-start", "UserPromptSubmit": "prompt-submit", "Stop": "stop"}
 #: Events that carry a ``matcher`` (Herdr uses ``*`` on SessionStart; the other two take none).
 HOOK_MATCHERS = {"SessionStart": "*"}
-HOOK_FILE_NAME = "herdr-team-hook.sh"
+HOOK_FILE_NAME = "herdr-synapse-hook.sh"
 SETTINGS_FILES = ("settings.json", "settings.local.json")
 BACKUP_SUFFIX = ".herdr-team.bak"
 SHIM_MARKER = "# HERDR_TEAM_HOOK_VERSION="
@@ -454,11 +454,11 @@ def sha256_text(text: str) -> str:
 
 
 def write_shim(hooks_dir: Path, cli_path: Path) -> Path:
-    """Write ``<hooks_dir>/herdr-team-hook.sh`` with the absolute CLI path baked in, 0700."""
+    """Write ``<hooks_dir>/herdr-synapse-hook.sh`` with the absolute CLI path baked in, 0700."""
     hooks_dir = Path(hooks_dir)
     target = hooks_dir / HOOK_FILE_NAME
     if target.exists() and not target.is_symlink() and not shim_is_ours(target):
-        raise HerdrTeamError("hook_file_foreign", "{} exists and is not a herdr-team hook; remove it first".format(target), EXIT_REFUSED, {"path": os.fspath(target)})
+        raise HerdrTeamError("hook_file_foreign", "{} exists and is not a herdr-synapse hook; remove it first".format(target), EXIT_REFUSED, {"path": os.fspath(target)})
     paths.ensure_dir(hooks_dir, 0o700)
     store.atomic_write(target, render_shim(Path(cli_path)).encode("utf-8"), mode=0o700)
     return target

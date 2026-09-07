@@ -423,7 +423,7 @@ class ReconnectTests(unittest.TestCase):
 
     def test_registry_poll_exits_when_plugin_missing_or_disabled(self):
         d, api, clock = make_daemon(self.ts)
-        api.set_response("plugin.list", {"type": "plugin_list", "plugins": [{"plugin_id": "herdr-team", "enabled": False}]})
+        api.set_response("plugin.list", {"type": "plugin_list", "plugins": [{"plugin_id": "herdr-synapse", "enabled": False}]})
         api.set_response("agent.view.clear", {"type": "ok"})
         d.scan_teams(force=True)
         d.poll_agents(force=True)
@@ -439,7 +439,7 @@ class ReconnectTests(unittest.TestCase):
         self.assertEqual(d.stop_reason, "plugin disabled")
         cleared = [p for m, p in api.calls if m == "pane.report_metadata" and p["tokens"].get("team") is None]
         self.assertTrue(cleared)
-        self.assertIn(("agent.view.clear", {"source": "plugin:herdr-team"}), api.calls)
+        self.assertIn(("agent.view.clear", {"source": "plugin:herdr-synapse"}), api.calls)
 
     def test_registry_poll_interval_meets_the_disable_budget(self):
         # PK-08: ``plugin disable`` must clear tokens and the view and stop the daemon within 15 s.
@@ -766,7 +766,7 @@ class JobTests(unittest.TestCase):
         self.assertEqual(pending.kind, "brief")
         self.assertEqual(len(pending.lines), 1)
         self.assertTrue(pending.lines[0].startswith('[herdr-team briefing] You are "alpha-reviewer" (reviewer) in team "alpha": Find and fix the bug'))
-        self.assertTrue("alpha-worker (worker)" in pending.lines[0] or "1 teammate, run herdr-team who" in pending.lines[0], pending.lines[0])
+        self.assertTrue("alpha-worker (worker)" in pending.lines[0] or "1 teammate, run herdr-synapse who" in pending.lines[0], pending.lines[0])
         self.assertLessEqual(len(pending.lines[0]), 400)
         self.assertEqual(self.ts.team.briefing("alpha-reviewer").read_text().strip(), pending.lines[0])
         self.assertEqual(self.d.counters["jobs"], 1)
@@ -925,7 +925,7 @@ class DeliveryTests(unittest.TestCase):
         self.assertEqual(len(prompts), 1)
         self.assertEqual(prompts[0]["target"], "w2:p1")
         self.assertEqual(prompts[0]["wait"], {"until": ["working", "blocked"], "timeout_ms": 8000})
-        self.assertRegex(prompts[0]["text"], r"^\[herdr-team nudge\] 1 new board post for alpha-reviewer \(seq {}\)\. Run: herdr-team board --new \[n\d+\]$".format(seq))
+        self.assertRegex(prompts[0]["text"], r"^\[herdr-team nudge\] 1 new board post for alpha-reviewer \(seq {}\)\. Run: herdr-synapse board --new \[n\d+\]$".format(seq))
         self.assertLessEqual(len(prompts[0]["text"]), 120)
         counts = self.d.teams["alpha"].ledger.counts()
         self.assertEqual((counts["intents"], counts["landed_working"], counts["wrong_target"]), (1, 1, 0))
@@ -1165,8 +1165,8 @@ class HeartbeatAndWhoTests(unittest.TestCase):
         post(self.ts, "human", "review the diff for the login change please", author="alpha-reviewer", kind="request")
         self.d.on_connected()
         self.d.tick()
-        roster = [p for p in self.stamps() if p["source"] == "herdr-team:roster"]
-        task = [p for p in self.stamps() if p["source"] == "herdr-team:task"]
+        roster = [p for p in self.stamps() if p["source"] == "herdr-synapse:roster"]
+        task = [p for p in self.stamps() if p["source"] == "herdr-synapse:task"]
         self.assertTrue(roster)
         self.assertNotIn("ttl_ms", roster[0])
         self.assertEqual(roster[0]["tokens"], identity_tokens("alpha", "reviewer", 1))
@@ -1184,14 +1184,14 @@ class HeartbeatAndWhoTests(unittest.TestCase):
         self.assertEqual(info.pid, os.getpid())
 
     def test_heartbeat_stamps_team_task_from_the_task_file(self):
-        """RS-01/RS-04 regression: ``herdr-team task`` writes ``tasks/<name>.json``; the heartbeat must read it."""
+        """RS-01/RS-04 regression: ``herdr-synapse task`` writes ``tasks/<name>.json``; the heartbeat must read it."""
         post(self.ts, "human", "review the diff for the login change please", author="alpha-reviewer", kind="request")
         tasks_dir = self.ts.team.root / "tasks"
         tasks_dir.mkdir(mode=0o700, exist_ok=True)
         store.write_json(tasks_dir / "alpha-reviewer.json", {"v": 1, "member": "alpha-reviewer", "text": "rig smoke", "headline": "rig smoke", "set_at": D.now_iso()})
         self.d.on_connected()
         self.d.tick()
-        task = [p for p in self.stamps() if p["source"] == "herdr-team:task" and p["pane_id"] == "w2:p1"]
+        task = [p for p in self.stamps() if p["source"] == "herdr-synapse:task" and p["pane_id"] == "w2:p1"]
         self.assertTrue(task, self.stamps())
         self.assertEqual(task[0]["tokens"], {"team_task": "rig smoke"})  # the task beats the last post headline
         self.assertEqual(task[0]["ttl_ms"], 120000)

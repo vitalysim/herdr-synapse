@@ -113,7 +113,7 @@ class DirectRecordTests(unittest.TestCase):
 
 class ConsoleAncestryTests(unittest.TestCase):
     def _env(self, ts):
-        return ts.env_with(HERDR_PLUGIN_ENTRYPOINT_ID="console", HERDR_PLUGIN_ID="herdr-team", HERDR_PANE_ID="w7:p1")
+        return ts.env_with(HERDR_PLUGIN_ENTRYPOINT_ID="console", HERDR_PLUGIN_ID="herdr-synapse", HERDR_PANE_ID="w7:p1")
 
     def _api(self, process_info=None):
         api = FakeApi()
@@ -152,7 +152,7 @@ class SayCommandTests(unittest.TestCase):
         self.addCleanup(self.ts.cleanup)
         write_console(self.ts)
         trust_kinds(self.ts)
-        self.env = self.ts.env_with(HERDR_PLUGIN_ENTRYPOINT_ID="console", HERDR_PLUGIN_ID="herdr-team", HERDR_PANE_ID="w7:p1")
+        self.env = self.ts.env_with(HERDR_PLUGIN_ENTRYPOINT_ID="console", HERDR_PLUGIN_ID="herdr-synapse", HERDR_PANE_ID="w7:p1")
         patcher = mock.patch.object(identity, "ps_table", return_value={os.getpid(): os.getppid()})
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -196,7 +196,7 @@ class SayCommandTests(unittest.TestCase):
     def test_unverified_humans_are_refused(self):
         cases = [
             ("outside", self.ts.env, FakeApi(), "outside"),
-            ("compose popup", self.ts.env_with(HERDR_PLUGIN_ENTRYPOINT_ID="compose", HERDR_PLUGIN_ID="herdr-team", HERDR_PLUGIN_CONTEXT_JSON=json.dumps({"nonce": "abc", "focused_pane_id": "w2:p1"})), FakeApi(), "popup"),
+            ("compose popup", self.ts.env_with(HERDR_PLUGIN_ENTRYPOINT_ID="compose", HERDR_PLUGIN_ID="herdr-synapse", HERDR_PLUGIN_CONTEXT_JSON=json.dumps({"nonce": "abc", "focused_pane_id": "w2:p1"})), FakeApi(), "popup"),
             ("unfocused console", self.env, self.console_api(focused=False), "console-unfocused"),
             ("shell pane", self.ts.env_with(HERDR_PANE_ID="w3:p1"), pane_api(), None),
             ("console without process info", self.env, self.console_api(ancestry=False), "console"),

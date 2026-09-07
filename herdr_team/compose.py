@@ -8,7 +8,7 @@ idle watchdog.
 
 Decisions live in ``tui_model`` (``ComposeModel``, ``compose_apply_key``,
 ``parse_post_directives``); this module reads the roster, runs the curses
-loop, and executes the post through the ``herdr-team`` CLI so author
+loop, and executes the post through the ``herdr-synapse`` CLI so author
 resolution, validation, and locking happen in exactly one code path. The
 popup exits after a successful post; a refused post keeps the line so the
 human can fix it.
@@ -115,7 +115,7 @@ def post_argv(intent: Intent, team: str) -> List[str]:
 
 
 def execute_post(intent: Intent, team: str, env: Dict[str, str]) -> Dict[str, Any]:
-    """Run ``herdr-team --json post ...``; returns ``{"ok", "seq", "to", "notifier"}`` or ``{"ok": False, "error": {...}}``."""
+    """Run ``herdr-synapse --json post ...``; returns ``{"ok", "seq", "to", "notifier"}`` or ``{"ok": False, "error": {...}}``."""
     from herdr_team.console import run_cli
 
     rc, out, err = run_cli(post_argv(intent, team), env)
@@ -200,10 +200,10 @@ def run_args(args: argparse.Namespace) -> int:
     env = dict(args.env)
     layout = _cli.layout_for(args)
     if env.get("HERDR_PLUGIN_ENTRYPOINT_ID") != ENTRYPOINT and not getattr(args, "force", False):
-        raise HerdrTeamError("not_a_plugin_pane", "compose runs in the post popup; use `herdr-team ui compose` or pass --force", EXIT_REFUSED)
+        raise HerdrTeamError("not_a_plugin_pane", "compose runs in the post popup; use `herdr-synapse ui compose` or pass --force", EXIT_REFUSED)
     if not _paths.socket_allowed(layout.config_dir, layout.socket):
         # Plan 4.1 / PK-07: an unlisted socket makes the pane a no-op before any socket call.
-        sys.stderr.write("herdr-team compose skipped: socket not allowed\n")
+        sys.stderr.write("herdr-synapse compose skipped: socket not allowed\n")
         return EXIT_OK
     if not sys.stdout.isatty():
         raise HerdrTeamError("no_tty", "compose needs a terminal", EXIT_REFUSED)
@@ -215,7 +215,7 @@ def run_args(args: argparse.Namespace) -> int:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    parser = argparse.ArgumentParser(prog="herdr-team compose", allow_abbrev=False)
+    parser = argparse.ArgumentParser(prog="herdr-synapse compose", allow_abbrev=False)
     parser.add_argument("--team")
     parser.add_argument("--session")
     parser.add_argument("--socket")

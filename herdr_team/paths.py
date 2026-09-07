@@ -17,16 +17,16 @@ gate in ``bin/hook`` applies the same rule with parameter expansion):
 * ``<dir>/herdr.sock``                 -> ``default``
 * anything else                        -> ``sock-<sha1(path)[:8]>``
 
-State root resolution order (``herdr-team doctor`` prints it):
+State root resolution order (``herdr-synapse doctor`` prints it):
 
 1. ``--team <path>`` when the value looks like a path: it names a team dir
    ``<root>/sessions/<slug>/teams/<team>`` and the root is derived from it.
 2. ``HERDR_TEAM_STATE_DIR`` (test-rig override of the root itself).
 3. ``HERDR_TEAM_DIR`` (a team dir, set on panes the plugin spawned).
 4. ``HERDR_PLUGIN_STATE_DIR`` (plugin processes; this *is* the root).
-5. Pointer file ``<config_dir>/plugins/config/herdr-team/state-dir`` written
+5. Pointer file ``<config_dir>/plugins/config/herdr-synapse/state-dir`` written
    by the startup hook and the console.
-6. XDG derivation ``${XDG_STATE_HOME:-$HOME/.local/state}/<app>/plugins/herdr-team``
+6. XDG derivation ``${XDG_STATE_HOME:-$HOME/.local/state}/<app>/plugins/herdr-synapse``
    where ``<app>`` is the basename of the config dir derived from the socket
    (``herdr`` or ``herdr-dev``).
 
@@ -44,7 +44,7 @@ Layout::
         notifier/human-attention.jsonl
         mute.json  audit.jsonl
       _archive/<team>-<ts>/
-    <config_dir>/plugins/config/herdr-team/{state-dir, allowed-sockets}
+    <config_dir>/plugins/config/herdr-synapse/{state-dir, allowed-sockets}
 
 Directories are created 0700, files 0600, every managed component is
 ``lstat``-checked and symlinks are refused (``path_symlink``).
@@ -366,7 +366,7 @@ def state_root_from_team_dir(team_dir: Path) -> Path:
 
 
 def default_state_root(config: Path, env: Mapping[str, str]) -> Path:
-    """XDG derivation: ``<xdg_state>/<app>/plugins/herdr-team`` with ``<app>`` from the config dir."""
+    """XDG derivation: ``<xdg_state>/<app>/plugins/herdr-synapse`` with ``<app>`` from the config dir."""
     return xdg_state_home(env) / config.name / "plugins" / PLUGIN_ID
 
 

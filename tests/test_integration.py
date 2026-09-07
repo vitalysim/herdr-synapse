@@ -262,7 +262,7 @@ class Workflow1Tests(unittest.TestCase):
         decision = daemon.gate_evaluate(idle, pending, now, None, 0)
         self.assertTrue(decision.deliver, decision)
         text = daemon.nudge_text_for("beta-worker", [post1["seq"], post2["seq"]], 17)
-        self.assertEqual(text, "[herdr-team nudge] 2 new board posts for beta-worker (seq {}-{}). Run: herdr-team board --new [n17]".format(post1["seq"], post2["seq"]))
+        self.assertEqual(text, "[herdr-team nudge] 2 new board posts for beta-worker (seq {}-{}). Run: herdr-synapse board --new [n17]".format(post1["seq"], post2["seq"]))
         self.assertLessEqual(len(text), nudge.MAX_NUDGE_CHARS)
         # the marker is refused as post text (echo)
         code, _, err = self.cli(["--json", "--team", TEAM, "post", text])
@@ -273,7 +273,7 @@ class Workflow1Tests(unittest.TestCase):
         code, post3, err = self.cli(["--json", "post", "Also bump the changelog.", "--to", "beta-worker", "--kind", "request"], HERDR_PANE_ID=REVIEWER_PANE)
         self.assertEqual(code, 0, err)
         shim = ts.tmp / claude_settings.HOOK_FILE_NAME
-        shim.write_text(claude_settings.render_shim(PLUGIN_ROOT / "bin" / "herdr-team"), encoding="utf-8")
+        shim.write_text(claude_settings.render_shim(PLUGIN_ROOT / "bin" / "herdr-synapse"), encoding="utf-8")
         log = ts.tmp / "hook.log"
         hook_env = self.env(
             HERDR_PANE_ID=WORKER_PANE,
@@ -308,7 +308,7 @@ class Workflow1Tests(unittest.TestCase):
 
 class PackagingInvariantTests(unittest.TestCase):
     SOURCE_FILES = sorted((PLUGIN_ROOT / "herdr_team").glob("*.py"))
-    SHELL_FILES = [PLUGIN_ROOT / "bin" / "herdr-team", PLUGIN_ROOT / "bin" / "hook", PLUGIN_ROOT / "console.sh", PLUGIN_ROOT / "hooks" / "claude" / claude_settings.HOOK_FILE_NAME]
+    SHELL_FILES = [PLUGIN_ROOT / "bin" / "herdr-synapse", PLUGIN_ROOT / "bin" / "hook", PLUGIN_ROOT / "console.sh", PLUGIN_ROOT / "hooks" / "claude" / claude_settings.HOOK_FILE_NAME]
 
     def manifest(self):
         try:
@@ -320,7 +320,7 @@ class PackagingInvariantTests(unittest.TestCase):
 
     def test_manifest_parses_with_unique_events_and_ids(self):
         manifest = self.manifest()
-        self.assertEqual(manifest["id"], "herdr-team")
+        self.assertEqual(manifest["id"], "herdr-synapse")
         self.assertEqual(manifest["min_herdr_version"], "0.8.2")
         self.assertRegex(manifest["version"], r"^\d+\.\d+\.\d+$")
         for key in ("startup", "actions", "events", "panes"):

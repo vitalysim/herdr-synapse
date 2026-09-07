@@ -41,7 +41,7 @@ from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Tuple
 
 DEFAULT_TIMEOUT_S = 8.0
 KEYCHAIN_TIMEOUT_S = 5.0
-USER_AGENT = "herdr-team-usage/1"
+USER_AGENT = "herdr-synapse-usage/1"
 
 ANTHROPIC_USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
 ANTHROPIC_BETA = "oauth-2025-04-20"
@@ -599,7 +599,7 @@ def gemini_source(env: Mapping[str, str], fetch: bool = True, timeout: float = D
     row["login"] = "Google login"
     expiry = creds.get("expiry_date")
     if isinstance(expiry, (int, float)) and not isinstance(expiry, bool) and float(expiry) / 1000.0 < time.time():
-        row["error"] = "the stored Google token has expired; run gemini once to refresh it (herdr-team never refreshes tokens)"
+        row["error"] = "the stored Google token has expired; run gemini once to refresh it (herdr-synapse never refreshes tokens)"
         return row
     if not fetch:
         row["error"] = "not fetched (--no-fetch)"

@@ -1,45 +1,45 @@
 #!/bin/sh
-# herdr-team-sandbox: run herdr-team in a fully isolated Herdr session.
+# herdr-synapse-sandbox: run herdr-synapse in a fully isolated Herdr session.
 #
 # The sandbox is a named Herdr session with its OWN config directory, plugin
 # registry, and state directory (XDG_CONFIG_HOME / XDG_STATE_HOME), so nothing
 # it does is visible to your default Herdr session. It uses the installed
 # `herdr` binary; no fork build is involved.
 #
-#   herdr-team-sandbox prepare          create the sandbox, copy your config, link the plugin, trust claude/codex
-#   herdr-team-sandbox start [<dir>]    prepare, then launch the sandbox session in <dir> (default: the current
+#   herdr-synapse-sandbox prepare          create the sandbox, copy your config, link the plugin, trust claude/codex
+#   herdr-synapse-sandbox start [<dir>]    prepare, then launch the sandbox session in <dir> (default: the current
 #                                       directory); new panes and agents open there, so pass your project
-#   herdr-team-sandbox attach           attach another terminal to the running sandbox
-#   herdr-team-sandbox status           session state, daemon state, sandbox paths
-#   herdr-team-sandbox herdr <args...>  run `herdr` against the sandbox (e.g. `herdr agent list`)
-#   herdr-team-sandbox team <args...>   run `herdr-team` against the sandbox (e.g. `team who`)
-#   herdr-team-sandbox stop             stop the sandbox session (agents inside it exit)
-#   herdr-team-sandbox delete           stop and delete the session (config and boards are kept)
-#   herdr-team-sandbox reset            delete everything under the sandbox directory (asks first)
+#   herdr-synapse-sandbox attach           attach another terminal to the running sandbox
+#   herdr-synapse-sandbox status           session state, daemon state, sandbox paths
+#   herdr-synapse-sandbox herdr <args...>  run `herdr` against the sandbox (e.g. `herdr agent list`)
+#   herdr-synapse-sandbox team <args...>   run `herdr-synapse` against the sandbox (e.g. `team who`)
+#   herdr-synapse-sandbox stop             stop the sandbox session (agents inside it exit)
+#   herdr-synapse-sandbox delete           stop and delete the session (config and boards are kept)
+#   herdr-synapse-sandbox reset            delete everything under the sandbox directory (asks first)
 #
 # Locations (override with HERDR_TEAM_SANDBOX and HERDR_TEAM_SANDBOX_SESSION):
-#   $HOME/herdr-teamtest/config/herdr/config.toml   the sandbox config (a copy of yours plus the plugin snippets)
-#   $HOME/herdr-teamtest/config/herdr/plugins.json  the sandbox plugin registry
-#   $HOME/herdr-teamtest/state/herdr/plugins/herdr-team/sessions/<session>/   teams, boards, daemon log
+#   $HOME/herdr-synapsetest/config/herdr/config.toml   the sandbox config (a copy of yours plus the plugin snippets)
+#   $HOME/herdr-synapsetest/config/herdr/plugins.json  the sandbox plugin registry
+#   $HOME/herdr-synapsetest/state/herdr/plugins/herdr-synapse/sessions/<session>/   teams, boards, daemon log
 
 set -u
 
 PLUGIN=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-SANDBOX=${HERDR_TEAM_SANDBOX:-$HOME/herdr-teamtest}
+SANDBOX=${HERDR_TEAM_SANDBOX:-$HOME/herdr-synapsetest}
 SESSION=${HERDR_TEAM_SANDBOX_SESSION:-teamtest}
 CFG=$SANDBOX/config
 ST=$SANDBOX/state
 CONFIG_TOML=$CFG/herdr/config.toml
 SOCK=$CFG/herdr/sessions/$SESSION/herdr.sock
-KINDS=$ST/herdr/plugins/herdr-team/sessions/$SESSION/kinds.json
-MARKER='# --- herdr-team sandbox snippets ---'
+KINDS=$ST/herdr/plugins/herdr-synapse/sessions/$SESSION/kinds.json
+MARKER='# --- herdr-synapse sandbox snippets ---'
 
 say() { printf '%s\n' "$*"; }
-die() { printf 'herdr-team-sandbox: %s\n' "$*" >&2; exit 1; }
+die() { printf 'herdr-synapse-sandbox: %s\n' "$*" >&2; exit 1; }
 
 # Every command runs with the inherited Herdr variables cleared (so nothing
 # can address the default session) and the sandbox XDG directories set. The
-# plugin's bin dir is prepended to PATH so `herdr-team` works in every pane
+# plugin's bin dir is prepended to PATH so `herdr-synapse` works in every pane
 # of the sandbox session (panes inherit the server's environment).
 CLEAN_UNSET="-u HERDR_SOCKET_PATH -u HERDR_CLIENT_SOCKET_PATH -u HERDR_SESSION -u HERDR_WORKSPACE_ID -u HERDR_TAB_ID -u HERDR_PANE_ID -u HERDR_ENV -u HERDR_BIN_PATH"
 # shellcheck disable=SC2086  # CLEAN_UNSET is a flag list and must word-split
@@ -87,7 +87,7 @@ prepare() {
       say "note: config already has sidebar rows or plugin key bindings; not appending the plugin snippets"
       say "      run: $0 team setup --print-config --no-probe   and merge by hand"
     else
-      snippet=$(clean_env "$PLUGIN/bin/herdr-team" --json setup --print-config --no-probe 2>/dev/null \
+      snippet=$(clean_env "$PLUGIN/bin/herdr-synapse" --json setup --print-config --no-probe 2>/dev/null \
         | python3 -c 'import json,sys; print(json.load(sys.stdin)["required"])') || snippet=""
       if [ -n "$snippet" ]; then
         cp "$CONFIG_TOML" "$CONFIG_TOML.bak"
@@ -111,11 +111,11 @@ prepare() {
     now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     printf '{"claude": {"trusted": true, "trusted_by": "owner", "reason": "sandbox default", "trusted_at": "%s"}, "codex": {"trusted": true, "trusted_by": "owner", "reason": "sandbox default", "trusted_at": "%s"}}\n' "$now" "$now" > "$KINDS"
     chmod 600 "$KINDS"
-    say "trusted claude and codex for delivery in the sandbox (herdr-team kinds list to review)"
+    say "trusted claude and codex for delivery in the sandbox (herdr-synapse kinds list to review)"
   fi
 
   # Link the plugin into the sandbox registry only. Works offline.
-  if clean_env herdr plugin list --json 2>/dev/null | grep -q '"herdr-team"'; then
+  if clean_env herdr plugin list --json 2>/dev/null | grep -q '"herdr-synapse"'; then
     say "plugin already linked in the sandbox registry"
   else
     if clean_env herdr plugin link "$PLUGIN" >/dev/null 2>&1; then
@@ -151,7 +151,7 @@ status() {
   say "socket:   $SOCK"
   if running; then say "state:    running"; else say "state:    not running"; fi
   say "--- daemon ---"
-  in_session "$PLUGIN/bin/herdr-team" daemon status 2>&1 || :
+  in_session "$PLUGIN/bin/herdr-synapse" daemon status 2>&1 || :
 }
 
 case "${1:-}" in
@@ -160,7 +160,7 @@ case "${1:-}" in
   attach) exec_clean herdr session attach "$SESSION" ;;
   status) status ;;
   herdr) shift; in_session herdr "$@" ;;
-  team) shift; in_session "$PLUGIN/bin/herdr-team" "$@" ;;
+  team) shift; in_session "$PLUGIN/bin/herdr-synapse" "$@" ;;
   stop) in_session herdr session stop "$SESSION" ;;
   delete) in_session herdr session stop "$SESSION" >/dev/null 2>&1 || :; in_session herdr session delete "$SESSION" ;;
   reset)

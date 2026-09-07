@@ -285,12 +285,12 @@ SAMPLE_PARAMS: Dict[str, Dict[str, Any]] = {
     "agent.focus": {"target": "w2:p1"},
     "agent.start": {"name": "beta-worker", "kind": "codex", "pane_id": "w9:p1", "timeout_ms": 30000},
     "agent.view.set": cmd_misc.view_request(["alpha"]),
-    "agent.view.clear": {"source": "plugin:herdr-team"},
+    "agent.view.clear": {"source": "plugin:herdr-synapse"},
     "pane.get": {"pane_id": "w2:p1"},
     "pane.list": {},
     "pane.rename": {"pane_id": "w2:p1", "label": "team:alpha/reviewer"},
     "pane.close": {"pane_id": "w1:p1"},
-    "pane.report_metadata": {"pane_id": "w2:p1", "source": "herdr-team:roster", "tokens": identity_tokens("alpha", "reviewer")},
+    "pane.report_metadata": {"pane_id": "w2:p1", "source": "herdr-synapse:roster", "tokens": identity_tokens("alpha", "reviewer")},
     "pane.process_info": {"pane_id": "w2:p1"},
     "layout.apply": cmd_roster.build_layout_request("beta", [{"role": "reviewer", "name": "beta-reviewer", "kind": "codex"}, {"role": "worker", "name": "beta-worker", "kind": "claude", "cwd": "/tmp/work"}], "/tmp/state/teams/beta", "w9"),
     "plugin.list": {},
@@ -298,7 +298,7 @@ SAMPLE_PARAMS: Dict[str, Dict[str, Any]] = {
     "plugin.pane.focus": {"pane_id": "w2:p1"},
     "plugin.pane.close": {"pane_id": "w1:p9"},
     "popup.close": {},
-    "notification.show": {"title": "herdr-team doctor", "body": "toast probe; nothing to do", "sound": "none"},
+    "notification.show": {"title": "herdr-synapse doctor", "body": "toast probe; nothing to do", "sound": "none"},
 }
 
 
@@ -335,10 +335,10 @@ def plugin_request_params() -> List[Tuple[str, str, Dict[str, Any]]]:
         ("roster.label_pane / daemon._apply_label", "pane.rename", {"pane_id": "w2:p1", "label": "team:alpha/reviewer"}),
         ("roster.label_pane clear", "pane.rename", {"pane_id": "w2:p1", "label": None}),
         ("cmd_ui.reconcile_console", "pane.close", {"pane_id": "w1:p2"}),
-        ("daemon._stamp_tokens roster", "pane.report_metadata", {"pane_id": "w2:p1", "source": "herdr-team:roster", "tokens": identity_tokens("alpha", "reviewer", 1)}),
-        ("daemon._stamp_tokens task", "pane.report_metadata", {"pane_id": "w2:p1", "source": "herdr-team:task", "tokens": {"team_task": "→ review diff"}, "ttl_ms": daemon.TASK_TTL_MS}),
-        ("daemon._clear_tokens roster / hooks._clear_tokens", "pane.report_metadata", {"pane_id": "w2:p1", "source": "herdr-team:roster", "tokens": identity_tokens(None, None)}),
-        ("daemon._clear_tokens task", "pane.report_metadata", {"pane_id": "w2:p1", "source": "herdr-team:task", "tokens": {"team_task": None}}),
+        ("daemon._stamp_tokens roster", "pane.report_metadata", {"pane_id": "w2:p1", "source": "herdr-synapse:roster", "tokens": identity_tokens("alpha", "reviewer", 1)}),
+        ("daemon._stamp_tokens task", "pane.report_metadata", {"pane_id": "w2:p1", "source": "herdr-synapse:task", "tokens": {"team_task": "→ review diff"}, "ttl_ms": daemon.TASK_TTL_MS}),
+        ("daemon._clear_tokens roster / hooks._clear_tokens", "pane.report_metadata", {"pane_id": "w2:p1", "source": "herdr-synapse:roster", "tokens": identity_tokens(None, None)}),
+        ("daemon._clear_tokens task", "pane.report_metadata", {"pane_id": "w2:p1", "source": "herdr-synapse:task", "tokens": {"team_task": None}}),
         ("identity._process_info / cmd_ui._foreground_is_shell", "pane.process_info", {"pane_id": "w2:p1"}),
         ("cmd_roster.build_layout_request", "layout.apply", SAMPLE_PARAMS["layout.apply"]),
         ("cmd_roster.build_layout_request no workspace", "layout.apply", cmd_roster.build_layout_request("beta", [{"role": "r", "name": "beta-r", "kind": "codex"}], "/tmp/state/teams/beta")),
@@ -350,7 +350,7 @@ def plugin_request_params() -> List[Tuple[str, str, Dict[str, Any]]]:
         ("cmd_ui._run_ui focus live console", "plugin.pane.focus", {"pane_id": "w1:p7"}),
         ("cmd_ui._run_ui close", "popup.close", {}),
         ("daemon.flush_toasts", "notification.show", {"title": "3 new posts for you #4-#6", "body": "…", "sound": "request"}),
-        ("cmd_misc._toast_probe", "notification.show", {"title": "herdr-team doctor", "body": "toast probe; nothing to do", "sound": "none"}),
+        ("cmd_misc._toast_probe", "notification.show", {"title": "herdr-synapse doctor", "body": "toast probe; nothing to do", "sound": "none"}),
         ("daemon._serve_subscription", "events.subscribe", {"subscriptions": _api.normalize_subscriptions(daemon.SUBSCRIPTIONS)}),
     ]
     for command in roster.token_commands(member, "alpha", task_headline="review diff"):

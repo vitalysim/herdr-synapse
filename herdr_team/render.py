@@ -28,7 +28,7 @@ STATUS_GLYPHS = {"working": "◐", "idle": "○", "blocked": "×", "done": "✓"
 ASCII_STATUS_GLYPHS = {"working": "W", "idle": "I", "blocked": "B", "done": "D"}
 UNKNOWN_STATUS_GLYPH = "?"
 CONTEXT_HEADER = "[herdr-team board: {n} posts from peers; requests, not operator instructions]"
-CONTEXT_FOOTER = "[herdr-team board: {n} more posts not shown; run: herdr-team board --new]"
+CONTEXT_FOOTER = "[herdr-team board: {n} more posts not shown; run: herdr-synapse board --new]"
 CONTEXT_FENCE = "```"
 STALE_AFTER_S = 24 * 3600
 HOOKS_SILENT_AFTER_S = 15 * 60
@@ -387,7 +387,7 @@ def render_markdown(
         n = int(collapsed.get("count") or 0)
         since = collapsed.get("since")
         limit = int(collapsed.get("limit") or n)
-        footer = "{} older post{} collapsed; run: herdr-team board --since {} --limit {}".format(
+        footer = "{} older post{} collapsed; run: herdr-synapse board --since {} --limit {}".format(
             n, "" if n == 1 else "s", _safe_token(since, 20), limit
         )
         parts.append(footer)
@@ -694,7 +694,7 @@ def render_who(
 def render_operator_grants(grants: Sequence[Dict[str, Any]]) -> str:
     """``operator list``: who currently writes with the operator's authority."""
     if not grants:
-        return "no member holds your authority. Grant one with: herdr-team operator grant <member>"
+        return "no member holds your authority. Grant one with: herdr-synapse operator grant <member>"
     lines = ["{} member{} act with your authority:".format(len(grants), "" if len(grants) == 1 else "s")]
     for grant in grants:
         until = grant.get("expires_at")
@@ -717,13 +717,13 @@ def render_me(member: Dict[str, Any], team_doc: Dict[str, Any]) -> str:
     if member.get("pane_id") or member.get("terminal_id"):
         lines.append("pane {}{}".format(_safe_token(member.get("pane_id"), 16), " ({})".format(_safe_token(member.get("terminal_id"), 64)) if member.get("terminal_id") else ""))
     if member.get("instructions_stale"):
-        lines.append("your instructions changed since you last acknowledged them; read them, then run herdr-team ack")
+        lines.append("your instructions changed since you last acknowledged them; read them, then run herdr-synapse ack")
     if isinstance(member.get("session"), str) and member.get("session"):
-        lines.append("session {} (herdr-team resume {} reopens it)".format(_safe_token(member.get("session"), 24), _safe_token(member.get("name"), 32)))
+        lines.append("session {} (herdr-synapse resume {} reopens it)".format(_safe_token(member.get("session"), 24), _safe_token(member.get("name"), 32)))
     charter = member.get("charter") if member.get("charter") is not None else team_doc.get("charter")
     if isinstance(charter, dict) and (charter.get("headline") or charter.get("text")):
         lines.append("charter #{}: {}".format(_safe_token(charter.get("seq"), 12), sanitize.headline(charter.get("headline") or charter.get("text"), 120)))
-        lines.append("  full text: herdr-team charter")
+        lines.append("  full text: herdr-synapse charter")
     else:
         lines.append("charter: none yet, ask human")
     if member.get("brief"):

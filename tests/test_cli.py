@@ -75,17 +75,17 @@ class RegistryTests(unittest.TestCase):
 class MainTests(unittest.TestCase):
     def test_version_human(self):
         code, out, err = run_cli(["--version"])
-        self.assertEqual((code, out, err), (0, "herdr-team {}\n".format(VERSION), ""))
+        self.assertEqual((code, out, err), (0, "herdr-synapse {}\n".format(VERSION), ""))
 
     def test_version_json(self):
         code, out, err = run_cli(["--version", "--json"])
         self.assertEqual(code, 0)
-        self.assertEqual(json.loads(out), {"version": VERSION, "skill_version": SKILL_VERSION, "plugin_id": "herdr-team"})
+        self.assertEqual(json.loads(out), {"version": VERSION, "skill_version": SKILL_VERSION, "plugin_id": "herdr-synapse"})
 
     def test_skill_prints_skill_file(self):
         code, out, err = run_cli(["--skill"])
         self.assertEqual(code, 0)
-        self.assertTrue(out.startswith("---\nname: herdr-team\n"), out[:60])
+        self.assertTrue(out.startswith("---\nname: herdr-synapse\n"), out[:60])
         code, out, _ = run_cli(["--skill", "--json"])
         self.assertEqual(json.loads(out)["skill_version"], SKILL_VERSION)
 
@@ -95,7 +95,7 @@ class MainTests(unittest.TestCase):
         self.assertEqual(out, "")
         first, rest = err.split("\n", 1)
         self.assertEqual(json.loads(first)["code"], "usage")
-        self.assertIn("usage: herdr-team", rest)
+        self.assertIn("usage: herdr-synapse", rest)
 
     def test_unknown_command_json_error_shape(self):
         code, out, err = run_cli(["definitely-not-a-command", "--json"])

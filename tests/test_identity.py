@@ -64,7 +64,7 @@ def own_process_info(pane_id: str, shell_pid: Optional[int] = None) -> Dict[str,
 class SystemTierTests(unittest.TestCase):
     def test_hook_env_is_system_via_hook(self) -> None:
         with TempState() as ts:
-            env = ts.env_with(HERDR_PLUGIN_EVENT="pane.agent_detected", HERDR_PLUGIN_ID="herdr-team", HERDR_PANE_ID="w2:p1")
+            env = ts.env_with(HERDR_PLUGIN_EVENT="pane.agent_detected", HERDR_PLUGIN_ID="herdr-synapse", HERDR_PANE_ID="w2:p1")
             author = identity.resolve_author(env, ts.layout, make_api())
             self.assertEqual(author.name, "system")
             self.assertTrue(author.is_system)
@@ -77,7 +77,7 @@ class SystemTierTests(unittest.TestCase):
 
     def test_startup_env_without_event_is_system_via_system(self) -> None:
         with TempState() as ts:
-            env = ts.env_with(HERDR_PLUGIN_ID="herdr-team")
+            env = ts.env_with(HERDR_PLUGIN_ID="herdr-synapse")
             author = identity.resolve_author(env, ts.layout, make_api())
             self.assertEqual(author.via, identity.VIA_SYSTEM)
             self.assertEqual(author.name, "system")
@@ -152,7 +152,7 @@ class NonDefaultTeamMemberTests(unittest.TestCase):
 
 class ConsoleTierTests(unittest.TestCase):
     def _console_env(self, ts: TempState, pane_id: str = "w7:p1") -> Dict[str, str]:
-        return ts.env_with(HERDR_PLUGIN_ENTRYPOINT_ID="console", HERDR_PLUGIN_ID="herdr-team", HERDR_PANE_ID=pane_id)
+        return ts.env_with(HERDR_PLUGIN_ENTRYPOINT_ID="console", HERDR_PLUGIN_ID="herdr-synapse", HERDR_PANE_ID=pane_id)
 
     def test_focused_console_is_verified_human(self) -> None:
         with TempState() as ts:
@@ -194,7 +194,7 @@ class ConsoleTierTests(unittest.TestCase):
 
     def test_console_without_pane_id_stays_unverified(self) -> None:
         with TempState() as ts:
-            env = ts.env_with(HERDR_PLUGIN_ENTRYPOINT_ID="console", HERDR_PLUGIN_ID="herdr-team")
+            env = ts.env_with(HERDR_PLUGIN_ENTRYPOINT_ID="console", HERDR_PLUGIN_ID="herdr-synapse")
             author = identity.resolve_author(env, ts.layout, make_api())
             self.assertEqual(author.via, identity.VIA_CONSOLE_UNFOCUSED)
             self.assertFalse(author.verified)
@@ -203,7 +203,7 @@ class ConsoleTierTests(unittest.TestCase):
         with TempState() as ts:
             store.write_json(ts.session.console_json, {"default_team": "alpha"})
             context = json.dumps({"focused_pane_id": "w2:p1", "nonce": "abc123"})
-            env = ts.env_with(HERDR_PLUGIN_ENTRYPOINT_ID="compose", HERDR_PLUGIN_ID="herdr-team", HERDR_PLUGIN_CONTEXT_JSON=context)
+            env = ts.env_with(HERDR_PLUGIN_ENTRYPOINT_ID="compose", HERDR_PLUGIN_ID="herdr-synapse", HERDR_PLUGIN_CONTEXT_JSON=context)
             api = make_api()
             author = identity.resolve_author(env, ts.layout, api)
             self.assertEqual(author.via, identity.VIA_POPUP)

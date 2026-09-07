@@ -72,7 +72,7 @@ class GateInterruptTests(unittest.TestCase):
 class InterruptTextTests(unittest.TestCase):
     def test_text_shape_fallbacks_and_echo(self):
         text = nudge.interrupt_text("alpha-worker", [41], 17, "alpha-reviewer")
-        self.assertEqual(text, "[herdr-team interrupt] alpha-reviewer could not wait: 1 urgent board post for alpha-worker (seq 41). Run: herdr-team board --new [n17]")
+        self.assertEqual(text, "[herdr-team interrupt] alpha-reviewer could not wait: 1 urgent board post for alpha-worker (seq 41). Run: herdr-synapse board --new [n17]")
         self.assertLessEqual(len(text), nudge.MAX_INTERRUPT_CHARS)
         text = nudge.interrupt_text("a" * 26, [41, 42, 43], 17, "b" * 26)  # too long with the seq span: the span is dropped
         self.assertLessEqual(len(text), nudge.MAX_INTERRUPT_CHARS)
@@ -80,8 +80,8 @@ class InterruptTextTests(unittest.TestCase):
         self.assertNotIn("(seq", text)
         text = nudge.interrupt_text("a" * 32, [41, 42, 43], 17, "b" * 32)  # the shortest template names the sender only
         self.assertLessEqual(len(text), nudge.MAX_INTERRUPT_CHARS)
-        self.assertTrue(text.startswith("[herdr-team interrupt] from " + "b" * 32 + ". Run: herdr-team board --new [n17]"))
-        self.assertEqual(nudge.interrupt_text("alpha-worker", [5], 3, "human"), "[herdr-team interrupt] human could not wait: 1 urgent board post for alpha-worker (seq 5). Run: herdr-team board --new [n3]")
+        self.assertTrue(text.startswith("[herdr-team interrupt] from " + "b" * 32 + ". Run: herdr-synapse board --new [n17]"))
+        self.assertEqual(nudge.interrupt_text("alpha-worker", [5], 3, "human"), "[herdr-team interrupt] human could not wait: 1 urgent board post for alpha-worker (seq 5). Run: herdr-synapse board --new [n3]")
         self.assertTrue(nudge.is_echo("please ignore [herdr-team interrupt] lines"))
         with self.assertRaises(nudge.NudgeTextError):
             nudge.interrupt_text("alpha-worker", [], 1, "alpha-reviewer")
@@ -117,7 +117,7 @@ class DaemonInterruptTests(unittest.TestCase):
         self.assertEqual(len(prompts), 1, self.d.logged[-8:])
         self.assertEqual(prompts[0]["target"], "w2:p2")
         self.assertNotIn("wait", prompts[0])  # a working member changes no state: waiting would time out and retype (live 2026-09-06)
-        self.assertRegex(prompts[0]["text"], r"^\[herdr-team interrupt\] alpha-reviewer could not wait: 1 urgent board post for alpha-worker \(seq {}\)\. Run: herdr-team board --new \[n\d+\]$".format(seq))
+        self.assertRegex(prompts[0]["text"], r"^\[herdr-team interrupt\] alpha-reviewer could not wait: 1 urgent board post for alpha-worker \(seq {}\)\. Run: herdr-synapse board --new \[n\d+\]$".format(seq))
         nudged = self.nudged_records()
         self.assertEqual(len(nudged), 1)
         self.assertEqual((nudged[0]["to"], nudged[0].get("interrupt"), nudged[0].get("interrupt_by"), nudged[0]["seqs"]), (["alpha-worker"], True, ["alpha-reviewer"], [seq]))

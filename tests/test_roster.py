@@ -621,12 +621,12 @@ class TokenProjectionTests(unittest.TestCase):
         commands = roster.token_commands(member, "alpha", task_headline="→ review diff")
         self.assertEqual(len(commands), 2)
         identity_cmd, task_cmd = commands
-        self.assertEqual(identity_cmd.params(), {"pane_id": "w2:p1", "source": "herdr-team:roster", "tokens": identity_tokens("alpha", "reviewer")})
+        self.assertEqual(identity_cmd.params(), {"pane_id": "w2:p1", "source": "herdr-synapse:roster", "tokens": identity_tokens("alpha", "reviewer")})
         self.assertIsNone(identity_cmd.ttl_ms)
-        self.assertEqual(task_cmd.source, "herdr-team:task")
+        self.assertEqual(task_cmd.source, "herdr-synapse:task")
         self.assertEqual(task_cmd.ttl_ms, 120000)
         self.assertEqual(task_cmd.params()["tokens"], {"team_task": "→ review diff"})
-        self.assertEqual(task_cmd.argv(), ["pane", "report-metadata", "w2:p1", "--source", "herdr-team:task", "--token", "team_task=→ review diff", "--ttl-ms", "120000"])
+        self.assertEqual(task_cmd.argv(), ["pane", "report-metadata", "w2:p1", "--source", "herdr-synapse:task", "--token", "team_task=→ review diff", "--ttl-ms", "120000"])
         self.assertEqual(roster.token_commands(member, "alpha"), commands[:1])
 
     def test_clear_and_missing_pane(self) -> None:

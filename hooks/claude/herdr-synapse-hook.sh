@@ -1,8 +1,8 @@
 #!/bin/sh
-# herdr-team Claude Code hook shim (plan 9.4).
+# herdr-synapse Claude Code hook shim (plan 9.4).
 # HERDR_TEAM_HOOK_VERSION=1
 #
-# Installed by `herdr-team hooks install claude` as ~/.claude/hooks/herdr-team-hook.sh
+# Installed by `herdr-synapse hooks install claude` as ~/.claude/hooks/herdr-synapse-hook.sh
 # with the absolute CLI path baked in below. Registered three times in
 # ~/.claude/settings.json: SessionStart, UserPromptSubmit, Stop.
 #
@@ -10,10 +10,10 @@
 # is on the explicit stop branch (a UserPromptSubmit exit 2 would erase the
 # human's prompt). Anything unexpected exits 0 so a broken team setup can
 # never break the agent. All JSON parsing happens in the Python CLI
-# (`herdr-team hook-input <action>`), which reads the hook's stdin and
+# (`herdr-synapse hook-input <action>`), which reads the hook's stdin and
 # prints the context (session-start, prompt-submit) or, on stop, exits 7
 # to ask for a block. HERDR_TEAM_HOOKS=off (launch-time env) disables
-# everything; `herdr-team mute` is the live switch.
+# everything; `herdr-synapse mute` is the live switch.
 
 HERDR_TEAM_CLI='@@HERDR_TEAM_CLI@@'
 action=${1:-}
@@ -53,10 +53,10 @@ fi
 
 cli=$HERDR_TEAM_CLI
 if [ ! -x "$cli" ]; then
-    cli=$(command -v herdr-team 2>/dev/null) || cli=""
+    cli=$(command -v herdr-synapse 2>/dev/null) || cli=""
 fi
 if [ -z "$cli" ]; then
-    printf '%s herdr-team CLI not found (%s); hook %s skipped\n' "$(date '+%Y-%m-%dT%H:%M:%S' 2>/dev/null)" "$HERDR_TEAM_CLI" "$action" >>"$log" 2>/dev/null || true
+    printf '%s herdr-synapse CLI not found (%s); hook %s skipped\n' "$(date '+%Y-%m-%dT%H:%M:%S' 2>/dev/null)" "$HERDR_TEAM_CLI" "$action" >>"$log" 2>/dev/null || true
     exit 0
 fi
 

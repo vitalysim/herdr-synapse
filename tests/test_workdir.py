@@ -517,9 +517,32 @@ class BriefingFallbackTests(unittest.TestCase):
             member = team.member(long_name)
             self.assertIsNotNone(member)
             daemon._enqueue_briefing(team, member, 0.0)
+            # The longest names a roster can legally hold now fit whole, so this
+            # briefs directly rather than through the fallback. Before the rename
+            # shortened the tail, the same member could not be briefed at all.
             self.assertIn(long_name, team.pending)
             self.assertTrue(team.pending[long_name].lines)
-            self.assertTrue(any("did not fit" in line for line in daemon.logged))
+            self.assertFalse(any("cannot brief" in line for line in daemon.logged), daemon.logged)
+
+    def test_a_member_whose_roster_entry_is_unusable_is_logged_not_fatal(self):
+        """F-07: one bad member must not take the tick down, or leave it silently unbriefed."""
+        from support import TempState as TS
+        from test_daemon import make_daemon
+
+        members = [{
+            "name": "alpha-worker", "role": "r" * 200, "kind": "claude", "terminal_id": "term_w1",
+            "pane_id": "w2:p2", "workspace_id": "w2", "tab_id": "w2:t1", "label": "team:alpha/x",
+            "cwd": "/tmp/work", "managed": False, "session": None, "status": "active", "generation": 1,
+            "delivery": "nudge", "joined_at": "2026-09-04T10:00:00Z", "last_seen_at": None,
+            "briefed_at": None, "briefing_seq": None, "charter_seq_acked": None, "brief": None,
+        }]
+        with TS(members=members) as ts:
+            daemon, _, _clock = make_daemon(ts)
+            daemon.scan_teams(force=True)
+            team = daemon.teams[ts.team_name]
+            daemon._enqueue_briefing(team, team.member("alpha-worker"), 0.0)
+            self.assertNotIn("alpha-worker", team.pending)
+            self.assertTrue(any("cannot brief" in line for line in daemon.logged), daemon.logged)
 
 
 class MePointerTests(unittest.TestCase):
@@ -879,7 +902,7 @@ class CreateSetupTests(unittest.TestCase):
         self.addCleanup(lambda: __import__("shutil").rmtree(shared, ignore_errors=True))
         code, out, err = self.create(cwd=shared)
         self.assertEqual(code, 0, err)
-        self.assertIn("herdr-team project set", out)
+        self.assertIn("herdr-synapse project set", out)
         self.assertIn(os.fspath(shared), out)
         self.assertIn("--team alpha", out)
         # Suggesting is not doing: nothing was written into anyone's project.
@@ -1017,7 +1040,7 @@ class StatusTests(unittest.TestCase):
         workdir.render(self.layout, self.team)
         (self.project / ".herdr-team" / self.team / "knowledge.md").write_text("mine\n", encoding="utf-8")
         info = workdir.status(self.layout, self.team)
-        self.assertTrue(any("not written by herdr-team" in i for i in info["issues"]))
+        self.assertTrue(any("not written by herdr-synapse" in i for i in info["issues"]))
         __import__("shutil").rmtree(self.project)
         info = workdir.status(self.layout, self.team)
         self.assertTrue(any("is gone" in i for i in info["issues"]))
@@ -1054,7 +1077,7 @@ class KnowledgeViewTests(unittest.TestCase):
     def test_a_team_without_a_folder_gets_the_command_that_creates_one(self):
         text = "\n".join(self.lines())
         self.assertIn("no team folder", text)
-        self.assertIn("herdr-team project set <path> --team {}".format(self.state.team_name), text)
+        self.assertIn("herdr-synapse project set <path> --team {}".format(self.state.team_name), text)
 
     def test_a_configured_team_lists_rules_findings_and_who_is_briefed(self):
         def apply(doc: roster.Team) -> None:
@@ -1068,7 +1091,7 @@ class KnowledgeViewTests(unittest.TestCase):
         self.assertIn("rules:", text)
         self.assertIn(member, text)
         # A member with no instructions is named with the command that fixes it.
-        self.assertIn("herdr-team instructions", text)
+        self.assertIn("herdr-synapse instructions", text)
 
     def test_no_teams_is_a_useful_screen_not_an_empty_one(self):
         state = TempState(write_team=False)
@@ -1558,7 +1581,7 @@ class BoardSnapshotTests(unittest.TestCase):
         self.assertTrue(self.target.read_text(encoding="utf-8").startswith(workdir.MARKER))
         self.target.write_text("# mine\n", encoding="utf-8")
         result = workdir.render_board_snapshot(self.layout, self.team)
-        self.assertIn("not written by herdr-team", result["reason"])
+        self.assertIn("not written by herdr-synapse", result["reason"])
         self.assertEqual(self.target.read_text(encoding="utf-8"), "# mine\n")
 
     def test_an_unchanged_board_is_not_rewritten(self):

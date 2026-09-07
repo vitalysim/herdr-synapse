@@ -156,7 +156,7 @@ class PickerAddModeTests(unittest.TestCase):
             self.assertEqual(model.stage, "confirm")
             return "\n".join(tui_model.picker_lines(model, 120, 24))
 
-        self.assertIn("note: codex is not trusted for delivery yet; nothing is typed into it until you run: herdr-team kinds trust codex", confirm({"claude"}))
+        self.assertIn("note: codex is not trusted for delivery yet; nothing is typed into it until you run: herdr-synapse kinds trust codex", confirm({"claude"}))
         self.assertNotIn("note:", confirm({"codex", "claude"}))
         self.assertNotIn("note:", confirm(None))
         from support import TempState

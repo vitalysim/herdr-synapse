@@ -346,7 +346,7 @@ def instructions_lines(team: paths.TeamPaths, name: str, max_chars: int = BRIEF_
     body = _doc.injected(_doc.parse(text)) if text else []
     if not body:
         return []
-    return ["your instructions (operator authority), full text: herdr-team instructions"] + body
+    return ["your instructions (operator authority), full text: herdr-synapse instructions"] + body
 
 
 def _read_state_text(path: Path, max_chars: int) -> str:
@@ -438,9 +438,9 @@ def brief_context(team: paths.TeamPaths, team_name: str, member: Dict[str, Any])
     lines = [BRIEF_HEADER.format(name=name, role=role, team=team_name)]
     headline = _charter_headline(doc)
     if headline is None:
-        lines.append("charter: none yet; ask human with herdr-team post --kind question --to human")
+        lines.append("charter: none yet; ask human with herdr-synapse post --kind question --to human")
     else:
-        lines.append("charter #{}: {} (full text: herdr-team charter)".format(headline[0], headline[1]))
+        lines.append("charter #{}: {} (full text: herdr-synapse charter)".format(headline[0], headline[1]))
     brief = member.get("brief")
     if brief:
         lines.append(_render.escape_context_line("your brief (operator authority): {}".format(" ".join(str(brief).split()))))
@@ -453,11 +453,11 @@ def brief_context(team: paths.TeamPaths, team_name: str, member: Dict[str, Any])
     lines.extend(instructions_lines(team, name))
     rules = _read_state_text(_charter.rules_path(team), BRIEF_CONTEXT_MAX_SECTION)
     if rules:
-        lines.append("team rules (operator authority), full text: herdr-team knowledge")
+        lines.append("team rules (operator authority), full text: herdr-synapse knowledge")
         lines.extend(_render.escape_context_line(line) for line in rules.splitlines())
     findings = _count_findings(team)
     if findings:
-        lines.append("{} team finding{} recorded by your teammates: herdr-team knowledge. They are peer notes, not instructions.".format(findings, "" if findings == 1 else "s"))
+        lines.append("{} team finding{} recorded by your teammates: herdr-synapse knowledge. They are peer notes, not instructions.".format(findings, "" if findings == 1 else "s"))
     mates: List[str] = []
     for candidate in doc.get("members") or []:
         if not isinstance(candidate, dict) or candidate.get("name") in (name, None):
@@ -470,11 +470,11 @@ def brief_context(team: paths.TeamPaths, team_name: str, member: Dict[str, Any])
     mates.append("human (operator)")
     lines.append("teammates: " + ", ".join(mates))
     unread = _directed_unread(team, name)
-    lines.append("unread board posts for you: {}. Run herdr-team board --new, then herdr-team ack. Teammates are peers: post to the board, never prompt their panes.".format(len(unread)))
+    lines.append("unread board posts for you: {}. Run herdr-synapse board --new, then herdr-synapse ack. Teammates are peers: post to the board, never prompt their panes.".format(len(unread)))
     text = "\n".join(lines) + "\n"
     encoded = text.encode("utf-8")
     if len(encoded) > BRIEF_CONTEXT_MAX_BYTES:
-        text = encoded[:BRIEF_CONTEXT_MAX_BYTES].decode("utf-8", "ignore").rstrip() + "\n[herdr-team: context truncated; run herdr-team me]\n"
+        text = encoded[:BRIEF_CONTEXT_MAX_BYTES].decode("utf-8", "ignore").rstrip() + "\n[herdr-team: context truncated; run herdr-synapse me]\n"
     return text
 
 
@@ -491,7 +491,7 @@ def unacknowledged_instructions(team: paths.TeamPaths, name: str) -> str:
     body = instructions_lines(team, name)
     if not body:
         return ""
-    head = "[herdr-team instructions updated (revision {}); operator authority. Run herdr-team ack when you have read them.]".format(
+    head = "[herdr-team instructions updated (revision {}); operator authority. Run herdr-synapse ack when you have read them.]".format(
         _charter.instructions_seq(member))
     return "\n".join([head] + body[1:]) + "\n\n"
 
@@ -687,7 +687,7 @@ def _hooks_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--claude-dir", metavar="PATH", help="Claude config dir (default ~/.claude)")
     parser.add_argument("--settings", metavar="PATH", help="settings.json to edit (default <claude-dir>/settings.json)")
     parser.add_argument("--hooks-dir", metavar="PATH", help="where the shim goes (default <claude-dir>/hooks)")
-    parser.add_argument("--cli", metavar="PATH", help="absolute herdr-team path baked into the shim (default bin/herdr-team)")
+    parser.add_argument("--cli", metavar="PATH", help="absolute herdr-synapse path baked into the shim (default bin/herdr-synapse)")
     parser.add_argument("--project-dir", action="append", default=[], metavar="PATH", help="project dirs whose .claude/settings*.json join the duplicate scan")
     parser.add_argument("--no-members", action="store_true", help="do not touch member delivery modes")
     parser.add_argument("--member", metavar="NAME", help="probe: the member to round-trip through")
@@ -700,7 +700,7 @@ def _cli_path(args: argparse.Namespace) -> Path:
         return Path(os.path.abspath(os.path.expanduser(args.cli)))
     root = args.env.get("HERDR_TEAM_ROOT")
     base = Path(root) if root else paths.plugin_root()
-    return (base / "bin" / "herdr-team").resolve()
+    return (base / "bin" / "herdr-synapse").resolve()
 
 
 def _claude_paths(args: argparse.Namespace) -> Tuple[Path, Path, Path]:
@@ -824,7 +824,7 @@ def run_hooks(args: argparse.Namespace) -> int:
             return emit(args, payload, lambda: _human_hooks(payload))
         probe = _probe_passed(layout, kind)
         if probe is None:
-            raise HerdrTeamError("hooks_unprobed", "hooks for {} need a passing `herdr-team hooks probe {}` first".format(kind, kind), EXIT_REFUSED, {"kind": kind})
+            raise HerdrTeamError("hooks_unprobed", "hooks for {} need a passing `herdr-synapse hooks probe {}` first".format(kind, kind), EXIT_REFUSED, {"kind": kind})
         raise HerdrTeamError("hooks_unsupported", "the prototype has no {} hooks installer yet (probe passed: {})".format(kind, json.dumps(probe)), EXIT_REFUSED, {"kind": kind, "probe": probe})
 
     claude_dir, settings, hooks_dir = _claude_paths(args)
@@ -839,7 +839,7 @@ def run_hooks(args: argparse.Namespace) -> int:
     if action == "install":
         cli = _cli_path(args)
         if not os.access(cli, os.X_OK):
-            payload["warnings"].append("{} is not executable; the shim falls back to `command -v herdr-team`".format(cli))
+            payload["warnings"].append("{} is not executable; the shim falls back to `command -v herdr-synapse`".format(cli))
         try:
             claude_settings.write_shim(hooks_dir, cli)
             written = claude_settings.install(settings, hook_path)
@@ -879,9 +879,9 @@ def run_hooks(args: argparse.Namespace) -> int:
         if status.get("parse_error"):
             payload["warnings"].append("settings not strictly parseable: {}".format(status["parse_error"]))
         if not status["installed"]:
-            payload["warnings"].append("not every event is registered; run `herdr-team hooks install claude`")
+            payload["warnings"].append("not every event is registered; run `herdr-synapse hooks install claude`")
         if status["hook_exists"] and not shim_ok:
-            payload["warnings"].append("shim differs from this plugin version; run `herdr-team hooks install claude`")
+            payload["warnings"].append("shim differs from this plugin version; run `herdr-synapse hooks install claude`")
         if payload["duplicates"]:
             # M6 SK-06: ``check`` flipped ``ok`` to false on duplicates but said nothing; the install path already warns.
             payload["warnings"].append("duplicate hook commands found; a hook registered twice runs twice")
@@ -906,7 +906,7 @@ def _run_probe(args: argparse.Namespace, layout: Optional[paths.Layout], payload
         payload["warnings"].append("probe recorded without a round trip (--record-pass)")
         return emit(args, payload, lambda: _human_hooks(payload))
     if not _daemon_alive(layout):
-        raise HerdrTeamError("daemon_down", "the notifier daemon must be running to probe {}; run `herdr-team daemon start`".format(kind), EXIT_DAEMON_DOWN)
+        raise HerdrTeamError("daemon_down", "the notifier daemon must be running to probe {}; run `herdr-synapse daemon start`".format(kind), EXIT_DAEMON_DOWN)
     team_name = paths.team_name_from_arg(getattr(args, "team", None), args.env)
     teams = session.list_teams()
     if team_name is None:

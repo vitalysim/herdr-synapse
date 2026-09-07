@@ -53,8 +53,8 @@ def pend() -> PendingWork:
 
 class AnsiLineTests(unittest.TestCase):
     def test_faint_runs_are_dropped_only_when_asked(self):
-        line = "❯\xa0\x1b[0m\x1b[2mrun `herdr-team board --new`\x1b[0m\r"
-        self.assertEqual(visible_line_text(line), "❯\xa0run `herdr-team board --new`")
+        line = "❯\xa0\x1b[0m\x1b[2mrun `herdr-synapse board --new`\x1b[0m\r"
+        self.assertEqual(visible_line_text(line), "❯\xa0run `herdr-synapse board --new`")
         self.assertEqual(visible_line_text(line, drop_faint=True), "❯\xa0")
 
     def test_extended_colour_selector_is_not_the_faint_attribute(self):
@@ -75,7 +75,7 @@ class AnsiLineTests(unittest.TestCase):
 class StyledPromptLineTests(unittest.TestCase):
     def test_plain_detection_text_still_reads_the_suggestion_as_a_draft(self):
         # the plain read cannot tell them apart: documents why the styled read exists
-        self.assertEqual(gate.prompt_line_text(GHOST_PLAIN, "claude"), "run `herdr-team board --new`")
+        self.assertEqual(gate.prompt_line_text(GHOST_PLAIN, "claude"), "run `herdr-synapse board --new`")
 
     def test_live_suggestion_is_an_empty_prompt_line(self):
         self.assertEqual(styled_prompt_line_text(GHOST_VISIBLE, "claude"), "")
@@ -174,7 +174,7 @@ class DaemonGhostTextTests(unittest.TestCase):
             self.assertTrue(entry.get("prompt_line_empty"))
 
     def test_typed_draft_still_holds_as_draft_present(self):
-        self.set_screen(GHOST_PLAIN.replace("run `herdr-team board --new`", "zz"), DRAFT_VISIBLE)
+        self.set_screen(GHOST_PLAIN.replace("run `herdr-synapse board --new`", "zz"), DRAFT_VISIBLE)
         self.post(self.ts, "alpha-worker", author="alpha-reviewer")
         self.d.tick()
         self.run_ticks(14)
@@ -191,7 +191,7 @@ class DaemonGhostTextTests(unittest.TestCase):
         self.assertEqual(self.pending().hold, gate.HOLD_DRAFT_PRESENT)
 
     def test_empty_prompt_line_never_costs_the_styled_read(self):
-        idle = GHOST_PLAIN.replace("❯\xa0run `herdr-team board --new`", "❯ ")
+        idle = GHOST_PLAIN.replace("❯\xa0run `herdr-synapse board --new`", "❯ ")
         self.set_screen(idle, GHOST_VISIBLE)
         self.post(self.ts, "alpha-worker", author="alpha-reviewer")
         self.d.tick()

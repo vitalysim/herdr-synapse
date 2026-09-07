@@ -114,7 +114,7 @@ class CreateFromLive(unittest.TestCase):
             self.assertEqual(labels, ["team:beta/reviewer", "team:beta/worker"])
             tokens = [p for m, p in api.calls if m == "pane.report_metadata"]
             self.assertEqual(tokens[0]["tokens"], identity_tokens("beta", "reviewer"))
-            self.assertEqual(tokens[0]["source"], "herdr-team:roster")
+            self.assertEqual(tokens[0]["source"], "herdr-synapse:roster")
             self.assertNotIn("ttl_ms", tokens[0])
             # Files: team.json, briefing jobs, pane records, console default_team, charter record.
             team = ts.session.team("beta")
@@ -615,16 +615,16 @@ class MeWhoAudit(unittest.TestCase):
             self.assertEqual(payload["skill_version"], SKILL_VERSION)
             self.assertIsNone(payload["skill_installed"])
             self.assertFalse(payload["skill_ok"])
-            self.assertTrue(payload["cli"].endswith("bin/herdr-team"))
+            self.assertTrue(payload["cli"].endswith("bin/herdr-synapse"))
             self.assertEqual(payload["notifier"], "offline")
             code, out, _ = run_cli(["me"], env, api)
             self.assertIn("you are alpha-reviewer (reviewer, codex) in team alpha", out)
 
     def test_me_detects_installed_skill(self):
         with TempState() as ts:
-            skill = ts.home / ".claude" / "skills" / "herdr-team" / "SKILL.md"
+            skill = ts.home / ".claude" / "skills" / "herdr-synapse" / "SKILL.md"
             skill.parent.mkdir(parents=True)
-            skill.write_text("---\nname: herdr-team\n---\n<!-- herdr-team skill v{}, cli >= 0.2 -->\n".format(SKILL_VERSION))
+            skill.write_text("---\nname: herdr-synapse\n---\n<!-- herdr-synapse skill v{}, cli >= 0.2 -->\n".format(SKILL_VERSION))
             code, payload, _ = json_out(run_cli(["--json", "me"], ts.env_with(HERDR_PANE_ID="w2:p1"), live_api()))
             self.assertEqual(payload["skill_installed"], SKILL_VERSION)
             self.assertTrue(payload["skill_ok"])
@@ -774,7 +774,7 @@ class CharterAndBrief(unittest.TestCase):
 
     def test_set_from_hook_refused(self):
         with TempState() as ts:
-            env = ts.env_with(HERDR_PLUGIN_EVENT="pane.agent_detected", HERDR_PLUGIN_ID="herdr-team", HERDR_TEAM="alpha")
+            env = ts.env_with(HERDR_PLUGIN_EVENT="pane.agent_detected", HERDR_PLUGIN_ID="herdr-synapse", HERDR_TEAM="alpha")
             code, _, err = json_out(run_cli(["--json", "charter", "set", "x"], env, live_api()))
             self.assertEqual(code, 1)
             self.assertEqual(err["code"], "author_mismatch")
