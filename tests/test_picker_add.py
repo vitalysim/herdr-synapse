@@ -132,9 +132,9 @@ class PickerAddModeTests(unittest.TestCase):
         self.assertEqual(model.input, "alpha-ideation-and-review")  # <team>-<role> too long: the generic lead of the role is dropped
         self.assertLessEqual(len(model.input), 32)
         picker_apply_key(model, "ESC")
-        type_line(model, "a" * 33)
+        type_line(model, "a" * 65)
         picker_apply_key(model, "ENTER")
-        self.assertIn("up to 32 characters (yours is 33 characters)", model.error)
+        self.assertIn("up to 64 characters (yours is 65 characters)", model.error)
         type_line(model, "1st-reviewer")
         picker_apply_key(model, "ENTER")
         self.assertIn("start with a lowercase letter", model.error)

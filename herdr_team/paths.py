@@ -68,8 +68,27 @@ DEFAULT_SLUG = "default"
 DEFAULT_APP_DIR = "herdr"
 SESSIONS_DIR = "sessions"
 
-TEAM_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,14}\Z")
-ROLE_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}\Z")
+#: Team names are a directory name and a sidebar token value (Herdr caps token
+#: values at 80). 32 matches the member-name family; a longer team costs room in
+#: the derived member name, which ``roster.fit_member_name`` gives to the role.
+TEAM_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}\Z")
+#: Roles are descriptive labels, never a Herdr agent name on their own under
+#: prefixed naming, so they get the room the 80-char token value allows.
+ROLE_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,63}\Z")
+
+
+def _max_chars(pattern: "re.Pattern[str]") -> int:
+    """The length a name pattern allows, read off the pattern itself so a limit
+    change cannot leave an error message or a UI hint behind."""
+    return int(pattern.pattern.split("{0,")[1].split("}")[0]) + 1
+
+
+MAX_TEAM_CHARS = _max_chars(TEAM_NAME_RE)
+MAX_ROLE_CHARS = _max_chars(ROLE_NAME_RE)
+#: Herdr itself caps agent names at 32 bytes (``src/app/agents.rs``
+#: ``valid_agent_name``), and a member name IS its Herdr agent name, so this
+#: one is not ours to raise.
+MAX_MEMBER_CHARS = 32
 SESSION_NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}\Z")
 #: Herdr terminal ids look like ``term_...``; keep file names strictly safe.
 TERMINAL_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}\Z")
@@ -320,7 +339,7 @@ def validate_team_name(name: str) -> str:
     if not TEAM_NAME_RE.match(name or ""):
         raise HerdrTeamError(
             "team_name_invalid",
-            "team name must match [a-z][a-z0-9_-]{0,14}",
+            "team name must match [a-z][a-z0-9_-]{0,31}",
             EXIT_REFUSED,
             {"team": name},
         )

@@ -69,7 +69,7 @@ class GrammarTests(unittest.TestCase):
         self.assertEqual(roster.fit_member_name("red-dev", "opencode-dev"), "red-dev-opencode-dev")  # fits: untouched
         self.assertEqual(roster.fit_member_name("red-dev", "a" * 32), "red-dev-" + "a" * 24)  # one oversized segment: clipped
         self.assertEqual(roster.fit_member_name("alpha", "codex-reviewer-of-everything"), "alpha-reviewer-of-everything")  # 34 chars: the kind label goes first
-        for bad in ("a" * 33, "Reviewer", "", "human", "codex", "me"):
+        for bad in ("a" * 65, "Reviewer", "", "human", "codex", "me"):
             with self.assertRaises(HerdrTeamError) as ctx:
                 roster.validate_role(bad)
             self.assertEqual(ctx.exception.code, "role_invalid")

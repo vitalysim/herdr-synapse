@@ -256,7 +256,7 @@ class LayoutTests(unittest.TestCase):
             self.ts.session.team("Alpha")
         self.assertEqual(ctx.exception.code, "team_name_invalid")
         with self.assertRaises(HerdrTeamError):
-            self.ts.session.team("a" * 16)
+            self.ts.session.team("a" * 33)
         with self.assertRaises(HerdrTeamError):
             self.ts.session.pane_record("../x")
         with self.assertRaises(HerdrTeamError):

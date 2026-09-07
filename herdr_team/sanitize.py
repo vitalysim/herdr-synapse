@@ -286,15 +286,15 @@ def is_reserved(name: str) -> bool:
 def sanitize_name(name: Any, what: str = "member") -> str:
     """Validate a member (default), ``team``, or ``role`` name.
 
-    Grammar: member ``[a-z][a-z0-9_-]{0,31}``, team ``{0,14}``, role ``{0,31}``.
+    Grammar: member ``[a-z][a-z0-9_-]{0,31}``, team ``{0,31}``, role ``{0,63}``.
     Reserved words, kind labels, and kind aliases are refused for all three.
     Error codes follow ``docs/cli.md``: ``name_invalid``/``name_reserved``,
     ``team_name_invalid``, ``role_invalid``.
     """
     if what == "team":
-        pattern, grammar, invalid_code, reserved_code = TEAM_NAME_RE, "[a-z][a-z0-9_-]{0,14}", "team_name_invalid", "team_name_invalid"
+        pattern, grammar, invalid_code, reserved_code = TEAM_NAME_RE, "[a-z][a-z0-9_-]{0,31}", "team_name_invalid", "team_name_invalid"
     elif what == "role":
-        pattern, grammar, invalid_code, reserved_code = ROLE_NAME_RE, "[a-z][a-z0-9_-]{0,31}", "role_invalid", "role_invalid"
+        pattern, grammar, invalid_code, reserved_code = ROLE_NAME_RE, "[a-z][a-z0-9_-]{0,63}", "role_invalid", "role_invalid"
     elif what == "member":
         pattern, grammar, invalid_code, reserved_code = NAME_RE, "[a-z][a-z0-9_-]{0,31}", "name_invalid", "name_reserved"
     else:

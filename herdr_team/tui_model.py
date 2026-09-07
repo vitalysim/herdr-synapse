@@ -30,7 +30,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from herdr_team import roster, sanitize
 from herdr_team.errors import HerdrTeamError
-from herdr_team.paths import ROLE_NAME_RE, TEAM_NAME_RE
+from herdr_team.paths import MAX_ROLE_CHARS, MAX_TEAM_CHARS, ROLE_NAME_RE, TEAM_NAME_RE
 
 FILTERS = ("all", "to me", "requests", "human", "system")
 SLASH_COMMANDS = (
@@ -101,7 +101,7 @@ ASCII_KIND_GLYPHS = {"request": ">", "done": "+", "blocked": "!", "question": "?
 
 MEMBER_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}\Z")
 RESERVED_NAMES = frozenset({"human", "all", "me", "none", "system", "team"})
-RECIPIENT_RE = re.compile(r"^(?:[a-z][a-z0-9_-]{0,31}|role:[a-z][a-z0-9_-]{0,31}|all|human)\Z")
+RECIPIENT_RE = re.compile(r"^(?:[a-z][a-z0-9_-]{0,31}|role:[a-z][a-z0-9_-]{0,63}|all|human)\Z")
 #: ``!name text`` types the line into one member now (docs/cli.md section 7, ``say``). Every input line
 #: that starts with ``!`` is such an attempt and never falls back to a post, so a mistyped name can
 #: never leak a one-member instruction to the whole team.
@@ -2454,7 +2454,7 @@ def normalize_team_name(raw: str) -> str:
 
 def validate_team_name_local(name: str) -> Optional[str]:
     if not TEAM_NAME_RE.match(name or ""):
-        return "team name must match [a-z][a-z0-9_-]{0,14}"
+        return "team name must match [a-z][a-z0-9_-]{{0,{}}}".format(MAX_TEAM_CHARS - 1)
     if name in RESERVED_NAMES:
         return "team name {} is reserved".format(name)
     return None
@@ -3397,7 +3397,7 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
             else:
                 lines.append("{} {}  create a new team".format(pointer, i + 1))
     elif model.stage == "name":
-        lines.append("New team name ([a-z][a-z0-9_-]{0,14}; normalized on Enter, Esc back)")
+        lines.append("New team name ([a-z][a-z0-9_-]{{0,{}}}; normalized on Enter, Esc back)".format(MAX_TEAM_CHARS - 1))
         lines.append(INPUT_PROMPT + model.input)
         has_input = True
     elif model.stage == "charter":

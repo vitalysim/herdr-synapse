@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1 (2026-09-07)
+
+- Team names may be up to 32 characters (was 15) and roles up to 64 (was 32). A real team was sitting exactly on both ceilings: `clickhouse-hunt` is 15 and `vulnerability-researcher-manager` is 32.
+- Member names stay at 32, which is not a plugin limit: a member name *is* its Herdr agent name, and Herdr rejects anything longer (`valid_agent_name`, `src/app/agents.rs`).
+- `fit_member_name` gives the role priority. It used to trim only the role and then hard-clip the whole string, which was fine while teams were capped at 15 but with a longer team truncated the team itself — so every member of `clickhouse-vulnerability-hunt` derived the *same* name. The team prefix now gives way instead, dropping whole trailing segments before any clipping, so `clickhouse-vulnerability-hunt` yields `clickhouse-vulnerability-manager` and `clickhouse-reviewer` rather than two identical names.
+- The limits are read off the patterns, so the error messages and the picker's hint cannot drift from them again.
+
 ## 0.4.0 (2026-09-07)
 
 - A team's board can be opened, not only switched to, and several can be open at once in the same space. `herdr-team ui console --team <name>` opens that team's board; a second open for a team that already has one focuses it instead. `prefix+u` opens the default team's board, and `b` on a team row in `prefix+t` opens that team's. Each console is pinned to the team it was opened for, and its pane is labelled `Team console: <team>`.

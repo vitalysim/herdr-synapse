@@ -748,7 +748,7 @@ class NameSuggestionTests(unittest.TestCase):
             self.assertIsNotNone(tui_model.validate_member_name_local(bad), bad)
         self.assertIsNone(tui_model.validate_member_name_local("alpha-reviewer-2"))
         self.assertIsNotNone(tui_model.validate_role_local("claude"))
-        self.assertIsNotNone(tui_model.validate_role_local("a" * 33))
+        self.assertIsNotNone(tui_model.validate_role_local("a" * 65))
         self.assertIsNone(tui_model.validate_role_local("a" * 32))
         self.assertIsNone(tui_model.validate_role_local("reviewer"))
 

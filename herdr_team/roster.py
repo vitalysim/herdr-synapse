@@ -42,6 +42,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tupl
 from herdr_team import sanitize, store
 from herdr_team.errors import EXIT_REFUSED, HerdrTeamError
 from herdr_team.paths import (
+    MAX_ROLE_CHARS,
     ROLE_NAME_RE,
     Layout,
     SessionPaths,
@@ -53,6 +54,7 @@ from herdr_team.paths import (
 
 SCHEMA_VERSION = 1
 MEMBER_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}\Z")
+
 MAX_NAME_CHARS = 32
 RESERVED_NAMES = frozenset({"human", "all", "me", "none", "system", "team"})
 #: Canonical kind labels from ``src/detect/mod.rs::agent_label`` at ``3150bd92``
@@ -421,13 +423,13 @@ def validate_role(role: str, allow_kind_label: bool = False) -> str:
     """
     if not isinstance(role, str) or not ROLE_NAME_RE.match(role):
         text = role if isinstance(role, str) else ""
-        if len(text) > 32:
+        if len(text) > MAX_ROLE_CHARS:
             detail = "yours is {} characters".format(len(text))
         elif not text or not ("a" <= text[0] <= "z"):
             detail = "it must start with a lowercase letter"
         else:
             detail = "no spaces or other characters"
-        raise HerdrTeamError("role_invalid", "role: lowercase letters, digits, - and _, up to 32 characters ({})".format(detail), EXIT_REFUSED, {"role": role})
+        raise HerdrTeamError("role_invalid", "role: lowercase letters, digits, - and _, up to {} characters ({})".format(MAX_ROLE_CHARS, detail), EXIT_REFUSED, {"role": role})
     reason = _reserved_reason(role)
     if reason and (not allow_kind_label or reason == "reserved word"):
         raise HerdrTeamError("role_invalid", "role {!r} is a {}".format(role, reason), EXIT_REFUSED, {"role": role, "reason": reason})
@@ -453,13 +455,25 @@ def validate_member_name(name: str) -> str:
 GENERIC_ROLE_SEGMENTS = frozenset({"dev", "agent"})
 
 
-def fit_member_name(team: str, role: str, cap: int = 32) -> str:
-    """``<team>-<role>`` when it fits ``cap``; otherwise the role loses leading segments, most generic first.
+#: Smallest role tail kept in a member name. Below this the name stops saying
+#: what the member is *for*, which is the whole point of the suffix.
+MIN_ROLE_TAIL = 4
 
-    ``red-dev`` + ``opencode-dev-brainstormer`` is 33 characters; a cut mid-word
-    gave ``red-dev-opencode-dev-brainstorme``. Dropping leading segments until
-    it fits, then the generic ones (kind labels, ``dev``), gives
-    ``red-dev-brainstormer``. A single oversized segment is hard-clipped.
+
+def fit_member_name(team: str, role: str, cap: int = 32) -> str:
+    """``<team>-<role>`` fitted to ``cap`` (Herdr caps agent names at 32 bytes).
+
+    ``red-dev`` + ``opencode-dev-brainstormer`` is 33 characters; a cut
+    mid-word gave ``red-dev-opencode-dev-brainstorme``. Dropping leading
+    segments until it fits, then the generic ones (kind labels, ``dev``),
+    gives ``red-dev-brainstormer``.
+
+    The role always survives. Trimming the role alone was enough while team
+    names were capped at 15, but a longer team could consume the whole budget
+    and every member of that team collapsed to the same truncated team string
+    — identical names for different members. So once the role is as short as
+    it usefully goes, the *team* prefix gives way instead, dropping whole
+    trailing segments before it resorts to a hard clip.
     """
     full = "{}-{}".format(team, role)
     if len(full) <= cap:
@@ -469,7 +483,27 @@ def fit_member_name(team: str, role: str, cap: int = 32) -> str:
         segments.pop(0)
     while len(segments) > 1 and (segments[0] in GENERIC_ROLE_SEGMENTS or segments[0] in KIND_LABELS):
         segments.pop(0)
-    return "{}-{}".format(team, "-".join(segments))[:cap].rstrip("-_")
+    tail = "-".join(segments)
+    fitted = "{}-{}".format(team, tail)
+    if len(fitted) <= cap:
+        return fitted
+
+    # The team is too long to leave room. Shorten it, keeping leading segments.
+    budget = cap - len(tail) - 1
+    if budget < MIN_ROLE_TAIL:
+        # Nothing readable fits either way: split the budget and clip both.
+        head = max(MIN_ROLE_TAIL, (cap - 1) // 2)
+        return "{}-{}".format(team[:head], tail)[:cap].rstrip("-_")
+    team_segments = [s for s in team.split("-") if s]
+    prefix = team_segments[0] if team_segments else team
+    for extra in team_segments[1:]:
+        candidate = "{}-{}".format(prefix, extra)
+        if len(candidate) > budget:
+            break
+        prefix = candidate
+    if len(prefix) > budget:
+        prefix = prefix[:budget]
+    return "{}-{}".format(prefix.rstrip("-_"), tail)[:cap].rstrip("-_")
 
 
 def derive_name(team: str, role: str, naming: str = "prefixed") -> str:

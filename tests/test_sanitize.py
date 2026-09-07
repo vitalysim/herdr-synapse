@@ -136,7 +136,7 @@ class LabelTests(unittest.TestCase):
             self.assertEqual(sanitize.sanitize_label(label), label)
 
     def test_invalid_labels(self):
-        for label in ("", "a" * 33, "with space", "sémi", "x\x1b[31m", "a/b", "@me"):
+        for label in ("", "a" * 65, "with space", "sémi", "x\x1b[31m", "a/b", "@me"):
             with self.subTest(label):
                 with self.assertRaises(HerdrTeamError) as ctx:
                     sanitize.sanitize_label(label)
@@ -168,8 +168,8 @@ class NameGrammarTests(unittest.TestCase):
 
     def test_team_grammar(self):
         self.assertEqual(sanitize.sanitize_team_name("vuln-hunt"), "vuln-hunt")
-        self.assertEqual(sanitize.sanitize_name("a" * 15, "team"), "a" * 15)
-        for name in ("a" * 16, "Vuln", "", "1x"):
+        self.assertEqual(sanitize.sanitize_name("a" * 32, "team"), "a" * 32)
+        for name in ("a" * 33, "Vuln", "", "1x"):
             with self.assertRaises(HerdrTeamError) as ctx:
                 sanitize.sanitize_team_name(name)
             self.assertEqual(ctx.exception.code, "team_name_invalid")
@@ -180,8 +180,8 @@ class NameGrammarTests(unittest.TestCase):
 
     def test_role_grammar(self):
         self.assertEqual(sanitize.sanitize_role("reviewer"), "reviewer")
-        self.assertEqual(sanitize.sanitize_role("a" * 32), "a" * 32)
-        for name in ("a" * 33, "Reviewer", "codex", "human", "qoder"):
+        self.assertEqual(sanitize.sanitize_role("a" * 64), "a" * 64)
+        for name in ("a" * 65, "Reviewer", "codex", "human", "qoder"):
             with self.subTest(name):
                 with self.assertRaises(HerdrTeamError) as ctx:
                     sanitize.sanitize_role(name)

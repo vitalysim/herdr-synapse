@@ -44,8 +44,8 @@ holds `daemon.json`, `daemon.log`, `who.json`, `kinds.json`, `view.json`,
 | Several teams | console `/use team` | `use <team>` sets the default team for human posts; `teams` lists teams and whether their session runs (works offline); `create --use` makes a second team the default at creation |
 
 Rules you will see enforced: an agent belongs to one team at a time
-(`member_claimed` unless `--steal`); team names match `[a-z][a-z0-9_-]{0,14}`;
-roles `[a-z][a-z0-9_-]{0,31}` (when `<team>-<role>` is over 32 the default member name drops the role's leading segments, kind labels and `dev` first: `red-dev` + `opencode-dev-brainstormer` gives `red-dev-brainstormer`); every name is validated before anything is
+(`member_claimed` unless `--steal`); team names match `[a-z][a-z0-9_-]{0,31}` and roles `{0,63}`;
+roles `[a-z][a-z0-9_-]{0,63}`. A member name is its Herdr agent name, which Herdr caps at 32, so `<team>-<role>` is fitted: the role's leading segments go first (kind labels and `dev`), then whole trailing segments of the team, so `red-dev` + `opencode-dev-brainstormer` gives `red-dev-brainstormer` and `clickhouse-vulnerability-hunt` + `manager` gives `clickhouse-vulnerability-manager`. The role always survives, so two members never derive the same name. Every name is validated before anything is
 renamed or written, so a failed create leaves nothing behind. Under the
 default naming a role may equal a kind label (`t-claude`); with `--names
 plain` the default role becomes `agent`, `agent2`, … because a member name
