@@ -16,6 +16,7 @@ from herdr_team import charter as _charter
 from herdr_team import identity, operator, roster, store
 from herdr_team.errors import HerdrTeamError
 from support import FakeApi, TempState, fake_agent
+from test_identity import own_shell_rig
 from test_workdir import human
 
 
@@ -68,10 +69,34 @@ class EscalationTests(unittest.TestCase):
         self.assertEqual(author.origin.get("rerouted"), "HERDR_PANE_ID names another pane")
 
     def test_the_operator_own_shell_is_untouched(self):
+        # A shell Herdr confirms as the operator's keeps its authority.
+        env = self.state.env_with(HERDR_PANE_ID="w3:p1")
+        api = api_with_panes(inside_agent_pane=False)
+        info, table = own_shell_rig("w3:p1")
+        # the shell pane is ours; the agent pane still is not
+        api.set_response("pane.process_info", lambda p: info if p["pane_id"] == "w3:p1"
+                         else {"process_info": {"shell_pid": 1, "foreground_process_group_id": 1, "foreground_processes": []}})
+        with mock.patch.object(identity, "ps_table", return_value=table):
+            author = self.resolve(env, api)
+        self.assertTrue(author.is_human)
+        self.assertTrue(author.trusted_human)
+        _charter.require_human(self.state.layout, self.state.team_name, author, "knowledge set")
+
+    def test_a_shell_herdr_disproves_is_named_human_but_holds_no_authority(self):
+        # Before the 2026-09-08 review every gate tested the name alone, so a
+        # shell whose foreground job was demonstrably someone else's still
+        # rewrote the rules. It still posts (rendered unverified); it does not
+        # decide. The message says how a real operator gets trusted.
         env = self.state.env_with(HERDR_PANE_ID="w3:p1")
         author = self.resolve(env, api_with_panes(inside_agent_pane=False))
         self.assertTrue(author.is_human)
-        _charter.require_human(self.state.layout, self.state.team_name, author, "knowledge set")
+        self.assertEqual(author.via, identity.VIA_CLI_UNVERIFIED)
+        self.assertFalse(author.trusted_human)
+        with self.assertRaises(HerdrTeamError) as caught:
+            _charter.require_human(self.state.layout, self.state.team_name, author, "knowledge set")
+        self.assertEqual(caught.exception.code, "author_mismatch")
+        self.assertIn("env -u HERDR_PANE_ID", caught.exception.message)
+        self.assertIn("team console", caught.exception.message)
 
     def test_outside_herdr_is_still_the_operator_when_no_agent_pane_owns_us(self):
         env = self.state.env_with(HERDR_PANE_ID=None)

@@ -21,6 +21,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
 
 from herdr_team import store
 from herdr_team.errors import HerdrTeamError
+from herdr_team.identity import human_origin_ok
 from herdr_team.paths import TeamPaths
 
 #: Kinds that mean "I am waiting on you" rather than "for your records". Only
@@ -52,6 +53,9 @@ def answered_by(record: Any) -> Optional[int]:
     """
     if not isinstance(record, dict) or record.get("from") != "human":
         return None
+    origin = record.get("origin") if isinstance(record.get("origin"), dict) else {}
+    if not human_origin_ok(origin):
+        return None  # renders ``(unverified)`` on the board and counts for nothing there either
     reply_to = record.get("reply_to")
     return reply_to if isinstance(reply_to, int) and not isinstance(reply_to, bool) else None
 
@@ -89,13 +93,13 @@ def blocks(kind: Any, policy: Dict[str, Any]) -> bool:
 # what the operator has waved away for now
 
 
-def _dismissed_path(team: TeamPaths):
+def dismissed_path(team: TeamPaths):
     return team.root / "notifier" / "dismissed-asks.json"
 
 
 def dismissed(team: TeamPaths) -> List[int]:
     """Seqs the operator closed the popup on. "Not now", not "answered"."""
-    doc = store.read_json(_dismissed_path(team), default=None)
+    doc = store.read_json(dismissed_path(team), default=None)
     if not isinstance(doc, dict):
         return []
     seqs = doc.get("seqs")
@@ -109,5 +113,5 @@ def dismiss(team: TeamPaths, seqs: Sequence[int], keep: int = 200) -> List[int]:
         if isinstance(seq, int) and not isinstance(seq, bool) and seq not in current:
             current.append(seq)
     current = sorted(current)[-max(1, int(keep)):]
-    store.write_json(_dismissed_path(team), {"v": 1, "seqs": current})
+    store.write_json(dismissed_path(team), {"v": 1, "seqs": current})
     return current

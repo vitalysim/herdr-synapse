@@ -9,12 +9,15 @@ from __future__ import annotations
 import io
 import json
 import os
+import sys
 import unittest
 from unittest import mock
 
+from herdr_team import identity
 from herdr_team import cmd_hooks, cmd_roster, hooks, picker, render, roster, store, tui_model
 from herdr_team.errors import HerdrTeamError
 from support import FakeApi, TempState, fake_agent
+from test_identity import own_shell_rig
 from test_cmd_roster import env_no_daemon, json_out, live_api, run_cli
 from test_daemon import make_daemon
 
@@ -476,6 +479,22 @@ class ResumeCommandTests(unittest.TestCase):
         doc = store.read_json(self.ts.team.team_json)
         doc["members"][0].update({"session": sess("0199-reviewer"), "status": "missing", "cwd": os.fspath(self.ts.tmp)})
         store.write_json(self.ts.team.team_json, doc)
+        # ``resume`` execs the harness in the operator's own shell pane, so
+        # that pane (w3:p1) must be verifiably the operator's: a shell Herdr
+        # cannot vouch for is named human but holds no authority any more.
+        base = live_api
+        info, table = own_shell_rig("w3:p1")
+
+        def shell_verified(agents=None):
+            api = base(agents)
+            api.set_response("pane.process_info", lambda p: info if p["pane_id"] == "w3:p1"
+                             else {"process_info": {"shell_pid": 1, "foreground_process_group_id": 1, "foreground_processes": []}})
+            return api
+
+        for patcher in (mock.patch.object(sys.modules[__name__], "live_api", shell_verified),
+                        mock.patch.object(identity, "ps_table", return_value=table)):
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
     def test_print_shows_the_exact_command(self):
         code, payload, err = json_out(run_cli(["--json", "--team", "alpha", "resume", "alpha-reviewer", "--print"], env_no_daemon(self.ts), live_api()))

@@ -51,6 +51,7 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, 
 
 from herdr_team import PLUGIN_ID, VERSION, gate, nudge, render, roster, sanitize, store
 from herdr_team import charter as _charter
+from herdr_team import identity as _identity
 from herdr_team import context as _context
 from herdr_team import operator as _operator
 from herdr_team import usage as _usage
@@ -133,17 +134,26 @@ IDLE_SWEEP_AFTER_S = 180.0
 #: move many times a minute and the file is the whole archive, so it is written
 #: on change but no more often than this.
 BOARD_SNAPSHOT_MIN_INTERVAL_S = 60.0
-#: System events whose ``--urgent`` form nudges every member. ``knowledge_updated``
-#: and ``instructions_updated`` were missing, so the ``--urgent`` flag on
-#: ``knowledge set`` and ``instructions --set`` set the record flag and did
-#: nothing, while the CLI docs promised a nudge.
-URGENT_SYSTEM_EVENTS = ("charter_updated", "member_joined", "knowledge_updated", "instructions_updated", "manager_changed")
-#: System events the operator is toasted for. A system record takes the early
-#: return in ``_ingest`` and so never reaches ``human_queue``, which is the only
-#: thing that toasts: naming ``human`` on the record is not enough by itself.
-#: Kept to an explicit list rather than "any system record naming human",
-#: because that would start toasting a dozen existing events at once.
-TOAST_SYSTEM_EVENTS = ("manager_changed",)
+#: How each system event is delivered. A system record takes the early return
+#: in ``_ingest_record``, so an event reaches anybody only by being listed here:
+#: ``wake: all`` nudges every member when the record is ``urgent``, ``wake:
+#: named`` gives each named member an ordinary (gated) nudge, ``toast`` reaches
+#: the operator's toast queue. One table, because the two lists this replaced
+#: were maintained by hand and the manager announcement shipped on neither --
+#: written to the board, delivered to no one.
+SYSTEM_EVENT_DELIVERY: Dict[str, Dict[str, Any]] = {
+    "charter_updated": {"wake": "all"},
+    "member_joined": {"wake": "all"},
+    "knowledge_updated": {"wake": "all"},
+    "instructions_updated": {"wake": "all"},
+    "manager_changed": {"wake": "all", "toast": True},
+    "context_high": {"wake": "named"},
+}
+URGENT_SYSTEM_EVENTS = tuple(e for e, d in SYSTEM_EVENT_DELIVERY.items() if d.get("wake") == "all")
+NAMED_SYSTEM_EVENTS = tuple(e for e, d in SYSTEM_EVENT_DELIVERY.items() if d.get("wake") == "named")
+TOAST_SYSTEM_EVENTS = tuple(e for e, d in SYSTEM_EVENT_DELIVERY.items() if d.get("toast"))
+#: Unanswered asks the daemon keeps in memory per team (``TeamState.open_asks``).
+OPEN_ASKS_MAX = 400
 #: A change is announced only once the tree has stopped moving for one whole
 #: poll, so a build or a data dump yields one record instead of one every ten
 #: seconds. That costs a single drop up to ``2 * ARTIFACTS_POLL_S`` of latency,
@@ -1036,33 +1046,43 @@ def gate_evaluate(snapshot: Any, pending: Any, now_ms: float, global_last_nudge_
 def gate_config_from_roster(doc: Optional[Dict[str, Any]]) -> Tuple[gate.GateConfig, Optional[Dict[str, Any]], Optional[str]]:
     """``(config, overrides, error)`` from ``team.json`` ``config.gate`` (docs/cli.md section 10).
 
-    Unknown keys, non-numeric ``*_ms`` / ``pair_budget`` values, or a
-    ``nudge_focused`` that is not a string yield ``DEFAULT_CONFIG`` plus the
-    error text, so one bad roster field can never change every gate.
+    A non-numeric ``*_ms`` / ``pair_budget`` value or a ``nudge_focused`` that
+    is not a string yields ``DEFAULT_CONFIG`` plus the error text, so one bad
+    roster field can never change every gate. An *unknown* key is skipped and
+    reported by ``gate_config_from_roster_detailed``; it used to reject the
+    whole mapping, which is how a typo switched every override off at once.
     """
+    config, applied, error, _skipped = gate_config_from_roster_detailed(doc)
+    return config, applied, error
+
+
+def gate_config_from_roster_detailed(doc: Optional[Dict[str, Any]]) -> Tuple[gate.GateConfig, Optional[Dict[str, Any]], Optional[str], List[str]]:
+    """``gate_config_from_roster`` plus the unknown keys that were skipped."""
     config = doc.get("config") if isinstance(doc, dict) and isinstance(doc.get("config"), dict) else None
     overrides = config.get("gate") if config is not None else None
     if overrides is None:
-        return gate.DEFAULT_CONFIG, None, None
+        return gate.DEFAULT_CONFIG, None, None, []
     if not isinstance(overrides, dict):
-        return gate.DEFAULT_CONFIG, None, "config.gate is not an object"
+        return gate.DEFAULT_CONFIG, None, "config.gate is not an object", []
     try:
-        built = gate.GateConfig.from_mapping(overrides)
+        built, skipped = gate.GateConfig.from_mapping_lenient(overrides)
     except ValueError as err:
-        return gate.DEFAULT_CONFIG, None, str(err)
+        return gate.DEFAULT_CONFIG, None, str(err), []
     for key, value in overrides.items():
+        if key in skipped:
+            continue
         if key == "nudge_focused":
             if not isinstance(value, str):
-                return gate.DEFAULT_CONFIG, None, "nudge_focused must be a string"
+                return gate.DEFAULT_CONFIG, None, "nudge_focused must be a string", []
             if value not in gate.NUDGE_FOCUSED_VALUES:
                 # Gate 10 compares against the exact word: "Never" or "no" would silently drop the focus hold.
-                return gate.DEFAULT_CONFIG, None, "nudge_focused must be one of {}".format("|".join(gate.NUDGE_FOCUSED_VALUES))
+                return gate.DEFAULT_CONFIG, None, "nudge_focused must be one of {}".format("|".join(gate.NUDGE_FOCUSED_VALUES)), []
         elif key == "interrupt_kinds":
             if not isinstance(value, list) or not all(isinstance(v, str) and v for v in value):
-                return gate.DEFAULT_CONFIG, None, "interrupt_kinds must be a list of kind names"
+                return gate.DEFAULT_CONFIG, None, "interrupt_kinds must be a list of kind names", []
         elif isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
-            return gate.DEFAULT_CONFIG, None, "{} must be a non-negative number".format(key)
-    return built, dict(overrides), None
+            return gate.DEFAULT_CONFIG, None, "{} must be a non-negative number".format(key), []
+    return built, {k: v for k, v in overrides.items() if k not in skipped}, None, skipped
 
 
 # --------------------------------------------------------------------------
@@ -1207,6 +1227,11 @@ class TeamState:
     human_queue: List[Dict[str, Any]] = field(default_factory=list)
     retracted: Set[int] = field(default_factory=set)
     open_intents: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    #: Asks still waiting on the operator, by seq; seeded from the board once,
+    #: then kept current by ``_track_ask`` as records are ingested.
+    open_asks: Dict[int, Dict[str, Any]] = field(default_factory=dict)
+    #: ``(mtime, seqs)`` of ``dismissed-asks.json`` at the last read.
+    dismissed_cache: Optional[Tuple[Optional[float], List[int]]] = None
     #: Last seen ``artifacts/`` fingerprint, or None before the first scan (which only seeds it).
     artifacts_seen: Optional[Dict[str, Tuple[int, int, int]]] = None
     #: When that scan last ran; the walk is throttled to ``ARTIFACTS_POLL_S``.
@@ -2045,11 +2070,13 @@ class Daemon:
             return
         team.gate_loaded = True
         team.gate_overrides = overrides
-        config, applied, error = gate_config_from_roster(team.roster)
+        config, applied, error, skipped = gate_config_from_roster_detailed(team.roster)
         if error is not None:
             self.log("{}: config.gate ignored ({}); using the default gate".format(team.name, error))
         elif applied:
             self.log("{}: gate config {}".format(team.name, json.dumps(applied, sort_keys=True)))
+        if skipped:
+            self.log("{}: config.gate: ignoring unknown key(s) {}; the rest applies".format(team.name, ", ".join(skipped)))
         team.gate_config = config
 
     def _load_tail_state(self, team: TeamState) -> None:
@@ -2059,7 +2086,17 @@ class Daemon:
         cursors = [read_cursor_seq(team.paths, str(m.get("name"))) for m in team.members() if m.get("terminal_id")]
         team.tailer = store.BoardTailer(team.paths, start_seq=min(cursors) if cursors else 0)
         team.watermark = team.tailer.watermark_seq
+        self._seed_open_asks(team)
         self._rebuild_pending(team)
+
+    def _seed_open_asks(self, team: TeamState) -> None:
+        """One bounded board read at start; ``_track_ask`` carries it from there."""
+        from herdr_team import asks as _asks
+
+        try:
+            team.open_asks = {int(r["seq"]): r for r in _asks.pending(team.paths) if isinstance(r.get("seq"), int)}
+        except (HerdrTeamError, OSError, ValueError):
+            team.open_asks = {}
 
     def _rebuild_pending(self, team: TeamState) -> None:
         """Cold start: unread posts the previous daemon had already tailed become pending again.
@@ -2739,7 +2776,7 @@ class Daemon:
         if not render.is_unverified(rec):
             return True
         origin = rec.get("origin") if isinstance(rec.get("origin"), dict) else {}
-        return rec.get("from") == "human" and origin.get("via") == "console-unfocused"
+        return rec.get("from") == "human" and _identity.human_origin_ok(origin)
 
     def _ingest_record(self, team: TeamState, rec: Dict[str, Any]) -> None:
         seq = rec["seq"]
@@ -2752,10 +2789,19 @@ class Daemon:
             self.log("{}: #{} from {!r} is unverified (origin {}); it renders but never counts for nudges".format(
                 team.name, seq, author, json.dumps(rec.get("origin"), ensure_ascii=False)[:120]))
             return
+        self._track_ask(team, rec)
         if author == "system":
             event = rec.get("event")
             if event in TOAST_SYSTEM_EVENTS and "human" in [t for t in (rec.get("to") or []) if isinstance(t, str)]:
                 team.human_queue.append(rec)
+            if event in NAMED_SYSTEM_EVENTS:
+                # Addressed to particular members: each gets an ordinary nudge,
+                # every gate applying, so "you are at 90%, finish and compact"
+                # arrives at that member's next idle rather than never.
+                for target in [t for t in (rec.get("to") or []) if isinstance(t, str) and t not in ("all", "human")]:
+                    named = team.member(target)
+                    if named is not None and named.get("kind") != "human" and named.get("terminal_id"):
+                        self._add_pending(team, str(named["name"]), seq, False, "system", now)
             if rec.get("urgent") and event in URGENT_SYSTEM_EVENTS:
                 # An urgent system broadcast nudges every member; a join spares the newcomer (its briefing covers it).
                 newcomer = rec.get("member") if event == "member_joined" else None
@@ -2814,6 +2860,29 @@ class Daemon:
                 continue
             self._add_pending(team, str(recipient.get("name")), seq, urgent, author, now, interrupt=interrupt)
 
+    def _track_ask(self, team: TeamState, rec: Dict[str, Any]) -> None:
+        """Keep ``team.open_asks`` current from the records already flowing past.
+
+        ``raise_asks`` used to answer "is anything waiting" by re-parsing the
+        whole active board every five seconds per team -- the exact cost
+        ``wait_for_answer`` names as the reason not to poll with ``read``.
+        Every record already passes through here once, so the set is
+        maintained for free and the tick reads nothing.
+        """
+        from herdr_team import asks as _asks
+
+        seq = rec.get("seq")
+        if _asks.is_ask(rec) and isinstance(seq, int):
+            team.open_asks[seq] = rec
+            while len(team.open_asks) > OPEN_ASKS_MAX:
+                team.open_asks.pop(min(team.open_asks))
+        answered = _asks.answered_by(rec)
+        if answered is not None:
+            team.open_asks.pop(answered, None)
+        retracts = rec.get("retracts")
+        if isinstance(retracts, int) and not isinstance(retracts, bool):
+            team.open_asks.pop(retracts, None)
+
     def _requeue_deferred(self, team: TeamState, name: str, brief: Pending, cursor: int, now: float) -> None:
         """Posts that arrived while ``brief`` was pending become a nudge once the member is past the briefing."""
         seqs = [s for s in brief.deferred_seqs if s > cursor and s not in team.retracted]
@@ -2853,7 +2922,21 @@ class Daemon:
 
         if not ask_view(team.roster).get("popup"):
             return False
-        return bool(_asks.pending(team.paths, dismissed=_asks.dismissed(team.paths)))
+        if not team.open_asks:
+            return False
+        return bool(set(team.open_asks) - set(self._dismissed_asks(team)))
+
+    def _dismissed_asks(self, team: TeamState) -> List[int]:
+        """``asks.dismissed`` re-read only when its file changed."""
+        from herdr_team import asks as _asks
+
+        mtime = self._file_mtime(os.fspath(_asks.dismissed_path(team.paths)))
+        cached = team.dismissed_cache
+        if cached is not None and cached[0] == mtime:
+            return cached[1]
+        seqs = _asks.dismissed(team.paths)
+        team.dismissed_cache = (mtime, seqs)
+        return seqs
 
     def _open_ask_popup(self, team: TeamState, now: float) -> None:
         """One ``plugin.pane.open``; a busy slot is a retry, never an error."""
@@ -2948,6 +3031,11 @@ class Daemon:
         rt.context_severity = None
         self._append_system(team, "context_compacted", "{} compacted its context on its own ({:,} -> {:,} tokens)".format(name, before, reading.used),
                             [name, "all"], {"member": name, "requested_by": None, "detected_by": "token count fell"})
+        # Requested or not, the summary is what this member now knows. This
+        # branch used to stop at the record, so the harness's own compaction
+        # at 90% -- the case the warnings exist to pre-empt -- left a Codex or
+        # OpenCode member with nothing typed back.
+        self._rebrief_after_compaction(team, name)
 
     @staticmethod
     def _file_mtime(path: str) -> Optional[float]:

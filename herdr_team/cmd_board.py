@@ -1187,6 +1187,7 @@ def _run_post(args: argparse.Namespace) -> int:
     record = build_record(author, to, args.kind, text, to_role=to_role, refs=refs, reply_to=reply_to, urgent=urgent, relayed_for=args.relayed_for, socket_path=os.fspath(layout.socket), truncated=truncated, from_gen=member_generation(doc, author))
     if interrupt:
         record["interrupt"] = True
+    timeout_s = _wait_seconds(args, doc, to, author)  # before the append: a usage error must leave nothing on the board
 
     try:
         seq = board_append(team, record, spill_text=body, attachments=staged)
@@ -1206,9 +1207,11 @@ def _run_post(args: argparse.Namespace) -> int:
     # The append is done and the team lock is released. Waiting here rather
     # than anywhere earlier is deliberate: holding the lock across a wait of
     # minutes would fail every other member's post with ``board_locked``.
-    timeout_s = _wait_seconds(args, doc, to, author)
     if timeout_s is not None:
-        answer = wait_for_answer(team, seq, timeout_s)
+        def heartbeat(elapsed: float) -> None:
+            warn(args, "still waiting for the operator ({:.0f}s of {:.0f}s)".format(elapsed, timeout_s))
+
+        answer = wait_for_answer(team, seq, timeout_s, heartbeat=heartbeat)
         if answer is None:
             raise HerdrTeamError(
                 "wait_no_answer",
@@ -1235,9 +1238,16 @@ def _wait_seconds(args: argparse.Namespace, doc: Dict[str, Any], to: List[str], 
     """
     from herdr_team.cmd_misc import ask_view
 
+    explicit = getattr(args, "wait", None) is True
     if getattr(args, "wait", None) is False:
         return None
-    if author.is_human or "human" not in to:
+    if author.is_human:
+        if explicit:
+            raise UsageError("--wait is for members: you are the operator, and nobody else answers a wait")
+        return None
+    if "human" not in to:
+        if explicit:
+            raise UsageError("--wait needs --to human: only the operator's reply ends a wait")
         return None
     policy = ask_view(doc)
     wanted = bool(getattr(args, "wait", None)) or _asks.blocks(args.kind, policy)
@@ -1444,7 +1454,12 @@ def _run_board(args: argparse.Namespace) -> int:
 
 def require_say_author(layout: Layout, team_name: str, author: Author) -> None:
     """``say`` is for the verified console only; members, hooks, popups, shells, and unfocused consoles are refused and audited."""
-    _charter.require_human(layout, team_name, author, "say")
+    if not author.is_human:
+        # Members and hooks get the ordinary authority refusal (a delegate
+        # passes it and is refused just below: typing into a pane is not
+        # delegable). A human is checked against ``say``'s own, stricter
+        # rule first, so an unverified shell hears why *say* refused it.
+        _charter.require_human(layout, team_name, author, "say")
     ancestry = (author.origin or {}).get("ancestry")
     if author.verified and author.via in SAY_VIAS and ancestry == "confirmed":
         return
@@ -1490,10 +1505,16 @@ ASK_POLL_S = 0.5
 #: so a longer wait would end as a killed process with no error the agent could
 #: read. Nine leaves room for the process to report its own timeout first.
 MAX_WAIT_S = 540.0
+#: A line on stderr this often while waiting. Claude Code returns a shell
+#: command's output only at the end, but Codex runs it in an exec cell that
+#: yields to the model after ten seconds with the process still running: a
+#: silent wait looks hung there, and a model that thinks so moves on.
+WAIT_HEARTBEAT_S = 30.0
 
 
 def wait_for_answer(team: TeamPaths, seq: int, timeout_s: float, poll_s: float = ASK_POLL_S,
-                    sleep=time.sleep) -> Optional[Dict[str, Any]]:
+                    sleep=time.sleep, heartbeat: Optional[Callable[[float], None]] = None,
+                    heartbeat_s: float = WAIT_HEARTBEAT_S) -> Optional[Dict[str, Any]]:
     """The operator's reply to the post at ``seq``, or None once ``timeout_s`` is up.
 
     Uses a non-persisting ``BoardTailer`` rather than ``BoardStore.read``: read
@@ -1506,13 +1527,19 @@ def wait_for_answer(team: TeamPaths, seq: int, timeout_s: float, poll_s: float =
     genuine pre-submission halt got overridden on the team this was built for.
     """
     tailer = store.BoardTailer(team, start_seq=seq, persist=False)
-    deadline = time.monotonic() + max(0.0, timeout_s)
+    started = time.monotonic()
+    deadline = started + max(0.0, timeout_s)
+    next_beat = started + heartbeat_s
     while True:
         for record in tailer.poll():
             if _asks.answered_by(record) == seq:
                 return record
-        if time.monotonic() >= deadline:
+        now = time.monotonic()
+        if now >= deadline:
             return None
+        if heartbeat is not None and now >= next_beat:
+            heartbeat(now - started)
+            next_beat = now + heartbeat_s
         sleep(poll_s)
 
 

@@ -1450,20 +1450,29 @@ class GateConfigAndFollowUpTests(unittest.TestCase):
     def test_bad_gate_config_falls_back_to_the_default_and_logs_once(self):
         d, api, clock = self.daemon({"done_hold_ms": 0, "bogus_key": 1})
         team = d.teams["alpha"]
-        self.assertIs(team.gate_config, gate.DEFAULT_CONFIG)
-        bad = [line for line in d.logged if "config.gate ignored" in line]
-        self.assertEqual(len(bad), 1, d.logged)
-        self.assertIn("bogus_key", bad[0])
+        # An unknown key is skipped and named; the keys beside it still apply.
+        # It used to throw every override away, which is how one typo switched
+        # the whole gate config off at once (review, 2026-09-08).
+        self.assertEqual(team.gate_config.done_hold_ms, 0)
+        skipped = [line for line in d.logged if "ignoring unknown key" in line]
+        self.assertEqual(len(skipped), 1, d.logged)
+        self.assertIn("bogus_key", skipped[0])
+        self.assertEqual([line for line in d.logged if "config.gate ignored" in line], [])
         ticks(d, clock, 3, step=2.5)
-        self.assertEqual(len([line for line in d.logged if "config.gate ignored" in line]), 1)
+        self.assertEqual(len([line for line in d.logged if "ignoring unknown key" in line]), 1)
+        # A bad *value* for a known key still means the default, and still says so once per change.
         for overrides in ({"done_hold_ms": "soon"}, {"pair_budget": True}, {"nudge_focused": 3}, {"post_ttl_ms": -1}, ["done_hold_ms"]):
             self.write_gate(overrides)
             ticks(d, clock, 1, step=2.5)
             self.assertIs(team.gate_config, gate.DEFAULT_CONFIG, overrides)
+        self.assertEqual(len([line for line in d.logged if "config.gate ignored" in line]), 5)
         self.assertEqual(D.gate_config_from_roster({"config": {"gate": {"done_hold_ms": 0}}})[0].done_hold_ms, 0)
         self.assertEqual(D.gate_config_from_roster({"config": {"gate": {"done_hold_ms": 0}}})[1], {"done_hold_ms": 0})
         self.assertEqual(D.gate_config_from_roster({})[0], gate.DEFAULT_CONFIG)
-        self.assertIsNotNone(D.gate_config_from_roster({"config": {"gate": {"x": 1}}})[2])
+        # an unknown key alone is not an error: nothing is applied, and the key is named
+        config, applied, error, skipped = D.gate_config_from_roster_detailed({"config": {"gate": {"x": 1}}})
+        self.assertEqual((config, applied, error, skipped), (gate.DEFAULT_CONFIG, {}, None, ["x"]))
+        self.assertIsNone(D.gate_config_from_roster({"config": {"gate": {"x": 1}}})[2])
 
     def test_same_second_burst_becomes_one_nudge_covering_the_range(self):
         """Plan 12 / M5 ND-03: five posts 200 ms apart to a stable idle member yield one nudge for the whole range.

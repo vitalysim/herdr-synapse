@@ -196,7 +196,7 @@ class UrgentSystemEventTests(unittest.TestCase):
         self.d, _api, _clock = make_daemon(self.ts)
         self.d.scan_teams(force=True)
         self.team = self.d.teams[self.ts.team_name]
-        self.human = Author(name="human", kind="human", via="flag", verified=True)
+        self.human = Author(name="human", kind="human", via="console", verified=True)  # a trusted origin; "flag" is none
         self.member = [m["name"] for m in self.ts.members if m.get("kind") != "human"][0]
 
     def pending_after(self, call):

@@ -61,6 +61,23 @@ def own_process_info(pane_id: str, shell_pid: Optional[int] = None) -> Dict[str,
     }
 
 
+def own_shell_rig(pane_id: str):
+    """``(process_info, ps_table)`` under which this test process verifies as ``pane_id``'s shell job.
+
+    The process running the tests is not always the leader of its own process
+    group (it is not under some harnesses), so the leader is mapped to a fake
+    shell pid in the table, exactly as ``test_process_group_match_is_verified`` does.
+    """
+    leader = os.getpgrp()
+    fake_shell = 777
+    shell_pid = os.getppid() if leader == os.getpid() else fake_shell
+    info = {"type": "pane_process_info", "process_info": {
+        "pane_id": pane_id, "shell_pid": shell_pid, "foreground_process_group_id": leader,
+        "foreground_processes": [{"pid": leader, "name": "python3"}],
+    }}
+    return info, {leader: fake_shell, os.getpid(): os.getppid()}
+
+
 class SystemTierTests(unittest.TestCase):
     def test_hook_env_is_system_via_hook(self) -> None:
         with TempState() as ts:
@@ -211,7 +228,9 @@ class ConsoleTierTests(unittest.TestCase):
             self.assertEqual(author.team, "alpha")
             self.assertEqual(author.origin["focused_pane_id"], "w2:p1")
             self.assertEqual(author.origin["nonce"], "abc123")
-            self.assertEqual(api.calls, [])  # popups never touch the socket
+            # one process-tree check, nothing else: a popup used to make no
+            # socket call at all, which is what let an agent claim to be one
+            self.assertEqual([m for m, _p in api.calls], ["pane.list"])
 
 
 class AgentPaneTests(unittest.TestCase):

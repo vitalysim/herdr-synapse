@@ -492,7 +492,7 @@ reason `orient` exists:
 | Kind | On a clear | On a compaction |
 | --- | --- | --- |
 | Claude | new session id → generation bump, `briefed_at` cleared, `member_restarted`, a briefing job; **and** the SessionStart hook re-injects the full block | same session id with `source=compact` → `briefed_at` cleared and a briefing job (no generation bump, it is not a restart); the hook fires again |
-| Codex, OpenCode | new session id → the same roster handling, but the typed briefing is the **only** channel: no hooks exist for these kinds | no session change at all. The only sign is the token count falling past `CONTROL_DROP_RATIO`, seen by `_check_context_drop` |
+| Codex, OpenCode | new session id → the same roster handling, but the typed briefing is the **only** channel: no hooks exist for these kinds | no session change at all. The only sign is the token count falling past `CONTROL_DROP_RATIO`, seen by `_check_context_drop` — which queues the briefing whether or not anyone asked for the compaction (0.13.0) |
 
 Until 0.11.0 that last cell did nothing but append a record: a compacted Codex
 or OpenCode member was **never re-briefed**, so the two kinds with no hooks —
@@ -500,6 +500,12 @@ the ones for which the typed line is the only channel there is — were exactly
 the ones that got nothing back. `_note_compacted` now clears `briefed_at` and
 enqueues a briefing whatever the kind; the Claude path reaches the same
 function with `briefed_at` already cleared, so it is a no-op there.
+
+Until 0.13.0 that held only for a *requested* compaction: the harness compacting
+on its own at 90 % — the case the warnings exist to pre-empt — wrote the record
+and stopped. `context_high` is likewise delivered now: the system-event table
+(`SYSTEM_EVENT_DELIVERY`) has a `named` mode that gives each member the record
+names an ordinary, fully gated nudge.
 
 `rt.rebriefed`, the once-only allowance for a briefing nobody acknowledged, is
 now reset when a briefing lands. Nothing ever put it back, so the second clear
@@ -526,7 +532,7 @@ them overriding a genuine pre-submission halt.
 | `asks` | what is waiting on you; `--dismiss <seq>` stops the popup reopening |
 | the `asks` popup | one popup for the whole queue, opened by the notifier |
 | `ask-policy` | per-team `config.ask`; `/ask-policy` in the console |
-| `post --wait` | the agent blocks until the operator answers |
+| `post --wait` | the agent blocks until the operator answers; a stderr heartbeat every 30 s |
 
 **One popup, not one per post.** Herdr allows exactly one popup at a time
 (`ui_busy` otherwise) and a popup has no pane id to address, so the popup is
@@ -546,9 +552,27 @@ a killed process with no error the agent could read. Timeout is exit
 **`EXIT_NO_ANSWER` (6)**, code `wait_no_answer`, distinct from `EXIT_REFUSED`
 so an agent can tell "nobody answered" from "rejected".
 
+**What each harness does to a nine-minute shell command** — the wait is only
+as good as the shell tool it runs in, and the cap was calibrated to Claude Code:
+
+| Kind | Its shell tool | What skill v8 tells it |
+| --- | --- | --- |
+| Claude Code | kills the command at 10 min; output only at the end | give the tool a 10-minute timeout |
+| Codex | runs it in an exec cell that **yields after 10 s with the process still running**; the model must keep calling `wait` | keep waiting on the exec cell until it exits |
+| OpenCode | optional `timeout`, believed 2 min by default, 10 min max | pass a 10-minute timeout |
+
+The Codex and OpenCode rows are read from the installed binaries and not yet
+verified live; one round trip per kind in a disposable session is the missing
+evidence. The stderr heartbeat exists for the Codex row: a silent wait looks
+hung to a model watching a yielded cell.
+
+**Not an ask:** a `question` sent `--to all`. It is for teammates, and it
+neither pops up nor blocks; `--to human` is the operator channel.
+
 **The policy** lives at `config.ask`, deliberately not under `config.gate`:
-that namespace is whitelisted and one unknown key there throws the whole gate
-config back to defaults. Popup on anything addressed to the operator; blocking
+that namespace is whitelisted and, until 0.13.0, one unknown key there threw the
+whole gate config back to defaults. It no longer does — an unknown key is skipped
+and named in the daemon log — but the separation stays. Popup on anything addressed to the operator; blocking
 only on `question`, `blocked`, `request`, because blocking a `done` notice for
 eight minutes would freeze a team that posted forty of them in three days.
 
@@ -760,6 +784,28 @@ suppress toasts.
 
 **Verified**: HP-01 to HP-14 (all three delivery modes), HP-06 and HP-07,
 UI-01, UI-02 (peek never makes the console look like an agent).
+
+### Trusted origins (0.13.0)
+
+A human author is *trusted* from the console, a popup, outside Herdr, or a
+shell pane whose ancestry Herdr confirmed (`Author.trusted_human`, which is
+`human_origin_ok` applied to the author). Every authority write — charter,
+rules, instructions, manager, grants, dissolve, the policies — tests that,
+not the name. Before this the gates tested `is_human` alone, and the popup
+tier produced a human author with no socket call at all: any agent setting
+`HERDR_PLUGIN_ENTRYPOINT_ID` from its own shell was the operator to every one
+of them, could close asks, and could grant itself operator authority. The
+popup and console tiers now walk the process tree first (`hosting_agent_pane`,
+the check the outside and shell tiers always had); a process inside an agent's
+pane is that agent. A console process Herdr can show is not a descendant of
+the console pane is `cli-unverified`, not an unfocused console.
+
+Threat model, stated plainly: agents run as the same user and can read every
+state file, so this is not a boundary against deliberate evasion — a double
+fork defeats any process-tree check. It closes the path an LLM agent would
+actually take, and keeps the rule the codebase states elsewhere: positive
+evidence of an agent pane wins; absence of evidence does not lock the operator
+out (`outside` stays trusted; an unreachable server changes nothing).
 
 ## 8. Herdr UI integration
 

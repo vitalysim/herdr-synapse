@@ -31,6 +31,11 @@ TICK_S = 0.5
 IDLE_WATCHDOG_S = 1800.0
 REFRESH_S = 2.0
 MAX_REPLY_CHARS = 500
+#: The popup takes focus when it opens, and it opens on its own. Keys that
+#: land in its first moments were meant for whatever the operator was typing
+#: into -- and Enter here files an answer an agent will act on. Nothing but
+#: leaving is accepted until this has passed; reading the ask takes longer.
+ARM_S = 1.5
 
 #: What an acknowledgement says. It is deliberately not "ok": an agent that
 #: asked whether to submit something must not read "seen" as approval, and this
@@ -61,6 +66,9 @@ class AskModel:
     status: Optional[str] = None
     width: int = 80
     height: int = 20
+    #: False for the first ``ARM_S`` after the popup opens (the loop sets it);
+    #: True by default so the pure model behaves for every other caller.
+    armed: bool = True
 
     @property
     def current(self) -> Optional[Dict[str, Any]]:
@@ -109,7 +117,7 @@ def ask_lines(model: AskModel, now: Optional[float] = None) -> List[str]:
         lines.append(body[: width - 2])
         body = body[width - 2:]
     lines.append("")
-    lines.append("> " + model.input)
+    lines.append("> " + model.input if model.armed else "…")
     lines.append("")
     lines.append("Enter replies · Ctrl-A acknowledges · Tab next · Esc leaves it waiting · q closes")
     if model.status:
@@ -132,6 +140,8 @@ def ask_key(model: AskModel, key: str) -> Intent:
         # Dismissing is "not now", never "answered": the ask stays on the
         # board, and the daemon simply stops reopening the popup for it.
         return Intent("dismiss", {"seq": record.get("seq")})
+    if not model.armed:
+        return Intent("none")  # a keystroke burst meant for the pane underneath; see ARM_S
     if key == "CTRL_A":
         if record is None:
             return Intent("quit")
@@ -193,10 +203,11 @@ def _loop(stdscr: Any, args: argparse.Namespace, team: str, team_paths: Any) -> 
     curses.raw()
     curses.noecho()
     stdscr.keypad(True)
-    model = AskModel(team=team)
+    model = AskModel(team=team, armed=False)
     _refresh(model, team_paths)
-    last_refresh = time.monotonic()
-    last_key = time.monotonic()
+    opened = time.monotonic()
+    last_refresh = opened
+    last_key = opened
     while True:
         height, width = stdscr.getmaxyx()
         model.height, model.width = height, width
@@ -204,6 +215,8 @@ def _loop(stdscr: Any, args: argparse.Namespace, team: str, team_paths: Any) -> 
         stdscr.timeout(int(TICK_S * 1000))
         key = read_key(stdscr, int(TICK_S * 1000))
         now = time.monotonic()
+        if not model.armed and now - opened >= ARM_S:
+            model.armed = True
         if key is None:
             if now - last_refresh >= REFRESH_S:
                 _refresh(model, team_paths)

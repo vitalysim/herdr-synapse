@@ -22,7 +22,11 @@ from support import TempState
 
 
 def human(name: str = "human") -> Author:
-    return Author(name=name, kind="human", via="flag", verified=True)
+    """The operator at a focused console: the origin every authority write trusts.
+
+    It used to say ``via="flag"``, a name no tier produces, and passed anyway
+    because the gates tested the name alone (review, 2026-09-08)."""
+    return Author(name=name, kind="human", via="console", verified=True)
 
 
 def agent(name: str = "red-dev-claude", kind: str = "claude") -> Author:

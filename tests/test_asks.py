@@ -418,10 +418,16 @@ class DaemonPopupTests(unittest.TestCase):
     def opens(self):
         return [p for m, p in self.api.calls if m == "plugin.pane.open" and p.get("entrypoint") == "asks"]
 
+    def ingest(self):
+        """What one tick does before ``raise_asks``: the daemon learns of an ask
+        from the record flowing past, never by re-reading the board."""
+        self.d.scan_teams(force=True)
+        self.d.tail_boards()
+
     def test_it_opens_once_for_a_waiting_ask_and_backs_off(self):
         self.assertEqual(self.opens(), [])
         post(self.ts)
-        self.d.scan_teams(force=True)
+        self.ingest()
         self.d.raise_asks(self.clock() * 1000)
         self.assertEqual(len(self.opens()), 1)
         self.assertEqual(self.opens()[0]["env"], {"HERDR_TEAM": "alpha"})
@@ -433,14 +439,14 @@ class DaemonPopupTests(unittest.TestCase):
         from support import FakeError
 
         post(self.ts)
-        self.d.scan_teams(force=True)
+        self.ingest()
         self.api.set_response("plugin.pane.open", lambda params: (_ for _ in ()).throw(FakeError("ui_busy", "a popup pane is already open")))
         self.d.raise_asks(self.clock() * 1000)
         self.assertFalse([l for l in self.d.logged if "could not open" in l], "a busy slot is normal, not worth a log line")
 
     def test_it_never_closes_a_popup_it_did_not_open(self):
         post(self.ts)
-        self.d.scan_teams(force=True)
+        self.ingest()
         self.d.raise_asks(self.clock() * 1000)
         self.assertEqual([m for m, _p in self.api.calls if m == "popup.close"], [],
                          "popup.close shuts whatever the operator had open")
@@ -450,7 +456,7 @@ class DaemonPopupTests(unittest.TestCase):
         self.assertEqual(self.opens(), [])
         seq = post(self.ts)
         asks.dismiss(self.ts.team, [seq])
-        self.d.scan_teams(force=True)
+        self.ingest()
         self.clock.advance(60)
         self.d.raise_asks(self.clock() * 1000)
         self.assertEqual(self.opens(), [], "Esc means not now, not ask me again in a second")
@@ -458,7 +464,7 @@ class DaemonPopupTests(unittest.TestCase):
     def test_the_policy_turns_the_popup_off(self):
         run_cli(["--json", "--team", "alpha", "ask-policy", "--no-popup"], self.ts.env, FakeApi())
         post(self.ts)
-        self.d.scan_teams(force=True)
+        self.ingest()
         self.d.raise_asks(self.clock() * 1000)
         self.assertEqual(self.opens(), [])
 

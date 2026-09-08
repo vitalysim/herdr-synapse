@@ -96,6 +96,20 @@ class Author:
         return self.name == AUTHOR_HUMAN
 
     @property
+    def trusted_human(self) -> bool:
+        """The operator, from an origin the board's own reader rule trusts.
+
+        ``is_human`` is a name, and a name was what every authority gate
+        tested -- so a process that reached an entrypoint tier with one
+        variable set was the operator to charter, rules, manager and grant
+        writes alike. This applies ``human_origin_ok`` to the author the way
+        readers apply it to a record: console, popup, outside, or a shell
+        whose ancestry was confirmed. A shell that could not be confirmed is
+        still *named* human and still posts; it just carries no authority.
+        """
+        return self.is_human and human_origin_ok({"via": self.via, "verified": self.verified})
+
+    @property
     def is_system(self) -> bool:
         return self.name == AUTHOR_SYSTEM
 
@@ -469,6 +483,14 @@ def _tier_system(env: Dict[str, str], layout: Layout, team: Optional[str], as_hu
 def _tier_console(env: Dict[str, str], layout: Layout, api: Any, team: Optional[str], require_server: bool) -> Author:
     from herdr_team import cmd_board as _console_registry
 
+    inside = hosting_agent_pane(api)
+    if inside is not None:
+        # The entrypoint variable is Herdr's, but an agent can set it too, and
+        # naming the real console's pane would then pass the registry check
+        # below and land as ``console-unfocused``, which readers trust. The
+        # process tree settles it: a real console descends from the Herdr
+        # server, a forgery descends from the agent's own pane.
+        return _rerouted_agent_author(env, layout, api, inside, _env_team(env, team), False, "console entrypoint set inside an agent pane")
     console = store.read_json(layout.session.console_json, default=None)
     console = console if isinstance(console, dict) else {}
     default_team = console.get("default_team") if isinstance(console.get("default_team"), str) else None
@@ -515,6 +537,12 @@ def _tier_console(env: Dict[str, str], layout: Layout, api: Any, team: Optional[
     # ``say`` needs a positive answer: ``None`` (no process info, no ``ps``) stays an unfocused-grade author there.
     author.origin["ancestry"] = "confirmed" if confirmed else ("unconfirmed" if confirmed is False else "unavailable")
     if confirmed is False:
+        # Definitively not a descendant of the console pane: whatever this
+        # process is, it is not the console, so it does not get the console's
+        # trusted origin. ``None`` (no process info) keeps the benefit of the
+        # doubt, as everywhere else.
+        author.via = VIA_CLI_UNVERIFIED
+        author.origin["via"] = VIA_CLI_UNVERIFIED
         author.reason = reason
         return author
     if pane.get("focused") is True:
@@ -543,7 +571,14 @@ def _space_team(layout: Layout, workspace_id: Optional[str]) -> Optional[str]:
         return None
 
 
-def _tier_popup(env: Dict[str, str], layout: Layout, team: Optional[str]) -> Author:
+def _tier_popup(env: Dict[str, str], layout: Layout, api: Any, team: Optional[str]) -> Author:
+    inside = hosting_agent_pane(api)
+    if inside is not None:
+        # A popup has no pane identity to check, which is exactly why this
+        # tier used to make zero socket calls -- and why setting the variable
+        # from an agent's shell made that agent the operator to every gate.
+        # Same rule as ``_tier_outside``: the process tree cannot be unset.
+        return _rerouted_agent_author(env, layout, api, inside, _env_team(env, team), False, "popup entrypoint set inside an agent pane")
     console = store.read_json(layout.session.console_json, default=None)
     default_team = console.get("default_team") if isinstance(console, dict) and isinstance(console.get("default_team"), str) else None
     space_team = _space_team(layout, env_workspace(env))
@@ -780,7 +815,7 @@ def resolve_author(
     elif entrypoint == CONSOLE_ENTRYPOINT:
         author = _tier_console(env, layout, api, team, require_server)
     elif entrypoint:
-        author = _tier_popup(env, layout, team)
+        author = _tier_popup(env, layout, api, team)
     elif env.get("HERDR_PANE_ID"):
         author = _tier_pane(env, layout, api, team, as_human, require_server, team_explicit)
     else:
@@ -796,8 +831,29 @@ def resolve_author(
     return author
 
 
+def authority_refusal(action: str, author: Author) -> str:
+    """Why an authority write was refused, with the way out for a real operator.
+
+    A member is told the action is human only. A human whose shell could not be
+    verified is told how to be trusted: the console, a focused pane, or the
+    ``outside`` tier -- each still process-tree-checked, so none of them is a
+    way in for an agent.
+    """
+    if author.is_human:
+        why = " ({})".format(author.reason) if author.reason else ""
+        return ("{} needs the operator from a trusted origin, and this shell could not be verified as yours{}. "
+                "Use the team console, a focused Herdr pane, or run it outside Herdr: "
+                "env -u HERDR_PANE_ID herdr-synapse --team <team> ...").format(action, why)
+    return "{} is human only; this pane is {!r} ({})".format(action, author.name, author.via)
+
+
 def human_origin_ok(record_origin: Dict[str, Any]) -> bool:
-    """Readers: ``from:human`` is trustworthy only from console, popup, outside, or a verified shell path."""
+    """The one rule for trusting ``from: human``: console, popup, outside, or a verified shell.
+
+    Readers apply it to a record's ``origin`` (``daemon._counts_for_nudges``,
+    ``asks.answered_by``); the authority gates apply it to the author through
+    ``Author.trusted_human``. Two callers, one answer.
+    """
     via = record_origin.get("via")
     if via in (VIA_CONSOLE, VIA_CONSOLE_UNFOCUSED, VIA_POPUP, VIA_OUTSIDE):
         return True

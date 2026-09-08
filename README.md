@@ -119,7 +119,10 @@ filter: [all]  to me  requests  human  system  (Tab cycles)   ? help
   document, or as JSON/JSONL for anything that wants to read it back.
 - **Attribution and an audit trail.** Peer posts arrive framed as requests,
   not orders. Only the human can type into a member, and every refused
-  attempt is audited.
+  attempt is audited. Authority — the charter, rules, instructions, manager
+  and grants — is taken from an origin Herdr can vouch for, never from a name:
+  a process inside an agent's pane is that agent whatever its environment
+  claims.
 - **A board per team, several at once.** Open each team's board in its own
   split and read them side by side. `prefix+u` opens the board of the team in
   the space you pressed it in, `b` on a team in `prefix+t` opens that one, and
@@ -518,7 +521,8 @@ A Claude member is handed exactly this by its session hook automatically. Codex
 and OpenCode have no hooks at all, so until now they got one typed line naming
 four commands and, after a compaction, nothing whatsoever — the kinds that
 needed it most were the ones that got least. They are now re-briefed like any
-other, and the typed line names `orient` instead of four commands, which is
+other — whether the operator, the member, or the harness itself compacted —
+and the typed line names `orient` instead of four commands, which is
 also shorter: 19 characters that go back to the charter headline a long-named
 member gets to read.
 

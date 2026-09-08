@@ -284,6 +284,24 @@ class GateConfig:
             values[key] = value
         return cls(**values)
 
+    @classmethod
+    def from_mapping_lenient(cls, overrides: Optional[Mapping[str, Any]]) -> Tuple["GateConfig", List[str]]:
+        """``from_mapping`` that skips unknown keys and names them instead of rejecting the mapping.
+
+        The strict form is right for a caller that typed the mapping just now.
+        It was wrong for the daemon reading ``team.json``: one misspelt key
+        there threw every other override back to the defaults, silently, and
+        the workaround was to keep new settings out of ``config.gate``
+        altogether (``config.ask`` lives beside it for exactly that reason).
+        """
+        if overrides is None:
+            return cls(), []
+        if isinstance(overrides, cls):
+            return overrides, []
+        known = {f.name for f in fields(cls)}
+        unknown = sorted(str(k) for k in overrides if k not in known)
+        return cls.from_mapping({k: v for k, v in overrides.items() if k in known}), unknown
+
 
 DEFAULT_CONFIG = GateConfig()
 

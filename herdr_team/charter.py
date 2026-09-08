@@ -27,7 +27,7 @@ from typing import Any, Dict, List, Optional
 from herdr_team import sanitize as _sanitize
 from herdr_team import store
 from herdr_team.errors import EXIT_REFUSED, HerdrTeamError
-from herdr_team.identity import Author, audit
+from herdr_team.identity import Author, audit, authority_refusal
 from herdr_team.paths import Layout, TeamPaths, canonicalize, check_not_symlink, ensure_team_dirs
 from herdr_team import instructions_doc as _doc
 from herdr_team import roster as _roster
@@ -104,7 +104,9 @@ def require_human(layout: Layout, team: str, author: Author, action: str) -> Non
     the trail says who really typed it. Everything else is
     ``author_mismatch``, also audited.
     """
-    if author.is_human:
+    # ``trusted_human``, not ``is_human``: the name alone was what a forged
+    # entrypoint variable used to satisfy (review, 2026-09-08).
+    if author.trusted_human:
         return
     if getattr(author, "operator", False):
         audit(layout, team, "operator_action", author, {"action": action, "resolved": author.name, "via": author.via})
@@ -112,7 +114,7 @@ def require_human(layout: Layout, team: str, author: Author, action: str) -> Non
     audit(layout, team, "author_mismatch", author, {"action": action, "resolved": author.name, "via": author.via})
     raise HerdrTeamError(
         "author_mismatch",
-        "{} is human only; this pane is {!r} ({})".format(action, author.name, author.via),
+        authority_refusal(action, author),
         EXIT_REFUSED,
         {"action": action, "author": author.name, "via": author.via, "pane_id": author.pane_id},
     )

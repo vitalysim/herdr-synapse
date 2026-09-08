@@ -736,6 +736,12 @@ def view_label(teams: List[str]) -> str:
     return "team:{}".format("+".join(teams))[:VIEW_LABEL_MAX_TWO]
 
 
+def write_view_state(layout: Layout, teams: List[str]) -> None:
+    """Record that our view is showing ``teams`` (``view.json``), for ``view_state`` and for dissolve."""
+    _paths.ensure_session_dirs(layout.session)
+    store.write_json(layout.session.view_json, {"view": "on", "source": VIEW_SOURCE, "label": view_label(teams), "socket": os.fspath(layout.socket), "teams": teams, "set_at": now_iso()})
+
+
 def view_request(teams: List[str]) -> Dict[str, Any]:
     """The ``agent.view.set`` params of plan section 11: ``team == X OR status in [blocked]``."""
     team_filters = [{"op": "eq", "field": {"token": "team"}, "value": t} for t in teams]
@@ -812,8 +818,7 @@ def _run_view(args: argparse.Namespace) -> int:
         if not teams:
             raise HerdrTeamError("team_not_found", "no team exists in this session; nothing to show", EXIT_REFUSED)
         api.request("agent.view.set", view_request(teams))
-        _paths.ensure_session_dirs(layout.session)
-        store.write_json(layout.session.view_json, {"view": "on", "source": VIEW_SOURCE, "label": label, "socket": os.fspath(layout.socket), "teams": teams, "set_at": now_iso()})
+        write_view_state(layout, teams)
     else:
         if owner in ("own", "foreign"):
             try:

@@ -16,6 +16,13 @@ Conventions used below:
   (`workspace_id` on its roster rows, matched against `HERDR_WORKSPACE_ID` /
   the plugin context / the `<workspace>:<pane>` prefix of `HERDR_PANE_ID`).
   Zero teams or two in one space infer nothing and the next rule decides.
+- **Human only** means the operator from a *trusted origin*: the team console,
+  a popup, outside Herdr, or a shell pane whose ancestry Herdr confirmed
+  (`Author.trusted_human`, the same `human_origin_ok` rule readers apply to a
+  record). A shell Herdr cannot verify still posts, rendered `(unverified)`,
+  but every authority write refuses it with `author_mismatch` and names the
+  way in. A process inside an agent's pane resolves as that agent on every
+  tier, whatever `HERDR_PANE_ID` or `HERDR_PLUGIN_ENTRYPOINT_ID` say.
 - `record` means a board record exactly as stored (plan 6.1, schema v1).
 - `member` means the roster member object from `team.json` (plan 5.1) with
   `brief` included only in `who --json` and `me`.
@@ -1120,6 +1127,15 @@ On an answer: exit 0, `{"waited":true,"answer":{"seq","from","text"}}`. On a
 timeout: **exit 6**, code `wait_no_answer` — distinct from `EXIT_REFUSED` so an
 agent can tell "nobody answered" from "the post was rejected" without reading
 prose. The post stays on the board either way.
+
+While waiting, `warning: still waiting for the operator (30s of 480s)` goes to
+stderr every 30 s (`WAIT_HEARTBEAT_S`); stdout is untouched, so `--json` still
+prints exactly one object. Only a reply from a trusted human origin ends the
+wait (`asks.answered_by`); a peer's reply or an unverified shell's does not.
+
+`--wait` without `--to human`, or from the operator, is a usage error (exit 2)
+and appends nothing. A `question` sent `--to all` is not an ask: it is for
+teammates, and it neither pops up nor blocks.
 
 A waiting agent shows `working`, so gate 5 holds every nudge for it and the
 idle sweep skips it. The one thing that still reaches it is `--interrupt`.

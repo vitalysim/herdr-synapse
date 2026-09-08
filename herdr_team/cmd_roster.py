@@ -102,14 +102,14 @@ SKILL_INSTALL_PATHS = (".agents/skills/herdr-synapse/SKILL.md", ".claude/skills/
 
 
 def _human_only(layout: Layout, team: str, author: Author, action: str) -> None:
-    """The operator, or a member the operator delegated to; see ``charter.require_human``."""
-    if author.is_human:
+    """The operator from a trusted origin, or a member the operator delegated to; see ``charter.require_human``."""
+    if author.trusted_human:
         return
     if getattr(author, "operator", False):
         audit(layout, team, "operator_action", author, {"action": action, "resolved": author.name, "via": author.via})
         return
     audit(layout, team, "author_mismatch", author, {"action": action, "resolved": author.name, "via": author.via})
-    raise HerdrTeamError("author_mismatch", "{} is human only; this pane is {!r} ({})".format(action, author.name, author.via), EXIT_REFUSED, {"action": action, "author": author.name, "via": author.via})
+    raise HerdrTeamError("author_mismatch", _identity.authority_refusal(action, author), EXIT_REFUSED, {"action": action, "author": author.name, "via": author.via})
 
 
 def _author(args: argparse.Namespace, layout: Layout, api: Any, team: Optional[str] = None, require_server: bool = True, as_human: bool = False) -> Author:
@@ -1029,12 +1029,12 @@ def _add_operator_arguments(parser: argparse.ArgumentParser) -> None:
 
 def _strictly_human(layout: Layout, team: str, author: Author, action: str) -> None:
     """Granting authority is the operator's alone; a delegate cannot pass its own on."""
-    if author.is_human:
+    if author.trusted_human:
         return
     audit(layout, team, "author_mismatch", author, {"action": action, "resolved": author.name, "via": author.via})
     raise HerdrTeamError(
         "author_mismatch",
-        "{} is the operator's alone; a delegated member cannot grant authority".format(action),
+        _identity.authority_refusal(action, author) if author.is_human else "{} is the operator's alone; a delegated member cannot grant authority".format(action),
         EXIT_REFUSED,
         {"action": action, "author": author.name, "via": author.via},
     )
@@ -1262,16 +1262,32 @@ def _run_dissolve(args: argparse.Namespace) -> int:
     check_write_session(args, layout, team_name)
     result = _roster.Roster(layout, team_name).dissolve(api)
     view_cleared = False
+    view_kept: List[str] = []
     if view_state(layout.session) == "on":
-        try:
-            api.request("agent.view.clear", {"source": "plugin:herdr-synapse"})
-        except HerdrTeamError:
-            pass
-        try:
-            os.unlink(layout.session.view_json)
-            view_cleared = True
-        except OSError:
-            pass
+        remaining = layout.session.list_teams()
+        if remaining:
+            # The view is one filter over every team, so it is rebuilt without
+            # this one rather than cleared: clearing took every other team off
+            # the sidebar too. The dissolved members are already gone from it
+            # -- ``Roster.dissolve`` cleared their tokens.
+            from herdr_team.cmd_misc import view_request, write_view_state
+
+            try:
+                api.request("agent.view.set", view_request(remaining))
+                write_view_state(layout, remaining)
+                view_kept = remaining
+            except HerdrTeamError:
+                pass
+        else:
+            try:
+                api.request("agent.view.clear", {"source": "plugin:herdr-synapse"})
+            except HerdrTeamError:
+                pass
+            try:
+                os.unlink(layout.session.view_json)
+                view_cleared = True
+            except OSError:
+                pass
     console = read_console_json(layout.session)
     if console.get("default_team") == team_name:
         console.pop("default_team", None)
@@ -1279,7 +1295,7 @@ def _run_dissolve(args: argparse.Namespace) -> int:
         if len(remaining) == 1:
             console["default_team"] = remaining[0]
         write_console_json(layout.session, console)
-    payload = {"team": team_name, "archived_to": result["archived_to"], "members_cleared": result["members_cleared"], "view_cleared": view_cleared}
+    payload = {"team": team_name, "archived_to": result["archived_to"], "members_cleared": result["members_cleared"], "view_cleared": view_cleared, "view_kept": view_kept}
     return emit(args, payload, "team {} archived to {}".format(team_name, result["archived_to"]))
 
 
