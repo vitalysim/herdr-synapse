@@ -222,10 +222,19 @@ class WaitTests(unittest.TestCase):
         self.addCleanup(self.ts.cleanup)
 
     def test_a_long_wait_says_it_is_still_waiting(self):
+        # A fake clock: on a slow CI runner real sleeps overshoot and the wait
+        # hit its deadline after one beat (macOS/3.9, 2026-09-08).
         seq = post(self.ts)
         beats = []
-        self.assertIsNone(cmd_board.wait_for_answer(self.ts.team, seq, 0.12, poll_s=0.01, heartbeat=beats.append, heartbeat_s=0.03))
-        self.assertGreaterEqual(len(beats), 2)
+        now = [1000.0]
+
+        def sleep(seconds):
+            now[0] += seconds
+
+        self.assertIsNone(cmd_board.wait_for_answer(self.ts.team, seq, 0.12, poll_s=0.01, sleep=sleep, heartbeat=beats.append, heartbeat_s=0.03, clock=lambda: now[0]))
+        self.assertGreaterEqual(len(beats), 3, beats)  # 0.03, 0.06, 0.09 (a fourth may squeeze in under the deadline by float drift)
+        self.assertTrue(all(0 < b <= 0.12 for b in beats), beats)
+        self.assertTrue(all(b2 - b1 >= 0.03 - 1e-6 for b1, b2 in zip(beats, beats[1:])), beats)
         self.assertTrue(all(isinstance(b, float) and b > 0 for b in beats))
         self.assertEqual(beats, sorted(beats))
 

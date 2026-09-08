@@ -1602,7 +1602,7 @@ WAIT_HEARTBEAT_S = 30.0
 
 def wait_for_answer(team: TeamPaths, seq: int, timeout_s: float, poll_s: float = ASK_POLL_S,
                     sleep=time.sleep, heartbeat: Optional[Callable[[float], None]] = None,
-                    heartbeat_s: float = WAIT_HEARTBEAT_S) -> Optional[Dict[str, Any]]:
+                    heartbeat_s: float = WAIT_HEARTBEAT_S, clock: Callable[[], float] = time.monotonic) -> Optional[Dict[str, Any]]:
     """The operator's reply to the post at ``seq``, or None once ``timeout_s`` is up.
 
     Uses a non-persisting ``BoardTailer`` rather than ``BoardStore.read``: read
@@ -1615,14 +1615,14 @@ def wait_for_answer(team: TeamPaths, seq: int, timeout_s: float, poll_s: float =
     genuine pre-submission halt got overridden on the team this was built for.
     """
     tailer = store.BoardTailer(team, start_seq=seq, persist=False)
-    started = time.monotonic()
+    started = clock()
     deadline = started + max(0.0, timeout_s)
     next_beat = started + heartbeat_s
     while True:
         for record in tailer.poll():
             if _asks.answered_by(record) == seq:
                 return record
-        now = time.monotonic()
+        now = clock()
         if now >= deadline:
             return None
         if heartbeat is not None and now >= next_beat:
