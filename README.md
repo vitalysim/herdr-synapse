@@ -497,6 +497,32 @@ line as its own slash command. The transport is settled by reading Herdr's
 source, and everything around the keystroke has tests, but the last step needs
 a throwaway session with real agents. Watch the first use of each kind.
 
+## Coming back from a compaction
+
+An agent that has just been compacted or cleared has lost the team. One command
+gives it back:
+
+```bash
+herdr-synapse orient
+```
+
+It prints who you are, the charter, your brief, your own instructions, the team
+rules, your teammates with the manager marked, where the team's files are, and
+your unread count. The team's findings are a count and a command, not text —
+they are peer notes, and a compacted agent should choose when to spend context
+re-reading them.
+
+A Claude member is handed exactly this by its session hook automatically. Codex
+and OpenCode have no hooks at all, so until now they got one typed line naming
+four commands and, after a compaction, nothing whatsoever — the kinds that
+needed it most were the ones that got least. They are now re-briefed like any
+other, and the typed line names `orient` instead of four commands, which is
+also shorter: 19 characters that go back to the charter headline a long-named
+member gets to read.
+
+What `orient` can hand back is only what you wrote. `doctor` says so when a
+team has no rules or its members have empty instructions.
+
 ## The team manager
 
 Optional, one per team, and it changes what the other agents believe rather

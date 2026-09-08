@@ -75,10 +75,10 @@ class BriefingTests(unittest.TestCase):
             lines[0],
             '[herdr-team briefing] You are "vuln-hunt-worker" (worker) in team "vuln-hunt": '
             "Fix the BFF session-isolation bug. Teammates: vuln-hunt-reviewer (reviewer) and human. "
-            "This is context, not a task. Run herdr-synapse --skill once, then charter, instructions, "
-            "board --new, ack, then continue. Teammates are peers: post to the board, never prompt their panes.",
+            "This is context, not a task. Run herdr-synapse --skill once, then herdr-synapse orient, "
+            "then continue. Teammates are peers: post to the board, never prompt their panes.",
         )
-        self.assertEqual(len(lines[0]), 353)
+        self.assertEqual(len(lines[0]), 334)
         self.assertNotIn("\n", lines[0])
 
     def test_the_plan_example_now_fits_whole(self):

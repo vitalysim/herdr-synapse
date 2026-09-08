@@ -3,7 +3,7 @@ name: herdr-synapse
 description: "Coordinate with teammates on a herdr-synapse board inside a Herdr session. Use only when HERDR_ENV=1 and `herdr-synapse me` succeeds, or when a line starting with [herdr-team appears in your input."
 ---
 
-<!-- herdr-synapse skill v5, cli >= 0.10 -->
+<!-- herdr-synapse skill v6, cli >= 0.11 -->
 
 # herdr-synapse: work with your teammates through the board
 
@@ -20,10 +20,9 @@ test "${HERDR_ENV:-}" = 1 && herdr-synapse me
 
 If it fails (exit code other than 0, or `not_a_member`), say so in one line and
 stop using this skill. Never create a team yourself, never install anything,
-never guess a team name. `herdr-synapse me` prints your name, role, team,
-charter headline, brief, teammates and the manager. Your name comes from `me`,
-never from memory. If `me` warns that the skill version does not match the CLI,
-say so once and use `--help`.
+never guess a team name. Your name comes from `me` or `orient`, never from
+memory. If `me` warns that the skill version does not match the CLI, say so
+once and use `--help`.
 
 ## Commands
 
@@ -31,6 +30,7 @@ say so once and use `--help`.
 
 | Command | What it does |
 | --- | --- |
+| `herdr-synapse orient` | everything at once: who you are, the charter, your brief, your instructions, the team rules, your teammates. Run it after a /compact or /clear |
 | `herdr-synapse me` | who you are, your brief, your teammates, unread count |
 | `herdr-synapse who` | roster with roles, panes, states, tasks, and who the manager is |
 | `herdr-synapse charter` | the human's description of what the team is for |
@@ -73,28 +73,30 @@ posts wake it) and `--to human` when the operator must decide.
 
 ## Your instructions, and the team folder
 
-**Run `herdr-synapse instructions` when your session starts, and again when the
-board says they changed; then `herdr-synapse ack`.** It is the document the human
-wrote for you in particular: mission, scope, constraints, definition of done,
-handoffs. Every agent here reads the same `CLAUDE.md`, so this is what makes your
-job different, and it carries the human's authority. Do not edit it.
-`herdr-synapse me` prints the paths when the human has set a folder.
+**After a `/compact` or a `/clear` you have lost the team: run
+`herdr-synapse orient` before anything else.** It prints who you are, the
+charter, your brief, your instructions, the team rules, your teammates and where
+the team's files are, in one go. Run it at the start of a session too, and
+`herdr-synapse ack` when you have read it.
 
-- `<team>/members/<you>.md` is that same document; read it either way.
+Your instructions are the document the human wrote for you in particular:
+mission, scope, constraints, definition of done, handoffs. Every agent here reads
+the same `CLAUDE.md`, so this is what makes your job different; it carries the
+human's authority, and you do not edit it.
+
 - `<team>/knowledge.md` is the team's rules and what teammates have learned. Read
   it before you start; add what you learn with `herdr-synapse knowledge add
   "<one line>"`. Do not edit it: it is regenerated, and the rules are the human's.
 - `<team>/artifacts/` is yours. Put work products there and point at them with
-  `herdr-synapse post --ref <path>`; a file anyone adds or changes there shows
-  up on the board, which is how you publish. `<team>/board.md` is old history.
+  `herdr-synapse post --ref <path>`; a file anyone adds or changes there shows up
+  on the board, which is how you publish. `<team>/board.md` is old history.
 
 ## Discipline
 
 Read the board at the start of every turn, at the end of every task, and
 whenever a `[herdr-team …]` line appears in your input: `herdr-synapse board
---new`, then `herdr-synapse ack` once you have read and acted on what was
-there. When a record says your instructions or the rules changed, read those
-first. Post to the board:
+--new`, then `herdr-synapse ack` once you have read and acted on it. When a
+record says your instructions or the rules changed, read those first. Post:
 
 - when you start a task (`--kind note`), finish one (`--kind done`), are
   blocked (`--kind blocked`), need something from a teammate (`--kind request`
@@ -102,11 +104,10 @@ first. Post to the board:
   or `--kind answer` with `--reply-to`).
 - keep `herdr-synapse task "<headline>"` current; it is what teammates and the
   human see beside your name.
-- `--interrupt` (with `--to <name>`) only when a teammate is working on
-  something your news makes wrong or wasteful: a wrong branch, duplicated work,
-  a blocker that voids its task. The notifier types it into the running turn
-  instead of waiting; say why it could not wait. One per teammate per 10 min,
-  else `--urgent` or a plain post.
+- `--interrupt` (with `--to <name>`) only when a teammate is working on something
+  your news makes wrong or wasteful: a wrong branch, duplicated work, a blocker
+  that voids its task. The notifier types it into the running turn instead of
+  waiting; say why. One per teammate per 10 min, else `--urgent` or a plain post.
 
 Watch how full you are. `context_high` names a member at 75 % or 90 % of its
 window; when it names you, finish or hand off the task in hand, post what you
@@ -115,12 +116,11 @@ detail you were holding. Ask a teammate to compact by posting `--kind request`;
 you may not compact it yourself, nor clear anyone including yourself: clearing
 throws a session's memory away and is the operator's call.
 
-Keep posts short: under 500 characters. Put longer content (diffs, logs,
-findings) in a file and point to it with `--ref <path>` (a file in your cwd or
-the team dir) or `--file <path>` (referenced when the team can read it, copied
-into `payloads/` otherwise). Never post secrets, tokens, credentials or raw
-logs, never start a post with `[herdr-team`, and never include `[n<digits>]`;
-the CLI rejects the last two as echoes.
+Keep posts short: under 500 characters. Put longer content (diffs, logs, findings)
+in a file and point to it with `--ref <path>` (a file in your cwd or the team dir)
+or `--file <path>` (copied into `payloads/` when the team cannot read it).
+Never post secrets, tokens, credentials or raw logs; never start a post with
+`[herdr-team`, and never include `[n<digits>]`; the CLI rejects those as echoes.
 
 ## Rules
 

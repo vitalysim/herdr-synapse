@@ -263,8 +263,16 @@ record shape, so an export goes back into any tool that reads a board file.
    naming the member and the team. The skill (v4) tells it to finish or hand
    off its task, post what it learned, then `compact --self`. See section 6a.
 
+6. **`herdr-synapse orient`**: the same block the Claude hook injects, on
+   demand, for any kind. This is what a member runs after a `/compact` or a
+   `/clear`, and what the typed briefing points at. One builder
+   (`cmd_hooks.brief_context`), two callers, pinned byte-identical by a test —
+   the hook is the only channel Claude has and the command is the only channel
+   Codex and OpenCode have, and a drift between them would surface exactly
+   when an agent is already lost.
+
 **Verified**: SK-01, SK-02 (a Claude ran `who` and posted the roster with
-roles), SK-11, SK-12.
+roles), SK-11, SK-12, plus `tests/test_orient.py`.
 
 ## 5. The board
 
@@ -474,6 +482,28 @@ that existed on the board and reached nobody.
 invariant, the authority split, the record's addressing and urgency, both
 delivery halves, the gate lifting only the broadcast hold, the briefing budget,
 `who`/`me`/hooks/picker). Live on `clickhouse-hunt`.
+
+## 5c. Coming back from a compaction
+
+What a member gets back depends on its kind, and that asymmetry is the whole
+reason `orient` exists:
+
+| Kind | On a clear | On a compaction |
+| --- | --- | --- |
+| Claude | new session id → generation bump, `briefed_at` cleared, `member_restarted`, a briefing job; **and** the SessionStart hook re-injects the full block | same session id with `source=compact` → `briefed_at` cleared and a briefing job (no generation bump, it is not a restart); the hook fires again |
+| Codex, OpenCode | new session id → the same roster handling, but the typed briefing is the **only** channel: no hooks exist for these kinds | no session change at all. The only sign is the token count falling past `CONTROL_DROP_RATIO`, seen by `_check_context_drop` |
+
+Until 0.11.0 that last cell did nothing but append a record: a compacted Codex
+or OpenCode member was **never re-briefed**, so the two kinds with no hooks —
+the ones for which the typed line is the only channel there is — were exactly
+the ones that got nothing back. `_note_compacted` now clears `briefed_at` and
+enqueues a briefing whatever the kind; the Claude path reaches the same
+function with `briefed_at` already cleared, so it is a no-op there.
+
+`rt.rebriefed`, the once-only allowance for a briefing nobody acknowledged, is
+now reset when a briefing lands. Nothing ever put it back, so the second clear
+or compaction of a member's life got one attempt and then gave up for as long
+as the notifier lived.
 
 ## 6a. Context windows
 

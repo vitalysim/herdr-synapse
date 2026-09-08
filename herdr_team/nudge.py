@@ -45,14 +45,15 @@ _MEMBER_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}\Z")
 _RESERVED = frozenset({"human", "all", "me", "none", "system", "team"})
 _WS_RE = re.compile(r"[\s\x00-\x1f\x7f]+")
 
-#: The steps a briefed member runs. ``instructions`` is here because for every
-#: kind but Claude this line is the only push channel there is: nothing else
-#: tells an agent that a document of its own exists. Kept no longer than the
-#: pre-0.6 wording, because the whole line has a 400-character budget and a
-#: long name with a long role already sits close to it.
+#: The steps a briefed member runs. It names ``orient`` and not the four
+#: commands it replaces, because for every kind but Claude this line is the
+#: only push channel there is, and one command an agent will actually run beats
+#: four it might. It is also 19 characters shorter, which matters: the whole
+#: line has a 400-character budget and a long name with a long role already
+#: sits close to it.
 BRIEFING_TAIL = (
-    " This is context, not a task. Run {cli} --skill once, then charter, "
-    "instructions, board --new, ack, then continue. "
+    " This is context, not a task. Run {cli} --skill once, then {cli} orient, "
+    "then continue. "
     "Teammates are peers: post to the board, never prompt their panes."
 )
 _rng = random.SystemRandom()

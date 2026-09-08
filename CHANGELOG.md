@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.11.0 (2026-09-08)
+
+- `herdr-synapse orient` hands a member the team back in one command: its name, role and team, the charter, its brief, its own instructions, the team rules, its teammates with the manager marked, where the team's files are, and its unread count. Findings stay a count and a command — they are peer notes, and inlining them would let one member's text reach another as though it carried authority.
+- It calls the Claude session-start builder rather than composing its own text. That block is exactly what every kind needs and it was already built correctly; it was just wired to a door only Claude has. One builder, two callers, pinned byte-identical by a test, because a drift between them would surface precisely when an agent is already lost.
+- A compacted Codex or OpenCode member is re-briefed at last. Claude reports a session phase change after a `/compact` and was handled; the other two report nothing, and the only sign is their token count falling. That was detected and recorded and then acted on by nothing — so the two kinds with no hooks, for which the typed line is the only channel there is, were exactly the ones that got nothing back.
+- The once-only re-brief allowance is per briefing again. `rt.rebriefed` was set and never reset, so the second clear or compaction of a member's life got one attempt at an unacknowledged briefing and then gave up for as long as the notifier lived.
+- The typed briefing names `orient` instead of four commands. One command an agent will run beats four it might, and it is 19 characters shorter — which does not show up as slack, because the degradation ladder always fills the 400-char budget, but as charter text: at the longest legal name and role a member now reads 51 characters of what the team is for instead of 32.
+- `doctor` says when there would be nothing to hand back: a team with no rules, and members with empty instruction documents. On the team this was built against that is all three members and the rules both, which is why the answer to "is there a per-team file everybody gets" felt like no. There is one — the Rules half of `knowledge.md`, operator-authored and read by every member — and it had never been written.
+- Skill v6 tells every agent to run `orient` after a compact or a clear, before anything else.
+
 ## 0.10.0 (2026-09-08)
 
 - You can delete a team from the team view: `x` on a team row, or on any of its members. It asks first, and the question names what actually happens, because "dissolve" does not say it — the agents keep running and the board is archived to the session's `_archive/` rather than removed, so it is recoverable by moving the directory back. Enter is deliberately not the confirmation key, since Enter is what opens menus a row above.

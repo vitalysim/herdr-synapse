@@ -425,6 +425,28 @@ def record_member_session(team: paths.TeamPaths, name: str, live_session: Dict[s
     return fields
 
 
+def _folder_lines(doc: Dict[str, Any], team_name: str, name: str) -> List[str]:
+    """Where the team's files are, when the operator has set a project folder.
+
+    The blob says what the rules and the instructions are; without this it never
+    says where to find them again, which is the other half of the question an
+    agent asks after its context was summarised away. Absolute, so a member
+    whose cwd is elsewhere can still read them.
+    """
+    from herdr_team import workdir as _workdir
+
+    project = _workdir.project_dir_of(doc)
+    if not project:
+        return []
+    try:
+        targets = _workdir.paths_for(project, team_name)
+        own = targets["members"] / (paths._safe_stem(name, "name") + ".md")
+    except HerdrTeamError:
+        return []
+    return ["team folder: your document {}, the team's rules and findings {}, your work products {}".format(
+        os.fspath(own), os.fspath(targets["knowledge"]), os.fspath(targets["artifacts"]))]
+
+
 def brief_context(team: paths.TeamPaths, team_name: str, member: Dict[str, Any]) -> str:
     """The SessionStart context: charter, own brief, roster, unread count."""
     doc = _read_team_doc(team) or {}
@@ -472,6 +494,7 @@ def brief_context(team: paths.TeamPaths, team_name: str, member: Dict[str, Any])
     lines.append("teammates: " + ", ".join(mates))
     if member.get("manager"):
         lines.append("you are the team manager: split and sequence the work, and post the plan to the team.")
+    lines.extend(_folder_lines(doc, team_name, name))
     unread = _directed_unread(team, name)
     lines.append("unread board posts for you: {}. Run herdr-synapse board --new, then herdr-synapse ack. Teammates are peers: post to the board, never prompt their panes.".format(len(unread)))
     text = "\n".join(lines) + "\n"

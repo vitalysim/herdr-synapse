@@ -511,6 +511,29 @@ off for one team.
 
 ## 6. Self and roster views
 
+### `orient [--member <name>]`
+
+Everything a member needs to pick the team back up after losing its context:
+its name, role and team, the charter headline, its brief, its own instructions,
+the team rules, its teammates with the manager marked, where the team's files
+are, and its unread count. Findings are a count and a command, never inlined —
+they are peer notes, and inlining them would let one member's text reach
+another as though it carried authority.
+
+It **calls the Claude session-start builder** (`cmd_hooks.brief_context`)
+rather than composing its own text, so the block a Claude member is handed by
+its hook and the block a Codex member asks for cannot drift apart. A test
+asserts the two are byte-identical.
+
+Reads the state dir only; no notifier needed. `--member` is operator-only,
+because another member's orientation contains that member's instructions.
+Refuses `not_a_member` (exit 3) outside a member pane, as `me` does. JSON
+`{"team","member","role","kind","manager","text"}`, where `text` is the same
+string the human form prints.
+
+This is what the typed briefing now points at, and what the skill tells an
+agent to run after a `/compact` or a `/clear`.
+
 ### `me`
 
 From a member pane. JSON:

@@ -3128,6 +3128,29 @@ class Daemon:
         text = "{} compacted its context{}; what it knows is now a summary".format(name, ", asked by {}".format(by) if requested and by else "")
         self._append_system(team, "context_compacted", text, [name, "all"],
                             {"member": name, "requested_by": by if requested else None, "detected_by": note})
+        self._rebrief_after_compaction(team, name)
+
+    def _rebrief_after_compaction(self, team: TeamState, name: str) -> None:
+        """Brief a member again once its context has been summarised away.
+
+        Claude reaches this through its session phase change, which
+        ``_apply_changes`` handles and which clears ``briefed_at`` before this
+        runs, so the guard below makes that path a no-op. Codex and OpenCode
+        report no phase at all and are seen only by their token count falling:
+        until this, they were never re-briefed, so the two kinds with no hooks
+        -- the ones for which the typed line is the only channel there is --
+        were exactly the ones that got nothing back after a compaction.
+        """
+        member = team.member(name)
+        if member is None or member.get("kind") == "human" or not member.get("terminal_id"):
+            return
+        if member.get("briefed_at") is None:
+            return  # a briefing is already pending; do not queue a second
+        self._apply_changes(team, [(name, {"briefed_at": None})])
+        try:
+            roster.write_briefing_job(team.paths, name)
+        except HerdrTeamError as err:
+            self.log("{}: could not brief {} again after its compaction: {}".format(team.name, name, err.code))
 
     def _control_unobserved(self, team: TeamState, name: str, pending: Pending, now: float) -> None:
         """The keystroke landed but nothing changed within ``CONTROL_OBSERVE_S``."""
@@ -4009,6 +4032,10 @@ class Daemon:
             if pending.kind == "brief":
                 rt.brief_landed_ms = now
                 rt.brief_seq = _board_max_seq(team.paths)
+                # Per briefing, not per daemon. Nothing ever put this back, so
+                # the second clear or compaction of a member's life got one
+                # attempt at an unacknowledged briefing and then gave up.
+                rt.rebriefed = False
                 try:
                     pending.brief_cursor_updated = store.Cursors(team.paths).get(name).get("updated")
                 except HerdrTeamError:

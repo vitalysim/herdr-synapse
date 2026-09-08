@@ -271,6 +271,45 @@ def _setup_toast_probe(args: argparse.Namespace) -> Tuple[Optional[str], Dict[st
     return delivery, probe
 
 
+def teams_with_nothing_to_restore(layout: Any) -> List[str]:
+    """Teams whose members would learn almost nothing from ``orient``.
+
+    ``orient`` can only hand back what the operator wrote. A team with no rules
+    and no instructions gives a compacted member its name and the charter
+    headline and little else, which looks like the command is broken when it is
+    the team that is empty. Naming it here is cheaper than finding out after an
+    agent has lost the plot.
+    """
+    from herdr_team import charter as _charter
+
+    out: List[str] = []
+    try:
+        names = sorted(p.name for p in layout.session.teams_dir.iterdir() if p.is_dir())
+    except OSError:
+        return out
+    for name in names:
+        try:
+            doc = store.read_json(layout.team(name).team_json)
+        except (HerdrTeamError, OSError, ValueError):
+            continue
+        if not isinstance(doc, dict):
+            continue
+        members = [m for m in doc.get("members") or [] if isinstance(m, dict) and m.get("kind") != "human" and m.get("status") != "left"]
+        if not members:
+            continue
+        try:
+            rules = _charter.get_rules(layout, name) or ""
+        except (HerdrTeamError, OSError):
+            rules = ""
+        empty = [str(m.get("name")) for m in members if not (_charter.get_instructions(layout, name, str(m.get("name"))) or "").strip()]
+        if not rules.strip():
+            out.append("team {} has no rules; every member reads them: herdr-synapse knowledge set \"...\"".format(name))
+        if empty:
+            out.append("team {}: {} of {} members have empty instructions ({}); herdr-synapse instructions <name> --set \"...\"".format(
+                name, len(empty), len(members), ", ".join(empty[:3]) + ("…" if len(empty) > 3 else "")))
+    return out
+
+
 def unwritable_project_dirs(layout: Any) -> List[str]:
     """Teams whose project directory has gone away or turned read-only.
 
@@ -453,6 +492,8 @@ def _run_doctor(args: argparse.Namespace) -> int:
     elif sidebar_missing_context(layout.config_dir):
         warnings.append("sidebar rows predate the context gauge; run: herdr-synapse setup --print-config, re-paste the block, then herdr server reload-config")
     for line in unwritable_project_dirs(layout):
+        warnings.append(line)
+    for line in teams_with_nothing_to_restore(layout):
         warnings.append(line)
     for grant in _operator.active_all(layout.session):
         # Authority nobody remembers granting is the failure mode worth naming.

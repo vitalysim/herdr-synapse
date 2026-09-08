@@ -1357,6 +1357,50 @@ def skill_installed_version(env: Dict[str, str]) -> Optional[int]:
     return None
 
 
+def _add_orient_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--member", metavar="NAME", help="orient somebody else (operator only)")
+
+
+def _run_orient(args: argparse.Namespace) -> int:
+    """Everything a member needs to pick the team back up after losing its context.
+
+    Deliberately *calls* the Claude session-start builder rather than composing
+    its own: a Claude member is handed that block by its hook, and every other
+    kind has no hook at all and must ask for it. Two renderings of the same
+    facts would drift, and the one that drifted would be the one nobody reads
+    until an agent is already lost.
+    """
+    from herdr_team import cmd_hooks as _hooks
+
+    layout = layout_for(args)
+    api = api_for(args, layout)
+    author = _author(args, layout, api, require_server=False)
+    team_name = author.team
+    name = author.name
+    if args.member and args.member != author.name:
+        # Reading somebody else's orientation means reading their instructions,
+        # which are theirs and the operator's; a member gets its own only.
+        _human_only(layout, team_name or "", author, "orient --member")
+        team_name = _team_arg(args, layout, None)
+        name = args.member
+    elif not author.is_member or not team_name:
+        raise HerdrTeamError("not_a_member", "orient runs from a member pane; you are {}".format(author.name), EXIT_UNREACHABLE,
+                             {"author": author.name, "via": author.via,
+                              "hint": "known teams: {}".format(", ".join(layout.session.list_teams()) or "none")})
+    team_paths = layout.team(team_name)
+    doc = load_doc(team_paths)
+    member = next((m for m in members_of(doc) if m.get("name") == name), None)
+    if member is None or member.get("status") == "left":
+        raise HerdrTeamError("member_not_found", "{!r} is not a member of team {!r}".format(name, team_name), EXIT_REFUSED,
+                             {"name": name, "team": team_name})
+    text = _hooks.brief_context(team_paths, team_name, dict(member))
+    payload = {
+        "team": team_name, "member": name, "role": member.get("role"), "kind": member.get("kind"),
+        "manager": bool(member.get("manager")), "text": text,
+    }
+    return emit(args, payload, text.rstrip("\n"))
+
+
 def _run_me(args: argparse.Namespace) -> int:
     layout = layout_for(args)
     api = api_for(args, layout)
@@ -1710,6 +1754,7 @@ COMMANDS: List[Command] = [
     Command("teams", "list the teams of this session (works offline)", _no_arguments, _run_teams),
     Command("rename", "rename a member (agent rename + roster + board note)", _add_rename_arguments, _run_rename),
     Command("me", "who am I: name, role, charter, teammates, unread", _no_arguments, _run_me),
+    Command("orient", "everything you need after losing your context: identity, charter, instructions, rules, teammates", _add_orient_arguments, _run_orient),
     Command("who", "the roster with live status (reads who.json)", _add_who_arguments, _run_who),
     Command("audit", "author-mismatch and other audited events", _add_audit_arguments, _run_audit),
     Command("charter", "print, set, edit, or list the history of the team charter (human only to write)", _add_charter_arguments, _run_charter),
