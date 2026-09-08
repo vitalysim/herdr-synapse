@@ -523,6 +523,30 @@ member gets to read.
 What `orient` can hand back is only what you wrote. `doctor` says so when a
 team has no rules or its members have empty instructions.
 
+### Give it something to hand back
+
+Two documents carry your authority into every agent's context, and both are
+worth writing before you rely on any of this:
+
+```bash
+herdr-synapse knowledge set --file rules.md          # the whole team reads these
+herdr-synapse instructions <name> --file <name>.md   # this member alone
+```
+
+`knowledge set` writes the **Rules** half of `<team>/knowledge.md`. That is the
+per-team document every member gets, injected as operator authority. The other
+half of the file is **Findings**, which any member adds with `knowledge add` —
+those are peer notes, attributed and escaped, and they are pointed at rather
+than injected, so one agent's text can never reach another wearing your
+authority.
+
+`instructions <name>` writes one member's own document: mission, scope,
+constraints, definition of done, handoffs, and notes that stay private to you.
+Scope is what stops two agents auditing the same tree. You can also edit
+`<team>/members/<name>.md` in your project folder and run `instructions <name>
+--adopt`, which shows a diff first — that folder is writable by the agents
+themselves, so nothing in it reaches anyone until you adopt it.
+
 ## The team manager
 
 Optional, one per team, and it changes what the other agents believe rather
