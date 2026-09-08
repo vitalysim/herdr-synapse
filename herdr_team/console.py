@@ -610,6 +610,19 @@ def execute_intent(intent: Intent, model: ConsoleModel, state: ConsoleState, api
             typed = (out or {}).get("keystroke") if isinstance(out, dict) else None
             model.status = "{} queued for {}; the notifier types {} when it is idle".format(kind, member, typed or kind)
         return True
+    if kind == "model_set":
+        member = str(intent.args.get("member"))
+        args = ["--team", team, "model", member, str(intent.args.get("setting") or "")]
+        if intent.args.get("restart"):
+            args += ["--apply", "restart"]
+        rc, out, err = run_cli(args, env)
+        if err:
+            model.status = "model failed: {}".format(err.get("message") or err.get("code"))
+        else:
+            apply = (out or {}).get("apply") if isinstance(out, dict) else None
+            setting = (out or {}).get("setting") if isinstance(out, dict) else None
+            model.status = "{}: {} recorded; {}".format(member, setting, {"live": "the notifier types it when idle", "restart": "the notifier restarts it when idle", "next": "applies at its next resume"}.get(str(apply), "recorded"))
+        return True
     if kind == "asks":
         rc, out, err = run_cli(["--team", team, "asks"], env)
         if err:

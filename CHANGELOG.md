@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.14.0 (2026-09-08)
+
+- **Each member gets a model and a reasoning effort.** `create --new --spawn reviewer:codex --model reviewer=gpt-5.6-luna@high --model claude=opus@medium` starts the agents with those flags; `add … --model`, `models set <kind> <setting>` for team defaults, and `model <member> <setting>` afterwards. The setting is one token, `<model>[@<effort>]`, in the harness's own vocabulary — Claude `low|medium|high|xhigh|max`, Codex `minimal|low|medium|high|xhigh`, OpenCode's provider-specific variant — passed through untranslated, because `medium` should mean what the harness means by it. Resolution is member override, then the team default for the kind, then the harness default.
+- **It travels with the session.** `resume` reopens a member with the same flags, and Herdr's `agent.start` hands them to the binary verbatim, so nothing here is a shell string.
+- **Changing it while the agent runs.** Claude Code takes `/model` and `/effort` typed by the notifier, gated and idle-only like `compact`, and the job closes when the transcript reports the new model. Codex and OpenCode have picker-only commands, so a change applies at their next resume by default — or now with `--apply restart`, which exits the agent and resumes its session with the new flags. A restarted member reports the *same* session id with a new phase, the exact shape the notifier read as a compaction; an open restart claims that event first, and the exit and the return are each bounded so a member can never sit in limbo.
+- **Who may change it** (owner decision): the operator or a delegate for anyone, the team manager for anyone, a member for itself with `--self`. A change is announced to the member and the team, and `who` shows the configured setting beside what the harness actually reports, so a request that never took effect is visible rather than assumed.
+- The picker's member menu gains `9  set its model and effort`; the console gains `/model <name> <setting> [--restart]`; `me`, `orient` and the session briefing name the member's own setting. Skill v9 tells agents `me` shows it and how to ask for more.
+- Not yet verified live: that OpenCode's interactive TUI honours `--variant` (its `run` subcommand documents it; the TUI is non-strict so an unknown flag is harmless), and the Codex `/quit` → `codex resume` round trip. `docs/capabilities.md` says which rows are read from the binaries and which were seen.
+
 ## 0.13.0 (2026-09-08)
 
 The fixes from a review of 0.9.0–0.12.1. The first is the one that matters.

@@ -494,6 +494,11 @@ def brief_context(team: paths.TeamPaths, team_name: str, member: Dict[str, Any])
     lines.append("teammates: " + ", ".join(mates))
     if member.get("manager"):
         lines.append("you are the team manager: split and sequence the work, and post the plan to the team.")
+    from herdr_team import models as _models
+
+    own_setting = _models.label(*_models.effective_setting(doc.get("config"), member))
+    if own_setting:
+        lines.append("your model and effort: {} (herdr-synapse model --self <model>[@<effort>] changes them; the manager may too).".format(own_setting))
     lines.extend(_folder_lines(doc, team_name, name))
     unread = _directed_unread(team, name)
     lines.append("unread board posts for you: {}. Run herdr-synapse board --new, then herdr-synapse ack. Teammates are peers: post to the board, never prompt their panes.".format(len(unread)))

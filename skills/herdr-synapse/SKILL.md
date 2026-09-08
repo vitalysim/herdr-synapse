@@ -3,7 +3,7 @@ name: herdr-synapse
 description: "Coordinate with teammates on a herdr-synapse board inside a Herdr session. Use only when HERDR_ENV=1 and `herdr-synapse me` succeeds, or when a line starting with [herdr-team appears in your input."
 ---
 
-<!-- herdr-synapse skill v8, cli >= 0.13 -->
+<!-- herdr-synapse skill v9, cli >= 0.14 -->
 
 # herdr-synapse: work with your teammates through the board
 
@@ -112,9 +112,9 @@ record says your instructions or the rules changed, read those first. Post:
 
 Watch how full you are. `context_high` names a member at 75 % or 90 % of its
 window; when it names you, finish or hand off the task in hand, post what you
-learned, then run `herdr-synapse compact --self`. Ask a teammate to compact by
-posting `--kind request`; you may not compact it yourself, nor clear anyone
-including yourself: clearing is the operator's call.
+learned, then run `herdr-synapse compact --self`. You may not compact a peer,
+nor clear anyone. `me` shows your model and effort; `herdr-synapse model
+--self <model>[@<effort>]` changes yours, and the manager may change anyone's.
 
 Keep posts short: under 500 characters. Put longer content (diffs, logs, findings)
 in a file and point to it with `--ref <path>` (a file in your cwd or the team dir)

@@ -28,6 +28,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from herdr_team import SKILL_VERSION, VERSION
 from herdr_team import api as _api
+from herdr_team import models as _models
 from herdr_team import charter as _charter
 from herdr_team import cli as _cli
 from herdr_team import daemon as _daemon
@@ -80,9 +81,9 @@ from herdr_team.paths import Layout, TeamPaths
 from herdr_team.cli import Command
 
 MAX_LAYOUT_LEAVES = 24
-AGENT_START_TIMEOUT_MS = 60000
-AGENT_START_RETRY_S = 0.5
-AGENT_START_RETRY_WINDOW_S = 10.0
+from herdr_team.launch import (  # noqa: E402 - re-exported: tests and callers reach these here
+    AGENT_START_RETRY_S, AGENT_START_RETRY_WINDOW_S, AGENT_START_TIMEOUT_MS, _pane_terminal, _start_agent, _started_agent, agent_start_argv,
+)
 #: ``create --new``: ``starting`` members are polled by pane id this often up to the start timeout (plan 5.2).
 STARTING_POLL_S = 5.0
 #: ``--from-workspace`` waits this long for ``launch_pending`` agents to settle (RS-11: bounded by the start timeout).
@@ -444,73 +445,6 @@ def layout_pane_ids(root: Any) -> List[str]:
     return layout_pane_ids(root.get("first")) + layout_pane_ids(root.get("second"))
 
 
-def agent_start_argv(name: str, kind: str, pane_id: str, timeout_ms: int = AGENT_START_TIMEOUT_MS) -> List[str]:
-    return ["agent", "start", name, "--kind", kind, "--pane", pane_id, "--timeout", str(int(timeout_ms))]
-
-
-def _started_agent(stdout: str) -> Optional[Dict[str, Any]]:
-    """The ``AgentInfo`` a successful ``herdr agent start`` printed, or None.
-
-    The real CLI prints ``{"id":"cli:agent:start","result":{"type":"agent_started",
-    "agent":AgentInfo,"argv":[...]}}`` (``src/cli/agent.rs``); the envelope is
-    stripped with ``unwrap_cli_response``. Anything else (a bare ``{}`` from a
-    fake, non-JSON output, an empty line) yields None: a successful exit is
-    trusted regardless of what was printed, the pane poll settles the rest.
-    """
-    text = (stdout or "").strip()
-    if not text:
-        return None
-    try:
-        parsed = json.loads(text)
-    except ValueError:
-        return None
-    try:
-        result = _api.unwrap_cli_response(parsed, ["agent", "start"])
-    except HerdrTeamError:
-        return None
-    if isinstance(result, dict) and result.get("type") not in (None, "agent_started"):
-        return None
-    return _api.agent_of(result)
-
-
-def _start_agent(api: Any, name: str, kind: str, pane_id: str, sleep: Any = None) -> Dict[str, Any]:
-    """``herdr agent start`` with the plan's ``agent_pane_busy`` retry (500 ms for 10 s).
-
-    Returns ``{"pane_id", "started", "terminal_id", "agent"}``; ``terminal_id``
-    and ``agent`` come from the CLI's ``agent_started`` result when it printed
-    one (``_started_agent``) and are None otherwise.
-    """
-    import time as _time
-
-    sleeper = sleep if sleep is not None else _time.sleep
-    deadline = _time.monotonic() + AGENT_START_RETRY_WINDOW_S
-    while True:
-        result = api.run(agent_start_argv(name, kind, pane_id), timeout=(AGENT_START_TIMEOUT_MS / 1000.0) + 5.0)
-        if result.ok:
-            agent = _started_agent(result.stdout)
-            terminal_id = str(agent["terminal_id"]) if agent and agent.get("terminal_id") else None
-            return {"pane_id": pane_id, "started": True, "terminal_id": terminal_id, "agent": agent}
-        text = (result.stderr or "") + (result.stdout or "")
-        if "agent_pane_busy" in text and _time.monotonic() < deadline:
-            try:
-                api.request("agent.get", {"target": pane_id})
-                raise HerdrTeamError("agent_pane_busy", "pane {} already hosts an agent".format(pane_id), EXIT_REFUSED, {"pane_id": pane_id})
-            except HerdrTeamError as err:
-                if err.code != "agent_not_found":
-                    raise
-            sleeper(AGENT_START_RETRY_S)
-            continue
-        raise HerdrTeamError("agent_start_failed", "agent start {} in {} failed: {}".format(name, pane_id, text.strip()[:300]), EXIT_REFUSED, {"pane_id": pane_id, "name": name})
-
-
-def _pane_terminal(api: Any, pane_id: str) -> Optional[str]:
-    try:
-        pane = api.request("pane.get", {"pane_id": pane_id}).get("pane")
-    except HerdrTeamError:
-        return None
-    return str(pane["terminal_id"]) if isinstance(pane, dict) and pane.get("terminal_id") else None
-
-
 def _toast_job(team_paths: TeamPaths, author: Author, title: str, body: str) -> Optional[str]:
     """The CLI never calls ``notification.show``; it asks the daemon through a ``toast`` job."""
     try:
@@ -553,13 +487,14 @@ def _spawn_member(layout: Layout, api: Any, team: _roster.Team, team_paths: Team
         workspace_id=pane_id.split(":")[0] if ":" in pane_id else None, tab_id=None, label=label, cwd=leaf.get("cwd"),
         brief=_roster._sanitize_brief(brief) if brief else None, managed=True, status="starting", generation=1, delivery="nudge",
         verified_kind=_roster._kind_verified(layout, kind), joined_at=_roster.now_iso(), last_seen_at=None,
+        model=leaf.get("model"), effort=leaf.get("effort"),
     )
     saved, _prev = roster.add_member(member, steal=args.steal, socket=os.fspath(layout.socket))
     team.members = saved.members
     team.revision = saved.revision
     out: Dict[str, Any] = {"member": _member_json(member, False), "job": None}
     try:
-        started = _start_agent(api, name, kind, pane_id)
+        started = _start_agent(api, name, kind, pane_id, args=_models.launch_args(kind, leaf.get("launch_model"), leaf.get("launch_effort")))
         started_terminal = started.get("terminal_id")
         if started_terminal and started_terminal != member.terminal_id:
             # the CLI's agent_started result names the terminal the agent runs in;
@@ -631,6 +566,34 @@ def _add_create_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--workspace", metavar="ID", help="workspace for --new (default: the current one)")
     parser.add_argument("--spawn", action="append", default=[], metavar="ROLE:KIND[:CWD]")
     parser.add_argument("--manager", metavar="NAME", help="the member that coordinates the team (see: herdr-synapse manager)")
+    parser.add_argument("--model", action="append", default=[], metavar="ROLE|KIND=MODEL[@EFFORT]",
+                        help="a member's model and effort (by --spawn role), or the team default for a kind (claude=opus@medium, codex=gpt-5.6-luna@high)")
+
+
+def parse_model_args(items: List[str]) -> Tuple[Dict[str, Tuple[Optional[str], Optional[str]]], Dict[str, Tuple[Optional[str], Optional[str]]]]:
+    """``--model KEY=MODEL[@EFFORT]`` entries split into kind defaults and member overrides.
+
+    A key that is a supported kind (``claude``) is a team default; a key that
+    is some other kind label is refused now rather than at spawn, because
+    nothing verified can be passed to it; anything else is a ``--spawn`` role
+    (or a member name), checked against the spawn list by the caller.
+    """
+    defaults: Dict[str, Tuple[Optional[str], Optional[str]]] = {}
+    members: Dict[str, Tuple[Optional[str], Optional[str]]] = {}
+    for item in items:
+        key, sep, setting = str(item).partition("=")
+        key = key.strip()
+        if not sep or not key:
+            raise UsageError("--model expects <role|kind>=<model>[@<effort>], for example claude=opus@medium or reviewer=@high")
+        model, effort = _models.parse_setting(setting)
+        if key in _models.KINDS:
+            _models.validate(key, model, effort)
+            defaults[key] = (model, effort)
+        elif key in _roster.KIND_LABELS:
+            _models.validate(key, model, effort)  # raises model_unsupported
+        else:
+            members[key] = (model, effort)
+    return defaults, members
 
 
 def _run_create(args: argparse.Namespace) -> int:
@@ -662,6 +625,12 @@ def _run_create(args: argparse.Namespace) -> int:
     existing_paths = layout.team(team_name)
     if existing_paths.team_json.is_file() and not args.reuse:
         raise HerdrTeamError("team_exists", "team {!r} already exists (use --reuse)".format(team_name), EXIT_REFUSED, {"team": team_name})
+    model_defaults, model_members = parse_model_args(list(getattr(args, "model", None) or []))
+    existing_models = {}
+    if existing_paths.team_json.is_file():
+        existing_config = _roster.load_team(existing_paths).config
+        existing_models = existing_config.get("models") if isinstance(existing_config.get("models"), dict) else {}
+    args._model_defaults = model_defaults
 
     # Phase 1: resolve and validate everything before any write.
     specs: List[_JoinSpec] = []
@@ -675,9 +644,19 @@ def _run_create(args: argparse.Namespace) -> int:
             roles_seen.append(role)
             base = _roster.derive_name(team_name, role, "plain" if names_plain else "prefixed")
             name = _roster.unique_name(base, [s["name"] for s in spawn] + _roster.live_names(api))
-            spawn.append({"role": role, "kind": kind, "cwd": cwd, "name": name})
+            override = model_members.pop(role, None) or model_members.pop(name, None) or (None, None)
+            default = model_defaults.get(kind) or (
+                (existing_models.get(kind) or {}).get("model"), (existing_models.get(kind) or {}).get("effort")) if isinstance(existing_models.get(kind), dict) else model_defaults.get(kind) or (None, None)
+            launch_model = override[0] or default[0] or None
+            launch_effort = override[1] or default[1] or None
+            _models.validate(kind, launch_model, launch_effort)  # a kind with no verified flags is refused before anything is laid out
+            spawn.append({"role": role, "kind": kind, "cwd": cwd, "name": name, "model": override[0], "effort": override[1],
+                          "launch_model": launch_model, "launch_effort": launch_effort})
         if not spawn:
             raise UsageError("--new needs at least one --spawn")
+    if model_members:
+        raise UsageError("--model names {}, which is not a --spawn role{}".format(
+            ", ".join(sorted(model_members)), "" if args.new else " (member settings need --new --spawn; use herdr-synapse model <name> for a live member)"))
     else:
         for item in args.member:
             specs.append(parse_member_spec(item))
@@ -783,6 +762,16 @@ def _create_members(args: argparse.Namespace, layout: Layout, api: Any, env: Dic
     members_out: List[Dict[str, Any]] = []
     jobs: List[str] = []
     failed: List[Dict[str, Any]] = []
+    defaults = getattr(args, "_model_defaults", None) or {}
+    if defaults:
+        def set_defaults(t: _roster.Team) -> None:
+            models = dict(t.config.get("models") or {}) if isinstance(t.config.get("models"), dict) else {}
+            for kind, (model, effort) in defaults.items():
+                models[kind] = {"model": model, "effort": effort}
+            t.config["models"] = models
+
+        team = _roster.update_team(team_paths, set_defaults)
+        audit(layout, team_name, "models_set", author, {"defaults": {k: _models.label(*v) for k, v in defaults.items()}})
     if args.new:
         request = build_layout_request(team_name, spawn, os.fspath(team_paths.root), args.workspace)
         applied = api.request("layout.apply", request, timeout=15.0)
@@ -869,6 +858,7 @@ def _add_add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--brief", metavar="TEXT")
     parser.add_argument("--steal", action="store_true")
     parser.add_argument("--rename", action="store_true")
+    parser.add_argument("--model", metavar="MODEL[@EFFORT]", help="record the member's model and effort (applies at its next resume; see herdr-synapse model)")
 
 
 def _run_add(args: argparse.Namespace) -> int:
@@ -880,7 +870,18 @@ def _run_add(args: argparse.Namespace) -> int:
     _roster.check_session(layout, team, allow_mismatch=bool(getattr(args, "socket", None)))
     spec = _JoinSpec(args.target, args.role, args.as_name, args.brief)
     validate_join_batch(team, api, [spec], team.naming == "plain", layout=layout, steal=args.steal)
+    setting = _models.parse_setting(args.model) if getattr(args, "model", None) else (None, None)
     member, job = perform_join(layout, api, team, spec, args.steal, args.rename, env_of(args), author)
+    if setting != (None, None):
+        _models.validate(member.kind, *setting)
+
+        def set_model(t: _roster.Team) -> None:
+            row = t.find(member.name)
+            if row is not None:
+                row.model, row.effort = setting[0] or row.model, setting[1] or row.effort
+
+        _roster.update_team(layout.team(team_name), set_model)
+        member.model, member.effort = setting[0] or member.model, setting[1] or member.effort
     # Every other member hears about the newcomer: an urgent system broadcast the daemon nudges for
     # (the newcomer itself gets the briefing instead, which lists its teammates).
     joined = _roster.append_system_record(
@@ -953,14 +954,16 @@ def _add_resume_arguments(parser: argparse.ArgumentParser) -> None:
 _execvp = os.execvp
 
 
-def resume_plan(team_name: str, member: _roster.Member) -> Dict[str, Any]:
-    """What ``resume`` would run for ``member``: the argv, the directory, and the recorded session."""
-    argv = _roster.resume_argv(member.session)
+def resume_plan(team_name: str, member: _roster.Member, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """What ``resume`` would run for ``member``: the argv (with its model and effort flags), the directory, and the recorded session."""
+    model, effort = _models.effective_setting(config, member)
+    argv = _models.resume_argv(member.kind, member.session, model, effort)
     cwd = member.cwd if isinstance(member.cwd, str) and member.cwd and os.path.isdir(member.cwd) else None
     return {
         "team": team_name, "member": member.name, "kind": member.kind,
         "session": dict(member.session or {}), "argv": argv, "command": " ".join(shlex.quote(a) for a in argv),
         "cwd": cwd, "cwd_missing": member.cwd if member.cwd and cwd is None else None,
+        "model": model, "effort": effort, "setting": _models.label(model, effort),
     }
 
 
@@ -984,7 +987,7 @@ def _run_resume(args: argparse.Namespace) -> int:
     member = doc.find(args.name)
     if member is None or member.is_human:
         raise HerdrTeamError("member_not_found", "{!r} is not in team {!r}".format(args.name, team_name), EXIT_REFUSED, {"name": args.name, "team": team_name, "roster": doc.names()})
-    plan = resume_plan(team_name, member)
+    plan = resume_plan(team_name, member, doc.config)
     if args.print_only:
         return emit(args, plan, plan["command"] + ("  # in " + plan["cwd"] if plan["cwd"] else ""))
     pane_id = env.get("HERDR_PANE_ID") or ""
@@ -1449,6 +1452,10 @@ def _run_me(args: argparse.Namespace) -> int:
         "instructions_stale": _charter.instructions_stale(me),
         "manager": bool(me.get("manager")),
     }
+    own_model, own_effort = _models.effective_setting(doc.get("config"), me)
+    model_src, effort_src = _models.source_of(doc.get("config"), me)
+    payload.update({"model": own_model, "effort": own_effort, "setting": _models.label(own_model, own_effort),
+                    "model_source": model_src, "effort_source": effort_src})
     # The team folder is how an agent differentiated only by a file finds that
     # file. Both paths are absolute so a member outside the project can read them.
     project = _workdir.project_dir_of(doc)

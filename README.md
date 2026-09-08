@@ -123,6 +123,12 @@ filter: [all]  to me  requests  human  system  (Tab cycles)   ? help
   and grants — is taken from an origin Herdr can vouch for, never from a name:
   a process inside an agent's pane is that agent whatever its environment
   claims.
+- **A model and an effort per member.** Say `opus@medium` for one agent and
+  `gpt-5.6-luna@high` for another when you create the team, or change it later
+  — the operator for anyone, the manager for anyone, an agent for itself.
+  Claude switches live; Codex and OpenCode at their next resume, or now with a
+  restart that keeps their session. `who` shows what was asked for beside what
+  the harness reports.
 - **A board per team, several at once.** Open each team's board in its own
   split and read them side by side. `prefix+u` opens the board of the team in
   the space you pressed it in, `b` on a team in `prefix+t` opens that one, and

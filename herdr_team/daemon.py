@@ -52,6 +52,8 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, 
 from herdr_team import PLUGIN_ID, VERSION, gate, nudge, render, roster, sanitize, store
 from herdr_team import charter as _charter
 from herdr_team import identity as _identity
+from herdr_team import launch as _launch
+from herdr_team import models as _models
 from herdr_team import context as _context
 from herdr_team import operator as _operator
 from herdr_team import usage as _usage
@@ -126,6 +128,16 @@ CONTROL_OBSERVE_S = 360.0
 #: counts as the compaction having happened. Compaction rewrites the history
 #: into a summary, so the drop is large; a normal turn only ever adds.
 CONTROL_DROP_RATIO = 0.7
+#: Between two control lines typed in one job (``/model`` then ``/effort``):
+#: Claude answers each at once, but a second line typed on top of the first
+#: would land while the first is still being read.
+CONTROL_LINE_GAP_S = 1.0
+#: A restart (``model --apply restart``) exits the agent and resumes its
+#: session with new flags. These bound each half so a member cannot sit in
+#: limbo: the exit keystroke must empty the pane, and the resumed agent must
+#: come back and re-report its session.
+RESTART_EXIT_S = 30.0
+RESTART_START_S = 90.0
 #: Minimum gap between two swept nudges for one member. A broadcast never
 #: interrupts on its own, so this is the pace at which a chatty team's
 #: announcements reach an idle teammate: one nudge, not one per post.
@@ -148,6 +160,7 @@ SYSTEM_EVENT_DELIVERY: Dict[str, Dict[str, Any]] = {
     "instructions_updated": {"wake": "all"},
     "manager_changed": {"wake": "all", "toast": True},
     "context_high": {"wake": "named"},
+    "model_changed": {"wake": "named"},
 }
 URGENT_SYSTEM_EVENTS = tuple(e for e, d in SYSTEM_EVENT_DELIVERY.items() if d.get("wake") == "all")
 NAMED_SYSTEM_EVENTS = tuple(e for e, d in SYSTEM_EVENT_DELIVERY.items() if d.get("wake") == "named")
@@ -1182,6 +1195,9 @@ class MemberRuntime:
     #: An operator-requested ``compact``/``clear`` that has been typed and whose
     #: effect has not been seen yet: ``{action, requested_by, typed_ms, used}``.
     control_pending: Optional[Dict[str, Any]] = None
+    #: An open restart: ``{"phase": exiting|starting|started, "since_ms", "argv", "kind", "pane_id", ...}``.
+    #: While set, a pane with no agent is a member on its way back, not one gone missing.
+    restart: Optional[Dict[str, Any]] = None
     #: Harness session the last context reading belonged to. A reading from a
     #: different session is a different history, so it is a new baseline rather
     #: than a fall in the old one.
@@ -1684,6 +1700,8 @@ class Daemon:
             for member in team.members():
                 if member.get("pane_id") == pane_id and member.get("terminal_id") and member.get("status") in ("active", "starting"):
                     name = str(member.get("name"))
+                    if self._restarting(team, name):
+                        continue
                     self.log("{}: member {} pane {} {}".format(team.name, name, pane_id, why))
                     # Plan 5.3: the three tokens are cleared on agent exit, including a pane that no longer hosts one.
                     self._set_member_status(team, name, "missing", clear_tokens=True)
@@ -1756,6 +1774,7 @@ class Daemon:
             self._phase("reconcile", self.reconcile)
         self._phase("tail_boards", self.tail_boards)
         self._phase("consume_jobs", lambda: self.consume_jobs(now))
+        self._phase("restarts", lambda: self.advance_restarts(now))
         # After the tail, so a post ingested this tick is already counted, and
         # before the evaluator, so a swept pending is acted on in the same pass.
         self._phase("poll_context", lambda: self.poll_all_context(now))
@@ -2512,6 +2531,8 @@ class Daemon:
         """No live row for the member: ``missing`` after the grace window, tokens cleared (plan 5.3)."""
         if member is None or in_grace or member.get("status") not in ("active", "starting"):
             return
+        if self._restarting(team, name):
+            return  # on its way back with new flags; the restart bounds say when to give up
         changes.append((name, {"status": "missing"}))
         pane_id = member.get("pane_id")
         if isinstance(pane_id, str):
@@ -2563,6 +2584,12 @@ class Daemon:
             team.roster = doc
             for name, update in changes:
                 self.log("{}: {} {}".format(team.name, name, json.dumps(update, ensure_ascii=False)))
+                if self._restarting(team, name) and ("session" in update or "generation" in update):
+                    # The same session id with a new phase is what a resumed
+                    # agent reports -- the very shape the branch below reads as
+                    # a compaction. The open restart says which it is.
+                    self._note_restart_done(team, name, update, self.now_ms())
+                    continue
                 new_name = update.get("name")
                 if isinstance(new_name, str) and new_name != name and roster.migrate_cursor(team.paths, name, new_name):
                     self.log("{}: carried {}'s read position to {}".format(team.name, name, new_name))
@@ -2997,6 +3024,10 @@ class Daemon:
             rt.context_session = session_key
             rt.context = reading.to_json()
             self.who_dirty = True
+            open_control = rt.control_pending
+            if isinstance(open_control, dict) and open_control.get("action") == "model" \
+                    and _models.observed_matches(member.get("kind"), open_control.get("model"), reading.model):
+                self._note_model_applied(team, name, reading.model, now)
             if same_history:
                 self._check_context_drop(team, name, reading, previous, now)
             self._stamp_context(team, member, reading, now)
@@ -3105,7 +3136,7 @@ class Daemon:
         name = str(job.get("member") or "")
         action = str(job.get("action") or "")
         member = team.member(name)
-        if member is None or action not in ("compact", "clear"):
+        if member is None or action not in ("compact", "clear", "model", "restart"):
             self.log("{}: control job for {!r} refused: unknown member or action".format(team.name, name))
             return
         record = self._board_record(team, job.get("seq"))
@@ -3114,16 +3145,34 @@ class Daemon:
             self.log("{}: control job for {} refused: {}".format(team.name, name, problem))
             self._append_system(team, "typed", "{} of {} refused: {}".format(action, name, problem), ["human"], {"member": name})
             return
-        try:
-            keystroke = self._keystroke_for(member.get("kind"), action)
-        except HerdrTeamError as err:
-            self.log("{}: {}".format(team.name, err.message))
-            self._append_system(team, "typed", "{} of {} refused: {}".format(action, name, err.code), ["human"], {"member": name})
-            return
-        pending = Pending(first_ms=now, kind="control", lines=[keystroke], force=True, seqs=[])
-        pending.control = {"action": action, "keystroke": keystroke, "requested_by": (record or {}).get("from")}
+        control_doc = (record or {}).get("control") if isinstance((record or {}).get("control"), dict) else {}
+        extra: Dict[str, Any] = {}
+        if action == "model":
+            # The lines come from the record, which the origin check above vouched for.
+            lines = [str(k).strip() for k in (control_doc.get("keystrokes") or []) if str(k).strip().startswith("/")]
+            if not lines:
+                self._append_system(team, "typed", "model change of {} refused: nothing to type".format(name), ["human"], {"member": name})
+                return
+            extra = {"model": control_doc.get("model"), "effort": control_doc.get("effort")}
+        elif action == "restart":
+            exit_key = str(control_doc.get("exit") or "").strip()
+            argv = [str(a) for a in (control_doc.get("argv") or []) if str(a)]
+            if not exit_key.startswith("/") or not argv:
+                self._append_system(team, "typed", "restart of {} refused: no exit command or resume argv on the record".format(name), ["human"], {"member": name})
+                return
+            lines = [exit_key]
+            extra = {"model": control_doc.get("model"), "effort": control_doc.get("effort"), "argv": argv}
+        else:
+            try:
+                lines = [self._keystroke_for(member.get("kind"), action)]
+            except HerdrTeamError as err:
+                self.log("{}: {}".format(team.name, err.message))
+                self._append_system(team, "typed", "{} of {} refused: {}".format(action, name, err.code), ["human"], {"member": name})
+                return
+        pending = Pending(first_ms=now, kind="control", lines=list(lines), force=True, seqs=[])
+        pending.control = dict({"action": action, "keystroke": lines[0], "keystrokes": list(lines), "requested_by": (record or {}).get("from"), "kind": member.get("kind")}, **extra)
         team.pending[name] = pending
-        self.log("{}: {} queued for {} ({!r})".format(team.name, action, name, keystroke))
+        self.log("{}: {} queued for {} ({})".format(team.name, action, name, "; ".join(repr(k) for k in lines)))
 
     @staticmethod
     def _control_source_problem(record: Optional[Dict[str, Any]], member: str) -> Optional[str]:
@@ -3164,9 +3213,10 @@ class Daemon:
         rt = team.rt(name)
         control = dict(pending.control or {})
         action = str(control.get("action") or "")
-        keystroke = str(control.get("keystroke") or "")
+        keystrokes = [str(k) for k in (control.get("keystrokes") or []) if str(k)] or ([str(control.get("keystroke"))] if control.get("keystroke") else [])
+        keystroke = " then ".join(keystrokes)
         pane_id = str(snapshot.pane_id or member.get("pane_id") or "")
-        if not action or not keystroke or not pane_id:
+        if not action or not keystrokes or not pane_id:
             self._finish_pending(team, name, pending, "typed", "{} of {} refused: nothing to type".format(action or "control", name))
             return
         pending.attempts += 1
@@ -3187,7 +3237,13 @@ class Daemon:
                 self.log("{}: DRY {} of {} ({}): {!r}".format(team.name, action, name, pane_id, keystroke))
                 result, details = RESULT_DRY, {"text": keystroke}
             else:
-                result, details = self._type_keystroke(pane_id, keystroke)
+                result, details = RESULT_LANDED_WORKING, {}
+                for index, line in enumerate(keystrokes):
+                    if index:
+                        self.control_gap_sleep(CONTROL_LINE_GAP_S)
+                    result, details = self._type_keystroke(pane_id, line)
+                    if result != RESULT_LANDED_WORKING:
+                        break
         finally:
             rt.in_flight = False
         team.ledger.record_result(attempt_id, result, details)
@@ -3207,11 +3263,20 @@ class Daemon:
             "action": action, "requested_by": control.get("requested_by") or "human",
             "typed_ms": now, "used": used if isinstance(used, int) else None,
             "session": roster.short_session(member.get("session")),
+            "model": control.get("model"), "effort": control.get("effort"),
         }
         self.log("{}: typed {!r} into {} ({}); waiting for the effect".format(team.name, keystroke, name, pane_id))
         self._append_system(team, "typed", "{} typed into {}, asked by {}".format(keystroke, name, rt.control_pending["requested_by"]),
-                            [name], {"member": name, "action": action, "keystroke": keystroke})
+                            [name], {"member": name, "action": action, "keystroke": keystroke, "keystrokes": keystrokes})
         self.who_dirty = True
+        if action == "restart":
+            rt.restart = {"phase": "exiting", "since_ms": now, "argv": list(control.get("argv") or []), "kind": str(member.get("kind") or ""),
+                          "pane_id": pane_id, "model": control.get("model"), "effort": control.get("effort"),
+                          "requested_by": rt.control_pending["requested_by"]}
+        elif action == "model" and not control.get("model"):
+            # Effort alone has no observable: the transcript records the model,
+            # not the thinking budget. Typed is as far as this can be proven.
+            self._note_model_applied(team, name, None, now)
 
     def _type_keystroke(self, pane_id: str, keystroke: str) -> Tuple[str, Dict[str, Any]]:
         """``pane.send_text`` then Enter; a failure on either half is one failure."""
@@ -3294,11 +3359,106 @@ class Daemon:
         except HerdrTeamError as err:
             self.log("{}: could not brief {} again after its compaction: {}".format(team.name, name, err.code))
 
+    #: Patched in tests; the pause between two control lines.
+    control_gap_sleep = staticmethod(time.sleep)
+
+    def _note_model_applied(self, team: TeamState, name: str, observed: Optional[str], now: float) -> None:
+        """Close an open ``model`` job: the transcript reports the model, or only the effort was changed."""
+        rt = team.rt(name)
+        wanted = _models.label((rt.control_pending or {}).get("model"), (rt.control_pending or {}).get("effort"))
+        if not self._control_observed(team, name, "model", "transcript reports {}".format(observed) if observed else "effort typed", now):
+            return
+        text = "{} now runs {}".format(name, observed) if observed else "{} now runs {} (effort typed; not observable in the transcript)".format(name, wanted)
+        self._append_system(team, "model_applied", text, [name, "all"], {"member": name, "observed": observed, "setting": wanted})
+
+    def advance_restarts(self, now: float) -> None:
+        for team in list(self.teams.values()):
+            for name, rt in list(team.runtime.items()):
+                if isinstance(rt.restart, dict):
+                    try:
+                        self._advance_restart(team, name, rt, now)
+                    except Exception as err:  # noqa: BLE001 - one member's restart must not stop the tick
+                        self.log("{}: restart of {} failed: {}: {}".format(team.name, name, type(err).__name__, err))
+                        self._restart_failed(team, name, rt, "{}: {}".format(type(err).__name__, err), now)
+
+    def _advance_restart(self, team: TeamState, name: str, rt: MemberRuntime, now: float) -> None:
+        """One step of exit -> start -> wait for the session to come back."""
+        state = rt.restart or {}
+        phase = state.get("phase")
+        pane_id = str(state.get("pane_id") or "")
+        if phase == "exiting":
+            if now - float(state.get("since_ms") or now) > RESTART_EXIT_S * 1000.0:
+                self._restart_failed(team, name, rt, "did not exit within {:.0f}s".format(RESTART_EXIT_S), now)
+                return
+            pane = self._pane_row(pane_id)
+            if pane is None or pane.get("agent"):
+                return  # still up, or not readable yet
+            argv = [str(a) for a in state.get("argv") or []]
+            # ``agent start`` runs the kind's own binary; the resume argv's first word is that binary.
+            handle = _launch.start_agent_async(self.api, name, str(state.get("kind") or ""), pane_id, args=argv[1:])
+            state.update({"phase": "starting", "started_ms": now, "handle": handle})
+            phase = "starting"
+            self.log("{}: {} exited; starting again: {}".format(team.name, name, " ".join(handle.argv)))
+            # fall through: a start that already finished (a synchronous API) is judged now, not next tick
+        if phase == "starting":
+            handle = state.get("handle")
+            if handle is not None and handle.done():
+                ok, text = handle.result()
+                state["handle"] = None
+                if not ok:
+                    self._restart_failed(team, name, rt, "agent start failed: {}".format(text[:200] or "unknown error"), now)
+                    return
+                state["phase"] = "started"
+                self.log("{}: {} is back; waiting for it to report its session".format(team.name, name))
+        if phase in ("starting", "started") and now - float(state.get("started_ms") or now) > RESTART_START_S * 1000.0:
+            self._restart_failed(team, name, rt, "did not come back within {:.0f}s".format(RESTART_START_S), now)
+
+    def _pane_row(self, pane_id: str) -> Optional[Dict[str, Any]]:
+        try:
+            result = self.api.request("pane.get", {"pane_id": pane_id}, timeout=5.0)
+        except HerdrTeamError:
+            return None
+        pane = result.get("pane") if isinstance(result, dict) else None
+        return pane if isinstance(pane, dict) else None
+
+    def _restart_failed(self, team: TeamState, name: str, rt: MemberRuntime, why: str, now: float) -> None:
+        state = rt.restart or {}
+        rt.restart = None
+        rt.control_pending = None
+        pending = team.pending.get(name)
+        if pending is not None and pending.kind == "control":
+            self._finish_pending(team, name, pending, "typed", "restart of {} failed: {}".format(name, why))
+        self._append_system(team, "restart_failed", "{}'s restart failed: {}. Bring it back with: herdr-synapse resume {}".format(name, why, name),
+                            ["human", "all"], {"member": name, "why": why, "setting": _models.label(state.get("model"), state.get("effort"))})
+        self.who_dirty = True
+
+    def _note_restart_done(self, team: TeamState, name: str, update: Dict[str, Any], now: float) -> None:
+        """The resumed agent reported its session: the restart is complete, and it was not a compaction."""
+        rt = team.rt(name)
+        state = rt.restart or {}
+        rt.restart = None
+        setting = _models.label(state.get("model"), state.get("effort"))
+        self._control_observed(team, name, "restart", "session resumed", now)
+        self._append_system(team, "model_applied", "{} restarted with {} (its session was resumed, asked by {})".format(name, setting or "its recorded setting", state.get("requested_by") or "human"),
+                            [name, "all"], {"member": name, "setting": setting, "restarted": True})
+        if update.get("briefed_at", False) is None:
+            try:
+                roster.write_briefing_job(team.paths, str(update.get("name", name)))
+            except HerdrTeamError as err:
+                self.log("{}: could not enqueue a briefing for {}: {}".format(team.name, name, err.code))
+
+    def _restarting(self, team: TeamState, name: str) -> bool:
+        rt = team.runtime.get(name)
+        return rt is not None and isinstance(rt.restart, dict)
+
     def _control_unobserved(self, team: TeamState, name: str, pending: Pending, now: float) -> None:
         """The keystroke landed but nothing changed within ``CONTROL_OBSERVE_S``."""
         rt = team.rt(name)
         action = str((pending.control or {}).get("action") or "control")
         rt.control_pending = None
+        if action == "model":
+            self._finish_pending(team, name, pending, "typed", "model change of {} was typed but the transcript has not shown the new model in {:.0f}s".format(name, CONTROL_OBSERVE_S))
+            return
         self._finish_pending(team, name, pending, "typed", "{} of {} was typed but no effect was seen in {:.0f}s".format(action, name, CONTROL_OBSERVE_S))
 
     def _board_record(self, team: TeamState, seq: Any) -> Optional[Dict[str, Any]]:
@@ -4655,6 +4815,11 @@ class Daemon:
                     "brief": member.get("brief"),
                     "session": roster.short_session(member.get("session")),
                     "manager": bool(member.get("manager")),
+                    "model": member.get("model"),
+                    "effort": member.get("effort"),
+                    "model_effective": _models.effective_setting(team.roster.get("config"), member)[0],
+                    "setting": _models.label(*_models.effective_setting(team.roster.get("config"), member)),
+                    "restarting": isinstance(rt.restart, dict),
                 "context": rt.context,
                 })
             teams[team.name] = {"members": members, "pending": sum(len(p.seqs) for p in team.pending.values()), "watermark": team.watermark}

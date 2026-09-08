@@ -110,7 +110,13 @@ create <team> [--charter "<text>" | --charter-file <path>] [--ref <path>]…
        --member <target>[:<role>[:<name>]]… [--brief <name>="<text>"]…
        [--from-workspace <id>] [--names plain] [--rename] [--steal] [--reuse]
 create <team> --new [--workspace] [--charter …] --spawn <role>:<kind>[:<cwd>]… [--names plain]
+       [--model <role|kind>=<model>[@<effort>]]…
 ```
+
+- `--model`: `role=` sets that spawned member's own model and effort, `kind=`
+  (`claude`, `codex`, `opencode`) sets the team default for the kind
+  (`config.models`). A kind with no verified flags is refused
+  (`model_unsupported`) before anything is laid out. See section 9c.
 
 - `<target>`: pane id or live agent name. Role defaults to the kind label.
   Name defaults to `<team>-<role>` (`--names plain` uses `<role>`).
@@ -190,6 +196,9 @@ plain shell; RT-02). The daemon applies the same rule when a reconcile
 rebinds a member to another terminal.
 
 ### `resume <name> [--print]` (human only)
+
+The argv carries the member's effective model and effort flags (section 9c);
+`--print` shows them.
 
 Reopens a member's **own** harness session in the pane you run it from.
 `claude --continue`, `codex resume --last` and `opencode -c` pick a
@@ -1045,6 +1054,56 @@ A clear mints a new harness session, which the notifier already reacts to: a
 new generation, `briefed_at` cleared, a fresh briefing. What this adds is
 attribution, so the resulting `member_restarted` is followed by a
 `context_cleared` record naming the operator rather than reading like a crash.
+
+## 9c. Model and effort
+
+### `models [show | set <kind> <model>[@<effort>] | clear <kind>]`
+
+Team defaults per kind in `config.models`. Read is open; writes are human only
+and audited (`models_set`, `models_clear`). JSON for `show`:
+`{"team","models":{"claude":{"model","effort"}},"kinds":[…],"efforts":{…}}`.
+
+### `model [<member>] [<model>[@<effort>]] [--effort E] [--self] [--apply live|next|restart] [--reason TEXT]`
+
+With no arguments, every member's effective setting, where each half comes
+from (`member`, `default`, `harness`), and the model the harness reports
+(`who.json` context). With a member and no setting, that member's. With a
+setting, a write.
+
+- **Setting** `<model>[@<effort>]`, either half optional (`opus@medium`, `opus`,
+  `@high`); `--effort` is the effort half on its own. Harness-native
+  vocabulary, validated per kind: Claude `low|medium|high|xhigh|max`, Codex
+  `minimal|low|medium|high|xhigh`, OpenCode any token (provider-specific).
+  Another kind: `model_unsupported` (1). Unknown effort: `effort_unknown` (1)
+  with the vocabulary in `efforts`.
+- **Authority**: the operator or a delegate (anyone), the team manager
+  (anyone), a member for itself (`--self`). Anything else is `author_mismatch`
+  (1), audited.
+- **Record**: the roster row's `model`/`effort`; audit `model_set`; a
+  `model_changed` system record to `[member, all]` (the member is nudged,
+  ordinary gates apply).
+- **`--apply`**: default `live` for Claude, `next` otherwise.
+  - `next`: nothing else; it applies at the next `resume` or restart.
+  - `live` (Claude): a `direct` record with `control: {"action": "model",
+    "keystrokes": ["/model …", "/effort …"]}` and a control job; the notifier
+    types each line with its own Enter once the member is idle, and closes the
+    job when the transcript reports the model (`model_applied`), or on typing
+    when only the effort changed (not observable). Other kinds:
+    `model_apply_unsupported` (1).
+  - `restart`: needs a recorded session (`session_unknown` otherwise). A
+    `direct` record with `control: {"action": "restart", "exit", "argv"}`; the
+    notifier types the kind's exit command when idle, waits for the pane to
+    empty (`RESTART_EXIT_S`, 30 s), starts the harness again in that pane with
+    the resume argv plus the flags (`RESTART_START_S`, 90 s), and closes the
+    job when the session is reported again (`model_applied`, `restarted: true`).
+    Either bound missed: `restart_failed` to `[human, all]` naming
+    `herdr-synapse resume <name>`; the member is left as it was. While a
+    restart is open the member is never marked missing.
+- Exit codes as `compact`; a control record needs a verified origin, so a
+  popup or an outside shell can record and `--apply next` but not drive a
+  keystroke.
+
+JSON (write): `{"team","member","kind","model","effort","setting","apply","by","job","record_seq","control"}`.
 
 ## 9b. Human in the loop
 

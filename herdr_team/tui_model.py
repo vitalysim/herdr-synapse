@@ -35,7 +35,7 @@ from herdr_team.paths import MAX_ROLE_CHARS, MAX_TEAM_CHARS, ROLE_NAME_RE, TEAM_
 FILTERS = ("all", "to me", "requests", "human", "system")
 SLASH_COMMANDS = (
     "/all", "/human", "/kind", "/reply", "/urgent", "/interrupt", "/interrupts", "/ref", "/retract", "/mute", "/unmute", "/pause",
-    "/nudge", "/focus", "/peek", "/who", "/context", "/compact", "/clear", "/asks", "/ask-policy", "/filter", "/as", "/use", "/charter", "/remove", "/export", "/help", "/quit",
+    "/nudge", "/focus", "/peek", "/who", "/context", "/compact", "/clear", "/model", "/asks", "/ask-policy", "/filter", "/as", "/use", "/charter", "/remove", "/export", "/help", "/quit",
 )
 #: ``/`` menu rows: command -> (placeholder, what it does). Every entry in
 #: ``SLASH_COMMANDS`` must appear here; a test keeps the two in step, so a new
@@ -62,6 +62,7 @@ SLASH_USAGE = {
     "/context": ("[name]", "how full each member's context window is"),
     "/compact": ("name", "ask a member to summarise its context"),
     "/clear": ("name", "throw away a member's context and brief it again"),
+    "/model": ("name model[@effort] [--restart]", "set a member's model and effort (Claude live; others at resume, or --restart now)"),
     "/filter": ("[all|to me|requests|human|system]", "filter the feed"),
     "/as": ("label", "change the label your posts carry"),
     "/use": ("team", "switch to another team"),
@@ -566,6 +567,10 @@ def roster_line(
             fields.append(roster_status.replace("_", " "))
     if member.get("manager"):
         fields.append("manager")
+    if level == 0 and isinstance(member.get("setting"), str) and member.get("setting"):
+        fields.append("model " + str(member.get("setting")))
+    if member.get("restarting"):
+        fields.append("restarting")
     if member.get("briefed") is False and member.get("kind") != "human":
         fields.append("unbriefed")
     if member.get("charter_stale"):
@@ -1758,6 +1763,13 @@ def _parse_slash(head: str, rest: str, default_team: str) -> Intent:
         if len(args) != 1 or not MEMBER_NAME_RE.match(args[0]):
             return Intent("error", {"message": "usage: {} <name>".format(head)})
         return Intent(head[1:], {"member": args[0], "team": default_team, "confirm": False})
+    if head == "/model":
+        words = [w for w in args if w]
+        restart = "--restart" in words
+        words = [w for w in words if w != "--restart"]
+        if len(words) != 2 or not MEMBER_NAME_RE.match(words[0]):
+            return Intent("error", {"message": "usage: /model <name> <model>[@<effort>] [--restart]"})
+        return Intent("model_set", {"member": words[0], "setting": words[1], "restart": restart, "team": default_team})
     if head == "/export":
         # Optional path and format: ``/export``, ``/export ~/board.md``, ``/export --format json``.
         fmt = "md"
@@ -2389,6 +2401,8 @@ def tree_member(member: Dict[str, Any], charter: Optional[Dict[str, Any]] = None
         "last_seen_at": member.get("last_seen_at"),
         "briefed": member.get("briefed_at") is not None,
         "manager": bool(member.get("manager")),
+        "model": member.get("model"),
+        "effort": member.get("effort"),
         "agent_status": None,
     }
     if isinstance(charter, dict) and charter.get("seq") is not None:
@@ -2656,6 +2670,8 @@ def picker_apply_key(model: PickerModel, key: str) -> Optional[Intent]:
         return _rename_key(model, key)
     if model.stage == "goal":
         return _goal_key(model, key)
+    if model.stage == "model":
+        return _model_key(model, key)
     if model.stage == "target":
         return _target_key(model, key)
     if model.stage == "name":
@@ -3137,7 +3153,7 @@ def _members_key(model: PickerModel, key: str) -> Optional[Intent]:
     return None
 
 
-PICKER_TEXT_STAGES = ("name", "charter", "members", "rename", "goal")
+PICKER_TEXT_STAGES = ("name", "charter", "members", "rename", "goal", "model")
 
 #: The member action menu, in the order it is shown. ``{team}`` is filled in per member.
 ACTION_OPTIONS = (
@@ -3149,6 +3165,7 @@ ACTION_OPTIONS = (
     ("focus", "go to its pane (closes this popup)"),
     ("resume", "show the command that reopens its own session (herdr-synapse resume)"),
     ("manager", "make it the team manager"),
+    ("model", "set its model and effort (Claude applies live; Codex and OpenCode at the next resume)"),
 )
 
 
@@ -3214,6 +3231,11 @@ def _start_action(model: PickerModel, action: str) -> Optional[Intent]:
         model.stage = "goal"
         model.error = None
         _set_input(model, str(member.get("brief") or ""))
+        return None
+    if action == "model":
+        model.stage = "model"
+        model.error = None
+        _set_input(model, str(member.get("setting") or ""))
         return None
     if action == "send_goal":
         return Intent("member_send_goal", dict(base))
@@ -3324,6 +3346,32 @@ def _goal_key(model: PickerModel, key: str) -> Optional[Intent]:
     edit_key(_TextView(model), key)
     return None
 
+
+
+def _model_key(model: PickerModel, key: str) -> Optional[Intent]:
+    if key == "ESC":
+        model.stage = "actions"
+        model.error = None
+        return None
+    if key == "ENTER":
+        member = action_member(model)
+        if member is None:
+            model.stage = "select"
+            model.error = "{} is not in {} any more; press r to refresh".format(model.action_member, model.action_team)
+            return None
+        text = model.input.strip()
+        from herdr_team import models as _models
+        from herdr_team.errors import HerdrTeamError as _Err
+
+        try:
+            parsed = _models.parse_setting(text)
+            _models.validate(member.get("kind"), *parsed)
+        except _Err as err:
+            model.error = err.message
+            return None
+        return Intent("member_model", {"team": model.action_team, "member": str(member.get("name")), "setting": text, "terminal_id": member.get("terminal_id")})
+    edit_key(_TextView(model), key)
+    return None
 
 
 def picker_cursor(model: PickerModel, lines: List[str], width: int) -> Optional[Tuple[int, int]]:
@@ -3470,6 +3518,12 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
         lines.append("Goal for {} (its brief; up to {} characters, Ctrl-U clears, Esc goes back)".format(model.action_member, MAX_BRIEF_TOTAL_CHARS))
         lines.append("Enter saves it to the roster; the agent only sees it when you send it (action 3)")
         lines.append("goal:")
+        lines.append(INPUT_PROMPT + model.input)
+        has_input = True
+    elif model.stage == "model":
+        lines.append("Model and effort for {}: <model>[@<effort>], e.g. opus@medium, gpt-5.6-luna@high, @xhigh (Esc goes back)".format(model.action_member))
+        lines.append("Enter records it and announces it; Claude switches live, Codex and OpenCode at their next resume")
+        lines.append("setting:")
         lines.append(INPUT_PROMPT + model.input)
         has_input = True
     elif model.stage == "target":

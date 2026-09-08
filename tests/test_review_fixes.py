@@ -206,7 +206,7 @@ class CompactionRebriefTests(unittest.TestCase):
     def test_the_delivery_table_replaces_both_lists_without_changing_them(self):
         self.assertEqual(D.URGENT_SYSTEM_EVENTS, ("charter_updated", "member_joined", "knowledge_updated", "instructions_updated", "manager_changed"))
         self.assertEqual(D.TOAST_SYSTEM_EVENTS, ("manager_changed",))
-        self.assertEqual(D.NAMED_SYSTEM_EVENTS, ("context_high",))
+        self.assertEqual(D.NAMED_SYSTEM_EVENTS, ("context_high", "model_changed"))
         self.assertEqual(set(D.URGENT_SYSTEM_EVENTS) | set(D.NAMED_SYSTEM_EVENTS), set(D.SYSTEM_EVENT_DELIVERY))
 
 

@@ -191,6 +191,7 @@ SYSTEM_EVENTS = (
     "knowledge_updated", "instructions_updated", "instructions_edited", "knowledge_finding",
     "artifacts_changed", "project_set", "operator_granted", "operator_revoked",
     "context_high", "context_cleared", "context_compacted", "workdir_moved", "manager_changed",
+    "model_changed", "model_applied", "restart_failed",
 )
 
 _SAVE_RETRIES = 3
@@ -389,6 +390,11 @@ class Member:
     #: not a name in ``Team.config`` on purpose: a rename carries it and a
     #: removal drops it, so there is no stale name to clean up anywhere.
     manager: bool = False
+    #: Which model and how much thinking this member runs with (0.14.0). Both
+    #: optional and harness-native (``herdr_team.models``); None falls through
+    #: to the team default for the kind, then to the harness's own default.
+    model: Optional[str] = None
+    effort: Optional[str] = None
     previous_names: List[Dict[str, Any]] = field(default_factory=list)
 
     @property
@@ -423,6 +429,10 @@ class Member:
             "rules_seq_acked": self.rules_seq_acked,
             "manager": bool(self.manager),
         }
+        if self.model:
+            obj["model"] = self.model
+        if self.effort:
+            obj["effort"] = self.effort
         if self.previous_names:
             obj["previous_names"] = [dict(p) for p in self.previous_names]
         return obj
@@ -464,6 +474,8 @@ class Member:
             instructions_seq_acked=obj.get("instructions_seq_acked"),
             rules_seq_acked=obj.get("rules_seq_acked"),
             manager=bool(obj.get("manager", False)),
+            model=str(obj["model"]) if isinstance(obj.get("model"), str) and obj.get("model") else None,
+            effort=str(obj["effort"]) if isinstance(obj.get("effort"), str) and obj.get("effort") else None,
             previous_names=[dict(p) for p in previous if isinstance(p, dict)],
         )
 

@@ -34,8 +34,9 @@ holds `daemon.json`, `daemon.log`, `who.json`, `kinds.json`, `view.json`,
 | Create from live agents | `prefix+t` picker (section 7) | `herdr-synapse create <team> --member <pane\|name>[:<role>[:<name>]] … [--charter "…"\|--charter-file p] [--ref p] [--brief NAME=TEXT]… [--names plain] [--rename] [--reuse] [--use]` |
 | Create from every agent in a Space | picker: `w` then `a` | `create <team> --from-workspace <ws-id>`: waits up to 60 s for agents still launching and warns about the rest |
 | Add agents to an existing team | picker: select the agents, Enter; when teams exist a numbered choice follows (`1  add it to team <t>  (N members)`, last number `create a new team`; type the number or move with the arrows); adding skips the charter stage, asks role, name, and brief per agent, and confirms with `Add N agents to team <t>?`; every other member is nudged with a `member_joined` record and the newcomer is briefed. A kind that is not trusted yet (`kinds list`) is flagged on the confirm screen and by `add` (`kind_trusted: false`, a warning): nothing is typed into it until `herdr-synapse kinds trust <kind>` | `herdr-synapse add <team> <pane\|name> [--role <r>] [--as <name>] [--brief "…"]`, one per agent; each new member is briefed once idle |
-| Create from scratch | | `create <team> --new [--workspace ID] --spawn <role>:<kind>[:<cwd>] …` lays out the panes and starts the agents |
-| Add a member later | | `add <team> <pane\|name> [--role r] [--as name] [--brief TEXT] [--rename] [--steal]` |
+| Create from scratch | | `create <team> --new [--workspace ID] --spawn <role>:<kind>[:<cwd>] … [--model <role\|kind>=<model>[@<effort>]] …` lays out the panes and starts the agents with their model and effort flags (section 5e) |
+| Add a member later | | `add <team> <pane\|name> [--role r] [--as name] [--brief TEXT] [--rename] [--steal] [--model <setting>]` |
+| Model and effort per member | picker: member action `9`; console `/model <name> <setting> [--restart]` | `models set <kind> <setting>` (team default), `model <member> <setting> [--apply live\|next\|restart] [--self]`; `who`/`me` show it (section 5e) |
 | See who is on which team | `prefix+t`: teams with their agents underneath, then the agents in no team; Enter folds a team, `↑↓`/PgUp/PgDn move, the list scrolls | `who`, `teams` |
 | Manage one member | `prefix+t`, Enter on a member: a numbered menu with rename, change its goal, send the goal now, remove it (with or without keeping its Herdr agent name), and go to its pane. Rename and goal are pre-filled and validated before anything is written; remove asks `y` (Enter is deliberately not yes). A member whose agent is missing or unsettled refuses rename, send and focus, because its pane is stale | `rename`, `brief <name> --set`, `brief <name>`, `remove`, `focus` |
 | Remove, leave | `prefix+t` → Enter on the member → 4, or console `/remove name` (asks y/n) | `remove <team> <name> [--keep-name]` (clears tokens and label, clears the Herdr name unless `--keep-name`, keeps a tombstone); `leave` from the member's own pane |
@@ -583,6 +584,51 @@ skips it. `--interrupt` still reaches it, which is correct.
 case, both wait outcomes, the lock staying free, the tailer being used, the
 policy landing outside `config.gate`, the popup model, and the daemon opening
 once and treating `ui_busy` as a retry.
+
+## 5e. Model and effort (0.14.0)
+
+Each member carries an optional model and reasoning effort, `<model>[@<effort>]`,
+resolved member override → team default for the kind (`config.models`) →
+harness default. The vocabulary is the harness's own and is passed through
+untranslated. What each installed harness accepts (read from the binaries on
+2026-09-08):
+
+| Kind | At launch (and on `resume`) | Live | Effort words |
+| --- | --- | --- | --- |
+| Claude Code 2.1.263 | `--model <alias\|name>`, `--effort <e>`; `claude --resume <id> …` | `/model <m>` and `/effort <e>` both take an argument: the notifier types them | `low medium high xhigh max` |
+| Codex | `-m <model>`, `-c model_reasoning_effort="<e>"`; on `codex resume <id>` too | `/model` is a picker: no keystroke. `--apply restart` exits (`/quit`) and resumes with the flags | `minimal low medium high xhigh` |
+| OpenCode | `-m provider/model`, `--variant <e>`; `--session <id>` too | `/models` is a picker: as Codex (`/exit`) | provider-specific; any token |
+
+Herdr's `agent.start` hands `args` to the binary verbatim
+(`herdr agent start NAME --kind K --pane P -- ARG…`), so every flag above is
+argv, never a shell string.
+
+**Verified live:** nothing yet in this version. The Claude rows come from
+`claude --help` and the slash-command table in the binary; the Codex rows
+from `codex --help` and `codex resume --help`; OpenCode's `--variant` is
+documented on `run` and the TUI is non-strict, so an unknown flag is harmless
+there. One round trip per kind in a disposable session is the missing evidence.
+
+**Changing it while the agent runs.** A change is recorded on the roster and
+announced (`model_changed`, the member nudged). Claude: a control job types
+the lines once the member is idle; the job closes when the transcript reports
+the model (`model_applied`), or on typing when only the effort changed, since
+the effort is not observable. Codex/OpenCode: at the next resume by default;
+`--apply restart` is a control job that types the exit command when idle,
+waits for the pane to empty (30 s), starts the harness again with the resume
+argv plus the flags (90 s), and closes when the session is reported again. A
+resumed agent reports the *same* session id with a new phase — the exact shape
+the notifier read as a compaction — so an open restart claims that event first,
+and while one is open the member is never marked missing.
+
+**Authority:** the operator or a delegate for anyone, the team manager for
+anyone, a member for itself (`--self`). A control record needs a verified
+origin (as `compact`), so a popup or an outside shell can record and
+`--apply next` but not drive a keystroke.
+
+**Seeing it:** `who` tags `model opus@medium` and, when the harness reports
+something else, `runs claude-sonnet-5`; `model` with no arguments is the table
+with sources; `me`, `orient`, and the session briefing name the member's own.
 
 ## 6a. Context windows
 

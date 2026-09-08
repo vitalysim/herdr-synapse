@@ -306,7 +306,7 @@ def run(layout: Layout, api: Any, env: Dict[str, str], actions: bool = True) -> 
 
 
 #: Member actions the tree can run while the popup stays open.
-ACTION_INTENTS = ("member_rename", "member_goal", "member_send_goal", "member_remove", "member_focus", "member_resume", "member_manager", "team_folder_set", "team_board_open", "team_dissolve")
+ACTION_INTENTS = ("member_rename", "member_goal", "member_send_goal", "member_remove", "member_focus", "member_resume", "member_manager", "member_model", "team_folder_set", "team_board_open", "team_dissolve")
 #: ``remove`` and ``rename`` do several socket round trips plus a lock wait; the console's 20 s is too
 #: tight for them, and a timeout kills the CLI mid-change (M8 review).
 ACTION_TIMEOUT_S = 45.0
@@ -319,6 +319,7 @@ ACTION_LABELS = {
     "member_focus": "going to {member}",
     "member_resume": "looking up the session of {member}",
     "member_manager": "making {member} the team manager",
+    "member_model": "setting the model for {member}",
     "team_folder_set": "setting the folder for {team}",
     "team_dissolve": "dissolving {team}",
     "team_board_open": "opening the {team} board",
@@ -352,6 +353,8 @@ def action_args(intent: Any) -> List[str]:
         return ["--team", team, "resume", member, "--print"]
     if intent.kind == "member_manager":
         return ["--team", team, "manager", "--clear"] if args.get("clear") else ["--team", team, "manager", member]
+    if intent.kind == "member_model":
+        return ["--team", team, "model", member, str(args.get("setting") or "")]
     return ["--team", team, "focus", member]
 
 
@@ -415,6 +418,10 @@ def action_success_status(intent: Any, out: Any) -> str:
     if intent.kind == "member_resume":
         command = (out or {}).get("command") if isinstance(out, dict) else None
         return "in a shell pane run: herdr-synapse resume {}  ({})".format(member, command or "no command")
+    if intent.kind == "member_model":
+        setting = (out or {}).get("setting") if isinstance(out, dict) else args.get("setting")
+        apply = (out or {}).get("apply") if isinstance(out, dict) else None
+        return "{} runs {} {}".format(member, setting, {"live": "once the notifier types it (it is idle first)", "restart": "after the notifier restarts it", "next": "from its next resume"}.get(str(apply), "(recorded)"))
     if intent.kind == "member_manager":
         if args.get("clear"):
             return "{} is no longer the team manager; the team was told".format(member)

@@ -668,6 +668,17 @@ def render_who(
             tags.append("manager")
         if member.get("operator"):
             tags.append("acts as operator")
+        setting = member.get("setting")
+        if isinstance(setting, str) and setting:
+            tags.append("model " + _safe_token(setting, 40))
+        if member.get("restarting"):
+            tags.append("restarting")
+        observed = (member.get("context") or {}).get("model") if isinstance(member.get("context"), dict) else None
+        if isinstance(observed, str) and observed and isinstance(member.get("model_effective"), str) and member.get("model_effective"):
+            from herdr_team import models as _models
+
+            if not _models.observed_matches(member.get("kind"), member.get("model_effective"), observed):
+                tags.append("runs " + _safe_token(observed, 40))
         context_tag = context_label(member.get("context"))
         if context_tag:
             tags.append(context_tag)
@@ -735,6 +746,9 @@ def render_me(member: Dict[str, Any], team_doc: Dict[str, Any]) -> str:
     ]
     if member.get("pane_id") or member.get("terminal_id"):
         lines.append("pane {}{}".format(_safe_token(member.get("pane_id"), 16), " ({})".format(_safe_token(member.get("terminal_id"), 64)) if member.get("terminal_id") else ""))
+    if isinstance(member.get("setting"), str) and member.get("setting"):
+        lines.append("model and effort: {} ({} model, {} effort); change yours with herdr-synapse model --self <model>[@<effort>]".format(
+            _safe_token(member.get("setting"), 40), _safe_token(member.get("model_source") or "harness", 8), _safe_token(member.get("effort_source") or "harness", 8)))
     if member.get("instructions_stale"):
         lines.append("your instructions changed since you last acknowledged them; read them, then run herdr-synapse ack")
     if isinstance(member.get("session"), str) and member.get("session"):

@@ -323,6 +323,13 @@ class HerdrApi:
         env = child_env(self.env, self.socket_path if pin_socket else None)
         return run_herdr(list(args), timeout=timeout, env=env)
 
+    def spawn(self, args: Sequence[str], pin_socket: bool = True) -> "subprocess.Popen[bytes]":
+        """Start ``herdr <args>`` and return at once; the caller polls the child (``launch.StartHandle``)."""
+        env = child_env(self.env, self.socket_path if pin_socket else None)
+        environment = dict(env)
+        binary = herdr_bin(environment)
+        return subprocess.Popen([binary] + [str(a) for a in args], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=environment)
+
     def run_json(self, args: Sequence[str], timeout: float = SUBPROCESS_TIMEOUT_S, pin_socket: bool = True) -> Any:
         """``run`` plus JSON parsing; a failing command raises with the CLI's error code when it printed one."""
         result = self.run(args, timeout=timeout, pin_socket=pin_socket)
