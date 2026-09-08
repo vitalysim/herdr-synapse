@@ -561,9 +561,15 @@ herdr-synapse ask-policy      # whether agents wait for you, and how long
 ```
 
 Two things change. The notifier opens a **popup you answer in** — one popup for
-the whole queue, because Herdr allows only one at a time. Type a reply, Enter
-sends it as a reply to that post, `Tab` moves through the queue, `Esc` leaves
-one waiting and stops it reopening.
+the whole queue, because Herdr allows only one at a time. Type a reply and Enter
+sends it; **`Ctrl-A` acknowledges without typing**, which closes the ask and
+releases the agent; `Tab` moves through the queue; `Esc` leaves one waiting and
+stops it reopening.
+
+An acknowledgement is not an approval, and says so. For a question or a blocker
+it reads *"Seen by the operator. This is an acknowledgement, not a decision: if
+you were waiting on one, say what you would do and stop."* For a finished-work
+notice it just says it was seen.
 
 And the agent **waits**. `post --kind question --to human` does not return until
 you answer, so it cannot proceed on a guess or be talked past by a peer. Nothing

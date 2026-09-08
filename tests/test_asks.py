@@ -180,6 +180,25 @@ class WaitTests(unittest.TestCase):
             self.assertFalse(out["waited"], extra)
             self.assertLess(time.monotonic() - started, 5.0, extra)
 
+    def test_acknowledging_ends_a_wait_and_dismissing_does_not(self):
+        def ack():
+            for _ in range(200):
+                rows = [r for r in store.BoardStore(self.ts.team).read() if r.get("kind") == "question"]
+                if rows:
+                    run_cli(["--json", "--team", "alpha", "asks", "--ack", str(rows[-1]["seq"])], self.ts.env, FakeApi())
+                    return
+                time.sleep(0.05)
+
+        thread = threading.Thread(target=ack)
+        thread.start()
+        code, out, err = json_out(run_cli(
+            ["--json", "post", "--to", "human", "--kind", "question", "--timeout", "20s", "submit?"],
+            self.env, live_api()))
+        thread.join()
+        self.assertEqual(code, 0, err)
+        self.assertTrue(out["waited"])
+        self.assertIn("not a decision", out["answer"]["text"], "the agent is told this was not approval")
+
     def test_the_operators_own_post_never_waits(self):
         code, out, err = json_out(run_cli(
             ["--json", "--team", "alpha", "post", "--to", "human", "--kind", "question", "x"], self.ts.env, FakeApi()))
@@ -319,6 +338,26 @@ class PopupModelTests(unittest.TestCase):
         cmd_asks.ask_key(model, "TAB")
         self.assertEqual(model.index, 0, "it wraps")
 
+    def test_ctrl_a_acknowledges_without_typing(self):
+        model = self.model(self.record(kind="blocked"))
+        intent = cmd_asks.ask_key(model, "CTRL_A")
+        self.assertEqual((intent.kind, intent.args["seq"], intent.args["to"]), ("ack", 7, MEMBER))
+        argv = cmd_asks.reply_args("alpha", intent)
+        self.assertIn("--reply-to", argv)
+        self.assertEqual(argv[argv.index("--kind") + 1], "answer")
+
+    def test_an_acknowledgement_never_reads_as_approval(self):
+        # An agent that asked "should I submit?" must not take "seen" for a
+        # yes. A peer's reply being read as approval is why this exists.
+        asking = cmd_asks.ack_text("question")
+        self.assertIn("not a decision", asking)
+        self.assertIn("say what you would do and stop", asking)
+        self.assertEqual(cmd_asks.ack_text("blocked"), asking)
+        self.assertEqual(cmd_asks.ack_text("request"), asking)
+        # a finished-work notice is finished by being read, and says only that
+        self.assertEqual(cmd_asks.ack_text("done"), cmd_asks.ACK_SEEN)
+        self.assertNotIn("decision", cmd_asks.ack_text("note"))
+
     def test_escape_dismisses_rather_than_answering(self):
         model = self.model(self.record())
         cmd_asks.ask_key(model, "y")
@@ -339,6 +378,19 @@ class AsksCommandTests(unittest.TestCase):
     def setUp(self):
         self.ts = TempState()
         self.addCleanup(self.ts.cleanup)
+
+    def test_ack_closes_the_ask_and_leaves_the_operators_reply(self):
+        seq = post(self.ts, kind="blocked", text="PRE-SUBMISSION STOP")
+        code, out, err = json_out(run_cli(["--json", "--team", "alpha", "asks", "--ack", str(seq)], self.ts.env, FakeApi()))
+        self.assertEqual((code, out["acknowledged"]), (0, seq), err)
+        self.assertEqual(asks.pending(self.ts.team), [], "acknowledging closes it, unlike dismissing")
+        reply = [r for r in store.BoardStore(self.ts.team).read() if r.get("reply_to") == seq][0]
+        self.assertEqual((reply["from"], reply["kind"], reply["to"]), ("human", "answer", [MEMBER]))
+        self.assertIn("not a decision", reply["text"])
+
+    def test_ack_refuses_something_that_is_not_waiting(self):
+        code, _out, err = json_out(run_cli(["--json", "--team", "alpha", "asks", "--ack", "99"], self.ts.env, FakeApi()))
+        self.assertEqual((code, err_of(err)["code"]), (1, "ask_not_pending"))
 
     def test_it_lists_what_is_waiting_and_dismisses(self):
         seq = post(self.ts)

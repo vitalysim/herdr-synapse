@@ -1043,7 +1043,16 @@ operator has not replied to. A reply from a teammate does not clear one — only
 out. JSON `{"team","pending":[{"seq","from","kind","ts","text"}]}`.
 
 `--dismiss <seq>` is "not now": the ask stays on the board and in this list's
-source, but the popup stops reopening for it.
+source, but the popup stops reopening for it. A waiting agent stays blocked.
+
+`--ack <seq>` is the shortcut for "seen": it posts an acknowledgement from you,
+which closes the ask and releases a waiting agent. The text is deliberately not
+"ok" — for a `question`, `blocked` or `request` it reads *"Seen by the operator.
+This is an acknowledgement, not a decision: if you were waiting on one, say what
+you would do and stop."* An agent that asked whether to submit something must
+not read "seen" as approval, which is exactly the mistake a peer's reply caused.
+For a `done` or a `note`, which is finished by being read, it says only "Seen by
+the operator."
 
 ### The popup
 
@@ -1055,6 +1064,7 @@ modals. It lists what is pending, and:
 | key | |
 | --- | --- |
 | type + `Enter` | posts your reply as `--kind answer --reply-to <seq>`, which is what unblocks a waiting agent |
+| `Ctrl-A` | acknowledges without typing: closes the ask and unblocks the agent |
 | `Tab` / `↑` `↓` | move between asks |
 | `Esc` | leaves this one waiting and stops the popup reopening for it |
 | `q` | closes the popup |

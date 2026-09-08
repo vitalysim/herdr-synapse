@@ -32,6 +32,25 @@ IDLE_WATCHDOG_S = 1800.0
 REFRESH_S = 2.0
 MAX_REPLY_CHARS = 500
 
+#: What an acknowledgement says. It is deliberately not "ok": an agent that
+#: asked whether to submit something must not read "seen" as approval, and this
+#: whole feature exists because one did exactly that with a peer's reply.
+ACK_SEEN = "Seen by the operator."
+ACK_NOT_A_DECISION = (
+    "Seen by the operator. This is an acknowledgement, not a decision: if you were waiting on one, "
+    "say what you would do and stop."
+)
+
+
+def ack_text(kind: Any) -> str:
+    """The acknowledgement for a post of this kind.
+
+    A `done` or a `note` is finished by being read. A `question` or a `blocked`
+    is not, and saying so is the difference between unblocking an agent and
+    misleading it.
+    """
+    return ACK_NOT_A_DECISION if str(kind or "") in _asks.ASKING_KINDS else ACK_SEEN
+
 
 @dataclass
 class AskModel:
@@ -92,7 +111,7 @@ def ask_lines(model: AskModel, now: Optional[float] = None) -> List[str]:
     lines.append("")
     lines.append("> " + model.input)
     lines.append("")
-    lines.append("Enter replies · Tab next · Esc leaves it waiting · q closes")
+    lines.append("Enter replies · Ctrl-A acknowledges · Tab next · Esc leaves it waiting · q closes")
     if model.status:
         lines.append(model.status[:width])
     return lines
@@ -113,6 +132,11 @@ def ask_key(model: AskModel, key: str) -> Intent:
         # Dismissing is "not now", never "answered": the ask stays on the
         # board, and the daemon simply stops reopening the popup for it.
         return Intent("dismiss", {"seq": record.get("seq")})
+    if key == "CTRL_A":
+        if record is None:
+            return Intent("quit")
+        return Intent("ack", {"seq": record.get("seq"), "to": record.get("from"), "kind": record.get("kind"),
+                              "text": ack_text(record.get("kind"))})
     if key in ("TAB", "DOWN") and model.asks:
         model.index = (model.index + 1) % len(model.asks)
         model.input = ""
@@ -200,7 +224,7 @@ def _loop(stdscr: Any, args: argparse.Namespace, team: str, team_paths: Any) -> 
             if not model.asks:
                 return EXIT_OK
             continue
-        if intent.kind == "reply":
+        if intent.kind in ("reply", "ack"):
             code, out, err = run_cli(reply_args(team, intent), dict(args.env))
             if err:
                 model.status = "not sent: {}".format(err.get("message") or err.get("code"))
@@ -237,7 +261,8 @@ def _run_pane(args: argparse.Namespace) -> int:
 
 
 def _add_asks_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--dismiss", metavar="SEQ", type=int, help="stop the popup reopening for this ask")
+    parser.add_argument("--ack", metavar="SEQ", type=int, help="acknowledge it: closes the ask and unblocks a waiting agent")
+    parser.add_argument("--dismiss", metavar="SEQ", type=int, help="stop the popup reopening for this ask, without answering")
 
 
 def _run_asks(args: argparse.Namespace) -> int:
@@ -250,6 +275,21 @@ def _run_asks(args: argparse.Namespace) -> int:
     if not team_name:
         raise HerdrTeamError("team_required", "no team; pass --team <name>", EXIT_REFUSED)
     team_paths = layout.team(team_name)
+    if args.ack is not None:
+        record = next((r for r in _asks.pending(team_paths) if r.get("seq") == int(args.ack)), None)
+        if record is None:
+            raise HerdrTeamError("ask_not_pending", "#{} is not waiting on you".format(args.ack), EXIT_REFUSED,
+                                 {"seq": int(args.ack), "team": team_name})
+        intent = Intent("ack", {"seq": record.get("seq"), "to": record.get("from"), "kind": record.get("kind"),
+                                "text": ack_text(record.get("kind"))})
+        from herdr_team.console import run_cli
+
+        code, out, err = run_cli(reply_args(team_name, intent), dict(args.env))
+        if err:
+            raise HerdrTeamError(str(err.get("code") or "ack_failed"), str(err.get("message") or "could not acknowledge"), EXIT_REFUSED,
+                                 {"seq": int(args.ack)})
+        return emit(args, {"team": team_name, "acknowledged": int(args.ack), "seq": (out or {}).get("seq")},
+                    "#{} acknowledged".format(args.ack))
     if args.dismiss is not None:
         _asks.dismiss(team_paths, [int(args.dismiss)])
         return emit(args, {"team": team_name, "dismissed": int(args.dismiss)}, "#{} will not reopen the popup".format(args.dismiss))
