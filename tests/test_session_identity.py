@@ -431,7 +431,13 @@ class ClaudeSessionStartTests(unittest.TestCase):
         self.addCleanup(self.ts.cleanup)
 
     def test_payload_shape(self):
-        self.assertEqual(cmd_hooks._claude_session({"session_id": "7cad-1"}), roster.session_of(sess("7cad-1", "herdr:claude", "claude")) | {"seen_at": cmd_hooks._claude_session({"session_id": "7cad-1"})["seen_at"]})
+        # One call, then compared against itself: this used to stamp ``seen_at``
+        # twice and assert the two were equal, which they are only while the
+        # millisecond does not tick between them. It failed roughly one CI run
+        # in ten before that was the whole of the defect.
+        built = cmd_hooks._claude_session({"session_id": "7cad-1"})
+        self.assertEqual(built, roster.session_of(sess("7cad-1", "herdr:claude", "claude")) | {"seen_at": built["seen_at"]})
+        self.assertRegex(built["seen_at"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$")
         self.assertIsNone(cmd_hooks._claude_session({}))
         self.assertIsNone(cmd_hooks._claude_session({"session_id": 5}))
         self.assertIsNone(cmd_hooks._claude_session({"session_id": "-flag"}))
