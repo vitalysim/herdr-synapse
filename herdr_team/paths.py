@@ -23,7 +23,13 @@ State root resolution order (``herdr-synapse doctor`` prints it):
    ``<root>/sessions/<slug>/teams/<team>`` and the root is derived from it.
 2. ``HERDR_TEAM_STATE_DIR`` (test-rig override of the root itself).
 3. ``HERDR_TEAM_DIR`` (a team dir, set on panes the plugin spawned).
-4. ``HERDR_PLUGIN_STATE_DIR`` (plugin processes; this *is* the root).
+4. ``HERDR_PLUGIN_STATE_DIR``, but only when it names something other than the
+   id-derived default below. Herdr sets this on every pane it launches for the
+   plugin, always to ``<state>/plugins/<plugin id>`` — a default, not a choice.
+   The pointer in 5 exists precisely to say that this id's state lives
+   somewhere else, which is what survives a rename, so the pointer outranks
+   that default. A value Herdr did not derive is a deliberate redirection and
+   still wins.
 5. Pointer file ``<config_dir>/plugins/config/herdr-synapse/state-dir`` written
    by the startup hook and the console.
 6. XDG derivation ``${XDG_STATE_HOME:-$HOME/.local/state}/<app>/plugins/herdr-synapse``
@@ -387,12 +393,22 @@ def resolve_state_root(
         team_dir = Path(team_dir_env)
         return StateRootResolution(state_root_from_team_dir(team_dir), STATE_SOURCE_TEAM_DIR, team_dir)
     plugin_state = env.get("HERDR_PLUGIN_STATE_DIR")
-    if plugin_state:
+    derived = default_state_root(config, env)
+    if plugin_state and canonicalize(plugin_state) != canonicalize(derived):
+        # Herdr did not derive this one, so somebody meant it: it wins.
         return StateRootResolution(Path(plugin_state), STATE_SOURCE_PLUGIN)
     pointer = read_pointer(config)
     if pointer is not None:
+        # A pointer under this plugin id was written by this plugin to say
+        # where its state actually is. Before this ran ahead of the derived
+        # ``HERDR_PLUGIN_STATE_DIR``, every pane Herdr launched for the plugin
+        # (console, compose, picker, the popups) resolved to the empty
+        # directory named after the current id and reported "no teams", while
+        # a shell and the daemon read the real one through the pointer.
         return StateRootResolution(pointer, STATE_SOURCE_POINTER)
-    return StateRootResolution(default_state_root(config, env), STATE_SOURCE_XDG)
+    if plugin_state:
+        return StateRootResolution(Path(plugin_state), STATE_SOURCE_PLUGIN)
+    return StateRootResolution(derived, STATE_SOURCE_XDG)
 
 
 # --------------------------------------------------------------------------

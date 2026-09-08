@@ -145,11 +145,32 @@ class StateRootTests(unittest.TestCase):
             paths.read_pointer(self.config)
         self.assertEqual(ctx.exception.code, "path_symlink")
 
-    def test_plugin_state_dir_beats_pointer(self):
+    def test_a_plugin_state_dir_herdr_did_not_derive_beats_the_pointer(self):
         paths.write_pointer(self.config, self.ts.tmp / "pointed")
         env = dict(self.env, HERDR_PLUGIN_STATE_DIR="/plug/state")
         res = paths.resolve_state_root(env, self.config)
         self.assertEqual((res.source, res.path), (paths.STATE_SOURCE_PLUGIN, Path("/plug/state")))
+
+    def test_the_pointer_beats_the_plugin_state_dir_herdr_derives_from_the_id(self):
+        """Regression: after the 0.8.0 rename every plugin-launched pane saw no teams.
+
+        Herdr sets ``HERDR_PLUGIN_STATE_DIR`` to ``<state>/plugins/<plugin id>``
+        on every pane it launches for the plugin. That is the new id, and the
+        new id's directory is empty, because the rename left the data where it
+        was and wrote a pointer to it. The console, compose, the picker and the
+        popups all read the empty one while a shell and the daemon read the
+        real one.
+        """
+        target = self.ts.tmp / "pointed"
+        target.mkdir()
+        paths.write_pointer(self.config, target)
+        derived = paths.default_state_root(self.config, self.env)
+        res = paths.resolve_state_root(dict(self.env, HERDR_PLUGIN_STATE_DIR=os.fspath(derived)), self.config)
+        self.assertEqual((res.source, res.path), (paths.STATE_SOURCE_POINTER, target))
+        # with no pointer the derived value is still what a plugin pane uses
+        paths.pointer_file(self.config).unlink()
+        res = paths.resolve_state_root(dict(self.env, HERDR_PLUGIN_STATE_DIR=os.fspath(derived)), self.config)
+        self.assertEqual((res.source, res.path), (paths.STATE_SOURCE_PLUGIN, derived))
 
     def test_team_dir_env_beats_plugin_state_dir(self):
         env = dict(self.env, HERDR_PLUGIN_STATE_DIR="/plug/state", HERDR_TEAM_DIR="/root/sessions/default/teams/alpha")
