@@ -113,10 +113,13 @@ create <team> --new [--workspace] [--charter …] --spawn <role>:<kind>[:<cwd>]�
        [--model <role|kind>=<model>[@<effort>]]…
 ```
 
-- `--model`: `role=` sets that spawned member's own model and effort, `kind=`
-  (`claude`, `codex`, `opencode`) sets the team default for the kind
-  (`config.models`). A kind with no verified flags is refused
-  (`model_unsupported`) before anything is laid out. See section 9c.
+- `--model`: `role=` or `name=` sets that member's own model and effort —
+  with `--new --spawn` the agent starts with the flags; with `--member` (a
+  live agent) the setting is recorded and applies at its next resume (live
+  for Claude through `model`). `kind=` (`claude`, `codex`, `opencode`) sets
+  the team default for the kind (`config.models`). A kind with no verified
+  flags is refused (`model_unsupported`) before anything is written; a key
+  that names nobody being added is a usage error. See section 9c.
 
 - `<target>`: pane id or live agent name. Role defaults to the kind label.
   Name defaults to `<team>-<role>` (`--names plain` uses `<role>`).

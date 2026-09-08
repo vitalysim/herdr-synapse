@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.14.1 (2026-09-08)
+
+- The `prefix+t` team menu asks for each agent's model and effort when a team is created or agents are added — a fourth prompt after role, name and brief, validated against that agent's kind, Enter keeps the harness default. The confirm screen shows it, and `create`/`add` record it on the member.
+- `create --member … --model <name|role>=<setting>` now records the setting on a live agent instead of refusing; a live agent keeps its launch flags, so the setting applies at its next resume, live for Claude through `model`, and `who` shows it meanwhile.
+
 ## 0.14.0 (2026-09-08)
 
 - **Each member gets a model and a reasoning effort.** `create --new --spawn reviewer:codex --model reviewer=gpt-5.6-luna@high --model claude=opus@medium` starts the agents with those flags; `add … --model`, `models set <kind> <setting>` for team defaults, and `model <member> <setting>` afterwards. The setting is one token, `<model>[@<effort>]`, in the harness's own vocabulary — Claude `low|medium|high|xhigh|max`, Codex `minimal|low|medium|high|xhigh`, OpenCode's provider-specific variant — passed through untranslated, because `medium` should mean what the harness means by it. Resolution is member override, then the team default for the kind, then the harness default.

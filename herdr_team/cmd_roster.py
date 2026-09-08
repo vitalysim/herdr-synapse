@@ -233,6 +233,8 @@ class _JoinSpec:
         self.role = role
         self.name = name
         self.brief = brief
+        #: ``(model, effort)`` from ``create --model <name|role>=…``, recorded after the join.
+        self.setting: Optional[Tuple[Optional[str], Optional[str]]] = None
         self.resolved: Optional[_roster.ResolvedTarget] = None
         self.final_role: str = ""
         self.final_name: str = ""
@@ -654,9 +656,8 @@ def _run_create(args: argparse.Namespace) -> int:
                           "launch_model": launch_model, "launch_effort": launch_effort})
         if not spawn:
             raise UsageError("--new needs at least one --spawn")
-    if model_members:
-        raise UsageError("--model names {}, which is not a --spawn role{}".format(
-            ", ".join(sorted(model_members)), "" if args.new else " (member settings need --new --spawn; use herdr-synapse model <name> for a live member)"))
+    if args.new and model_members:
+        raise UsageError("--model names {}, which is not a --spawn role".format(", ".join(sorted(model_members))))
     else:
         for item in args.member:
             specs.append(parse_member_spec(item))
@@ -681,6 +682,15 @@ def _run_create(args: argparse.Namespace) -> int:
         validate_join_batch(shell, api, specs, names_plain, layout=layout, steal=args.steal)
         for spec in specs:
             spec.brief = briefs.get(spec.final_name) or briefs.get(spec.final_role)
+            override = model_members.pop(spec.final_name, None) or model_members.pop(spec.final_role, None)
+            if override is not None:
+                # A live agent keeps its launch flags; the setting is recorded
+                # (``resume`` and ``who`` use it) and applied later, live for
+                # Claude through ``model``, at the next resume otherwise.
+                _models.validate(spec.resolved.kind if spec.resolved else None, *override)
+                spec.setting = override
+    if model_members:
+        raise UsageError("--model names {}, which is not a member being added".format(", ".join(sorted(model_members))))
     for unknown in set(briefs) - {s.final_name for s in specs} - {s.final_role for s in specs} - {s["name"] for s in spawn} - {s["role"] for s in spawn}:
         raise HerdrTeamError("member_not_found", "--brief names {!r}, which is not being added".format(unknown), EXIT_REFUSED, {"name": unknown})
 
@@ -791,6 +801,8 @@ def _create_members(args: argparse.Namespace, layout: Layout, api: Any, env: Dic
     else:
         for spec in specs:
             member, job = perform_join(layout, api, team, spec, args.steal, args.rename, env, author)
+            if spec.setting is not None:
+                member = _record_setting(layout, team_name, member, spec.setting)
             members_out.append(_member_json(member, spec.renamed))
             jobs.append(job)
     _ensure_daemon(layout, env)
@@ -861,6 +873,20 @@ def _add_add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--model", metavar="MODEL[@EFFORT]", help="record the member's model and effort (applies at its next resume; see herdr-synapse model)")
 
 
+def _record_setting(layout: Layout, team_name: str, member: _roster.Member, setting: Tuple[Optional[str], Optional[str]]) -> _roster.Member:
+    """Write a joined member's model/effort halves to the roster; the running agent keeps its flags until it is resumed or told."""
+    model, effort = setting
+
+    def set_model(t: _roster.Team) -> None:
+        row = t.find(member.name)
+        if row is not None:
+            row.model, row.effort = model or row.model, effort or row.effort
+
+    _roster.update_team(layout.team(team_name), set_model)
+    member.model, member.effort = model or member.model, effort or member.effort
+    return member
+
+
 def _run_add(args: argparse.Namespace) -> int:
     layout = layout_for(args)
     api = api_for(args, layout)
@@ -874,14 +900,7 @@ def _run_add(args: argparse.Namespace) -> int:
     member, job = perform_join(layout, api, team, spec, args.steal, args.rename, env_of(args), author)
     if setting != (None, None):
         _models.validate(member.kind, *setting)
-
-        def set_model(t: _roster.Team) -> None:
-            row = t.find(member.name)
-            if row is not None:
-                row.model, row.effort = setting[0] or row.model, setting[1] or row.effort
-
-        _roster.update_team(layout.team(team_name), set_model)
-        member.model, member.effort = setting[0] or member.model, setting[1] or member.effort
+        member = _record_setting(layout, team_name, member, setting)
     # Every other member hears about the newcomer: an urgent system broadcast the daemon nudges for
     # (the newcomer itself gets the briefing instead, which lists its teammates).
     joined = _roster.append_system_record(

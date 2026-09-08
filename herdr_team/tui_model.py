@@ -2223,6 +2223,8 @@ class PickerRow:
     role: str = ""
     member_name: str = ""
     brief: str = ""
+    #: ``<model>[@<effort>]`` typed at the fourth prompt; "" leaves the harness default.
+    setting: str = ""
     claimed_by: str = ""  # team that already owns this agent, if any
     terminal_id: str = ""
     #: The agent's working directory, used to prefill the project stage.
@@ -2260,7 +2262,7 @@ class PickerModel:
     cursor_pos: int = 0
     charter_lines: List[str] = field(default_factory=list)
     member_index: int = 0
-    member_field: str = "role"  # role | name | brief
+    member_field: str = "role"  # role | name | brief | model
     status: Optional[str] = None
     paste_mode: bool = False
     # -- the team tree (the select stage) and the member actions on it
@@ -2602,6 +2604,7 @@ def create_spec(model: PickerModel) -> Dict[str, Any]:
                 "role": row.role,
                 "name": row.member_name,
                 "brief": row.brief or None,
+                "setting": row.setting or None,
                 "renamed": bool(row.name and row.name != row.member_name),
             }
         )
@@ -2638,8 +2641,10 @@ def _begin_member_field(model: PickerModel) -> None:
                 _set_input(model, "")
             else:
                 _set_input(model, suggestion)
-    else:
+    elif model.member_field == "brief":
         _set_input(model, row.brief or "")
+    else:
+        _set_input(model, row.setting or "")
 
 
 def picker_apply_key(model: PickerModel, key: str) -> Optional[Intent]:
@@ -2691,7 +2696,7 @@ def picker_apply_key(model: PickerModel, key: str) -> Optional[Intent]:
             rows = selected_rows(model)
             model.stage = "members"
             model.member_index = max(0, len(rows) - 1)
-            model.member_field = "brief"
+            model.member_field = "model"
             _begin_member_field(model)
             model.error = None
         return None
@@ -3097,13 +3102,15 @@ def _members_key(model: PickerModel, key: str) -> Optional[Intent]:
         return None
     row = rows[min(model.member_index, len(rows) - 1)]
     if key == "ESC":
-        if model.member_field == "brief":
+        if model.member_field == "model":
+            model.member_field = "brief"
+        elif model.member_field == "brief":
             model.member_field = "name"
         elif model.member_field == "name":
             model.member_field = "role"
         elif model.member_index > 0:
             model.member_index -= 1
-            model.member_field = "brief"
+            model.member_field = "model"
         elif model.mode == "add":
             model.stage = "target"
             model.status = None
@@ -3139,11 +3146,23 @@ def _members_key(model: PickerModel, key: str) -> Optional[Intent]:
                 return None
             row.member_name = name
             model.member_field = "brief"
-        else:
+        elif model.member_field == "brief":
             if len(value) > MAX_BRIEF_CHARS:
                 model.error = "brief is {} chars; max {}".format(len(value), MAX_BRIEF_CHARS)
                 return None
             row.brief = value
+            model.member_field = "model"
+        else:
+            if value:
+                from herdr_team import models as _models
+                from herdr_team.errors import HerdrTeamError as _Err
+
+                try:
+                    _models.validate(row.kind, *_models.parse_setting(value))
+                except _Err as err:
+                    model.error = err.message
+                    return None
+            row.setting = value
             model.member_index += 1
             model.member_field = "role"
         model.error = None
@@ -3565,7 +3584,8 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
         joining = " (adding to team {})".format(model.team_name) if model.mode == "add" else ""
         lines.append("Member {}/{}: {} {} {}{}".format(model.member_index + 1, len(rows), row.pane_id, row.kind or "?", row.name or "(unnamed)", joining))
         lines.append("Enter accepts the value shown, Ctrl-U clears it, Esc goes back")
-        prompt = {"role": "role", "name": "name", "brief": "brief for {} (optional)".format(row.member_name or "this member")}[model.member_field]
+        prompt = {"role": "role", "name": "name", "brief": "brief for {} (optional)".format(row.member_name or "this member"),
+                  "model": "model@effort for {} (optional, e.g. opus@medium or @high; Enter keeps the harness default)".format(row.member_name or "this member")}[model.member_field]
         lines.append(prompt + ":")
         lines.append(INPUT_PROMPT + model.input)
         has_input = True
@@ -3578,7 +3598,8 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
             lines.append("Create team {}? (Enter creates, Esc back)".format(model.team_name))
             lines.append("charter: {}".format(headline(model.charter, 60) if model.charter else "(none, set later with charter set)"))
         for row in selected_rows(model):
-            lines.append("  {:<8} {:<10} {:<14} {}{}".format(row.pane_id, row.kind or "?", row.role, row.member_name, "  brief: " + headline(row.brief, 30) if row.brief else ""))
+            lines.append("  {:<8} {:<10} {:<14} {}{}{}".format(row.pane_id, row.kind or "?", row.role, row.member_name,
+                                                              "  brief: " + headline(row.brief, 30) if row.brief else "", "  model: " + row.setting if row.setting else ""))
         if model.trusted_kinds is not None:
             untrusted = sorted({str(row.kind) for row in selected_rows(model) if row.kind and row.kind not in model.trusted_kinds})
             for kind in untrusted:

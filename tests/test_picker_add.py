@@ -45,6 +45,7 @@ class PickerAddModeTests(unittest.TestCase):
         picker_apply_key(model, "ENTER")
         type_line(model, "Review every patch.")
         picker_apply_key(model, "ENTER")
+        picker_apply_key(model, "ENTER")  # model: keep the harness default
         self.assertEqual(model.stage, "confirm")
         joined = "\n".join(tui_model.picker_lines(model, 100, 24))
         self.assertIn("Add 1 agent to team alpha? (Enter adds, Esc back)", joined)
@@ -151,8 +152,8 @@ class PickerAddModeTests(unittest.TestCase):
             model = self.model()
             model.trusted_kinds = trusted
             picker_apply_key(model, "1")
-            for _ in range(3):
-                picker_apply_key(model, "ENTER")  # role, name, brief defaults
+            for _ in range(4):
+                picker_apply_key(model, "ENTER")  # role, name, brief, model defaults
             self.assertEqual(model.stage, "confirm")
             return "\n".join(tui_model.picker_lines(model, 120, 24))
 

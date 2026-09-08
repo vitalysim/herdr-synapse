@@ -512,5 +512,83 @@ class SurfaceTests(unittest.TestCase):
         self.assertIn("/model", tui_model.SLASH_USAGE)
 
 
+class PickerCreateTests(unittest.TestCase):
+    """The prefix+t team menu asks for the model and effort per agent, fourth after role, name, brief."""
+
+    def walk_to_members(self, model):
+        from test_tui_model import type_line
+
+        codex = next(r for r in model.rows if r.kind == "codex" and not r.claimed_by)
+        codex.selected = True
+        claude = next(r for r in model.rows if r.kind == "claude" and not r.claimed_by)
+        claude.selected = True
+        tui_model.picker_apply_key(model, "ENTER")          # two agents selected: on to the team name
+        self.assertEqual(model.stage, "name")
+        type_line(model, "hunt")
+        tui_model.picker_apply_key(model, "ENTER")
+        self.assertEqual(model.stage, "charter")
+        type_line(model, "Find the bug.")
+        tui_model.picker_apply_key(model, "ENTER")
+        tui_model.picker_apply_key(model, "ENTER")          # an empty line finishes the charter
+        self.assertEqual(model.stage, "project")
+        tui_model.picker_apply_key(model, "TAB")            # no folder
+        self.assertEqual(model.stage, "members")
+
+    def test_the_fourth_prompt_records_a_setting_and_enter_keeps_the_default(self):
+        from test_tui_model import picker_model, type_line
+
+        model = picker_model([], focused=None)
+        self.walk_to_members(model)
+        for _ in range(3):
+            tui_model.picker_apply_key(model, "ENTER")      # role, name, brief
+        self.assertEqual(model.member_field, "model")
+        self.assertIn("model@effort", "\n".join(tui_model.picker_lines(model, 100, 24)))
+        type_line(model, "@high")
+        tui_model.picker_apply_key(model, "ENTER")
+        # the first row keeps @high; every further row keeps the default
+        while model.stage == "members":
+            tui_model.picker_apply_key(model, "ENTER")
+        self.assertEqual(model.stage, "confirm")
+        intent = tui_model.picker_apply_key(model, "ENTER")
+        self.assertEqual(intent.kind, "create")
+        first = intent.args["members"][0]
+        self.assertEqual(first["setting"], "@high")
+        self.assertTrue(all(m["setting"] is None for m in intent.args["members"][1:]))
+        argv = picker.create_args(intent.args)
+        self.assertIn("--model", argv)
+        self.assertEqual(argv[argv.index("--model") + 1], "{}=@high".format(first["name"]))
+        self.assertEqual(argv.count("--model"), 1)
+        self.assertEqual(picker.add_args(dict(intent.args, mode="add"), first)[-2:], ["--model", "@high"])
+
+    def test_an_unknown_effort_for_the_rows_kind_is_refused_at_the_prompt(self):
+        from test_tui_model import picker_model, type_line
+
+        model = picker_model([], focused=None)
+        self.walk_to_members(model)
+        for _ in range(3):
+            tui_model.picker_apply_key(model, "ENTER")
+        row = tui_model.selected_rows(model)[0]
+        bad = "@max" if row.kind == "codex" else "@minimal"
+        type_line(model, bad)
+        tui_model.picker_apply_key(model, "ENTER")
+        self.assertEqual(model.member_field, "model")
+        self.assertIn("does not know the effort", model.error or "")
+
+
+class CreateLiveMemberSettingTests(unittest.TestCase):
+    """``create --member … --model name=…`` records the setting on a live agent (the picker's path)."""
+
+    def test_it_is_recorded_and_a_wrong_name_is_a_usage_error(self):
+        with TempState(write_team=False) as ts:
+            api = live_api()
+            code, payload, err = json_out(run_cli(["--json", "create", "beta", "--member", "w5:p1:reviewer", "--model", "reviewer=@high"], env_no_daemon(ts), api))
+            self.assertEqual(code, 0, err)
+            row = next(m for m in store.read_json(ts.session.team("beta").team_json)["members"] if m["role"] == "reviewer")
+            self.assertEqual((row.get("model"), row.get("effort")), (None, "high"))
+            code, _payload, err = json_out(run_cli(["--json", "create", "gamma", "--member", "w5:p2:worker", "--model", "nobody=@high"], env_no_daemon(ts), api))
+            self.assertEqual((code, err["code"]), (2, "usage"))
+            self.assertFalse(ts.session.team("gamma").team_json.exists())
+
+
 if __name__ == "__main__":
     unittest.main()

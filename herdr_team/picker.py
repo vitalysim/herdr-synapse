@@ -200,6 +200,8 @@ def create_args(spec: Dict[str, Any]) -> List[str]:
         args += ["--member", target]
         if member.get("brief"):
             args += ["--brief", "{}={}".format(member["name"], member["brief"])]
+        if member.get("setting"):
+            args += ["--model", "{}={}".format(member["name"], member["setting"])]
     return args
 
 
@@ -208,6 +210,8 @@ def add_args(spec: Dict[str, Any], member: Dict[str, Any]) -> List[str]:
     args: List[str] = ["add", str(spec["team"]), str(member["target"]), "--role", str(member["role"]), "--as", str(member["name"])]
     if member.get("brief"):
         args += ["--brief", str(member["brief"])]
+    if member.get("setting"):
+        args += ["--model", str(member["setting"])]
     return args
 
 

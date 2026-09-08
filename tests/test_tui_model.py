@@ -789,13 +789,21 @@ class PickerWizardTests(unittest.TestCase):
         self.assertIn("max 300", model.error)
         type_line(model, "Review every patch.")
         picker_apply_key(model, "ENTER")
+        self.assertEqual((model.member_index, model.member_field), (0, "model"))
+        type_line(model, "gpt-5.6-luna@nope")
+        picker_apply_key(model, "ENTER")
+        self.assertIn("does not know the effort", model.error or "")  # validated against the row's kind
+        type_line(model, "gpt-5.6-luna@high")
+        picker_apply_key(model, "ENTER")
         self.assertEqual((model.member_index, model.member_field), (1, "role"))
         type_line(model, "Reviewer")
         picker_apply_key(model, "ENTER")
         self.assertEqual(model.input, "vuln-hunt-reviewer")
         picker_apply_key(model, "ENTER")
         picker_apply_key(model, "ENTER")  # skip brief
+        picker_apply_key(model, "ENTER")  # skip model: the harness default
         self.assertEqual(model.stage, "confirm")
+        self.assertIn("model: gpt-5.6-luna@high", "\n".join(tui_model.picker_lines(model, 160, 24)))
         lines = tui_model.picker_lines(model, 100, 24)
         joined = "\n".join(lines)
         self.assertIn("vuln-hunt-codex-dev", joined)
@@ -830,6 +838,7 @@ class PickerWizardTests(unittest.TestCase):
         self.assertEqual(model.input, "t-codex-dev")
         picker_apply_key(model, "ENTER")  # name
         picker_apply_key(model, "ENTER")  # brief
+        picker_apply_key(model, "ENTER")  # model
         picker_apply_key(model, "ENTER")  # role codex-dev for member 2
         self.assertEqual(model.input, "t-codex-dev-2")
         type_line(model, "t-codex-dev")
@@ -858,6 +867,7 @@ class PickerWizardTests(unittest.TestCase):
         picker_apply_key(model, "ENTER")
         self.assertEqual(model.member_field, "brief")
         picker_apply_key(model, "ENTER")
+        picker_apply_key(model, "ENTER")  # model
         self.assertFalse(picker_apply_key(model, "ENTER").args["members"][0]["renamed"])
 
     def test_validation_and_backtracking(self):
@@ -918,7 +928,10 @@ class PickerWizardTests(unittest.TestCase):
         picker_apply_key(model, "ENTER")
         picker_apply_key(model, "ENTER")
         picker_apply_key(model, "ENTER")
+        picker_apply_key(model, "ENTER")  # model: the harness default
         self.assertEqual(model.stage, "confirm")
+        picker_apply_key(model, "ESC")
+        self.assertEqual((model.stage, model.member_field), ("members", "model"))
         picker_apply_key(model, "ESC")
         self.assertEqual((model.stage, model.member_field), ("members", "brief"))
 
