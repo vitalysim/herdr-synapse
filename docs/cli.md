@@ -222,9 +222,18 @@ that session in its own pane (go there, or stop it first).
 
 ### `dissolve <team> [--yes]`
 
-Clears tokens, labels, and the view for every member, stops nothing else,
-moves the team dir to `_archive/<team>-<ts>/`. JSON
+Deletes a team. Clears tokens, labels, and the view for every member, stops
+nothing else, and moves the team dir to `_archive/<team>-<ts>/`. The agents keep
+running and the board is archived rather than removed, so this is recoverable
+by moving the directory back. Human only.
+
+On a terminal it asks, naming what happens, since "dissolve" does not say it;
+off one, `--yes` is required (`confirmation_required`). Declining exits 0 with
+`{"team","dissolved":false}`. JSON on success
 `{"team","archived_to":"…","members_cleared":n}`.
+
+In the team view (`prefix+t`), `x` on a team or one of its members dissolves it
+after the same question.
 
 ### `use <team>`
 

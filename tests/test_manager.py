@@ -13,6 +13,7 @@ from herdr_team import cmd_board, cmd_roster, gate, nudge, operator, render, ros
 from herdr_team import daemon as D
 from herdr_team import picker
 from herdr_team.errors import HerdrTeamError
+from pathlib import Path
 from support import FAKE_AGENTS, FakeApi, TempState, fake_agent
 from test_cmd_board import json_out, run_cli, write_live_daemon
 from test_cmd_roster import env_no_daemon, live_api
@@ -321,6 +322,37 @@ class PublishedTests(unittest.TestCase):
         self.assertIn("team manager", text)
         self.assertIn("It is not the operator", text)
         self.assertIn("request from a peer", text, "the peer rule still stands")
+
+
+# --------------------------------------------------------------------------
+# dissolving a team
+
+
+class DissolveTests(unittest.TestCase):
+    def setUp(self):
+        self.ts = TempState()
+        self.addCleanup(self.ts.cleanup)
+        write_live_daemon(self.ts)
+
+    def test_off_a_terminal_it_still_needs_yes_and_writes_nothing(self):
+        code, _out, err = json_out(run_cli(["--json", "--team", "alpha", "dissolve", "alpha"], self.ts.env, FakeApi()))
+        self.assertEqual((code, err["code"]), (1, "confirmation_required"))
+        self.assertIn("archived", err["message"], "the refusal says what dissolving does")
+        self.assertTrue(self.ts.team.team_json.is_file(), "nothing was touched")
+
+    def test_yes_archives_the_team_rather_than_deleting_it(self):
+        code, out, err = json_out(run_cli(["--json", "--team", "alpha", "dissolve", "alpha", "--yes"], self.ts.env, FakeApi()))
+        self.assertEqual(code, 0, err)
+        archived = Path(out["archived_to"])
+        self.assertTrue(archived.is_dir(), "the team directory moved, it was not removed")
+        self.assertTrue((archived / "team.json").is_file(), "the roster came with it")
+        self.assertFalse(self.ts.team.team_json.exists())
+
+    def test_a_member_cannot_dissolve_the_team(self):
+        env = self.ts.env_with(HERDR_PANE_ID="w2:p1")
+        code, _out, err = json_out(run_cli(["--json", "--team", "alpha", "dissolve", "alpha", "--yes"], env, live_api()))
+        self.assertEqual((code, err["code"]), (1, "author_mismatch"))
+        self.assertTrue(self.ts.team.team_json.is_file())
 
 
 # --------------------------------------------------------------------------

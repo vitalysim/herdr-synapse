@@ -1229,7 +1229,23 @@ def _cmd_misc_duration(text: str) -> int:
 
 def _add_dissolve_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("team_pos", metavar="team")
-    parser.add_argument("--yes", action="store_true")
+    parser.add_argument("--yes", action="store_true", help="do not ask")
+
+
+def _confirm_dissolve(args: argparse.Namespace, team_name: str, members: int) -> bool:
+    """Ask before dissolving, when there is somebody to ask.
+
+    The question names what actually happens, because "dissolve" does not say
+    it: the agents keep running and the board is archived, not deleted. Off a
+    terminal there is nobody to ask, so ``--yes`` is required instead.
+    """
+    question = "dissolve {}? its {} member{} are released and the board is archived to the session archive, not deleted".format(
+        team_name, members, "" if members == 1 else "s")
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        raise HerdrTeamError("confirmation_required", "{} (pass --yes)".format(question), EXIT_REFUSED, {"team": team_name})
+    args.stdout.write("{} [y/N] ".format(question))
+    args.stdout.flush()
+    return sys.stdin.readline().strip().lower() in ("y", "yes")
 
 
 def _run_dissolve(args: argparse.Namespace) -> int:
@@ -1238,9 +1254,11 @@ def _run_dissolve(args: argparse.Namespace) -> int:
     team_name = _paths.validate_team_name(args.team_pos)
     author = _author(args, layout, api, team=team_name, require_server=False)
     _human_only(layout, team_name, author, "dissolve")
+    doc = _roster.load_team(layout.team(team_name))
     if not args.yes:
-        raise HerdrTeamError("confirmation_required", "dissolve archives team {!r}; pass --yes".format(team_name), EXIT_REFUSED, {"team": team_name})
-    _roster.load_team(layout.team(team_name))
+        live = len([m for m in doc.members if not m.is_human and m.status != "left"])
+        if not _confirm_dissolve(args, team_name, live):
+            return emit(args, {"team": team_name, "dissolved": False}, "{} was not dissolved".format(team_name))
     check_write_session(args, layout, team_name)
     result = _roster.Roster(layout, team_name).dissolve(api)
     view_cleared = False

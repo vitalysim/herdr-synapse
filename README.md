@@ -512,6 +512,11 @@ herdr-synapse manager vuln-hunt-manager --operator --ttl 12h
 `prefix+t`, Enter on a member, action 8 toggles it. Setting one clears any
 previous holder in the same write.
 
+To delete a team, press `x` on its row in the same view, or run
+`herdr-synapse dissolve <team>`. Both ask first. The agents keep running and
+the board is archived to the session's `_archive/`, not removed, so it is
+recoverable by moving the directory back.
+
 Every member gets a board record naming it, and you get a toast. From then on
 `who` shows a `manager` tag, `me` marks it in the teammate list, and each
 agent's briefing carries it. The skill tells them: take its assignments and

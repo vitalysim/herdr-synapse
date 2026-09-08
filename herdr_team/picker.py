@@ -306,7 +306,7 @@ def run(layout: Layout, api: Any, env: Dict[str, str], actions: bool = True) -> 
 
 
 #: Member actions the tree can run while the popup stays open.
-ACTION_INTENTS = ("member_rename", "member_goal", "member_send_goal", "member_remove", "member_focus", "member_resume", "member_manager", "team_folder_set", "team_board_open")
+ACTION_INTENTS = ("member_rename", "member_goal", "member_send_goal", "member_remove", "member_focus", "member_resume", "member_manager", "team_folder_set", "team_board_open", "team_dissolve")
 #: ``remove`` and ``rename`` do several socket round trips plus a lock wait; the console's 20 s is too
 #: tight for them, and a timeout kills the CLI mid-change (M8 review).
 ACTION_TIMEOUT_S = 45.0
@@ -320,6 +320,7 @@ ACTION_LABELS = {
     "member_resume": "looking up the session of {member}",
     "member_manager": "making {member} the team manager",
     "team_folder_set": "setting the folder for {team}",
+    "team_dissolve": "dissolving {team}",
     "team_board_open": "opening the {team} board",
 }
 
@@ -340,6 +341,9 @@ def action_args(intent: Any) -> List[str]:
         return ["ui", "console", "--team", team]
     if intent.kind == "team_folder_set":
         return ["--team", team, "project", "set", str(args.get("path") or "")]
+    if intent.kind == "team_dissolve":
+        # The tree asked already, so ``--yes`` here is the answer, not a bypass.
+        return ["--team", team, "dissolve", team, "--yes"]
     if intent.kind == "member_goal":
         return ["--team", team, "brief", member, "--set", str(args.get("text") or "")]
     if intent.kind == "member_send_goal":
@@ -392,6 +396,9 @@ def action_success_status(intent: Any, out: Any) -> str:
         if isinstance(out, dict) and out.get("opened") is False:
             return "the {} board is already open in {}; focused it".format(args.get("team"), out.get("pane_id"))
         return "opened the {} board".format(args.get("team"))
+    if intent.kind == "team_dissolve":
+        archived = (out or {}).get("archived_to") if isinstance(out, dict) else None
+        return "{} dissolved; its board was archived to {}".format(args.get("team"), archived or "the session archive")
     if intent.kind == "team_folder_set":
         written = len((out or {}).get("written") or []) if isinstance(out, dict) else 0
         return "{} now has a folder at {} ({} file{} written)".format(

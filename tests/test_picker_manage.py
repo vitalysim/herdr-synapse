@@ -129,6 +129,56 @@ class TreeKeyTests(unittest.TestCase):
         self.assertEqual(model.scope_workspace, "w1")
 
 
+class TeamDissolveTests(unittest.TestCase):
+    """`x` on a team row dissolves it, after asking. The one destructive key in the tree."""
+
+    def model(self):
+        m = picker_model(ALPHA, focused=None)
+        tui_model.focus_node(m, "team:alpha")
+        return m
+
+    def test_it_asks_first_and_n_cancels(self):
+        model = self.model()
+        self.assertIsNone(picker_apply_key(model, "x"))
+        self.assertIsNotNone(model.pending_action)
+        self.assertIn("dissolve alpha?", model.status)
+        # the question says what actually happens, since the word is ambiguous
+        self.assertIn("archived, not deleted", model.status)
+        self.assertIn("2 members", model.status, "the human members are not counted")
+        self.assertIsNone(picker_apply_key(model, "n"))
+        self.assertIsNone(model.pending_action)
+        self.assertEqual(model.status, "cancelled")
+
+    def test_y_returns_the_intent_and_enter_never_confirms(self):
+        model = self.model()
+        picker_apply_key(model, "x")
+        # Enter must not confirm: it is the key that opened menus a moment ago
+        self.assertIsNone(picker_apply_key(model, "ENTER"))
+        self.assertIsNotNone(model.pending_action)
+        intent = picker_apply_key(model, "y")
+        self.assertEqual((intent.kind, intent.args["team"]), ("team_dissolve", "alpha"))
+        self.assertIn("team_dissolve", picker.ACTION_INTENTS)
+        self.assertEqual(picker.action_args(intent), ["--team", "alpha", "dissolve", "alpha", "--yes"])
+        self.assertIn("archived to", picker.action_success_status(intent, {"archived_to": "/s/_archive/alpha-x"}))
+
+    def test_it_works_from_a_member_row_and_refuses_off_a_team(self):
+        model = picker_model(ALPHA, focused=None)
+        tui_model.focus_node(model, "member:alpha/alpha-reviewer")
+        picker_apply_key(model, "x")
+        self.assertEqual(model.pending_action.args["team"], "alpha")
+        model = picker_model(ALPHA, focused=None)
+        tui_model.focus_node(model, "pane:w1:p3")
+        self.assertIsNone(picker_apply_key(model, "x"))
+        self.assertIsNone(model.pending_action)
+        self.assertIn("put the cursor on a team", model.error)
+
+    def test_the_key_is_advertised_on_the_row_and_in_the_header(self):
+        model = self.model()
+        lines = tui_model.picker_lines(model, 100, 24)
+        self.assertTrue(any("x dissolve" in line for line in lines), lines[0])
+        self.assertIn("x dissolves it", tui_model._tree_detail(model, tui_model.picker_tree(model)))
+
+
 class ScrollTests(unittest.TestCase):
     def test_window_moves_the_least_it_can(self):
         self.assertEqual(tui_model.scroll_window(0, 0, 10, 4), 0)

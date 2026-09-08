@@ -2725,6 +2725,19 @@ def _select_key(model: PickerModel, key: str) -> Optional[Intent]:
             model.error = "put the cursor on a team to open its board"
             return None
         return Intent("team_board_open", {"team": team})
+    if key == "x":
+        # Dissolving is the one destructive thing in this tree, so it asks, and
+        # the question says where the team goes rather than just "are you sure":
+        # the directory is archived, not deleted, and the panes keep running.
+        team = node.team if node.kind in ("team", "member") else ""
+        if not team:
+            model.error = "put the cursor on a team to dissolve it"
+            return None
+        members = len([m for m in (model.rosters.get(team) or []) if m.get("kind") != "human"])
+        intent = Intent("team_dissolve", {"team": team, "members": members})
+        model.pending_action = intent
+        model.status = _confirm_question(intent)
+        return None
     if key == "f":
         team = node.team if node.kind in ("team", "member") else ""
         if not team:
@@ -3156,6 +3169,10 @@ def _confirm_question(intent: "Intent") -> str:
     if intent.kind == "member_remove":
         tail = "its team tokens and pane label are cleared" if args.get("keep_name") else "its team tokens, pane label and Herdr agent name are cleared"
         return "remove {} from {}? {} - y removes, n cancels".format(args.get("member"), args.get("team"), tail)
+    if intent.kind == "team_dissolve":
+        members = args.get("members") or 0
+        return "dissolve {}? its {} member{} are released and the board is archived, not deleted - y dissolves, n cancels".format(
+            args.get("team"), members, "" if members == 1 else "s")
     return "{}? y/n".format(intent.kind)
 
 
@@ -3339,7 +3356,7 @@ def _tree_lines(model: PickerModel, width: int, height: int) -> List[str]:
         scope = "  unassigned: {}".format(model.scope_workspace)
     picked = len(selected_rows(model))
     if degrade_level(width) == 0:
-        keys = "Enter acts · Space picks · b board · f folder · w scope · a all · r refresh · Esc quit"
+        keys = "Enter acts · Space picks · b board · f folder · x dissolve · w scope · a all · r refresh · Esc quit"
     else:
         keys = "Enter acts · Space picks · Esc quit"
     head = "{} team{} · {} agent{}{}".format(teams, "" if teams == 1 else "s", agents, "" if agents == 1 else "s", scope)
@@ -3393,10 +3410,10 @@ def _tree_detail(model: PickerModel, nodes: List[PickerNode]) -> str:
             return "Enter adds the selected agents to {}".format(node.team)
         info = model.folders.get(node.team)
         if info is not None and not info.get("project_dir"):
-            return "{} has no team folder (no shared rules or per-member instructions) · f creates one".format(node.team)
+            return "{} has no team folder (no shared rules or per-member instructions) · f creates one · x dissolves it".format(node.team)
         if info is not None:
-            return "Enter folds {} · folder: {} · f changes it".format(node.team, folder_summary(info))
-        return "Enter folds {} open or shut".format(node.team)
+            return "Enter folds {} · folder: {} · f changes it · x dissolves it".format(node.team, folder_summary(info))
+        return "Enter folds {} open or shut · x dissolves it".format(node.team)
     if node.kind == "member":
         goal = str((node.member or {}).get("brief") or "")
         return "Enter opens actions for {} · goal: {}".format(node.label, headline(goal, 40) if goal else "(none yet)")
