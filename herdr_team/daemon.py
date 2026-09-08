@@ -168,6 +168,7 @@ SYSTEM_EVENT_DELIVERY: Dict[str, Dict[str, Any]] = {
     "link_established": {"wake": "named"},
     "link_broken": {"wake": "named"},
     "link_read": {},  # a receipt for the sending console; nobody is woken
+    "board_cleared": {},  # the idle sweep hands it to each member as an unread post
 }
 URGENT_SYSTEM_EVENTS = tuple(e for e, d in SYSTEM_EVENT_DELIVERY.items() if d.get("wake") == "all")
 NAMED_SYSTEM_EVENTS = tuple(e for e, d in SYSTEM_EVENT_DELIVERY.items() if d.get("wake") == "named")
@@ -2833,6 +2834,15 @@ class Daemon:
         self._track_link(team, rec)
         if author == "system":
             event = rec.get("event")
+            if event == "board_cleared":
+                # Everything the daemon held about the old board points at
+                # records that are now in the archive: asks, linked messages
+                # awaiting a read, and the nudges for them.
+                team.open_asks.clear()
+                team.link_inbox.clear()
+                for name in [n for n, p in team.pending.items() if p.kind == "nudge"]:
+                    del team.pending[name]
+                self.log("{}: board cleared at #{}; asks, link inbox and pending nudges dropped".format(team.name, seq))
             if event in TOAST_SYSTEM_EVENTS and "human" in [t for t in (rec.get("to") or []) if isinstance(t, str)]:
                 team.human_queue.append(rec)
             if event in NAMED_SYSTEM_EVENTS:

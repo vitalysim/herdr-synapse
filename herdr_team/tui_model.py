@@ -35,7 +35,7 @@ from herdr_team.paths import MAX_ROLE_CHARS, MAX_TEAM_CHARS, ROLE_NAME_RE, TEAM_
 FILTERS = ("all", "to me", "requests", "human", "system", "teams", "team")
 SLASH_COMMANDS = (
     "/all", "/human", "/kind", "/reply", "/urgent", "/interrupt", "/interrupts", "/ref", "/retract", "/mute", "/unmute", "/pause",
-    "/nudge", "/focus", "/peek", "/who", "/context", "/compact", "/clear", "/model", "/team", "/links", "/link", "/unlink", "/asks", "/ask-policy", "/filter", "/as", "/use", "/charter", "/remove", "/export", "/help", "/quit",
+    "/nudge", "/focus", "/peek", "/who", "/context", "/compact", "/clear", "/model", "/team", "/links", "/link", "/unlink", "/wipe", "/asks", "/ask-policy", "/filter", "/as", "/use", "/charter", "/remove", "/export", "/help", "/quit",
 )
 #: ``/`` menu rows: command -> (placeholder, what it does). Every entry in
 #: ``SLASH_COMMANDS`` must appear here; a test keeps the two in step, so a new
@@ -67,6 +67,7 @@ SLASH_USAGE = {
     "/links": ("", "which teams this team is linked to, and their state"),
     "/link": ("other-team", "link this team to another (both need a manager)"),
     "/unlink": ("other-team", "break the link to another team"),
+    "/wipe": ("[--purge] [reason]", "empty the board: posts move to the archive (--purge deletes them); asks first"),
     "/filter": ("[all|to me|requests|human|system]", "filter the feed"),
     "/as": ("label", "change the label your posts carry"),
     "/use": ("team", "switch to another team"),
@@ -1832,6 +1833,11 @@ def _parse_slash(head: str, rest: str, default_team: str) -> Intent:
         if fmt not in ("md", "json", "jsonl", "text"):
             return Intent("error", {"message": "format must be md, json, jsonl or text"})
         return Intent("export", {"team": default_team, "path": " ".join(path_words) or None, "format": fmt})
+    if head == "/wipe":
+        words = [w for w in args if w]
+        purge = "--purge" in words
+        reason = " ".join(w for w in words if w != "--purge").strip() or None
+        return Intent("wipe", {"team": default_team, "purge": purge, "reason": reason, "confirm": False})
     if head == "/links":
         return Intent("links", {"team": default_team})
     if head in ("/link", "/unlink"):
@@ -2009,11 +2015,14 @@ def _after_parse(model: ConsoleModel, intent: Intent) -> Intent:
             model.status = "error: {}".format(message)
             return Intent("error", {"message": message})
         return intent
-    if intent.kind in ("retract", "remove", "clear"):
+    if intent.kind in ("retract", "remove", "clear", "wipe"):
         if intent.kind == "retract":
             what = "retract #{}".format(intent.args.get("seq"))
         elif intent.kind == "remove":
             what = "remove {}".format(intent.args.get("member"))
+        elif intent.kind == "wipe":
+            what = ("delete every post on the board, its archive and its payloads (nothing is kept)" if intent.args.get("purge")
+                    else "clear the board (every post moves to the archive; read positions are kept)")
         else:
             # Clearing is the one console action that destroys something the
             # operator cannot get back, so it asks even though it is one word.

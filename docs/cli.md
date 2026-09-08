@@ -880,6 +880,21 @@ Human output: the posts rendered exactly like `board` (or the line
 `no posts to human`), then, when the file has entries, `-- attention (n):`
 followed by one indented line per entry, `<ts> <kind> [<reason>] <title>`.
 
+### `wipe [--yes] [--purge] [--reason TEXT]` (human only)
+
+Empty the board. Without `--purge`, the store's rotation is forced: the active
+file moves to `archive/board.<first>-<last>.jsonl`, `board.seq` continues, and
+the fresh board opens with a `board_cleared` system note (`by`, `reason`,
+`cleared_first_seq`, `cleared_last_seq`) addressed to `all`, which the idle
+sweep hands to each member as an unread post. Cursors are untouched; `board
+--since 1` still reads the archive. With `--purge`, the archive segments, the
+index and every payload are deleted too. Both ask on a terminal; off one,
+`--yes` is required (`confirmation_required`, 1). Audited as `board_wiped` /
+`board_purged`. JSON: `{"team","wiped","records","archived_to","note_seq",
+"first_seq","last_seq","purge","purged_segments","purged_payloads"}`. The
+notifier drops its asks, link inbox and pending nudges for that team when it
+ingests the note. Console: `/wipe [--purge] [reason]`, y/n first.
+
 ## 8. Delivery (enqueue to the daemon; exit 5 `daemon_down` when it is dead)
 
 | Command | Effect | JSON |

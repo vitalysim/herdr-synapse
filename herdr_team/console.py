@@ -89,6 +89,20 @@ class BoardTail:
     def close(self) -> None:
         self._tailer.close()
 
+    def reset(self) -> None:
+        """Forget everything and follow the board from its current start (after a wipe: the cache would otherwise keep showing archived posts)."""
+        self._tailer.close()
+        # From the fresh board's first seq: a tailer started at zero would read
+        # the archive segments back in, which is exactly what a wipe removed
+        # from view. ``board.seq`` records where the active file now begins.
+        doc = store.read_json(self.team.board_seq, None)
+        first = doc.get("active_first_seq") if isinstance(doc, dict) else None
+        start = max(0, int(first) - 1) if isinstance(first, int) and not isinstance(first, bool) and first > 0 else 0
+        self._tailer = store.BoardTailer(self.team, start_seq=start, persist=False)
+        self.records = []
+        self._by_seq = {}
+        self.resets += 1
+
     def poll(self) -> int:
         """Read new complete lines; returns how many records were added."""
         before_inode, before_offset, before_resets = self._tailer.inode, self._tailer.offset, self._tailer.resets
@@ -575,6 +589,29 @@ def execute_intent(intent: Intent, model: ConsoleModel, state: ConsoleState, api
             model.watching_say[out["seq"]] = (member, time.monotonic())
         else:
             model.status = "say exited {}".format(rc)
+        return True
+    if kind == "wipe":
+        argv = ["--team", team, "wipe", "--yes"]
+        if intent.args.get("purge"):
+            argv.append("--purge")
+        if intent.args.get("reason"):
+            argv += ["--reason", str(intent.args["reason"])]
+        rc, out, err = run_cli(argv, env)
+        if err:
+            model.status = "wipe failed: {}".format(err.get("message") or err.get("code"))
+            return True
+        # The cache holds every record this console has ever tailed; start over
+        # so the feed shows the board as it is now, not as it was.
+        state.tail.reset()
+        state.signature = None
+        model.feed = []
+        result = out if isinstance(out, dict) else {}
+        if result.get("purge"):
+            model.status = "board purged: {} post(s) deleted, {} archive segment(s) and {} payload(s) removed".format(result.get("records", 0), result.get("purged_segments", 0), result.get("purged_payloads", 0))
+        elif result.get("records"):
+            model.status = "board cleared: {} post(s) moved to the archive; herdr-synapse board --since 1 still reads them".format(result.get("records"))
+        else:
+            model.status = "the board was already empty"
         return True
     if kind == "retract":
         rc, out, err = run_cli(["--team", team, "retract", str(intent.args.get("seq"))], env)

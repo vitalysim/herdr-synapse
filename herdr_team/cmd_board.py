@@ -77,6 +77,7 @@ SYSTEM_EVENTS = (
     "context_high", "context_cleared", "context_compacted", "workdir_moved", "manager_changed",
     "model_changed", "model_applied", "restart_failed",
     "link_established", "link_broken", "link_read",
+    "board_cleared",
 )
 HUMAN_VIAS = (VIA_CONSOLE, VIA_CONSOLE_UNFOCUSED, VIA_POPUP, VIA_OUTSIDE)
 #: ``say`` (docs/cli.md section 7): only the verified team console may type into a member. A shell pane is
@@ -1968,6 +1969,50 @@ def _run_control(args: argparse.Namespace, action: str) -> int:
     return emit(args, payload, "{} queued for {}; the notifier types {!r} when it is idle".format(action, name, keystroke))
 
 
+def _add_wipe_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--yes", action="store_true", help="do not ask")
+    parser.add_argument("--purge", action="store_true", help="delete the archive and the payloads too; nothing is kept")
+    parser.add_argument("--reason", metavar="TEXT", help="why, for the board note")
+
+
+def _run_wipe(args: argparse.Namespace) -> int:
+    """Empty a team's board. Human only, asks first, archives unless told to purge.
+
+    Every post moves to ``archive/`` and the fresh board opens with a
+    ``board_cleared`` note, so a member's next read says why the board is
+    short. Seqs and cursors are untouched. ``--purge`` deletes the archive and
+    the payloads as well; that is the one thing here nobody can get back.
+    """
+    layout, api, author, team_name, team, doc = _open_team(args, require_server=False, write=True)
+    _charter.require_human(layout, team_name, author, "wipe")
+    check_write_session(args, layout, team_name)
+    if not args.yes and not _confirm_wipe(args, team_name, bool(args.purge)):
+        return emit(args, {"team": team_name, "wiped": False}, "not wiped")
+    result = store.BoardStore(team).clear(author.name, reason=args.reason, purge=bool(args.purge))
+    _identity.audit(layout, team_name, "board_purged" if args.purge else "board_wiped", author, dict(result, reason=args.reason))
+    payload = dict(result, team=team_name, wiped=True)
+    if result["records"] == 0 and not result["purged_segments"]:
+        return emit(args, payload, "{}'s board was already empty".format(team_name))
+    if args.purge:
+        return emit(args, payload, "{}'s board purged: {} post{} deleted, {} archive segment{} and {} payload{} removed".format(
+            team_name, result["records"], "" if result["records"] == 1 else "s", result["purged_segments"], "" if result["purged_segments"] == 1 else "s",
+            result["purged_payloads"], "" if result["purged_payloads"] == 1 else "s"))
+    return emit(args, payload, "{}'s board cleared: {} post{} moved to {} (herdr-synapse board --since 1 still reads them)".format(
+        team_name, result["records"], "" if result["records"] == 1 else "s", result["archived_to"]))
+
+
+def _confirm_wipe(args: argparse.Namespace, team_name: str, purge: bool) -> bool:
+    if purge:
+        question = "delete every post on {}'s board, its archive and its payloads? nothing is kept".format(team_name)
+    else:
+        question = "clear {}'s board? every post moves to archive/ (herdr-synapse board --since 1 still reads them); members keep their read positions".format(team_name)
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        raise HerdrTeamError("confirmation_required", "{} (pass --yes)".format(question), EXIT_REFUSED, {"team": team_name, "purge": purge})
+    args.stdout.write("{} [y/N] ".format(question))
+    args.stdout.flush()
+    return sys.stdin.readline().strip().lower() in ("y", "yes")
+
+
 def _confirm_control(args: argparse.Namespace, name: str, kind: Optional[str]) -> bool:
     question = "clear {}'s context? its memory of this conversation goes, and it is briefed again".format(name)
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
@@ -2097,6 +2142,7 @@ COMMANDS: List[Command] = [
     Command("task", "set your current task headline", _text_only, _run_task),
     Command("export", "save the whole board to a file (md, json, jsonl, text)", _add_export_arguments, _run_export),
     Command("ack", "acknowledge the briefing and charter, move your cursor to the end", _no_arguments, _run_ack),
+    Command("wipe", "empty the board: every post moves to the archive (--purge deletes it all); operator only, asks first", _add_wipe_arguments, _run_wipe),
     Command("compact", "ask the notifier to compact a member's context (operator, or --self)", _add_control_arguments, _run_compact),
     Command("clear", "ask the notifier to clear a member's context (operator only)", _add_control_arguments, _run_clear),
     Command("say", "type one line into a member's input box now (human only, from the team console)", _add_say_arguments, _run_say),

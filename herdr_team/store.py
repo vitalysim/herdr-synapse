@@ -275,6 +275,7 @@ SYSTEM_EVENTS = (
     "context_high", "context_cleared", "context_compacted", "workdir_moved", "manager_changed",
     "model_changed", "model_applied", "restart_failed",
     "link_established", "link_broken", "link_read",
+    "board_cleared",
 )
 #: Every key of a stored record in file order (docs/cli.md section 10).
 RECORD_KEYS = (
@@ -766,6 +767,16 @@ class BoardStore:
             return None
         if size < self.rotate_bytes:
             return None
+        return self._archive_active_locked(first_seq, last_seq, "rotated",
+                                           "board rotated: archive/{} ({} through {})", {})
+
+    def _archive_active_locked(self, first_seq: int, last_seq: int, event: str, text: str, extra: Dict[str, Any]) -> Path:
+        """Move the active file to ``archive/board.<a>-<b>.jsonl`` and start a fresh one with a system note.
+
+        Seqs stay monotonic (``board.seq`` continues), so every cursor and tailer
+        keeps its meaning; ``text`` may name ``{}`` for the segment file, the
+        first and the last seq. Callers hold the lock.
+        """
         ensure_dir(self.team.archive_dir)
         target = self.team.archive_segment(first_seq, last_seq)
         check_not_symlink(target)
@@ -781,14 +792,62 @@ class BoardStore:
         self.rebuild_archive_index()
         next_seq = last_seq + 1
         write_json(self.team.board_seq, {"next": next_seq + 1, "active_first_seq": next_seq})
-        note = normalize_record({
-            "from": "system", "kind": "system", "event": "rotated", "to": ["all"],
-            "text": "board rotated: archive/{} ({} through {})".format(target.name, first_seq, last_seq),
-        })
+        record = {"from": "system", "kind": "system", "event": event, "to": ["all"],
+                  "text": text.format(target.name, first_seq, last_seq)}
+        record.update({k: v for k, v in extra.items() if k not in record})
+        note = normalize_record(record)
         note["seq"] = next_seq
         note["ts"] = now_iso()
         self._write_record(encode_record(note))
         return target
+
+    def clear(self, by: str, reason: Optional[str] = None, purge: bool = False) -> Dict[str, Any]:
+        """Empty the board: every post moves to the archive (or, with ``purge``, is deleted along with the archive and payloads).
+
+        The first record of the fresh board is a ``board_cleared`` note naming
+        who did it, so members learn on their next read why the board is
+        short. Nothing is renumbered: a member's cursor still means what it
+        meant, and the notifier's tailer follows the rotation as it follows
+        any other.
+        """
+        lock = self._lock()
+        try:
+            tail_max, first, _size = self._tail_scan()
+            out: Dict[str, Any] = {"records": 0, "archived_to": None, "note_seq": None, "first_seq": first or None, "last_seq": tail_max or None,
+                                   "purged_segments": 0, "purged_payloads": 0, "purge": bool(purge)}
+            if tail_max:
+                first_seq = first or tail_max
+                count = tail_max - first_seq + 1
+                if purge:
+                    text = "board purged by {}: {} posts ({} through {}) deleted with the archive and payloads{}".format(
+                        by, count, first_seq, tail_max, "; " + reason if reason else "")
+                else:
+                    text = "board cleared by {}: {} posts ({} through {}) moved to archive/{{}}{}".format(
+                        by, count, first_seq, tail_max, "; " + reason if reason else "").replace("{{}}", "{}")
+                extra = {"by": by, "reason": reason, "cleared_first_seq": first_seq, "cleared_last_seq": tail_max, "purge": bool(purge)}
+                target = self._archive_active_locked(first_seq, tail_max, "board_cleared", text if purge else text, extra)
+                out.update({"records": count, "archived_to": None if purge else os.fspath(target), "note_seq": tail_max + 1})
+            if purge:
+                for name in self._archive_filenames():
+                    try:
+                        os.unlink(self.team.archive_dir / name)
+                        out["purged_segments"] += 1
+                    except OSError:
+                        pass
+                try:
+                    os.unlink(self.team.archive_index)
+                except OSError:
+                    pass
+                try:
+                    for entry in os.scandir(self.team.payloads_dir):
+                        if entry.is_file(follow_symlinks=False):
+                            os.unlink(entry.path)
+                            out["purged_payloads"] += 1
+                except OSError:
+                    pass
+            return out
+        finally:
+            lock.release()
 
     def archive_segments(self) -> List[Dict[str, Any]]:
         """Segments from ``index.json``, rebuilt from filenames when missing or inconsistent."""
