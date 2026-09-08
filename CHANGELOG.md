@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.12.1 (2026-09-08)
+
+- The team you mean is the team in the space you are standing in. A session running `clickhouse-hunt` in one Herdr space and `gitlab-hunters` in another had one session-wide `default_team`, and every resolver fell back to it — so `prefix+u` pressed in the GitLab space opened the ClickHouse board, and because that team's console was already live it did not merely pick the wrong team, it jumped the operator to a pane in another space. The second team of a session was unreachable from its own space without typing `--team`.
+- Nothing new had to be plumbed: Herdr already hands `HERDR_WORKSPACE_ID` to every plugin action and pane, and every roster row already records the `workspace_id` its agent lives in. Both were simply thrown away. The team picker had used the space to scope its rows since the start; nothing else did.
+- Inference order is now `--team`, `HERDR_TEAM_DIR`/`HERDR_TEAM`, the caller's own roster row, **the team of this space**, `default_team`, then the only team. The space sits below every explicit signal and above the session-wide guess, because a default cannot be right in two spaces at once and a member of one team parked in another's space is still a member of their own.
+- A space answers only when it is certain: exactly one team with an active agent there. Zero teams, two teams, a space holding only `left` members, or the `human` row — which belongs to no space — infer nothing, and `default_team` decides as before. Sessions with fewer than two teams skip the lookup entirely.
+- The same rule reaches the surfaces that had their own copy of the fallback: the console and popup actions, `resolve_team` for every CLI command, a human posting from a shell pane, a popup's author, and a console restored by Herdr after a restart without its `HERDR_TEAM`.
+- `use` still exists and still means what it did — it is the fallback for spaces that hold no team of their own. Inside a team's space, `--team` is how you mean a different one.
+
 ## 0.12.0 (2026-09-08)
 
 - An agent that needs you now gets you. Measured on the team this was built against, over three days: 88 posts addressed to the operator, ten of them actually waiting on a decision, **six of those never answered by anyone**, and all four that were answered were answered by *other agents* — one of which overrode a genuine pre-submission halt with "STOP ORDER IS STALE". The loop was not merely un-notified; it was being closed by the wrong party.

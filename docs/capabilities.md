@@ -44,6 +44,7 @@ holds `daemon.json`, `daemon.log`, `who.json`, `kinds.json`, `view.json`,
 | Reopen a member's own conversation | `prefix+t`, Enter on the member, 7: shows the command | `resume <name>` from a shell pane (human only): runs the command Herdr's own restore would use for the session the roster recorded, in the member's directory, replacing the shell; the notifier rebinds the member to that pane by the session. Covers all 17 sources Herdr ships an integration for (`docs/cli.md` section 4), pi and omp by absolute path rather than id. `--print` only shows it. Never `--continue`: that picks by directory or recency and can bring back another member's conversation |
 | Dissolve | | `dissolve <team> --yes` (mandatory flag; human only; archives the team, clears tokens and labels, keeps the agents' Herdr names) |
 | Several teams | console `/use team` | `use <team>` sets the default team for human posts; `teams` lists teams and whether their session runs (works offline); `create --use` makes a second team the default at creation |
+| A team per Herdr space | `prefix+u` and every other action open the team of the space they were pressed in | inference order: `--team`, `HERDR_TEAM_DIR`/`HERDR_TEAM`, the caller's roster row, the team of this space (exactly one team with an active agent there), `default_team`, the only team |
 
 Rules you will see enforced: an agent belongs to one team at a time
 (`member_claimed` unless `--steal`); team names match `[a-z][a-z0-9_-]{0,31}` and roles `{0,63}`;

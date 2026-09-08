@@ -7,9 +7,15 @@ change and say why in the commit message.
 
 Conventions used below:
 
-- `<team>` is optional wherever the team can be inferred (member pane token,
-  `HERDR_TEAM_DIR`, `HERDR_TEAM`, `--team`, or `default_team` from
-  `console.json`). Two teams and no hint: `team_ambiguous`.
+- `<team>` is optional wherever the team can be inferred, in this order:
+  `--team`, `HERDR_TEAM_DIR`, `HERDR_TEAM`, the caller's own roster row, the
+  team of the Herdr space the call is running in, `default_team` from
+  `console.json`, then the only team. Two teams and no hint:
+  `team_ambiguous`.
+- A **space** infers a team when exactly one team has an active agent there
+  (`workspace_id` on its roster rows, matched against `HERDR_WORKSPACE_ID` /
+  the plugin context / the `<workspace>:<pane>` prefix of `HERDR_PANE_ID`).
+  Zero teams or two in one space infer nothing and the next rule decides.
 - `record` means a board record exactly as stored (plan 6.1, schema v1).
 - `member` means the roster member object from `team.json` (plan 5.1) with
   `brief` included only in `who --json` and `me`.
@@ -238,6 +244,10 @@ after the same question.
 ### `use <team>`
 
 Sets `default_team` in `console.json`. JSON `{"default_team":"<team>"}`.
+
+This is the session-wide fallback. A space that holds exactly one team infers
+that team first, so `use` decides calls made from spaces that hold no team;
+inside a team's own space, pass `--team` to mean a different one.
 
 ### `teams`
 
@@ -732,8 +742,11 @@ no longer rewrites the session-wide default team.
                            "open": true, "human_label": "human", "opened_at": "…"}}}
 ```
 
-`default_team` stays session-wide: it is what every CLI command infers its
-team from. A pre-registry document (one flat record) is read as a one-entry
+`default_team` stays session-wide, and is now the fallback rather than the
+first answer: a session-wide default cannot be right in two spaces at once, so
+the space a call runs in is consulted first (see Conventions above). `use`
+still sets it, and it still decides every call from a space that holds no team
+of its own. A pre-registry document (one flat record) is read as a one-entry
 registry, so upgrading needs no migration.
 
 A console proves it is a console by having its `terminal_id` in that registry

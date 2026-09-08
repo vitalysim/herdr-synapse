@@ -39,7 +39,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from herdr_team import sanitize, store
 from herdr_team.errors import EXIT_REFUSED, EXIT_UNREACHABLE, HerdrTeamError
-from herdr_team.paths import Layout, ensure_team_dirs, team_name_from_arg
+from herdr_team.paths import Layout, ensure_team_dirs, env_workspace, team_name_from_arg
 from herdr_team import operator as _operator
 from herdr_team import roster as _roster
 
@@ -527,10 +527,27 @@ def _tier_console(env: Dict[str, str], layout: Layout, api: Any, team: Optional[
     return author
 
 
+def _space_team(layout: Layout, workspace_id: Optional[str]) -> Optional[str]:
+    """The team of ``workspace_id``, ranked above the session's ``default_team``.
+
+    A human has no roster row to be looked up in, so their team used to come
+    from one session-wide default -- which is wrong in every space but one as
+    soon as a session holds two teams. Deferred import: ``cmd_board`` imports
+    this module.
+    """
+    from herdr_team.cmd_board import workspace_team
+
+    try:
+        return workspace_team(layout.session, workspace_id)
+    except (HerdrTeamError, OSError):
+        return None
+
+
 def _tier_popup(env: Dict[str, str], layout: Layout, team: Optional[str]) -> Author:
     console = store.read_json(layout.session.console_json, default=None)
     default_team = console.get("default_team") if isinstance(console, dict) and isinstance(console.get("default_team"), str) else None
-    author = Author(AUTHOR_HUMAN, "human", VIA_POPUP, False, team=team or default_team or _env_team(env, None), tier=TIER_CONSOLE)
+    space_team = _space_team(layout, env_workspace(env))
+    author = Author(AUTHOR_HUMAN, "human", VIA_POPUP, False, team=team or space_team or default_team or _env_team(env, None), tier=TIER_CONSOLE)
     author.origin = _base_origin(VIA_POPUP, False, layout)
     author.origin["entrypoint"] = env.get("HERDR_PLUGIN_ENTRYPOINT_ID")
     context = env.get("HERDR_PLUGIN_CONTEXT_JSON")
@@ -665,6 +682,8 @@ def _agent_pane_author(env: Dict[str, str], layout: Layout, api: Any, pane: Dict
 def _shell_pane_author(env: Dict[str, str], layout: Layout, api: Any, pane: Dict[str, Any], current_pane: str, origin: Dict[str, Any], env_team: Optional[str]) -> Author:
     terminal_id = pane.get("terminal_id")
     team_name = env_team
+    if team_name is None:
+        team_name = _space_team(layout, pane.get("workspace_id"))
     if team_name is None:
         console = store.read_json(layout.session.console_json, default=None)
         if isinstance(console, dict) and isinstance(console.get("default_team"), str):

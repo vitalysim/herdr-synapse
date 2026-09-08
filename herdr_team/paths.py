@@ -59,6 +59,7 @@ Directories are created 0700, files 0600, every managed component is
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import stat
@@ -732,6 +733,35 @@ def team_name_from_arg(team: Optional[str], env: Mapping[str, str]) -> Optional[
     if name:
         return validate_team_name(name)
     return None
+
+
+def env_workspace(env: Mapping[str, str]) -> Optional[str]:
+    """The Herdr space this invocation is running in, or None.
+
+    Herdr sets ``HERDR_WORKSPACE_ID`` and ``HERDR_PANE_ID`` on every plugin
+    action and manifest pane, and repeats the space in
+    ``HERDR_PLUGIN_CONTEXT_JSON`` (``src/app/api/plugins/runtime.rs``,
+    ``panes.rs``). A popup gets no ``HERDR_PANE_ID``, so the context JSON is
+    the only source there; a shell pane has no context JSON, so the pane id is.
+    Pane ids are ``<workspace>:<pane>``, which is what makes the last fallback
+    exact rather than a guess.
+    """
+    value = env.get("HERDR_WORKSPACE_ID")
+    if value:
+        return value
+    raw = env.get("HERDR_PLUGIN_CONTEXT_JSON") or ""
+    if raw:
+        try:
+            doc = json.loads(raw)
+        except ValueError:
+            doc = None
+        if isinstance(doc, dict):
+            for key in ("workspace_id", "focused_pane_id"):
+                found = doc.get(key)
+                if isinstance(found, str) and found:
+                    return found.split(":")[0] or None
+    pane = env.get("HERDR_PANE_ID") or ""
+    return (pane.split(":")[0] or None) if pane else None
 
 
 # --------------------------------------------------------------------------

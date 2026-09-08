@@ -425,9 +425,15 @@ def _run_ui(args: argparse.Namespace) -> int:
         # One console per team, not one per session: a second open for the SAME
         # team focuses the pane that already has it, a console for another team
         # opens beside it. Each pane keeps its team for life (``HERDR_TEAM``).
-        from herdr_team.cmd_board import default_team_of
+        #
+        # Which team, though, is the space's, not the session default's. The
+        # action carries ``HERDR_WORKSPACE_ID`` (``plugins/runtime.rs``) and
+        # this used to throw it away, so pressing the console action in a
+        # second team's space focused the *first* team's console instead --
+        # the one place where the answer was already on the screen.
+        from herdr_team.cmd_board import inferred_team
 
-        team = team or default_team_of(layout.session)
+        team = team or inferred_team(layout, env)
         live_pane = focus_live_console(api, layout, team)
         if live_pane is not None:
             return emit(
@@ -436,6 +442,14 @@ def _run_ui(args: argparse.Namespace) -> int:
                  "pane_id": live_pane, "team": team, "fallback": None, "retried": False},
                 "console for {} already open in {}; focused".format(team or "this session", live_pane),
             )
+    if team is None:
+        # Same reasoning for the popups. Deliberately the narrow
+        # ``workspace_team`` and not ``inferred_team``: a space that names no
+        # team leaves ``HERDR_TEAM`` unset, so the pane infers its own team as
+        # it always did rather than being pinned to a guess made out here.
+        from herdr_team.cmd_board import workspace_team
+
+        team = workspace_team(layout.session, _paths.env_workspace(env))
     payload = open_pane(api, target, getattr(args, "target_pane", None), env, team, retry=not getattr(args, "no_retry", False), layout=layout)
     if payload.get("opened") and (target in ("console", "who") or payload.get("fallback") == "console"):
         record_console_launch(layout, team)  # protects the booting pane from reconcile_console's close rule

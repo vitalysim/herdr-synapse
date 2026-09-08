@@ -218,7 +218,7 @@ def _team_dir_exists(layout: Layout, team: str) -> bool:
 
 
 def pick_team(layout: Layout, requested: Optional[str], env: Dict[str, str]) -> str:
-    """``--team``, else ``HERDR_TEAM``, else ``default_team`` from ``console.json``, else the only team."""
+    """``--team``, else ``HERDR_TEAM``, else this space's team, else ``default_team``, else the only team."""
     if requested:
         if not _team_dir_exists(layout, requested):
             raise HerdrTeamError("team_not_found", "no team {} in session {}".format(requested, layout.slug), EXIT_REFUSED, {"team": requested})
@@ -226,6 +226,13 @@ def pick_team(layout: Layout, requested: Optional[str], env: Dict[str, str]) -> 
     env_team = env.get("HERDR_TEAM")
     if env_team and _team_dir_exists(layout, env_team):
         return env_team
+    # A console restored by Herdr after a restart comes back without
+    # ``HERDR_TEAM``; the space it came back in still says which board it is.
+    from herdr_team.cmd_board import workspace_team
+
+    space = workspace_team(layout.session, _paths.env_workspace(env))
+    if space and _team_dir_exists(layout, space):
+        return space
     default = read_console_json(layout).get("default_team")
     if isinstance(default, str) and _team_dir_exists(layout, default):
         return default

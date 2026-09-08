@@ -23,7 +23,7 @@ import stat
 import sys
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from herdr_team import asks as _asks
 from herdr_team import charter as _charter
@@ -297,6 +297,48 @@ def write_console_json(session: SessionPaths, doc: Dict[str, Any]) -> None:
 def default_team_of(session: SessionPaths) -> Optional[str]:
     value = read_console_json(session).get("default_team")
     return value if isinstance(value, str) and value else None
+
+
+def workspace_team(session: SessionPaths, workspace_id: Optional[str]) -> Optional[str]:
+    """The one team whose agents live in ``workspace_id``, else None.
+
+    A Herdr space is where a team physically *is*, so it answers "which team
+    do I mean" better than a session-wide ``default_team`` can: the operator
+    pressing the console action in the GitLab space means the GitLab team,
+    whatever they last ran ``use`` on. Before this existed, the second team of
+    a session was unreachable from its own space (the console action opened
+    the default team's board instead).
+
+    Nothing is guessed. A space with no team, or with two, returns None and
+    the caller keeps its own fallback; only ``status: "left"`` members and the
+    ``human`` row are ignored, because the human sits in no space in
+    particular. Sessions with fewer than two teams skip the reads entirely --
+    there is nothing to disambiguate and the caller's fallbacks are cheaper.
+    """
+    if not workspace_id:
+        return None
+    known = session.list_teams()
+    if len(known) < 2:
+        return None
+    found: Optional[str] = None
+    for name in known:
+        try:
+            doc = store.read_json(session.team(name).team_json, default=None)
+        except (HerdrTeamError, OSError, ValueError):
+            continue
+        if not isinstance(doc, dict):
+            continue
+        if not any(m.get("workspace_id") == workspace_id for m in agent_members(doc)):
+            continue
+        if found is not None:
+            return None  # two teams share the space; the caller must be told, not guessed at
+        found = name
+    return found
+
+
+def inferred_team(layout: Layout, env: Mapping[str, str]) -> Optional[str]:
+    """``workspace_team`` for this invocation's space, else the session ``default_team``."""
+    return workspace_team(layout.session, _paths.env_workspace(env)) or default_team_of(layout.session)
 
 
 # --------------------------------------------------------------------------
@@ -770,13 +812,15 @@ def resolve_author(args: argparse.Namespace, layout: Layout, api: Any, team: Opt
 
 
 def resolve_team(args: argparse.Namespace, layout: Layout, author: Optional[Author] = None, required: bool = True) -> Optional[str]:
-    """Team name from ``--team``, env, the author's roster, ``default_team``, or the only team."""
+    """Team name from ``--team``, env, the author's roster, this space's team, ``default_team``, or the only team."""
     env = env_of(args)
     name = _paths.team_name_from_arg(getattr(args, "team", None), env)
     if name is None and author is not None and author.team:
         name = author.team
     if name is None:
-        name = default_team_of(layout.session)
+        # The space outranks ``default_team`` because it is the more local
+        # fact: a session-wide default cannot be right in two spaces at once.
+        name = inferred_team(layout, env)
     known = layout.session.list_teams()
     if name is None:
         if len(known) == 1:

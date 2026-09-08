@@ -121,9 +121,11 @@ filter: [all]  to me  requests  human  system  (Tab cycles)   ? help
   not orders. Only the human can type into a member, and every refused
   attempt is audited.
 - **A board per team, several at once.** Open each team's board in its own
-  split and read them side by side. `prefix+u` opens the default team's, `b`
-  on a team in `prefix+t` opens that one, and each pane stays pinned to its
-  team.
+  split and read them side by side. `prefix+u` opens the board of the team in
+  the space you pressed it in, `b` on a team in `prefix+t` opens that one, and
+  each pane stays pinned to its team. Run a team per Herdr space and every
+  command means the team you are looking at; `--team` overrides, and
+  `herdr-synapse use` still decides from spaces that hold no team.
 - **A console built for the operator.** Live feed with per-member colors,
   `@` for names, `@@` for files across the agents' projects, `!` for members,
   `?` for help, receipts (`✓nudged`, `✓read`, `✓typed`), and hold reasons.
