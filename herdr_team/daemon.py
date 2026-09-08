@@ -105,6 +105,12 @@ IDLE_SWEEP_POLL_S = 10.0
 #: How often a member's context is re-read from its harness's own files. The
 #: read is a tail of one file, skipped entirely when that file has not moved.
 CONTEXT_POLL_S = 15.0
+#: How often to look for asks waiting on the operator, and how long to leave
+#: the popup slot alone after a failed open. The slot is shared with compose,
+#: the picker and the popups the operator opens themselves, so ``ui_busy`` is
+#: an ordinary answer here, not an error: back off and try again.
+ASK_POLL_S = 5.0
+ASK_POPUP_RETRY_S = 30.0
 #: The ``team_context`` sidebar token fades if the notifier stops reading, the
 #: same health signal ``team_task`` uses.
 CONTEXT_TTL_MS = 120000
@@ -1332,6 +1338,8 @@ class Daemon:
         self.toasts_disabled_ms: Optional[float] = None
         self.toasts_disabled_delivery: Optional[str] = None
         self.next_toast_ms = 0.0
+        #: When the asks phase may next look; also the popup back-off.
+        self.ask_next_ms: Optional[float] = None
         self.who_dirty = True
         self.last_who_ms: Optional[float] = None
         self.last_heartbeat_ms: Optional[float] = None
@@ -1726,6 +1734,7 @@ class Daemon:
         # After the tail, so a post ingested this tick is already counted, and
         # before the evaluator, so a swept pending is acted on in the same pass.
         self._phase("poll_context", lambda: self.poll_all_context(now))
+        self._phase("asks", lambda: self.raise_asks(now))
         self._phase("sweep_unread", lambda: self.sweep_all_unread(now))
         self._phase("board_snapshot", lambda: self.snapshot_all_boards(now))
         self._phase("evaluate_pending", self.evaluate_pending)
@@ -2815,6 +2824,51 @@ class Daemon:
         team.pending[name] = pending
         self.who_dirty = True
         self.log("{}: {} briefing done; nudging for {} deferred during the briefing".format(team.name, name, ", ".join("#{}".format(s) for s in pending.seqs)))
+
+    def raise_asks(self, now: float) -> None:
+        """Open the popup when something is waiting on the operator.
+
+        One popup for every team's queue is impossible — Herdr allows one popup
+        at a time and it has no pane id to address — so this opens the popup for
+        the first team that has an unanswered ask, and the popup itself lists
+        that team's queue. ``popup.close`` is never called: it closes whatever
+        the operator has open, which is not ours to take.
+        """
+        if self.ask_next_ms is not None and now < self.ask_next_ms:
+            return
+        self.ask_next_ms = now + ASK_POLL_S * 1000.0
+        for team in list(self.teams.values()):
+            try:
+                if not self._ask_popup_wanted(team):
+                    continue
+            except Exception as err:  # noqa: BLE001 - one unreadable board must not stop the tick
+                self.log("{}: ask scan failed: {}: {}".format(team.name, type(err).__name__, err))
+                continue
+            self._open_ask_popup(team, now)
+            return
+
+    def _ask_popup_wanted(self, team: TeamState) -> bool:
+        from herdr_team import asks as _asks
+        from herdr_team.cmd_misc import ask_view
+
+        if not ask_view(team.roster).get("popup"):
+            return False
+        return bool(_asks.pending(team.paths, dismissed=_asks.dismissed(team.paths)))
+
+    def _open_ask_popup(self, team: TeamState, now: float) -> None:
+        """One ``plugin.pane.open``; a busy slot is a retry, never an error."""
+        try:
+            self.api.request("plugin.pane.open", {"plugin_id": PLUGIN_ID, "entrypoint": "asks", "focus": True,
+                                                  "env": {"HERDR_TEAM": team.name}}, timeout=5.0)
+        except HerdrTeamError as err:
+            # ``ui_busy`` means the operator (or another popup) has the slot.
+            # That is normal and frequent; wait rather than fight for it.
+            self.ask_next_ms = now + ASK_POPUP_RETRY_S * 1000.0
+            if err.code not in ("ui_busy", "plugin_pane_open_failed", "popup_open", "popup_already_open"):
+                self.log("{}: could not open the asks popup: {}".format(team.name, err.code))
+            return
+        self.ask_next_ms = now + ASK_POPUP_RETRY_S * 1000.0
+        self.log("{}: opened the asks popup".format(team.name))
 
     def poll_all_context(self, now: float) -> None:
         for team in list(self.teams.values()):

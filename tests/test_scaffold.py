@@ -72,7 +72,7 @@ class ManifestTests(unittest.TestCase):
         action_ids = re.findall(r'^\[\[actions\]\]\nid = "([^"]+)"', text, re.M)
         self.assertEqual(action_ids, ["team-up", "compose", "console", "who", "usage", "knowledge", "toggle-view", "daemon-start"])
         pane_ids = re.findall(r'^\[\[panes\]\]\nid = "([^"]+)"', text, re.M)
-        self.assertEqual(pane_ids, ["console", "compose", "picker", "usage", "knowledge"])
+        self.assertEqual(pane_ids, ["console", "compose", "picker", "asks", "usage", "knowledge"])
         self.assertEqual(text.count("[[startup]]"), 1)
         self.assertNotIn("[[build]]", text)
         for ident in action_ids + pane_ids:
@@ -89,7 +89,8 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(doc["panes"][1]["width"], "80%")
         self.assertEqual(doc["panes"][1]["height"], 12)
         self.assertEqual(doc["panes"][2]["height"], 28)
-        self.assertEqual((doc["panes"][3]["id"], doc["panes"][3]["command"]), ("usage", ["./bin/herdr-synapse", "usage-pane"]))
+        self.assertEqual((doc["panes"][3]["id"], doc["panes"][3]["command"]), ("asks", ["./bin/herdr-synapse", "asks-pane"]))
+        self.assertEqual((doc["panes"][4]["id"], doc["panes"][4]["command"]), ("usage", ["./bin/herdr-synapse", "usage-pane"]))
         for pane in doc["panes"][1:]:
             self.assertEqual(pane["placement"], "popup")
         self.assertEqual(doc["panes"][0]["placement"], "split")

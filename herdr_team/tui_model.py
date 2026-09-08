@@ -35,7 +35,7 @@ from herdr_team.paths import MAX_ROLE_CHARS, MAX_TEAM_CHARS, ROLE_NAME_RE, TEAM_
 FILTERS = ("all", "to me", "requests", "human", "system")
 SLASH_COMMANDS = (
     "/all", "/human", "/kind", "/reply", "/urgent", "/interrupt", "/interrupts", "/ref", "/retract", "/mute", "/unmute", "/pause",
-    "/nudge", "/focus", "/peek", "/who", "/context", "/compact", "/clear", "/filter", "/as", "/use", "/charter", "/remove", "/export", "/help", "/quit",
+    "/nudge", "/focus", "/peek", "/who", "/context", "/compact", "/clear", "/asks", "/ask-policy", "/filter", "/as", "/use", "/charter", "/remove", "/export", "/help", "/quit",
 )
 #: ``/`` menu rows: command -> (placeholder, what it does). Every entry in
 #: ``SLASH_COMMANDS`` must appear here; a test keeps the two in step, so a new
@@ -57,6 +57,8 @@ SLASH_USAGE = {
     "/focus": ("name", "jump to that member's pane"),
     "/peek": ("name", "look at that member's screen"),
     "/who": ("", "the roster with roles, states and tasks"),
+    "/asks": ("", "what is waiting on you"),
+    "/ask-policy": ("[block|noblock] [8m]", "whether an agent waits for you, and how long"),
     "/context": ("[name]", "how full each member's context window is"),
     "/compact": ("name", "ask a member to summarise its context"),
     "/clear": ("name", "throw away a member's context and brief it again"),
@@ -1733,6 +1735,21 @@ def _parse_slash(head: str, rest: str, default_team: str) -> Intent:
         return Intent("interrupts", {"mode": mode, "cooldown": cooldown, "team": default_team})
     if head == "/who":
         return Intent("who", {"team": default_team})
+    if head == "/asks":
+        return Intent("asks", {"team": default_team})
+    if head == "/ask-policy":
+        block = None
+        timeout = None
+        for a in args:
+            if a in ("block", "on", "yes"):
+                block = True
+            elif a in ("noblock", "off", "no"):
+                block = False
+            elif re.match(r"^\d+[smh]$", a):
+                timeout = a
+            else:
+                return Intent("error", {"message": "usage: /ask-policy [block|noblock] [8m]"})
+        return Intent("ask_policy", {"team": default_team, "block": block, "timeout": timeout})
     if head == "/context":
         if len(args) > 1 or (args and not MEMBER_NAME_RE.match(args[0])):
             return Intent("error", {"message": "usage: /context [<name>]"})
@@ -1808,9 +1825,9 @@ HELP_LINES = (
     "           !!name also while it works or is muted; ! lists members; the entry shows the outcome",
     "           a line that begins with ! never posts by itself; to post one, write /all !text",
     "menus:     / commands   @ names   @@ files   ! members   (up/down move, Tab picks, Esc hides)",
-    "board:     /retract N   /filter [all|to me|requests|human|system]   Tab cycles the filter   /who",
-    "members:   /peek name   /focus name   /nudge name [--force]   /remove name",
-    "context:   /context [name]   /compact name (summarise in place)   /clear name (throws it away, asks)",
+    "board:     /retract N   /filter [all|to me|requests|human|system]   Tab cycles   /who",
+    "members:   /peek name   /focus name   /nudge name [--force]   /remove name   /asks",
+    "context:   /context [name]   /compact name   /clear name (throws it away, asks)   /ask-policy",
     "delivery:  /mute [name] [10m]   /unmute [name]   /pause [10m]   Esc clears the status or closes a box",
     "interrupt: /interrupt @name text (into a working turn)   /interrupts [off|on|claude,codex] [--cooldown 10m]",
     "team:      /charter   /charter set [--urgent] text   /use team   /as label   /export [path]   /quit",

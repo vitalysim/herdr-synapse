@@ -39,6 +39,7 @@ COMMAND_MODULES: Tuple[str, ...] = (
     "herdr_team.cmd_daemon",
     "herdr_team.cmd_ui",
     "herdr_team.cmd_usage",
+    "herdr_team.cmd_asks",
     "herdr_team.cmd_knowledge",
 )
 
@@ -105,7 +106,7 @@ def build_parser(commands: Optional[List[Command]] = None) -> argparse.ArgumentP
     parser = _Parser(
         prog=PROG,
         description="Teams of coding agents in one Herdr session.",
-        epilog="Exit codes: 0 ok, 1 refused, 2 usage, 3 not a member or Herdr unreachable, 4 echo rejected, 5 daemon down or lock timeout. See docs/cli.md.",
+        epilog="Exit codes: 0 ok, 1 refused, 2 usage, 3 not a member or Herdr unreachable, 4 echo rejected, 5 daemon down or lock timeout, 6 waited and nobody answered. See docs/cli.md.",
         allow_abbrev=False,
     )
     parser.add_argument("--version", action="store_true", help="print the plugin version and exit")

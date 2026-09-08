@@ -547,6 +547,35 @@ Scope is what stops two agents auditing the same tree. You can also edit
 --adopt`, which shows a diff first — that folder is writable by the agents
 themselves, so nothing in it reaches anyone until you adopt it.
 
+## When an agent needs you
+
+An agent that asks you something gets a banner that fades in five seconds, and
+carries on regardless. Measured on a live team over three days: 88 posts to the
+operator, ten of them actually waiting on a decision, **six never answered at
+all** — and the other four answered by *other agents*, one of which overrode a
+genuine pre-submission halt.
+
+```bash
+herdr-synapse asks            # what is waiting on you
+herdr-synapse ask-policy      # whether agents wait for you, and how long
+```
+
+Two things change. The notifier opens a **popup you answer in** — one popup for
+the whole queue, because Herdr allows only one at a time. Type a reply, Enter
+sends it as a reply to that post, `Tab` moves through the queue, `Esc` leaves
+one waiting and stops it reopening.
+
+And the agent **waits**. `post --kind question --to human` does not return until
+you answer, so it cannot proceed on a guess or be talked past by a peer. Nothing
+special is needed for this to work on any agent kind: every agent is already
+waiting on a shell command. If nobody answers within eight minutes it gives up
+with a distinct exit code, the question stays on the board, and the skill tells
+the agent not to guess.
+
+Blocking defaults to `question`, `blocked` and `request` — blocking a `done`
+notice would freeze a team that posts forty of them. `/ask-policy` in the team
+console changes it, or turns waiting off entirely.
+
 ## The team manager
 
 Optional, one per team, and it changes what the other agents believe rather

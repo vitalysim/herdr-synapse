@@ -505,6 +505,60 @@ now reset when a briefing lands. Nothing ever put it back, so the second clear
 or compaction of a member's life got one attempt and then gave up for as long
 as the notifier lived.
 
+## 5d. Human in the loop
+
+An agent addressing the operator is the one thing on the board that needs a
+person, and the schema never said so: `kind: "answer"` exists in the enum and
+no code branched on it, and there is no `answered` or `resolved` field. So
+pending-ness is derived, in `herdr_team/asks.py`, and that is the only place
+that decides it.
+
+**An ask** is a post from a member whose recipients include `human`. It stops
+being pending when the **operator** replies to it, when it is retracted, or
+when the operator dismisses it. A reply from a peer does not clear it — that is
+the defect this exists for: on the team this was built against, six of ten asks
+were never answered and the other four were answered by other agents, one of
+them overriding a genuine pre-submission halt.
+
+| Surface | |
+| --- | --- |
+| `asks` | what is waiting on you; `--dismiss <seq>` stops the popup reopening |
+| the `asks` popup | one popup for the whole queue, opened by the notifier |
+| `ask-policy` | per-team `config.ask`; `/ask-policy` in the console |
+| `post --wait` | the agent blocks until the operator answers |
+
+**One popup, not one per post.** Herdr allows exactly one popup at a time
+(`ui_busy` otherwise) and a popup has no pane id to address, so the popup is
+the queue. The daemon opens it from a new `asks` tick phase; `ui_busy` is an
+ordinary answer there, not an error, since the slot is shared with compose, the
+picker and whatever the operator opened. `popup.close` is never called: it
+closes whatever the operator has open.
+
+**The wait** is `post --wait`, which works for every kind because every agent
+is just waiting on a shell command. Two details it gets right that `say --wait`
+does not: it polls a non-persisting `BoardTailer` rather than
+`BoardStore.read`, which re-parses up to 4 MB per call; and it appends and
+releases the team lock *before* waiting, so a member waiting for minutes never
+fails anyone else's post with `board_locked`. Capped at `MAX_WAIT_S` (9 min)
+because Claude Code kills a shell command at ten and a longer wait would end as
+a killed process with no error the agent could read. Timeout is exit
+**`EXIT_NO_ANSWER` (6)**, code `wait_no_answer`, distinct from `EXIT_REFUSED`
+so an agent can tell "nobody answered" from "rejected".
+
+**The policy** lives at `config.ask`, deliberately not under `config.gate`:
+that namespace is whitelisted and one unknown key there throws the whole gate
+config back to defaults. Popup on anything addressed to the operator; blocking
+only on `question`, `blocked`, `request`, because blocking a `done` notice for
+eight minutes would freeze a team that posted forty of them in three days.
+
+A waiting agent shows `working`, so gate 5 holds every nudge and the idle sweep
+skips it. `--interrupt` still reaches it, which is correct.
+
+**Verified**: `tests/test_asks.py` — pending derivation including the peer-reply
+case, both wait outcomes, the lock staying free, the tailer being used, the
+policy landing outside `config.gate`, the popup model, and the daemon opening
+once and treating `ui_busy` as a retry.
+
 ## 6a. Context windows
 
 The notifier reads how full each member is from the harness's own files every

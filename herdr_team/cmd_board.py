@@ -25,6 +25,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
+from herdr_team import asks as _asks
 from herdr_team import charter as _charter
 from herdr_team import daemon as _daemon
 from herdr_team import gate as _gate
@@ -37,6 +38,7 @@ from herdr_team import store
 from herdr_team import workdir as _workdir
 from herdr_team.cli import api_for, emit, layout_for
 from herdr_team.errors import (
+    EXIT_NO_ANSWER,
     EXIT_DAEMON_DOWN,
     EXIT_ECHO_REJECTED,
     EXIT_REFUSED,
@@ -976,6 +978,10 @@ def parse_seq(value: Any, what: str = "seq") -> int:
 def _add_post_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("text", help="post text (<= 2000 chars; 500 advised)")
     parser.add_argument("--to", metavar="TARGET", action="append", help="name[,name...] | all | human | role:<r> (repeatable)")
+    wait = parser.add_mutually_exclusive_group()
+    wait.add_argument("--wait", dest="wait", action="store_true", default=None, help="block until the operator replies (default for asking kinds; see ask-policy)")
+    wait.add_argument("--no-wait", dest="wait", action="store_false", default=None, help="never block, whatever the team policy says")
+    parser.add_argument("--timeout", metavar="DURATION", help="how long to wait before giving up (default from ask-policy)")
     parser.add_argument("--kind", choices=POST_KINDS, default="note")
     parser.add_argument("--ref", metavar="PATH", action="append", default=[], help="reference a file under the team dir, payloads/, or a member cwd")
     parser.add_argument("--attach", metavar="PATH", action="append", default=[], help="copy a file into payloads/ and reference it")
@@ -1151,8 +1157,54 @@ def _run_post(args: argparse.Namespace) -> int:
         "seq": seq, "team": team_name, "notifier": notifier, "to": to, "to_role": to_role, "kind": args.kind,
         "author": {"name": author.name, "via": author.via, "verified": bool(author.verified)},
         "spilled": body is not None, "attached": attached, "refs": refs, "urgent": urgent, "interrupt": interrupt,
+        "waited": False, "answer": None,
     }
+    # The append is done and the team lock is released. Waiting here rather
+    # than anywhere earlier is deliberate: holding the lock across a wait of
+    # minutes would fail every other member's post with ``board_locked``.
+    timeout_s = _wait_seconds(args, doc, to, author)
+    if timeout_s is not None:
+        answer = wait_for_answer(team, seq, timeout_s)
+        if answer is None:
+            raise HerdrTeamError(
+                "wait_no_answer",
+                "#{} is on the board and nobody answered in {:.0f}s. Do not guess: post what you would have done, or work on something else.".format(seq, timeout_s),
+                EXIT_NO_ANSWER, {"seq": seq, "team": team_name, "timeout_s": timeout_s})
+        payload["waited"] = True
+        payload["answer"] = {"seq": answer.get("seq"), "from": answer.get("from"), "text": answer.get("text")}
+        return emit(args, payload, "#{} answered by {}: {}".format(seq, answer.get("from"), _one_line_text(answer.get("text"))))
     return emit(args, payload, "#{} posted to {} as {} (notifier {}){}".format(seq, ",".join(to), author.name, notifier, " (interrupt)" if interrupt else ""))
+
+
+def _one_line_text(text: Any, limit: int = 300) -> str:
+    flat = " ".join(str(text or "").split())
+    return flat if len(flat) <= limit else flat[: limit - 1] + "\u2026"
+
+
+def _wait_seconds(args: argparse.Namespace, doc: Dict[str, Any], to: List[str], author: Author) -> Optional[float]:
+    """How long this post should wait for the operator, or None to return now.
+
+    ``--wait`` and ``--no-wait`` are the author's word and win. Otherwise the
+    team policy decides, and only for a member asking the operator something:
+    the operator's own posts never wait, and neither does a post nobody is
+    expected to answer.
+    """
+    from herdr_team.cmd_misc import ask_view
+
+    if getattr(args, "wait", None) is False:
+        return None
+    if author.is_human or "human" not in to:
+        return None
+    policy = ask_view(doc)
+    wanted = bool(getattr(args, "wait", None)) or _asks.blocks(args.kind, policy)
+    if not wanted:
+        return None
+    from herdr_team.cmd_misc import parse_duration_s
+
+    seconds = parse_duration_s(args.timeout) if getattr(args, "timeout", None) else float(policy["timeout_s"])
+    if seconds <= 0:
+        return None
+    return min(float(seconds), MAX_WAIT_S)
 
 
 # --------------------------------------------------------------------------
@@ -1384,6 +1436,40 @@ def prepare_say_text(raw: str, force: bool) -> str:
 
 def say_outcome_of(record: Dict[str, Any]) -> Dict[str, Any]:
     return {"seq": record.get("seq"), "result": record.get("result"), "reason": record.get("reason"), "detail": record.get("detail"), "elapsed_ms": record.get("elapsed_ms")}
+
+
+#: How often a waiting post looks for its answer. Slower than ``say``'s 0.1 s
+#: because this wait is measured in minutes, not seconds, and because the
+#: tailer below reads only new bytes rather than re-parsing the board.
+ASK_POLL_S = 0.5
+#: Ceiling on ``--timeout``. Claude Code kills a shell command at ten minutes,
+#: so a longer wait would end as a killed process with no error the agent could
+#: read. Nine leaves room for the process to report its own timeout first.
+MAX_WAIT_S = 540.0
+
+
+def wait_for_answer(team: TeamPaths, seq: int, timeout_s: float, poll_s: float = ASK_POLL_S,
+                    sleep=time.sleep) -> Optional[Dict[str, Any]]:
+    """The operator's reply to the post at ``seq``, or None once ``timeout_s`` is up.
+
+    Uses a non-persisting ``BoardTailer`` rather than ``BoardStore.read``: read
+    re-parses the whole active file, up to four megabytes, on every call, and a
+    wait measured in minutes would do that hundreds of times. The tailer
+    ``pread``s only the new bytes from a fd it holds open.
+
+    Only the operator's reply counts. A teammate answering a question is a peer
+    note on the same thread, and taking it as the answer is exactly how a
+    genuine pre-submission halt got overridden on the team this was built for.
+    """
+    tailer = store.BoardTailer(team, start_seq=seq, persist=False)
+    deadline = time.monotonic() + max(0.0, timeout_s)
+    while True:
+        for record in tailer.poll():
+            if _asks.answered_by(record) == seq:
+                return record
+        if time.monotonic() >= deadline:
+            return None
+        sleep(poll_s)
 
 
 def wait_for_typed(team: TeamPaths, seq: int, timeout_s: float, poll_s: float = SAY_POLL_S) -> Optional[Dict[str, Any]]:

@@ -1,6 +1,6 @@
 id = "herdr-synapse"
 name = "Herdr Synapse"
-version = "0.11.0"
+version = "0.12.0"
 min_herdr_version = "0.8.2"
 description = "Teams of agents in one Herdr session: roster, charter, shared board, idle-gated nudges"
 platforms = ["macos", "linux"]
@@ -89,6 +89,14 @@ placement = "popup"
 width = "80%"
 height = 28
 command = ["./bin/herdr-synapse", "picker"]
+
+[[panes]]
+id = "asks"
+title = "Waiting on you"
+placement = "popup"
+width = "80%"
+height = 20
+command = ["./bin/herdr-synapse", "asks-pane"]
 
 [[panes]]
 id = "usage"

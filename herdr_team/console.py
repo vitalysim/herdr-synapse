@@ -603,6 +603,33 @@ def execute_intent(intent: Intent, model: ConsoleModel, state: ConsoleState, api
             typed = (out or {}).get("keystroke") if isinstance(out, dict) else None
             model.status = "{} queued for {}; the notifier types {} when it is idle".format(kind, member, typed or kind)
         return True
+    if kind == "asks":
+        rc, out, err = run_cli(["--team", team, "asks"], env)
+        if err:
+            model.status = "asks failed: {}".format(err.get("message") or err.get("code"))
+        else:
+            pending = (out or {}).get("pending") or []
+            lines = ["nothing is waiting on you"] if not pending else [
+                "#{} {} ({}): {}".format(p.get("seq"), p.get("from"), p.get("kind"), p.get("text")) for p in pending]
+            model.peek = tui_model.box(lines, model.width, "waiting on you (Esc closes)")
+            model.status = "{} waiting · answer with /reply <seq>".format(len(pending))
+        return True
+    if kind == "ask_policy":
+        args = ["--team", team, "ask-policy"]
+        if intent.args.get("block") is True:
+            args.append("--block")
+        elif intent.args.get("block") is False:
+            args.append("--no-block")
+        if intent.args.get("timeout"):
+            args += ["--timeout", str(intent.args["timeout"])]
+        rc, out, err = run_cli(args, env)
+        if err:
+            model.status = "ask-policy failed: {}".format(err.get("message") or err.get("code"))
+        else:
+            model.status = "an agent {} (up to {} min)".format(
+                "waits for you on " + ", ".join((out or {}).get("block_kinds") or []) if (out or {}).get("block") else "never waits",
+                max(1, int((out or {}).get("timeout_s") or 0) // 60))
+        return True
     if kind == "context":
         member = intent.args.get("member")
         rc, out, err = run_cli(["--team", team, "context"] + ([str(member)] if member else []), env)

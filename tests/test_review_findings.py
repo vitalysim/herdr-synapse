@@ -899,7 +899,9 @@ class InboxTests(unittest.TestCase):
         with TempState() as ts:
             api = _pane_api()
             env = ts.env_with(HERDR_PANE_ID="w2:p1")
-            code, _, err = run_cli(["--json", "post", "need a decision", "--to", "human", "--kind", "question"], env, api)
+            # --no-wait: a question to the operator blocks by default since 0.12,
+            # and this rig has no operator to answer it
+            code, _, err = run_cli(["--json", "post", "need a decision", "--to", "human", "--kind", "question", "--no-wait"], env, api)
             self.assertEqual(code, 0, err)
             store.append_line(ts.team.human_attention, json.dumps({"ts": D.now_iso(), "team": "alpha", "seqs": [1], "title": "#1 question", "body": "x", "reason": "shown", "shown": True, "kind": "post"}).encode(), fsync=False)
             code, payload, err = json_out(run_cli(["--json", "--team", "alpha", "inbox", "--human"], ts.env, api))

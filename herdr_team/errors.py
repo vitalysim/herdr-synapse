@@ -29,6 +29,11 @@ EXIT_USAGE = 2
 EXIT_UNREACHABLE = 3
 EXIT_ECHO_REJECTED = 4
 EXIT_DAEMON_DOWN = 5
+#: A ``post --wait`` gave up: the operator never answered. Distinct from
+#: ``EXIT_REFUSED`` on purpose, so an agent can tell "nobody answered" from
+#: "the post was rejected" without reading prose. 7 is the Claude hook shim's
+#: internal block code and is not a contract code, so 6 is the next free one.
+EXIT_NO_ANSWER = 6
 
 #: Default exit code per well-known error code. Anything not listed exits 1.
 EXIT_CODE_FOR: Dict[str, int] = {
@@ -44,6 +49,7 @@ EXIT_CODE_FOR: Dict[str, int] = {
     "daemon_down": EXIT_DAEMON_DOWN,
     "lock_timeout": EXIT_DAEMON_DOWN,
     "board_locked": EXIT_DAEMON_DOWN,
+    "wait_no_answer": EXIT_NO_ANSWER,
 }
 
 

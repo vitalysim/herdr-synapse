@@ -1026,6 +1026,81 @@ new generation, `briefed_at` cleared, a fresh briefing. What this adds is
 attribution, so the resulting `member_restarted` is followed by a
 `context_cleared` record naming the operator rather than reading like a crash.
 
+## 9b. Human in the loop
+
+An agent addressing the operator is the only thing on the board that needs a
+person, and until 0.12 it got a banner that faded in three to five seconds and
+could not be answered, while the agent carried straight on. Measured on a live
+team over three days: 88 posts to `human`, ten of them the agent actually
+waiting on a decision, **six of those never answered by anyone** and the other
+four answered by *peers* — one of which overrode a genuine pre-submission halt.
+
+### `asks [--dismiss <seq>]`
+
+What is waiting on you: every post from a member addressed to `human` that the
+operator has not replied to. A reply from a teammate does not clear one — only
+`from: human` does, which is the whole point. Retracted and dismissed asks drop
+out. JSON `{"team","pending":[{"seq","from","kind","ts","text"}]}`.
+
+`--dismiss <seq>` is "not now": the ask stays on the board and in this list's
+source, but the popup stops reopening for it.
+
+### The popup
+
+The daemon opens the `asks` popup when something is waiting and no other popup
+is up. It is **one popup for the whole queue**, not one per post: Herdr allows
+exactly one popup at a time (`ui_busy` otherwise), so 88 posts cannot be 88
+modals. It lists what is pending, and:
+
+| key | |
+| --- | --- |
+| type + `Enter` | posts your reply as `--kind answer --reply-to <seq>`, which is what unblocks a waiting agent |
+| `Tab` / `↑` `↓` | move between asks |
+| `Esc` | leaves this one waiting and stops the popup reopening for it |
+| `q` | closes the popup |
+
+It closes itself when the queue empties, however the asks were answered. The
+toast path is unchanged and still fires; the popup is additive.
+
+### `ask-policy [--block | --no-block] [--kinds …] [--timeout 8m] [--popup | --no-popup]`
+
+Per team, stored at `config.ask` — deliberately not under `config.gate`, where
+one unknown key throws the whole gate config back to its defaults. The bare
+command reads and needs no authority; every write is human-only and audited,
+the same shape as `interrupts`. Also `/ask-policy` in the team console.
+
+| key | default | |
+| --- | --- | --- |
+| `block` | `true` | an asking post waits for you |
+| `block_kinds` | `question, blocked, request` | which kinds wait |
+| `timeout_s` | `480` (8 min) | how long before it gives up |
+| `popup` | `true` | raise the popup at all |
+
+The popup fires on **anything** addressed to you. Blocking does not: it
+defaults to the three asking kinds, because blocking a `done` notice for eight
+minutes would freeze a team that posts forty of them in three days.
+
+### `post … --wait | --no-wait [--timeout DURATION]`
+
+`--wait` blocks until you reply; `--no-wait` never blocks whatever the policy
+says. Without either, the team policy decides, and only for a member posting an
+asking kind to `human` — the operator's own posts and console posts never wait.
+
+The wait is capped at **9 minutes** (`MAX_WAIT_S`) whatever you ask for, because
+Claude Code kills a shell command at ten and a longer wait would end as a killed
+process with no error the agent could read. It polls with a non-persisting
+`BoardTailer`, which reads only new bytes, rather than `BoardStore.read`, which
+re-parses up to 4 MB per call. The board lock is released before the wait
+begins, so a waiting member never blocks anyone else's post.
+
+On an answer: exit 0, `{"waited":true,"answer":{"seq","from","text"}}`. On a
+timeout: **exit 6**, code `wait_no_answer` — distinct from `EXIT_REFUSED` so an
+agent can tell "nobody answered" from "the post was rejected" without reading
+prose. The post stays on the board either way.
+
+A waiting agent shows `working`, so gate 5 holds every nudge for it and the
+idle sweep skips it. The one thing that still reaches it is `--interrupt`.
+
 ### `doctor`
 
 Never fails on warnings; `ok:false` only on hard problems. JSON:

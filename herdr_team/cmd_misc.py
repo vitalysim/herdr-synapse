@@ -21,6 +21,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from herdr_team import asks as _asks
 from herdr_team import charter as _charter
 from herdr_team import cmd_board as _cmd_board
 from herdr_team import gate
@@ -993,6 +994,97 @@ def _interrupts_text(team_name: str, view: Dict[str, Any]) -> str:
     return "{}: interrupts {} · one per sender and teammate per {} min".format(team_name, where, max(1, view["cooldown_ms"] // 60000))
 
 
+#: Defaults for ``config.ask``. Deliberately NOT under ``config.gate``: that
+#: namespace is whitelisted, and one unknown key there throws the whole gate
+#: config back to its defaults rather than erroring.
+ASK_DEFAULTS: Dict[str, Any] = {
+    "block": True,
+    "block_kinds": list(_asks.ASKING_KINDS),
+    #: Under Claude Code's 10-minute cap on a shell command, so a wait ends
+    #: with our own error rather than a killed process.
+    "timeout_s": 480,
+    "popup": True,
+}
+
+
+def ask_view(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """The effective human-in-the-loop settings of a roster (``config.ask`` over the defaults)."""
+    config = doc.get("config") if isinstance(doc.get("config"), dict) else {}
+    ask = config.get("ask") if isinstance(config.get("ask"), dict) else {}
+    kinds = ask.get("block_kinds")
+    timeout = ask.get("timeout_s")
+    return {
+        "block": bool(ask["block"]) if isinstance(ask.get("block"), bool) else ASK_DEFAULTS["block"],
+        "block_kinds": [str(k) for k in kinds] if isinstance(kinds, list) else list(ASK_DEFAULTS["block_kinds"]),
+        "timeout_s": int(timeout) if isinstance(timeout, (int, float)) and not isinstance(timeout, bool) and timeout > 0 else ASK_DEFAULTS["timeout_s"],
+        "popup": bool(ask["popup"]) if isinstance(ask.get("popup"), bool) else ASK_DEFAULTS["popup"],
+        "defaults": dict(ASK_DEFAULTS),
+    }
+
+
+def _ask_text(team_name: str, view: Dict[str, Any]) -> str:
+    waiting = "waits for you on {}".format(", ".join(view["block_kinds"])) if view["block"] and view["block_kinds"] else "never waits"
+    return "{}: an agent {} (up to {} min) · popup {}".format(
+        team_name, waiting, max(1, view["timeout_s"] // 60), "on" if view["popup"] else "off")
+
+
+def _add_ask_policy_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("mode", nargs="?", metavar="show", help="print the current policy (the default)")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--block", dest="block", action="store_true", default=None, help="an asking post waits for you")
+    group.add_argument("--no-block", dest="block", action="store_false", default=None, help="agents never wait")
+    parser.add_argument("--kinds", metavar="question,blocked", help="which post kinds wait ('none' for no kinds)")
+    parser.add_argument("--timeout", metavar="8m", help="how long a post waits before giving up")
+    popup = parser.add_mutually_exclusive_group()
+    popup.add_argument("--popup", dest="popup", action="store_true", default=None, help="raise the popup (default)")
+    popup.add_argument("--no-popup", dest="popup", action="store_false", default=None, help="toast only, no popup")
+
+
+def _run_ask_policy(args: argparse.Namespace) -> int:
+    """Show or set what happens when an agent addresses you.
+
+    Same shape as ``interrupts``: the bare command is a read that needs no
+    authority, every write is operator-only and audited, and the view is
+    re-read from disk so it reports what was actually stored.
+    """
+    layout, api, author, team_name, team, doc = _open_delivery(args)
+    changing = any(getattr(args, k, None) is not None for k in ("block", "popup", "kinds", "timeout"))
+    if not changing:
+        view = ask_view(doc)
+        return emit(args, dict(view, team=team_name, changed=False), _ask_text(team_name, view))
+
+    _charter.require_human(layout, team_name, author, "ask-policy")
+    kinds = None
+    if args.kinds is not None:
+        if str(args.kinds).strip() in ("none", "off", ""):
+            kinds = []
+        else:
+            kinds = [k.strip() for k in str(args.kinds).split(",") if k.strip()]
+            for kind in kinds:
+                if kind not in _cmd_board.POST_KINDS:
+                    raise UsageError("ask-policy --kinds takes post kinds: {}".format(", ".join(_cmd_board.POST_KINDS)))
+    timeout_s = parse_duration_s(args.timeout) if args.timeout else None
+    if timeout_s is not None and timeout_s <= 0:
+        raise UsageError("ask-policy --timeout must be positive")
+
+    def mutate(t: _roster.Team) -> None:
+        ask = dict(t.config.get("ask")) if isinstance(t.config.get("ask"), dict) else {}
+        if args.block is not None:
+            ask["block"] = bool(args.block)
+        if args.popup is not None:
+            ask["popup"] = bool(args.popup)
+        if kinds is not None:
+            ask["block_kinds"] = list(kinds)
+        if timeout_s is not None:
+            ask["timeout_s"] = int(timeout_s)
+        t.config["ask"] = ask
+
+    _roster.update_team(team, mutate)
+    view = ask_view(load_doc(team))
+    _charter.audit(layout, team_name, "ask_policy_set", author, {k: view[k] for k in ("block", "block_kinds", "timeout_s", "popup")})
+    return emit(args, dict(view, team=team_name, changed=True), _ask_text(team_name, view))
+
+
 def _run_interrupts(args: argparse.Namespace) -> int:
     layout, api, author, team_name, team, doc = _open_delivery(args)
     mode = getattr(args, "mode", None)
@@ -1214,6 +1306,7 @@ COMMANDS: List[Command] = [
     Command("setup", "print the config blocks to paste (--print-config); never edits config", _add_setup_arguments, _run_setup),
     Command("keys", "print the key-binding snippet or check it against your config", _add_keys_arguments, _run_keys),
     Command("install-cli", "symlink ~/.local/bin/herdr-synapse to this plugin (--yes)", _add_install_cli_arguments, _run_install_cli),
+    Command("ask-policy", "show or set what happens when an agent addresses you", _add_ask_policy_arguments, _run_ask_policy),
     Command("interrupts", "show or set which kinds a teammate's post --interrupt may reach mid-turn (human only to change)", _add_interrupts_arguments, _run_interrupts),
     Command("gc", "remove session trees whose socket is gone, lock free, older than 7 days", _no_arguments, _run_gc),
     Command("prune", "archive old board segments into _archive", _add_prune_arguments, _run_prune),
