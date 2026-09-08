@@ -71,6 +71,7 @@ SYSTEM_EVENTS = (
     "rotated", "reset_detected", "charter_updated", "renamed", "typed", "member_joined",
     "knowledge_updated", "instructions_updated", "instructions_edited", "knowledge_finding",
     "artifacts_changed", "project_set", "operator_granted", "operator_revoked",
+    "context_high", "context_cleared", "context_compacted", "workdir_moved",
 )
 HUMAN_VIAS = (VIA_CONSOLE, VIA_CONSOLE_UNFOCUSED, VIA_POPUP, VIA_OUTSIDE)
 #: ``say`` (docs/cli.md section 7): only the verified team console may type into a member. A shell pane is
@@ -1634,6 +1635,104 @@ def _run_ack(args: argparse.Namespace) -> int:
     return emit(args, payload, "{} acknowledged: cursor {}, charter #{}".format(author.name, payload["cursor"], charter_seq if charter_seq is not None else "none"))
 
 
+#: What each kind is told to do. ``clear`` starts a fresh context in the same
+#: session; ``compact`` summarises in place. Codex deliberately gets ``/new``
+#: rather than ``/clear``: its ``/clear`` also wipes the terminal scrollback,
+#: which is the surface the detection layer reads to tell idle from working.
+CONTROL_KEYSTROKES: Dict[str, Dict[str, str]] = {
+    "claude": {"compact": "/compact", "clear": "/clear"},
+    "codex": {"compact": "/compact", "clear": "/new"},
+    "opencode": {"compact": "/compact", "clear": "/new"},
+}
+CONTROL_ACTIONS = ("compact", "clear")
+
+
+def control_keystroke(kind: Optional[str], action: str) -> str:
+    """The line to type, or a refusal naming the kinds we have verified."""
+    table = CONTROL_KEYSTROKES.get(str(kind or "").strip())
+    if not table or action not in table:
+        raise HerdrTeamError(
+            "control_unsupported",
+            "no verified {} command for a {} agent".format(action, kind or "?"),
+            EXIT_REFUSED,
+            {"action": action, "kind": kind, "supported": sorted(CONTROL_KEYSTROKES)},
+        )
+    return table[action]
+
+
+def _add_control_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("member", nargs="?", help="the member to act on (default with --self: you)")
+    parser.add_argument("--self", dest="on_self", action="store_true", help="act on your own pane (members only)")
+    parser.add_argument("--yes", action="store_true", help="do not ask before clearing")
+    parser.add_argument("--reason", metavar="TEXT", help="why, for the board record")
+
+
+def _run_compact(args: argparse.Namespace) -> int:
+    return _run_control(args, "compact")
+
+
+def _run_clear(args: argparse.Namespace) -> int:
+    return _run_control(args, "clear")
+
+
+def _run_control(args: argparse.Namespace, action: str) -> int:
+    """Ask the notifier to compact or clear a member's context.
+
+    Only the notifier ever types, so this appends a board record and enqueues a
+    job; the daemon re-reads the record and validates its origin before acting,
+    the same way ``say`` does, because a job file on its own proves nothing.
+
+    Authority: the operator may act on anyone, and a member may act on itself
+    with ``--self``. A member never acts on a peer; it posts a request and the
+    peer or the operator decides.
+    """
+    layout, api, author, team_name, team, doc = _open_team(args, require_server=True, write=True)
+    name = args.member
+    if args.on_self:
+        if not author.is_member:
+            raise HerdrTeamError("not_a_member", "--self runs from a member's own pane; you are {}".format(author.name), EXIT_UNREACHABLE, {"author": author.name})
+        if name and name != author.name:
+            raise UsageError("--self acts on your own pane; drop the name or the flag")
+        name = author.name
+    if not name:
+        raise UsageError("which member? herdr-synapse {} <name> (or --self)".format(action))
+    member = member_or_raise(doc, name, team_name)
+    name = str(member.get("name"))
+    if not args.on_self:
+        _charter.require_human(layout, team_name, author, "{} <member>".format(action))
+    elif action == "clear":
+        # Clearing throws away the member's working memory. A member may ask,
+        # but the operator decides, so self-service stops at compact.
+        raise HerdrTeamError("author_mismatch", "clearing is the operator's; --self covers compact only", EXIT_REFUSED,
+                             {"action": action, "author": author.name})
+    keystroke = control_keystroke(member.get("kind"), action)
+    if action == "clear" and not args.yes:
+        # ``--json`` is not a way around this: a caller that cannot be asked
+        # must say ``--yes``, so throwing away a member's memory is always
+        # something someone wrote down rather than something that happened.
+        if not _confirm_control(args, name, member.get("kind")):
+            return emit(args, {"team": team_name, "member": name, "action": action, "requested": False}, "not cleared")
+    require_daemon(layout.session)
+    text = "{} {}{}".format(action, name, ": {}".format(args.reason) if args.reason else "")
+    record = build_record(author, [name], "direct", text, urgent=False, socket_path=os.fspath(layout.socket),
+                          from_gen=member_generation(doc, author))
+    record["control"] = {"action": action, "keystroke": keystroke, "kind": member.get("kind")}
+    seq = board_append(team, record)
+    job = enqueue_job(team, "control", name, author, extra={"seq": seq, "action": action})
+    payload = {"team": team_name, "member": name, "action": action, "keystroke": keystroke,
+               "kind": member.get("kind"), "record_seq": seq, "job": job, "requested": True}
+    return emit(args, payload, "{} queued for {}; the notifier types {!r} when it is idle".format(action, name, keystroke))
+
+
+def _confirm_control(args: argparse.Namespace, name: str, kind: Optional[str]) -> bool:
+    question = "clear {}'s context? its memory of this conversation goes, and it is briefed again".format(name)
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        raise HerdrTeamError("confirmation_required", "{} (pass --yes)".format(question), EXIT_REFUSED, {"member": name, "kind": kind})
+    args.stdout.write("{} [y/N] ".format(question))
+    args.stdout.flush()
+    return sys.stdin.readline().strip().lower() in ("y", "yes")
+
+
 def _seq_only(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("seq", type=int)
 
@@ -1754,5 +1853,7 @@ COMMANDS: List[Command] = [
     Command("task", "set your current task headline", _text_only, _run_task),
     Command("export", "save the whole board to a file (md, json, jsonl, text)", _add_export_arguments, _run_export),
     Command("ack", "acknowledge the briefing and charter, move your cursor to the end", _no_arguments, _run_ack),
+    Command("compact", "ask the notifier to compact a member's context (operator, or --self)", _add_control_arguments, _run_compact),
+    Command("clear", "ask the notifier to clear a member's context (operator only)", _add_control_arguments, _run_clear),
     Command("say", "type one line into a member's input box now (human only, from the team console)", _add_say_arguments, _run_say),
 ]

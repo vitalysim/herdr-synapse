@@ -17,9 +17,12 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+from herdr_team import store
 from herdr_team import usage
+from herdr_team import usage as _usage
 from herdr_team.cli import Command, api_for, emit, layout_for
-from herdr_team.errors import EXIT_OK, EXIT_REFUSED, HerdrTeamError
+from herdr_team.cmd_roster import _author
+from herdr_team.errors import EXIT_OK, EXIT_REFUSED, HerdrTeamError, UsageError
 
 ENTRYPOINT = "usage"
 REFRESH_S = 60.0
@@ -228,7 +231,90 @@ def _run_pane(args: argparse.Namespace) -> int:
     return int(curses.wrapper(_loop, args, max(1.0, float(args.timeout)), bool(args.ascii)))
 
 
+# --------------------------------------------------------------------------
+# context: the sibling of usage, per member rather than per provider account
+
+
+def _add_context_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("member", nargs="?", help="one member (default: every member of the team)")
+    parser.add_argument("--ascii", action="store_true", help="ASCII bars")
+    parser.add_argument("--width", type=int, default=0, help="output width")
+
+
+def _run_context(args: argparse.Namespace) -> int:
+    """How full each member's context window is.
+
+    ``usage`` answers "how much of my plan have I spent"; this answers "how much
+    room does this agent have left before it forgets". The reading comes from
+    the notifier, which reads each harness's own files; when the notifier is
+    down the files are read directly here so the answer is never simply blank.
+    """
+    from herdr_team import context as _context
+    from herdr_team import roster as _roster
+    from herdr_team.cmd_board import daemon_status, load_doc, members_of, resolve_team
+
+    layout = layout_for(args)
+    api = api_for(args, layout)
+    author = _author(args, layout, api, require_server=False)
+    team_name = resolve_team(args, layout, author)
+    if team_name is None:
+        raise UsageError("no team; pass --team <name>")
+    team_paths = layout.team(team_name)
+    doc = load_doc(team_paths)
+    who_doc = store.read_json(layout.session.who_json)
+    live = daemon_status(layout.session).get("alive")
+    published: Dict[str, Any] = {}
+    if live and isinstance(who_doc, dict):
+        for entry in ((who_doc.get("teams") or {}).get(team_name) or {}).get("members") or []:
+            if isinstance(entry, dict) and entry.get("name"):
+                published[str(entry["name"])] = entry.get("context")
+
+    rows: List[Dict[str, Any]] = []
+    for member in members_of(doc):
+        name = str(member.get("name") or "")
+        if not name or member.get("kind") == "human" or member.get("status") == "left":
+            continue
+        if args.member and name != args.member:
+            continue
+        reading = published.get(name)
+        if not isinstance(reading, dict):
+            record = _roster.read_pane_record(layout.session, member.get("terminal_id")) or {}
+            found = _context.read_member(member.get("kind"), member.get("session"), record, home=_context.home_dir(args.env))
+            reading = found.to_json() if found is not None else None
+        rows.append({"name": name, "kind": member.get("kind"), "context": reading})
+    if args.member and not rows:
+        raise HerdrTeamError("member_not_found", "{!r} is not an agent member of team {!r}".format(args.member, team_name), EXIT_REFUSED,
+                             {"name": args.member, "team": team_name})
+    payload = {"team": team_name, "source": "who.json" if published else "files", "members": rows}
+    width = args.width or (shutil.get_terminal_size((100, 24)).columns if sys.stdout.isatty() else 100)
+    return emit(args, payload, lambda: render_context(payload, width, bool(args.ascii)))
+
+
+def render_context(payload: Dict[str, Any], width: int, ascii_only: bool) -> str:
+    rows = payload.get("members") or []
+    if not rows:
+        return "no agent members in team {}".format(payload.get("team"))
+    name_w = max(len(str(r.get("name"))) for r in rows)
+    kind_w = max(len(str(r.get("kind") or "?")) for r in rows)
+    cells = max(10, min(24, width - name_w - kind_w - 34))
+    lines = ["team {} context".format(payload.get("team"))]
+    for row in rows:
+        reading = row.get("context")
+        if not isinstance(reading, dict) or not isinstance(reading.get("percent"), (int, float)):
+            lines.append("  {}  {}  unknown (no reader for this kind, or nothing written yet)".format(
+                str(row.get("name")).ljust(name_w), str(row.get("kind") or "?").ljust(kind_w)))
+            continue
+        percent = float(reading["percent"])
+        mark = {"critical": " !!", "warning": " !"}.get(_usage.severity_for(percent) or "", "")
+        lines.append("  {}  {}  {} {:>3.0f}%  {:>12} / {:<12}{}".format(
+            str(row.get("name")).ljust(name_w), str(row.get("kind") or "?").ljust(kind_w),
+            _usage.bar(percent, cells, ascii_only), percent,
+            "{:,}".format(int(reading.get("used") or 0)), "{:,}".format(int(reading.get("window") or 0)), mark))
+    return "\n".join(lines)
+
+
 COMMANDS: List[Command] = [
+    Command("context", "how full each member's context window is", _add_context_arguments, _run_context),
     Command("usage", "usage limits (session, week, per model) of every provider the session's agents draw on", _add_usage_arguments, _run_usage),
     Command("usage-pane", "usage popup (launched by the manifest pane)", _add_pane_arguments, _run_pane, hidden=True),
 ]

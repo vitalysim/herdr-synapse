@@ -38,13 +38,13 @@ def write_live_daemon(ts):
 PLAN_SIDEBAR_SNIPPET = """[ui.sidebar.agents]
 rows = [
   ["state_icon", "agent"],
-  [{ token = "$team_c1", fg = "#fb4934" }, { token = "$team_c2", fg = "#b8bb26" }, { token = "$team_c3", fg = "#83a598" }, { token = "$team_c4", fg = "#d3869b" }, { token = "$team_c5", fg = "#fabd2f" }, { token = "$team_c6", fg = "#8ec07c" }, { token = "$team_role", dim = true }, { token = "$team_task", fg = "#89b4fa" }],
+  [{ token = "$team_c1", fg = "#fb4934" }, { token = "$team_c2", fg = "#b8bb26" }, { token = "$team_c3", fg = "#83a598" }, { token = "$team_c4", fg = "#d3869b" }, { token = "$team_c5", fg = "#fabd2f" }, { token = "$team_c6", fg = "#8ec07c" }, { token = "$team_role", dim = true }, { token = "$team_task", fg = "#89b4fa" }, { token = "$team_context", fg = "#7f849c" }, { token = "$team_context_warn", fg = "#fabd2f" }, { token = "$team_context_crit", fg = "#fb4934" }],
   ["workspace", "tab"],
 ]
 [ui.sidebar.agents.rows_by_agent]
 claude = [
   ["state_icon", "agent"],
-  [{ token = "$team_c1", fg = "#fb4934" }, { token = "$team_c2", fg = "#b8bb26" }, { token = "$team_c3", fg = "#83a598" }, { token = "$team_c4", fg = "#d3869b" }, { token = "$team_c5", fg = "#fabd2f" }, { token = "$team_c6", fg = "#8ec07c" }, { token = "$team_role", dim = true }, { token = "$team_task", fg = "#89b4fa" }],
+  [{ token = "$team_c1", fg = "#fb4934" }, { token = "$team_c2", fg = "#b8bb26" }, { token = "$team_c3", fg = "#83a598" }, { token = "$team_c4", fg = "#d3869b" }, { token = "$team_c5", fg = "#fabd2f" }, { token = "$team_c6", fg = "#8ec07c" }, { token = "$team_role", dim = true }, { token = "$team_task", fg = "#89b4fa" }, { token = "$team_context", fg = "#7f849c" }, { token = "$team_context_warn", fg = "#fabd2f" }, { token = "$team_context_crit", fg = "#fb4934" }],
   ["terminal_title_stripped"],
   ["workspace", "tab"],
 ]

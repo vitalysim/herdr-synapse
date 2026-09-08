@@ -1,6 +1,6 @@
 #!/bin/sh
 # herdr-synapse Claude Code hook shim (plan 9.4).
-# HERDR_TEAM_HOOK_VERSION=1
+# HERDR_TEAM_HOOK_VERSION=2
 #
 # Installed by `herdr-synapse hooks install claude` as ~/.claude/hooks/herdr-synapse-hook.sh
 # with the absolute CLI path baked in below. Registered three times in
@@ -16,6 +16,9 @@
 # everything; `herdr-synapse mute` is the live switch.
 
 HERDR_TEAM_CLI='@@HERDR_TEAM_CLI@@'
+# The installer bakes the plugin id in rather than the shim naming it, so a
+# rename cannot leave the log pointing at the directory of a previous name.
+HERDR_TEAM_PLUGIN_ID='@@HERDR_TEAM_PLUGIN_ID@@'
 action=${1:-}
 
 [ "${HERDR_ENV:-}" = 1 ] || exit 0
@@ -35,7 +38,7 @@ esac
 # in a shared temp dir, which another local user could pre-create as a symlink.
 log=${HERDR_TEAM_HOOK_LOG:-}
 if [ -z "$log" ]; then
-    state=${HERDR_TEAM_STATE_DIR:-${XDG_STATE_HOME:-${HOME:-/nonexistent}/.local/state}/herdr/plugins/herdr-team}
+    state=${HERDR_TEAM_STATE_DIR:-${XDG_STATE_HOME:-${HOME:-/nonexistent}/.local/state}/herdr/plugins/$HERDR_TEAM_PLUGIN_ID}
     if [ -d "$state" ] && [ ! -L "$state/hooks-claude.log" ]; then
         log=$state/hooks-claude.log
     else

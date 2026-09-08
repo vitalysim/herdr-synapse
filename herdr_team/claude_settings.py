@@ -26,7 +26,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from herdr_team import paths, store
+from herdr_team import PLUGIN_ID, paths, store
 from herdr_team.errors import EXIT_REFUSED, HerdrTeamError
 
 #: Claude Code hook event -> timeout in seconds.
@@ -39,8 +39,13 @@ HOOK_FILE_NAME = "herdr-synapse-hook.sh"
 SETTINGS_FILES = ("settings.json", "settings.local.json")
 BACKUP_SUFFIX = ".herdr-team.bak"
 SHIM_MARKER = "# HERDR_TEAM_HOOK_VERSION="
-SHIM_VERSION = 1
+SHIM_VERSION = 2
 CLI_PLACEHOLDER = "@@HERDR_TEAM_CLI@@"
+#: The shim logs to the plugin's own state directory, whose last path segment is
+#: the plugin id. Baking the id in here rather than writing it in the shim keeps
+#: the two from drifting: the 0.8.0 rename left the shim's fallback naming the
+#: previous id, so a session whose state had moved logged nowhere.
+PLUGIN_ID_PLACEHOLDER = "@@HERDR_TEAM_PLUGIN_ID@@"
 
 
 class StrictJsonError(ValueError):
@@ -438,6 +443,9 @@ def render_shim(cli_path: Path) -> str:
     path = os.fspath(cli_path)
     if "\n" in path or "\r" in path:
         raise HerdrTeamError("cli_path_invalid", "the CLI path may not contain a newline", EXIT_REFUSED, {"path": path})
+    if PLUGIN_ID_PLACEHOLDER not in text:
+        raise HerdrTeamError("shim_source_invalid", "{} lacks the {} placeholder".format(shim_source(), PLUGIN_ID_PLACEHOLDER), EXIT_REFUSED)
+    text = text.replace(PLUGIN_ID_PLACEHOLDER, sh_single_quoted_body(PLUGIN_ID))
     return text.replace(CLI_PLACEHOLDER, sh_single_quoted_body(path))
 
 

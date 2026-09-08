@@ -76,6 +76,12 @@ LOGIN_KINDS = ("pi", "opencode")
 
 WARN_PERCENT = 75.0
 CRIT_PERCENT = 90.0
+#: The three severities ``severity_for`` returns, named once so every caller
+#: agrees. Spelling one of them wrong used to fail silently: the comparison
+#: simply never matched, and the warning it guarded never fired.
+NORMAL = "normal"
+WARNING = "warning"
+CRITICAL = "critical"
 
 Window = Dict[str, Any]
 Provider = Dict[str, Any]
@@ -128,10 +134,10 @@ def severity_for(percent: Optional[float]) -> Optional[str]:
     if percent is None:
         return None
     if percent >= CRIT_PERCENT:
-        return "critical"
+        return CRITICAL
     if percent >= WARN_PERCENT:
-        return "warning"
-    return "normal"
+        return WARNING
+    return NORMAL
 
 
 def window(label: str, percent: Any, resets_at: Any = None, wid: Optional[str] = None, scope: Optional[str] = None, detail: Optional[str] = None, severity: Optional[str] = None) -> Window:

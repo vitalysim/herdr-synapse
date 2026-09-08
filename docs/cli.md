@@ -387,7 +387,7 @@ Shows the team's project directory and the folder inside it, or `none`.
 
 Also available at team creation as `create --project <path>`, and as a stage
 in the `prefix+t` wizard, which prefills the directory the selected agents
-already share (Tab skips it). Records the directory and creates `<path>/.herdr-team/<team>/`. This is the
+already share (Tab skips it). Records the directory and creates `<path>/.herdr-synapse/<team>/`. This is the
 consent gate: the plugin never infers a project directory and never writes
 into a repository until a human runs this. The path must be an existing
 directory, and the filesystem root, `$HOME`, and the plugin's own state dir
@@ -423,7 +423,7 @@ a scrollable popup (`ui knowledge`, or `knowledge-pane` inside it), the way
 
 ### The board snapshot
 
-The notifier keeps `<project>/.herdr-team/<team>/board.md` current: the whole
+The notifier keeps `<project>/.herdr-synapse/<team>/board.md` current: the whole
 board, archived segments included, rendered like `export --format md`. It is
 rewritten only when the board has moved and at most once a minute, and its
 content is stamped with the newest post's timestamp rather than the current
@@ -625,7 +625,7 @@ is written `0600` through the usual atomic write.
 | `text` | the same plain rendering `board --format text` prints |
 
 From the console, `/export [path] [--format …]` runs the same command. With no
-path it writes into `<project>/.herdr-team/<team>/exports/` (generated and
+path it writes into `<project>/.herdr-synapse/<team>/exports/` (generated and
 git-ignored), falling back to your home directory when the team has no project
 folder, because the console pane's own working directory is the plugin's.
 
@@ -787,10 +787,15 @@ followed by one indented line per entry, `<ts> <kind> [<reason>] <title>`.
 | `focus <name>` | enqueue `agent.focus` on the member's current pane | `{"team","member","job"}` |
 | `say <name> "<text>" [--force]` | write a `direct` record and enqueue a type-now job (section 7); the daemon types it without waiting for idle and confirms it on the next agent poll | `{"team","member","seq","job","outcome"}` |
 | `interrupts [show\|off\|on\|<kind>[,<kind>]] [--cooldown 10m]` | show or set `config.gate.interrupt_kinds` (the kinds a teammate's `post --interrupt` may be typed into mid-turn; `on` restores `claude`) and `interrupt_cooldown_ms`; the daemon reloads within 2 s; a change is human only (`author_mismatch`) | `{"team","kinds","cooldown_ms","default_kinds","changed"}` |
+| `compact <name> \| --self [--reason TEXT]` | write a `direct` record carrying a `control` block and enqueue a control job; the daemon types the kind's compact command once the member is idle (section 9a) | `{"team","member","action","keystroke","kind","record_seq","job","requested"}` |
+| `clear <name> --yes [--reason TEXT]` | the same, for the kind's clear command; operator only, and it asks before it runs | same shape |
 | `read <name> [--lines N]` | `agent read --source visible` directly; `--lines` is refused for every member (`lines_refused`, exit 1), because scrolling an idle alternate screen types keys into the agent and only the daemon may type into a member | `{"team","member","pane_id","lines":[…]}` |
 
-Job files: `notifier/jobs/<ts>-<id>.json` `{"v":1,"kind":"brief|nudge|focus|say","member","force","requested_by":author,"requested_at"}`.
+Job files: `notifier/jobs/<ts>-<id>.json` `{"v":1,"kind":"brief|nudge|focus|say|control","member","force","requested_by":author,"requested_at"}`.
 A `say` job adds `"seq"` (its `direct` record) and carries no text: the daemon types the record.
+A `control` job adds `"seq"` and `"action"`, and carries no keystroke: the
+daemon reads the record's `control` block and refuses a job whose record is
+missing, unverified, addressed elsewhere, or carrying no such block.
 
 ## 9. Plugin and setup
 
@@ -879,6 +884,74 @@ bar, `% used`, `⚠` at 75 % and `‼` at 90 %, and the reset time. JSON
 a popup that refreshes every minute (`r` refreshes now, Up/Down scroll, `q`
 closes). Registered by `cmd_usage.py` with the hidden `usage-pane`
 entrypoint (`not_a_plugin_pane` outside the popup unless `--force`).
+
+## 9a. Context windows
+
+### `context [<name>] [--ascii] [--width N]`
+
+How full each member's context window is, read from the harness's own files:
+Claude's transcript (`message.usage`), Codex's rollout log (`token_count`,
+which carries the window size outright), OpenCode's `opencode.db`. Nothing is
+typed and nothing is asked of the agent. A kind with no reader is `unknown`
+and is never guessed at. The notifier polls the same readers every 15 s, so
+this prints the notifier's reading when it is running and reads the files
+itself when it is not (`"source":"who.json"` or `"files"`).
+
+JSON `{"team","source","members":[{"name","kind","context":{"used","window","percent","source","model","at"}|null}]}`.
+`who` carries the same reading as a `context 94%` tag, and the notifier
+publishes it as the `team_context` pane token (source
+`herdr-synapse:context`, TTL 2 min) so the Herdr sidebar can show it.
+
+At 75 % and again at 90 % the notifier appends one `context_high` record
+addressed to the member and to `all`. It says so once per crossing and never
+acts: what to do about a full context is the member's decision, or the
+operator's.
+
+### `compact <name> | --self [--reason TEXT]`
+
+Ask the notifier to summarise a member's context in place. The operator may
+compact anyone; a member may compact itself with `--self`. A member never
+compacts a peer: it posts a request and the peer or the operator decides.
+
+The keystroke is per kind and only the verified ones are offered
+(`control_unsupported`, exit 1, otherwise): Claude `/compact`, Codex
+`/compact`, OpenCode `/compact`. It is typed with `pane.send_text` and a
+separate Enter rather than `agent.prompt`, because a prompt is delivered as a
+bracketed paste and a pasted `/compact` is read as text to answer rather than
+as a command to run.
+
+Delivery goes through the ordinary gate. Nothing about being blocked, showing
+a dialog, holding a draft, or hosting the wrong occupant is bypassed; only
+the `done_hold` and the per-member interval are, the way a briefing does.
+Idle is required, so a control keystroke never enters a running turn.
+
+Claude's compaction blocks its pane for two to three minutes, so the job is
+not finished when the keystroke lands: it stays open until the effect shows
+up, and is never typed twice. The effect is a session phase change (Claude
+reports `source=compact` on the same session id) or a large fall in the token
+count, whichever the notifier sees first; either one appends a
+`context_compacted` record naming who asked. After `CONTROL_OBSERVE_S`
+(6 min) with nothing observed, the notifier says so and closes the job rather
+than retrying.
+
+A compaction the notifier did not ask for is recorded too, so a teammate
+reading the board knows this member now works from a summary.
+
+### `clear <name> --yes [--reason TEXT]`
+
+The same path for the kind's clear command: Claude `/clear`, Codex and
+OpenCode `/new`. Codex deliberately gets `/new` rather than `/clear`, whose
+scrollback wipe removes the surface Herdr's detection reads.
+
+Operator only, and `--self` is refused (`author_mismatch`): a member may ask
+to be cleared by posting a request, but throwing away an agent's working
+memory is the operator's call. It asks `y/N` on a terminal, and `--yes` is
+required otherwise, `--json` included.
+
+A clear mints a new harness session, which the notifier already reacts to: a
+new generation, `briefed_at` cleared, a fresh briefing. What this adds is
+attribution, so the resulting `member_restarted` is followed by a
+`context_cleared` record naming the operator rather than reading like a crash.
 
 ### `doctor`
 

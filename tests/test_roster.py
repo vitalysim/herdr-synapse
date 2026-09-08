@@ -632,7 +632,8 @@ class TokenProjectionTests(unittest.TestCase):
     def test_clear_and_missing_pane(self) -> None:
         member = roster.Member("alpha-reviewer", "reviewer", "codex", "term_r1", pane_id="w2:p1")
         cleared = roster.token_commands(member, "alpha", clear=True)
-        self.assertEqual([c.tokens for c in cleared], [identity_tokens(None, None), {"team_task": None}])
+        self.assertEqual([c.tokens for c in cleared], [identity_tokens(None, None), {"team_task": None},
+                                                       {"team_context": None, "team_context_warn": None, "team_context_crit": None}])
         argv = cleared[0].argv()
         for key in ("team", "team_role", "team_c1", "team_c6"):
             self.assertIn("{}=".format(key), argv)  # an empty value clears the key

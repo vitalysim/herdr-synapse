@@ -51,7 +51,9 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, 
 
 from herdr_team import PLUGIN_ID, VERSION, gate, nudge, render, roster, sanitize, store
 from herdr_team import charter as _charter
+from herdr_team import context as _context
 from herdr_team import operator as _operator
+from herdr_team import usage as _usage
 from herdr_team import workdir as _workdir
 from herdr_team.api import HerdrApi, IDENTITY_ENV_VARS, PROMPT_TIMEOUT_S, read_text, scrub_env
 from herdr_team.errors import EXIT_DAEMON_DOWN, EXIT_OK, EXIT_REFUSED, EXIT_UNREACHABLE, HerdrTeamError, LockTimeout
@@ -100,6 +102,23 @@ RECONCILE_POLL_S = 10.0
 ARTIFACTS_POLL_S = 10.0
 #: How often the unread sweep looks for an idle member holding mail nothing woke it for.
 IDLE_SWEEP_POLL_S = 10.0
+#: How often a member's context is re-read from its harness's own files. The
+#: read is a tail of one file, skipped entirely when that file has not moved.
+CONTEXT_POLL_S = 15.0
+#: The ``team_context`` sidebar token fades if the notifier stops reading, the
+#: same health signal ``team_task`` uses.
+CONTEXT_TTL_MS = 120000
+#: How long a typed ``/compact`` or ``/clear`` may go unobserved before the
+#: daemon gives up waiting for its effect. Not a completion timer: the job is
+#: closed by what actually happens (a new session, a new phase, a context that
+#: fell), and this only bounds how long it stays open when nothing does.
+#: Claude's compaction runs two to three minutes here, so the bound is well
+#: past that rather than near it.
+CONTROL_OBSERVE_S = 360.0
+#: A context reading this much below the one taken when the keystroke landed
+#: counts as the compaction having happened. Compaction rewrites the history
+#: into a summary, so the drop is large; a normal turn only ever adds.
+CONTROL_DROP_RATIO = 0.7
 #: Minimum gap between two swept nudges for one member. A broadcast never
 #: interrupts on its own, so this is the pace at which a chatty team's
 #: announcements reach an idle teammate: one nudge, not one per post.
@@ -760,6 +779,17 @@ def _board_max_seq(team: TeamPaths) -> int:
     return int(store.BoardStore(team).max_seq())
 
 
+#: Fields ``system_record`` owns outright: who wrote it, who it is for, what it
+#: says, and what the appender assigns. ``extra`` may not name one of these.
+#: The rest of the schema (``reply_to``, ``refs``, ``urgent``, ``ttl_ms`` and
+#: the like) is detail a caller legitimately sets, so it stays open: a ``typed``
+#: outcome, for one, replies to the record it reports on.
+RESERVED_RECORD_FIELDS = frozenset({
+    "v", "seq", "ts", "from", "from_label", "from_kind", "from_pane", "from_terminal", "from_gen",
+    "origin", "to", "kind", "text", "event", "team",
+})
+
+
 def system_record(team_name: str, event: str, text: str, to: Sequence[str], socket: str, extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """A plan 6.1 ``system`` record without ``seq``/``ts`` (the appender assigns them)."""
     rec: Dict[str, Any] = {
@@ -769,8 +799,16 @@ def system_record(team_name: str, event: str, text: str, to: Sequence[str], sock
         "to": list(to) or ["all"], "to_role": None, "kind": "system", "text": text, "refs": [], "reply_to": None,
         "retracts": None, "supersedes": None, "urgent": False, "ttl_ms": None, "truncated": False, "event": event, "relayed_for": None,
     }
-    if extra:
-        rec.update(extra)
+    for key, value in (extra or {}).items():
+        # ``extra`` carries a record's own detail, never its structure. A key
+        # like ``from`` or ``to`` used to overwrite the field of that name:
+        # here it turned a system record into one claiming a filesystem path
+        # as its author, which the store then refused. A silent collision on
+        # ``text`` would not have been refused at all.
+        if key in RESERVED_RECORD_FIELDS:
+            raise HerdrTeamError("record_invalid", "{!r} is a record field, not extra detail".format(key), EXIT_REFUSED,
+                                 {"field": key, "event": event})
+        rec[key] = value
     rec["team"] = team_name
     return rec
 
@@ -1027,9 +1065,11 @@ class Pending:
     urgent: bool = False
     authors: Set[str] = field(default_factory=set)
     first_ms: float = 0.0
-    kind: str = "nudge"  # nudge | brief | probe
+    kind: str = "nudge"  # nudge | brief | probe | control
     lines: Optional[List[str]] = None
     probe: Optional[Dict[str, Any]] = None
+    #: For a ``control`` pending: the action, the keystroke, and who asked.
+    control: Optional[Dict[str, Any]] = None
     force: bool = False
     attempts: int = 0
     landed_ms: Optional[float] = None
@@ -1098,6 +1138,22 @@ class MemberRuntime:
     #: Last ``team_task`` value and stamp time (restamp only on change or TTL refresh).
     last_task_value: Optional[str] = None
     last_task_stamp_ms: Optional[float] = None
+    #: Last context reading and the severity already announced for it. The
+    #: severity is what gives the warning hysteresis: a crossing is news once,
+    #: not every fifteen seconds for as long as the member stays full.
+    context: Optional[Dict[str, Any]] = None
+    context_read_ms: Optional[float] = None
+    context_mtime: Optional[float] = None
+    context_severity: Optional[str] = None
+    context_stamp_value: Optional[str] = None
+    context_stamp_ms: Optional[float] = None
+    #: An operator-requested ``compact``/``clear`` that has been typed and whose
+    #: effect has not been seen yet: ``{action, requested_by, typed_ms, used}``.
+    control_pending: Optional[Dict[str, Any]] = None
+    #: Harness session the last context reading belonged to. A reading from a
+    #: different session is a different history, so it is a new baseline rather
+    #: than a fall in the old one.
+    context_session: Optional[Any] = None
 
 
 @dataclass
@@ -1655,6 +1711,7 @@ class Daemon:
         self._phase("consume_jobs", lambda: self.consume_jobs(now))
         # After the tail, so a post ingested this tick is already counted, and
         # before the evaluator, so a swept pending is acted on in the same pass.
+        self._phase("poll_context", lambda: self.poll_all_context(now))
         self._phase("sweep_unread", lambda: self.sweep_all_unread(now))
         self._phase("board_snapshot", lambda: self.snapshot_all_boards(now))
         self._phase("evaluate_pending", self.evaluate_pending)
@@ -1815,14 +1872,14 @@ class Daemon:
         self._append_system(team, "artifacts_changed", line, ["all"], extra={
             "added": len(diff.get("added") or []), "changed": len(diff.get("changed") or []),
             "removed": len(diff.get("removed") or []),
-            "root": ".herdr-team/{}/artifacts/".format(team.name),
+            "root": "{}/{}/artifacts/".format(_workdir.DIR_NAME, team.name),
         })
         team.artifacts_announced = current
         team.artifacts_pending_since_ms = None
         team.artifacts_posted_ms = now
 
     def snapshot_board(self, team: TeamState, now: float) -> None:
-        """Keep ``<project>/.herdr-team/<team>/board.md`` current.
+        """Keep ``<project>/.herdr-synapse/<team>/board.md`` current.
 
         The board is the team's record of what happened and it lived only in
         the plugin's state dir. This mirrors it beside the team's rules and
@@ -1875,7 +1932,30 @@ class Daemon:
             return
         for path in result.get("skipped") or []:
             self.log("{}: team folder left {} alone; it is not ours".format(team.name, path))
+        self._announce_move(team, result.get("moved"))
         self._announce_edits(team, result.get("awaiting_adopt") or [])
+
+    def _announce_move(self, team: TeamState, moved: Optional[Dict[str, Any]]) -> None:
+        """Tell every member the team folder is somewhere else now.
+
+        Each member is named as well as ``all``: a record addressed only to the
+        team is a broadcast the gate holds, and every agent here is carrying the
+        old path in its context, so this is the one thing each of them has to
+        be nudged about rather than told eventually.
+        """
+        if not isinstance(moved, dict) or not moved.get("to"):
+            return
+        names = [str(m.get("name")) for m in team.members()
+                 if m.get("kind") != "human" and m.get("status") in ("active", "starting") and m.get("name")]
+        self.log("{}: team folder moved {} -> {}".format(team.name, moved.get("from"), moved["to"]))
+        self._append_system(
+            team, "workdir_moved",
+            "The team folder moved to {}. Its knowledge base is now {}/{}/knowledge.md and your document is "
+            "{}/{}/members/<you>.md; artifacts are {}/{}/artifacts/. The old path is gone: use these, or run "
+            "herdr-synapse me, which prints them.".format(
+                moved["to"], moved["to"], team.name, moved["to"], team.name, moved["to"], team.name),
+            names + ["all"], {"moved_from": moved.get("from"), "moved_to": moved["to"]},
+        )
 
     def _announce_edits(self, team: TeamState, paths_: Sequence[str]) -> None:
         """Tell the operator once about each member document edited in the checkout.
@@ -2335,15 +2415,26 @@ class Daemon:
             if how == roster.MATCH_SESSION and "generation" not in update:
                 update["generation"] = int(member.get("generation") or 1) + 1  # moved panes with its memory intact
         if "session" in update and roster.session_key(member.get("session")) is not None:
-            # A different harness session than the one recorded, on the member's own terminal (a
-            # crash and restart, a Claude ``/clear``, the operator resuming something else there) or
-            # on the pane a label or pane-id match found: the agent has no memory of who it is, so it
-            # gets a new generation and a fresh briefing; the name and read position stay.
-            if "generation" not in update:
-                update["generation"] = int(member.get("generation") or 1) + 1
-            update["briefed_at"] = None
-            self.log("{}: {} started a new session on {} ({} -> {}); re-briefing".format(
-                team.name, name, match.get("pane_id"), roster.short_session(member.get("session")), roster.short_session(update["session"])))
+            if roster.same_session_value(member.get("session"), update["session"]):
+                # Same session id, new phase. The harness rewrote the session in
+                # place instead of starting one: Claude reports ``source=compact``
+                # against the same id once a ``/compact`` finishes. The process,
+                # the pane and the agent's sense of who it is all survive, so this
+                # is not a restart and takes no new generation. The briefing does
+                # go again, because it was in the history that was just summarized.
+                update["briefed_at"] = None
+                self.log("{}: {} stayed in session {} and changed phase to {!r}; briefing again".format(
+                    team.name, name, roster.short_session(update["session"]), roster.session_source(update["session"])))
+            else:
+                # A different harness session than the one recorded, on the member's own terminal (a
+                # crash and restart, a Claude ``/clear``, the operator resuming something else there) or
+                # on the pane a label or pane-id match found: the agent has no memory of who it is, so it
+                # gets a new generation and a fresh briefing; the name and read position stay.
+                if "generation" not in update:
+                    update["generation"] = int(member.get("generation") or 1) + 1
+                update["briefed_at"] = None
+                self.log("{}: {} started a new session on {} ({} -> {}); re-briefing".format(
+                    team.name, name, match.get("pane_id"), roster.short_session(member.get("session")), roster.short_session(update["session"])))
         live_name = match.get("name")
         if not match.get("launch_pending"):
             if live_name is None:
@@ -2427,11 +2518,19 @@ class Daemon:
                     if "briefed_at" in update and update["briefed_at"] is None:
                         text += "; new session, briefing again"
                     self._append_system(team, "member_restarted", text, ["all"], extra or None)
+                    self._note_cleared(team, name, shown)
                     if "briefed_at" in update and update["briefed_at"] is None:
                         try:
                             roster.write_briefing_job(team.paths, str(shown))
                         except HerdrTeamError as err:
                             self.log("{}: could not enqueue a briefing for {}: {}".format(team.name, shown, err.code))
+                elif "session" in update and update.get("briefed_at", False) is None:
+                    # Same id, new phase (see ``_rebind_update``): a compaction, not a restart.
+                    self._note_compacted(team, name, str(roster.session_source(update["session"]) or "?"))
+                    try:
+                        roster.write_briefing_job(team.paths, str(update.get("name", name)))
+                    except HerdrTeamError as err:
+                        self.log("{}: could not enqueue a briefing for {}: {}".format(team.name, name, err.code))
             for member in team.members():
                 terminal_id = member.get("terminal_id")
                 if isinstance(terminal_id, str) and member.get("status") == "active":
@@ -2544,8 +2643,9 @@ class Daemon:
         cleared: Dict[str, Any] = {"team": None, "team_role": None}
         cleared.update(roster.color_slot_tokens(None, None))
         try:
-            self.api.request("pane.report_metadata", {"pane_id": pane_id, "source": "herdr-synapse:roster", "tokens": cleared}, timeout=5.0)
-            self.api.request("pane.report_metadata", {"pane_id": pane_id, "source": "herdr-synapse:task", "tokens": {"team_task": None}}, timeout=5.0)
+            self.api.request("pane.report_metadata", {"pane_id": pane_id, "source": roster.TOKEN_SOURCE_ROSTER, "tokens": cleared}, timeout=5.0)
+            self.api.request("pane.report_metadata", {"pane_id": pane_id, "source": roster.TOKEN_SOURCE_TASK, "tokens": {"team_task": None}}, timeout=5.0)
+            self.api.request("pane.report_metadata", {"pane_id": pane_id, "source": roster.TOKEN_SOURCE_CONTEXT, "tokens": roster.context_slot_tokens(None)}, timeout=5.0)
         except HerdrTeamError as err:
             self.log("clear tokens on {} failed: {}".format(pane_id, err.code))
 
@@ -2697,6 +2797,337 @@ class Daemon:
         team.pending[name] = pending
         self.who_dirty = True
         self.log("{}: {} briefing done; nudging for {} deferred during the briefing".format(team.name, name, ", ".join("#{}".format(s) for s in pending.seqs)))
+
+    def poll_all_context(self, now: float) -> None:
+        for team in list(self.teams.values()):
+            try:
+                self.poll_context(team, now)
+            except Exception as err:  # noqa: BLE001 - one unreadable transcript must not stop the tick
+                self.log("{}: context poll failed: {}: {}".format(team.name, type(err).__name__, err))
+
+    def poll_context(self, team: TeamState, now: float) -> None:
+        """Re-read how full each member is, and say so once when it crosses a line.
+
+        The reading comes from the harness's own files (``herdr_team.context``);
+        nothing is typed and nothing is asked of the agent. A member whose file
+        has not changed since the last read is skipped, so a quiet team costs
+        one ``stat`` per member per interval.
+        """
+        for member in team.members():
+            if member.get("kind") == "human" or member.get("status") == "left":
+                continue
+            name = str(member.get("name") or "")
+            terminal = member.get("terminal_id")
+            if not name or not terminal:
+                continue
+            rt = team.rt(name)
+            if rt.context_read_ms is not None and now - rt.context_read_ms < CONTEXT_POLL_S * 1000.0:
+                continue
+            rt.context_read_ms = now
+            record = roster.read_pane_record(self.session, str(terminal)) or {}
+            try:
+                reading = _context.read_member(member.get("kind"), member.get("session"), record, home=_context.home_dir(self.env))
+            except Exception as err:  # noqa: BLE001 - a malformed transcript is not fatal
+                self.log("{}: cannot read {}'s context: {}".format(team.name, name, err))
+                continue
+            if reading is None:
+                continue
+            mtime = self._file_mtime(reading.source)
+            if mtime is not None and rt.context_mtime == mtime and rt.context is not None:
+                continue  # the harness has not written since we last looked
+            rt.context_mtime = mtime
+            previous = rt.context
+            session_key = roster.session_key(member.get("session"))
+            same_history = previous is not None and rt.context_session == session_key
+            rt.context_session = session_key
+            rt.context = reading.to_json()
+            self.who_dirty = True
+            if same_history:
+                self._check_context_drop(team, name, reading, previous, now)
+            self._stamp_context(team, member, reading, now)
+            self._announce_context(team, name, reading)
+
+    def _check_context_drop(self, team: TeamState, name: str, reading: "_context.Reading", previous: Optional[Dict[str, Any]], now: float) -> None:
+        """A large fall in a member's token count is a compaction happening.
+
+        This is the only completion signal that works for every kind: a turn
+        can only ever add to the context, so a reading well below the one taken
+        when ``/compact`` was typed means the summary replaced the history.
+        Claude also changes its session phase, which ``_note_compacted`` sees
+        first; Codex and OpenCode say nothing, and are seen here.
+        """
+        rt = team.rt(name)
+        open_control = rt.control_pending
+        before = (open_control or {}).get("used")
+        if not isinstance(before, int) or before <= 0:
+            before = (previous or {}).get("used") if isinstance(previous, dict) else None
+        if not isinstance(before, int) or before <= 0 or reading.used >= before * CONTROL_DROP_RATIO:
+            return
+        if isinstance(open_control, dict):
+            # A ``clear`` drops the count too, but a clear is proven by the new
+            # session, not by the fall; reporting it here would name the wrong
+            # thing. Leave it to ``_note_cleared`` or to the observation bound.
+            if open_control.get("action") == "compact":
+                self._note_compacted(team, name, "{:,} -> {:,} tokens".format(before, reading.used))
+            return
+        # Nobody on this team asked: the harness compacted on its own, or the
+        # operator did it by hand. Worth one line, because a teammate reading
+        # the board needs to know the summary is what this member now knows.
+        rt.context_severity = None
+        self._append_system(team, "context_compacted", "{} compacted its context on its own ({:,} -> {:,} tokens)".format(name, before, reading.used),
+                            [name, "all"], {"member": name, "requested_by": None, "detected_by": "token count fell"})
+
+    @staticmethod
+    def _file_mtime(path: str) -> Optional[float]:
+        try:
+            return os.stat(path).st_mtime
+        except OSError:
+            return None
+
+    def _announce_context(self, team: TeamState, name: str, reading: "_context.Reading") -> None:
+        """One board record per crossing, addressed to the member and to the team.
+
+        Addressed to the member as well as ``all`` on purpose: a record naming
+        nobody is a broadcast the delivery gate holds, so the one agent that
+        needs to act on this would never be nudged about it.
+        """
+        rt = team.rt(name)
+        severity = _usage.severity_for(reading.percent)
+        if severity not in (_usage.WARNING, _usage.CRITICAL):
+            rt.context_severity = None  # dropped back down: the next crossing is news again
+            return
+        if rt.context_severity == severity or (rt.context_severity == _usage.CRITICAL and severity == _usage.WARNING):
+            return
+        rt.context_severity = severity
+        self._append_system(
+            team, "context_high",
+            "{} is at {:.0f}% of its context window ({} of {} tokens); finish or hand off, then compact.".format(
+                name, reading.percent, "{:,}".format(reading.used), "{:,}".format(reading.window)),
+            [name, "all"],
+            {"member": name, "percent": round(reading.percent, 1), "used": reading.used, "window": reading.window, "severity": severity},
+        )
+
+    def _stamp_context(self, team: TeamState, member: Dict[str, Any], reading: "_context.Reading", now: float) -> None:
+        """Publish the reading as a pane token so the Herdr sidebar can show it."""
+        pane_id = member.get("pane_id")
+        if not isinstance(pane_id, str) or not pane_id:
+            return
+        rt = team.rt(str(member.get("name")))
+        value = "{:.0f}%".format(reading.percent)
+        severity = _usage.severity_for(reading.percent)
+        stamp = "{}:{}".format(severity or _usage.NORMAL, value)
+        unchanged = rt.context_stamp_value == stamp and rt.context_stamp_ms is not None and now - rt.context_stamp_ms < TASK_RESTAMP_S * 1000.0
+        if unchanged:
+            return
+        try:
+            self.api.request("pane.report_metadata", {
+                "pane_id": pane_id, "source": roster.TOKEN_SOURCE_CONTEXT,
+                "tokens": roster.context_slot_tokens(value, severity), "ttl_ms": CONTEXT_TTL_MS,
+            }, timeout=5.0)
+            rt.context_stamp_value = stamp
+            rt.context_stamp_ms = now
+        except HerdrTeamError as err:
+            self.log("{}: context token for {} failed: {}".format(team.name, member.get("name"), err.code))
+
+    @staticmethod
+    def _keystroke_for(kind: Any, action: str) -> str:
+        from herdr_team.cmd_board import control_keystroke
+
+        return control_keystroke(kind, action)
+
+    def _start_control(self, team: TeamState, job: Dict[str, Any], now: float) -> None:
+        """Type ``/compact`` or ``/clear`` into a member, once it is safe to.
+
+        The job is only a pointer: the text and the authority come from the
+        board record it names, re-validated here, because anything that can
+        write the jobs directory could otherwise mint one.
+        """
+        name = str(job.get("member") or "")
+        action = str(job.get("action") or "")
+        member = team.member(name)
+        if member is None or action not in ("compact", "clear"):
+            self.log("{}: control job for {!r} refused: unknown member or action".format(team.name, name))
+            return
+        record = self._board_record(team, job.get("seq"))
+        problem = self._control_source_problem(record, name)
+        if problem is not None:
+            self.log("{}: control job for {} refused: {}".format(team.name, name, problem))
+            self._append_system(team, "typed", "{} of {} refused: {}".format(action, name, problem), ["human"], {"member": name})
+            return
+        try:
+            keystroke = self._keystroke_for(member.get("kind"), action)
+        except HerdrTeamError as err:
+            self.log("{}: {}".format(team.name, err.message))
+            self._append_system(team, "typed", "{} of {} refused: {}".format(action, name, err.code), ["human"], {"member": name})
+            return
+        pending = Pending(first_ms=now, kind="control", lines=[keystroke], force=True, seqs=[])
+        pending.control = {"action": action, "keystroke": keystroke, "requested_by": (record or {}).get("from")}
+        team.pending[name] = pending
+        self.log("{}: {} queued for {} ({!r})".format(team.name, action, name, keystroke))
+
+    @staticmethod
+    def _control_source_problem(record: Optional[Dict[str, Any]], member: str) -> Optional[str]:
+        """Why this control record is not trustworthy, or None.
+
+        Mirrors ``say_source_problem``: the record must be a direct line to this
+        member carrying a control block, from a verified origin.
+        """
+        if not isinstance(record, dict):
+            return "no board record"
+        if record.get("kind") != "direct":
+            return "record is not a direct line"
+        if list(record.get("to") or []) != [member]:
+            return "record is not addressed to {}".format(member)
+        if not isinstance(record.get("control"), dict):
+            return "record carries no control block"
+        origin = record.get("origin") if isinstance(record.get("origin"), dict) else {}
+        if origin.get("verified") is not True:
+            return "record origin is unverified"
+        return None
+
+    def _send_control(self, team: TeamState, member: Dict[str, Any], pending: Pending, snapshot: Any, now: float) -> None:
+        """Type one control keystroke into an idle member: the text, then Enter.
+
+        Not ``agent.prompt``. That call sends a bracketed paste, and a TUI
+        agent reads a pasted ``/compact`` as literal text rather than as its
+        own command, so the slash command would arrive as a prompt saying
+        "/compact" and be answered instead of run. ``pane.send_text`` writes
+        the bytes a keyboard would and ``pane.send_keys`` submits them, which
+        is the only faithful way to press a key on another agent's behalf.
+
+        The pane id comes from the snapshot the gate just validated, never
+        from the roster: the two are re-checked against each other in
+        ``_assert_roster_terminal`` above, and this is the copy that was
+        proven to still hold the member.
+        """
+        name = str(member["name"])
+        rt = team.rt(name)
+        control = dict(pending.control or {})
+        action = str(control.get("action") or "")
+        keystroke = str(control.get("keystroke") or "")
+        pane_id = str(snapshot.pane_id or member.get("pane_id") or "")
+        if not action or not keystroke or not pane_id:
+            self._finish_pending(team, name, pending, "typed", "{} of {} refused: nothing to type".format(action or "control", name))
+            return
+        pending.attempts += 1
+        pending.gate_seq = snapshot.state_change_seq
+        attempt_id = "{}-{}-{}".format(name, int(time.time() * 1000), pending.attempts)
+        team.ledger.record_intent(Attempt(
+            id=attempt_id, member=name, kind=str(member.get("kind")), seqs=[],
+            hook_authority=bool(snapshot.screen_detection_skipped), weak_idle=False, focused=bool(snapshot.focused),
+            prompt_line_empty=not snapshot.prompt_line, gate_ms=max(0.0, now - (snapshot.stable_since_ms or now)),
+            queue_ms=max(0.0, now - pending.first_ms), attempts=pending.attempts,
+            manifest_source=(snapshot.explain or {}).get("manifest_source") if isinstance(snapshot.explain, dict) else None,
+            extra={"delivery": "control", "action": action, "keystroke": keystroke, "pane_id": pane_id, "terminal_id": snapshot.terminal_id},
+        ))
+        pending.attempt_id = attempt_id
+        rt.in_flight = True
+        try:
+            if self.dry_nudge:
+                self.log("{}: DRY {} of {} ({}): {!r}".format(team.name, action, name, pane_id, keystroke))
+                result, details = RESULT_DRY, {"text": keystroke}
+            else:
+                result, details = self._type_keystroke(pane_id, keystroke)
+        finally:
+            rt.in_flight = False
+        team.ledger.record_result(attempt_id, result, details)
+        if result not in (RESULT_LANDED_WORKING, RESULT_DRY):
+            pending.transient_failures += 1
+            backoff = min(TRANSIENT_BACKOFF_MAX_S, TRANSIENT_BACKOFF_MIN_S * (2 ** (pending.transient_failures - 1)))
+            pending.next_eligible_ms = now + backoff * 1000.0
+            self.log("{}: {} of {} failed: {} {}".format(team.name, action, name, result, json.dumps(details, ensure_ascii=False)[:200]))
+            if pending.attempts >= 3:
+                self._finish_pending(team, name, pending, "typed", "{} of {} failed: {}".format(action, name, details.get("code") or result))
+            return
+        pending.landed_ms = now
+        rt.last_nudge_ms = now
+        self.global_last_nudge_ms = now
+        used = (rt.context or {}).get("used")
+        rt.control_pending = {
+            "action": action, "requested_by": control.get("requested_by") or "human",
+            "typed_ms": now, "used": used if isinstance(used, int) else None,
+            "session": roster.short_session(member.get("session")),
+        }
+        self.log("{}: typed {!r} into {} ({}); waiting for the effect".format(team.name, keystroke, name, pane_id))
+        self._append_system(team, "typed", "{} typed into {}, asked by {}".format(keystroke, name, rt.control_pending["requested_by"]),
+                            [name], {"member": name, "action": action, "keystroke": keystroke})
+        self.who_dirty = True
+
+    def _type_keystroke(self, pane_id: str, keystroke: str) -> Tuple[str, Dict[str, Any]]:
+        """``pane.send_text`` then Enter; a failure on either half is one failure."""
+        t0 = time.monotonic()
+        try:
+            self.api.request("pane.send_text", {"pane_id": pane_id, "text": keystroke}, timeout=PROMPT_TIMEOUT_S)
+            self.api.request("pane.send_keys", {"pane_id": pane_id, "keys": ["enter"]}, timeout=PROMPT_TIMEOUT_S)
+        except HerdrTeamError as err:
+            return RESULT_TRANSIENT, {"elapsed_ms": (time.monotonic() - t0) * 1000.0, "code": err.code, "message": err.message}
+        return RESULT_LANDED_WORKING, {"elapsed_ms": (time.monotonic() - t0) * 1000.0}
+
+    def _control_observed(self, team: TeamState, name: str, action: str, note: str, now: float) -> bool:
+        """Close the open ``compact``/``clear`` job for ``name``: its effect is visible.
+
+        Returns True when there was one, so the caller can say who asked for
+        what just happened rather than reporting it as something the agent did
+        to itself.
+        """
+        rt = team.rt(name)
+        open_control = rt.control_pending
+        if not isinstance(open_control, dict) or open_control.get("action") != action:
+            return False
+        rt.control_pending = None
+        pending = team.pending.get(name)
+        if pending is not None and pending.kind == "control":
+            if pending.attempt_id:
+                team.ledger.record_outcome(pending.attempt_id, True, max(0.0, now - (pending.landed_ms or now)))
+            del team.pending[name]
+        self.log("{}: {} of {} took effect ({})".format(team.name, action, name, note))
+        self.who_dirty = True
+        return True
+
+    def _note_cleared(self, team: TeamState, name: str, shown: Any) -> None:
+        """Say a restart was a requested ``clear``, when it was one.
+
+        A deliberate clear and a crash look identical from outside: both mint a
+        session and lose the agent's memory. Only the open job tells them
+        apart, so the record is written here rather than left to read as an
+        unexplained restart.
+        """
+        now = self.now_ms()
+        rt = team.rt(name)
+        by = str((rt.control_pending or {}).get("requested_by") or "human")
+        if not self._control_observed(team, name, "clear", "new session", now):
+            return
+        self._append_system(team, "context_cleared", "{}'s context was cleared, asked by {}".format(shown, by), [str(shown), "all"],
+                            {"member": str(shown), "requested_by": by})
+
+    def _note_compacted(self, team: TeamState, name: str, note: str) -> None:
+        """One record for a compaction, whoever asked for it."""
+        now = self.now_ms()
+        rt = team.rt(name)
+        by = str((rt.control_pending or {}).get("requested_by") or "")
+        requested = self._control_observed(team, name, "compact", note, now)
+        rt.context_severity = None  # whatever it was full of is gone; the next crossing is news again
+        text = "{} compacted its context{}; what it knows is now a summary".format(name, ", asked by {}".format(by) if requested and by else "")
+        self._append_system(team, "context_compacted", text, [name, "all"],
+                            {"member": name, "requested_by": by if requested else None, "detected_by": note})
+
+    def _control_unobserved(self, team: TeamState, name: str, pending: Pending, now: float) -> None:
+        """The keystroke landed but nothing changed within ``CONTROL_OBSERVE_S``."""
+        rt = team.rt(name)
+        action = str((pending.control or {}).get("action") or "control")
+        rt.control_pending = None
+        self._finish_pending(team, name, pending, "typed", "{} of {} was typed but no effect was seen in {:.0f}s".format(action, name, CONTROL_OBSERVE_S))
+
+    def _board_record(self, team: TeamState, seq: Any) -> Optional[Dict[str, Any]]:
+        if not isinstance(seq, int):
+            return None
+        try:
+            for record in store.BoardStore(team.paths).read(since_seq=seq - 1):
+                if record.get("seq") == seq:
+                    return record
+        except HerdrTeamError:
+            return None
+        return None
 
     def sweep_all_unread(self, now: float) -> None:
         """Run the unread sweep for every team; one bad team never stops the rest."""
@@ -2877,6 +3308,8 @@ class Daemon:
             if member is None or not isinstance(member.get("pane_id"), str):
                 return
             self.api.request("agent.focus", {"target": member["pane_id"]}, timeout=5.0)
+        elif kind == "control":
+            self._start_control(team, job, now)
         elif kind == "say":
             self._run_say(team, job, now)
         elif kind == "mute":
@@ -3011,6 +3444,14 @@ class Daemon:
             if stop_block is not None:
                 self._note_hold(team, name, pending, gate.HOLD_STOP_BLOCKED, stop_block, now)
                 return
+        elif pending.kind == "control" and pending.landed_ms is not None:
+            # The keystroke is in. Nothing is re-typed: a second ``/compact``
+            # would land inside the compaction it is waiting for. The job is
+            # closed by ``_control_observed`` when the effect shows up, and
+            # only bounded here so it cannot sit open forever.
+            if now - pending.landed_ms > CONTROL_OBSERVE_S * 1000.0:
+                self._control_unobserved(team, name, pending, now)
+            return
         elif pending.kind == "brief" and pending.landed_ms is not None:
             # Plan 9.2: an ack is a cursor write (``surfaced_by: cli``, or ``herdr-synapse ack``) made after
             # the landing with seq >= briefing_seq; an untouched cursor on an empty board is not one.
@@ -3146,9 +3587,10 @@ class Daemon:
 
         seqs = list(pending.seqs)
         force = bool(pending.force)
-        if pending.kind in ("brief", "probe"):
-            # A briefing or probe has no board seq; the gate still needs one above the cursor,
-            # and plan 9.2 gates briefings on the stable window only (no done_hold, no interval).
+        if pending.kind in ("brief", "probe", "control"):
+            # A briefing, probe or control keystroke has no board seq of its own; the gate still
+            # needs one above the cursor, and plan 9.2 gates these on the stable window only
+            # (no done_hold, no interval). Every other gate, idle included, still applies.
             force = True
             if not seqs:
                 seqs = [cursor + 1]
@@ -3373,6 +3815,9 @@ class Daemon:
             self.log("{}: {} read the pending posts right before the prompt; nothing to nudge".format(team.name, name))
             team.pending.pop(name, None)
             self.who_dirty = True
+            return
+        if pending.kind == "control":
+            self._send_control(team, member, pending, snapshot, now)
             return
         interrupting = pending.kind == "nudge" and bool(decision.details.get("interrupt"))
         if pending.kind in ("brief", "probe"):
@@ -4019,6 +4464,7 @@ class Daemon:
                     "operator": bool(_operator.active(self.session, team.name, name)) if member.get("kind") != "human" else False,
                     "brief": member.get("brief"),
                     "session": roster.short_session(member.get("session")),
+                    "context": rt.context,
                 })
             teams[team.name] = {"members": members, "pending": sum(len(p.seqs) for p in team.pending.values()), "watermark": team.watermark}
         return {

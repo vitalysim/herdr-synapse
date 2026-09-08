@@ -189,7 +189,7 @@ class MirrorEditTests(unittest.TestCase):
 
     @property
     def path(self) -> Path:
-        return self.project / ".herdr-team" / self.team / "members" / (self.member + ".md")
+        return self.project / workdir.DIR_NAME / self.team / "members" / (self.member + ".md")
 
     def edit(self, text: str = "\n## Scope\nOwns: the parser\n") -> None:
         self.path.write_text(self.path.read_text(encoding="utf-8").replace(
@@ -224,6 +224,40 @@ class MirrorEditTests(unittest.TestCase):
         self.assertEqual(result["awaiting_adopt"], [])
         self.assertIn("## Mission", self.path.read_text(encoding="utf-8"))
         self.assertEqual(workdir.marker_version(self.path.read_text(encoding="utf-8")), workdir.WORKDIR_VERSION)
+
+    def _as_written_before_the_rename(self):
+        """The file exactly as 0.8 left it: old marker, and its digest recorded."""
+        workdir.render(self.layout, self.team)
+        old = self.path.read_text(encoding="utf-8").replace(
+            workdir.MARKER, "<!-- herdr-team:workdir v2 generated file, edits are overwritten -->", 1)
+        self.path.write_text(old, encoding="utf-8")
+        state = workdir.mirror_state(self.state.team)
+        state[self.path.name] = workdir.digest(old)
+        workdir.save_mirror_state(self.state.team, state)
+        return old
+
+    def test_a_file_carrying_the_old_plugin_name_is_rewritten_under_the_new_one(self):
+        # 0.9 renamed the marker from herdr-team to herdr-synapse. The old
+        # prefix stays recognised, or a file wearing it would read as somebody
+        # else's and the renderer would refuse to touch it for good.
+        self._as_written_before_the_rename()
+        self.assertTrue(workdir._is_ours(self.path))
+        result = workdir.render(self.layout, self.team)
+        self.assertEqual(result["awaiting_adopt"], [])
+        text = self.path.read_text(encoding="utf-8")
+        self.assertIn("herdr-synapse:workdir", text)
+        self.assertNotIn("herdr-team:workdir", text)
+
+    def test_the_rename_does_not_discard_an_edit_that_was_in_flight(self):
+        # The rename deliberately did not bump WORKDIR_VERSION. Had it, every
+        # file still wearing the old name would have answered "an older plugin
+        # wrote this, not a human" and been regenerated over, taking an
+        # operator's unadopted edit with it.
+        old = self._as_written_before_the_rename()
+        self.path.write_text(old + "\nmine, mid-edit when the upgrade landed\n", encoding="utf-8")
+        result = workdir.render(self.layout, self.team)
+        self.assertEqual(result["awaiting_adopt"], [os.fspath(self.path)])
+        self.assertIn("mid-edit when the upgrade landed", self.path.read_text(encoding="utf-8"))
 
     def test_a_member_that_leaves_still_gets_its_tombstone(self):
         def leave(doc: roster.Team) -> None:
@@ -268,7 +302,7 @@ class DaemonAnnouncesEditTests(unittest.TestCase):
 
         roster.update_team(state.team, apply)
         workdir.render(state.layout, state.team_name)
-        path = project / ".herdr-team" / state.team_name / "members" / (member + ".md")
+        path = project / workdir.DIR_NAME / state.team_name / "members" / (member + ".md")
         path.write_text(path.read_text(encoding="utf-8") + "\nOwns: the parser\n", encoding="utf-8")
 
         daemon, _api, _clock = make_daemon(state)
@@ -315,7 +349,7 @@ class AdoptTests(unittest.TestCase):
 
     @property
     def path(self) -> Path:
-        return self.project / ".herdr-team" / self.state.team_name / "members" / (self.member + ".md")
+        return self.project / workdir.DIR_NAME / self.state.team_name / "members" / (self.member + ".md")
 
     def edit(self, added: str = "Owns: the parser") -> None:
         self.path.write_text(self.path.read_text(encoding="utf-8").replace("## Scope\n", "## Scope\n" + added + "\n", 1), encoding="utf-8")
@@ -387,7 +421,7 @@ class AdoptTests(unittest.TestCase):
         code, payload, err = self.json_cli("instructions", self.member)
         self.assertEqual(code, 0, err)
         self.assertIn("## Mission", payload["instructions"])
-        self.assertTrue(payload["path"].endswith(os.path.join(".herdr-team", self.state.team_name, "members", self.member + ".md")), payload["path"])
+        self.assertTrue(payload["path"].endswith(os.path.join(workdir.DIR_NAME, self.state.team_name, "members", self.member + ".md")), payload["path"])
 
 
 # --------------------------------------------------------------------------
@@ -438,7 +472,7 @@ class PropagationTests(unittest.TestCase):
         roster.update_team(self.team, apply)
         _charter.set_instructions(self.layout, self.team_name, human(), self.member, "the real instructions", None)
         workdir.render(self.layout, self.team_name)
-        mirror = project / ".herdr-team" / self.team_name / "members" / (self.member + ".md")
+        mirror = project / workdir.DIR_NAME / self.team_name / "members" / (self.member + ".md")
         mirror.write_text(mirror.read_text(encoding="utf-8").replace("## Scope\n", "## Scope\nFORGED-BY-AN-AGENT\n", 1), encoding="utf-8")
         text = cmd_hooks.brief_context(self.team, self.team_name, {"name": self.member, "role": "reviewer"})
         self.assertIn("the real instructions", text)
@@ -502,7 +536,7 @@ class CreateAndAnnounceTests(unittest.TestCase):
             records = [r for r in store.BoardStore(ts.team).read() if r.get("event") == "project_set"]
             self.assertEqual(len(records), 1)
             self.assertEqual(records[0]["to"], ["all"])
-            self.assertIn(".herdr-team", records[0]["text"])
+            self.assertIn(workdir.DIR_NAME, records[0]["text"])
             self.assertIn("your own instructions", records[0]["text"])
 
 

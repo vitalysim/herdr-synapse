@@ -193,7 +193,7 @@ def default_responses() -> Dict[str, Any]:
 
 def _DEFAULT_METHODS() -> List[Tuple[str, Any]]:
     catalogue = canned_responses()
-    return [(m, catalogue[m]) for m in ("ping", "agent.list", "agent.get", "agent.prompt", "notification.show", "pane.report_metadata")]
+    return [(m, catalogue[m]) for m in ("ping", "agent.list", "agent.get", "agent.prompt", "notification.show", "pane.report_metadata", "pane.send_text", "pane.send_keys")]
 
 
 def _server_spec(spec: Any) -> Any:
@@ -233,6 +233,8 @@ def canned_responses() -> Dict[str, Any]:
         "pane.rename": lambda params: {"type": "pane_info", "pane": dict(_pane_get(params)["pane"], label=params.get("label"))},
         "pane.close": {"type": "ok"},
         "pane.report_metadata": {"type": "ok"},
+        "pane.send_text": {"type": "ok"},
+        "pane.send_keys": {"type": "ok"},
         "pane.process_info": lambda params: fake_process_info(str(params.get("pane_id") or "w1:p1")),
         "layout.apply": _layout_apply,
         "plugin.list": {"type": "plugin_list", "plugins": [fake_plugin_info()]},

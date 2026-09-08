@@ -46,13 +46,25 @@ from . import paths as _paths
 WORKDIR_VERSION = 2
 
 #: What every generated file starts with. Its absence means the file is not ours.
-MARKER_TEXT = "herdr-team:workdir v{} generated file, edits are overwritten".format(WORKDIR_VERSION)
+MARKER_TEXT = "herdr-synapse:workdir v{} generated file, edits are overwritten".format(WORKDIR_VERSION)
 #: Markdown files get an HTML comment so the marker does not render.
 MARKER = "<!-- {} -->".format(MARKER_TEXT)
 #: ``.gitignore`` has no HTML comments: an ``<!-- ... -->`` line there is a *pattern*.
 MARKER_HASH = "# {}".format(MARKER_TEXT)
-#: Either form identifies a file as ours.
-MARKER_PREFIXES = ("<!-- herdr-team:workdir ", "# herdr-team:workdir ")
+#: Any of these identifies a file as ours: two comment syntaxes, and the name
+#: the plugin wrote before 0.9. The old prefix has to stay recognised, or a file
+#: carrying it would read as somebody else's and the renderer would refuse to
+#: touch it for good.
+#:
+#: The rename deliberately does *not* bump ``WORKDIR_VERSION``. Only the name in
+#: the marker changed, so an old file and a new one are the same shape, and a
+#: bump would make ``edited`` answer "an older plugin wrote this, not a human"
+#: for every one of them: an operator's unadopted edit, in flight when the
+#: upgrade landed, would have been silently overwritten. Left at 2, the digest
+#: still rules. An untouched file drifts from the new marker and is regenerated
+#: under the new name; an edited one is held for adoption exactly as before.
+MARKER_PREFIXES = ("<!-- herdr-synapse:workdir ", "# herdr-synapse:workdir ",
+                   "<!-- herdr-team:workdir ", "# herdr-team:workdir ")
 
 
 def marker_for(path: Path) -> str:
@@ -60,7 +72,11 @@ def marker_for(path: Path) -> str:
     return MARKER_HASH if Path(path).name in (".gitignore", ".gitattributes") else MARKER
 
 #: The one directory name the plugin claims inside a project.
-DIR_NAME = ".herdr-team"
+DIR_NAME = ".herdr-synapse"
+#: Names it claimed before. A checkout still holding one is renamed on the next
+#: render (``migrate_legacy_dir``), and a path under one still resolves, so a
+#: ``--ref`` an agent wrote from memory does not break the moment it moves.
+LEGACY_DIR_NAMES = (".herdr-team",)
 
 #: Cap on one rendered mirror, so a pathological instructions file cannot fill a repo.
 MAX_RENDER_BYTES = 64 * 1024
@@ -134,8 +150,33 @@ def resolve_project_dir(raw: str, state_root: Optional[Path] = None) -> Path:
     return resolved
 
 
+def legacy_dirs(project_dir: str) -> List[Path]:
+    """Folders under a previous name that still exist in this project."""
+    return [p for p in (Path(project_dir) / name for name in LEGACY_DIR_NAMES) if p.is_dir()]
+
+
+def migrate_legacy_dir(project_dir: str) -> Optional[Tuple[Path, Path]]:
+    """Rename a folder left under a previous name; returns ``(from, to)`` when one moved.
+
+    Only ever a rename, and only into a name nothing occupies: the folder holds
+    the team's artifacts, so merging two of them or writing over one is not a
+    thing to attempt automatically. A symlink is refused rather than followed,
+    because the destination is a directory this plugin then writes into.
+    """
+    target = Path(project_dir) / DIR_NAME
+    for source in legacy_dirs(project_dir):
+        if target.exists() or target.is_symlink() or source.is_symlink():
+            continue
+        try:
+            source.rename(target)
+        except OSError:
+            continue
+        return (source, target)
+    return None
+
+
 def team_root(project_dir: str, team_name: str) -> Path:
-    """``<project>/.herdr-team/<team>``. Namespaced so two teams can share one project."""
+    """``<project>/.herdr-synapse/<team>``. Namespaced so two teams can share one project."""
     return Path(project_dir) / DIR_NAME / _paths.validate_team_name(team_name)
 
 
@@ -167,11 +208,13 @@ def is_inside(candidate: Path, project_dir: Optional[str]) -> bool:
     if not project_dir:
         return False
     try:
-        shared = (Path(project_dir) / DIR_NAME).resolve()
         target = Path(candidate).resolve()
+        roots = [(Path(project_dir) / name).resolve() for name in (DIR_NAME,) + LEGACY_DIR_NAMES]
     except OSError:
         return False
-    return target == shared or shared in target.parents
+    # A previous name counts too: an agent holding the old path in its context
+    # would otherwise have every ``--ref`` refused the moment the folder moved.
+    return any(target == root or root in target.parents for root in roots)
 
 
 # --------------------------------------------------------------------------
@@ -406,6 +449,10 @@ def render(layout: Any, team_name: str, force: bool = False) -> Dict[str, Any]:
     if not project:
         result["reason"] = "no project directory; set one with herdr-synapse project set <path>"
         return result
+
+    moved = migrate_legacy_dir(project)
+    if moved is not None:
+        result["moved"] = {"from": os.fspath(moved[0]), "to": os.fspath(moved[1])}
 
     targets = paths_for(project, team_name)
     rules = _charter.get_rules(layout, team_name)

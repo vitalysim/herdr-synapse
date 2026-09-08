@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from herdr_team import sanitize, store
+from herdr_team import usage as _usage
 from herdr_team.errors import EXIT_REFUSED, HerdrTeamError
 from herdr_team.paths import (
     MAX_ROLE_CHARS,
@@ -73,6 +74,7 @@ NAMING_MODES = ("prefixed", "plain")
 
 TOKEN_SOURCE_ROSTER = "herdr-synapse:roster"
 TOKEN_SOURCE_TASK = "herdr-synapse:task"
+TOKEN_SOURCE_CONTEXT = "herdr-synapse:context"
 TASK_TOKEN_TTL_MS = 120000
 TASK_TOKEN_MAX_COLUMNS = 24
 TOKEN_VALUE_MAX_CHARS = 80
@@ -188,6 +190,7 @@ SYSTEM_EVENTS = (
     "member_restarted", "rotated", "reset_detected", "charter_updated", "renamed", "typed", "member_joined",
     "knowledge_updated", "instructions_updated", "instructions_edited", "knowledge_finding",
     "artifacts_changed", "project_set", "operator_granted", "operator_revoked",
+    "context_high", "context_cleared", "context_compacted", "workdir_moved",
 )
 
 _SAVE_RETRIES = 3
@@ -294,6 +297,25 @@ def session_key(session: Any) -> Optional[Tuple[str, str]]:
 def same_session(a: Any, b: Any) -> bool:
     key_a, key_b = session_key(a), session_key(b)
     return key_a is not None and key_a == key_b
+
+
+def same_session_value(a: Any, b: Any) -> bool:
+    """True when both name the same harness session, however it came back.
+
+    ``same_session`` compares ``(source, value)``, which answers "is this
+    record still exactly current". It is the wrong question for "did the agent
+    restart", because a harness rewrites ``source`` on a session it keeps:
+    Claude reports ``source=compact`` against the same id after a ``/compact``.
+    Identity is the value; the source is the phase it is in.
+    """
+    key_a, key_b = session_key(a), session_key(b)
+    return key_a is not None and key_b is not None and key_a[1] == key_b[1]
+
+
+def session_source(session: Any) -> Optional[str]:
+    """How this session came to be (``startup``, ``resume``, ``compact``, ...)."""
+    key = session_key(session)
+    return key[0] if key is not None else None
 
 
 def short_session(session: Any, tail: int = 8) -> Optional[str]:
@@ -1093,6 +1115,7 @@ def token_commands(member: Member, team: str, task_headline: Optional[str] = Non
         return [
             TokenCommand(target, TOKEN_SOURCE_ROSTER, cleared),
             TokenCommand(target, TOKEN_SOURCE_TASK, {"team_task": None}),
+            TokenCommand(target, TOKEN_SOURCE_CONTEXT, context_slot_tokens(None)),
         ]
     identity: Dict[str, Optional[str]] = {"team": _clip_token_value(team), "team_role": _clip_token_value(member.role)}
     identity.update(color_slot_tokens(team, color_slot))
@@ -1100,6 +1123,25 @@ def token_commands(member: Member, team: str, task_headline: Optional[str] = Non
     if task_headline:
         out.append(TokenCommand(target, TOKEN_SOURCE_TASK, {"team_task": _clip_token_value(task_headline)}, TASK_TOKEN_TTL_MS))
     return out
+
+
+#: One sidebar token per context severity. Herdr styles a token cell from a
+#: fixed colour and cannot colour by the value, and a sidebar row drops the
+#: tokens with no value, so one key per severity is the only way a gauge can
+#: change colour. The same trick as the team colour slots above.
+CONTEXT_TOKENS: Tuple[str, ...] = ("team_context", "team_context_warn", "team_context_crit")
+#: Which of them carries the value at each severity.
+CONTEXT_TOKEN_BY_SEVERITY = {_usage.WARNING: "team_context_warn", _usage.CRITICAL: "team_context_crit"}
+
+
+def context_slot_tokens(value: Optional[str], severity: Optional[str] = None) -> Dict[str, Optional[str]]:
+    """The one context token holding ``value``, with every other one cleared.
+
+    Sending all three on every stamp is what keeps the colour honest: a member
+    that falls back under 75 % cannot keep the red cell it had at 91 %.
+    """
+    chosen = CONTEXT_TOKEN_BY_SEVERITY.get(str(severity or ""), CONTEXT_TOKENS[0])
+    return {key: (_clip_token_value(value) if key == chosen and value else None) for key in CONTEXT_TOKENS}
 
 
 def execute_token_commands(api: Any, commands: Iterable[TokenCommand]) -> List[Dict[str, Any]]:
@@ -1414,6 +1456,7 @@ def build_who_json(
                 "unread": int(((unread or {}).get(team_name) or {}).get(member.name, 0)),
                 "brief": member.brief,
                 "session": short_session(member.session),
+                "context": None,  # only the notifier reads harness files; see herdr_team.context
                 "live_name": (live or {}).get("name") if live else None,
                 "focused": bool((live or {}).get("focused")) if live else False,
                 "launch_pending": bool((live or {}).get("launch_pending")) if live else False,

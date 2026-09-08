@@ -75,12 +75,17 @@ KEY_ACTIONS = ("team-up", "compose", "console", "toggle-view", "usage", "knowled
 
 #: The token a stale sidebar block is missing; ``doctor`` looks for it.
 COLOR_SLOT_TOKEN = "$team_c1"
+#: The token a block from before the context gauge is missing. Kept separate
+#: from the colour check so the advice names what is actually absent.
+CONTEXT_TOKEN = "$" + _roster.CONTEXT_TOKENS[0]
 #: One cell per team colour slot, then the role and the task. Herdr styles a cell from a fixed
 #: ``fg`` and cannot colour by a token's value, but a row drops the tokens that have no value, so
 #: only the cell matching the member's team ever renders. That is what colour-codes the teams.
 COLOR_ROW = "  " + ", ".join(
     ['{{ token = "${}", fg = "{}" }}'.format(_roster.color_slot_key(slot + 1), hex_value) for slot, hex_value in enumerate(_roster.TEAM_COLOR_HEX)]
     + ['{ token = "$team_role", dim = true }', '{ token = "$team_task", fg = "#89b4fa" }']
+    + ['{{ token = "${}", fg = "{}" }}'.format(key, hex_value)
+       for key, hex_value in zip(_roster.CONTEXT_TOKENS, ("#7f849c", "#fabd2f", "#fb4934"))]
 )
 COLOR_ROW = "  [" + COLOR_ROW.strip() + "],"
 
@@ -102,9 +107,9 @@ claude = [
 OPTIONAL_SNIPPET = """[ui]
 # Distinct static glyphs for blocked, working, done, idle, and unknown (changes every agent's marks).
 status_indicators = "symbols"
-# Room for `$team_role` and `$team_task` next to the agent name.
-sidebar_width = 32
-sidebar_max_width = 40
+# Room for `$team_role`, `$team_task` and the context gauge next to the agent name.
+sidebar_width = 34
+sidebar_max_width = 42
 """
 
 SETUP_NOTES = [
@@ -308,6 +313,15 @@ def sidebar_missing_team_colors(config_dir: Path) -> bool:
     return "[ui.sidebar.agents]" in text and COLOR_SLOT_TOKEN not in text
 
 
+def sidebar_missing_context(config_dir: Path) -> bool:
+    """True when config.toml has a sidebar block that predates the context gauge."""
+    try:
+        text = (config_dir / "config.toml").read_text(encoding="utf-8")
+    except (OSError, ValueError):
+        return False
+    return "[ui.sidebar.agents]" in text and COLOR_SLOT_TOKEN in text and CONTEXT_TOKEN not in text
+
+
 def _run_setup(args: argparse.Namespace) -> int:
     if not args.print_config:
         raise UsageError("setup --print-config prints the config blocks; setup never edits config")
@@ -436,6 +450,8 @@ def _run_doctor(args: argparse.Namespace) -> int:
     stale = sidebar_missing_team_colors(layout.config_dir)
     if stale:
         warnings.append("sidebar rows predate team colours; run: herdr-synapse setup --print-config, re-paste the block, then herdr server reload-config")
+    elif sidebar_missing_context(layout.config_dir):
+        warnings.append("sidebar rows predate the context gauge; run: herdr-synapse setup --print-config, re-paste the block, then herdr server reload-config")
     for line in unwritable_project_dirs(layout):
         warnings.append(line)
     for grant in _operator.active_all(layout.session):

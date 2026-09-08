@@ -35,7 +35,7 @@ from herdr_team.paths import MAX_ROLE_CHARS, MAX_TEAM_CHARS, ROLE_NAME_RE, TEAM_
 FILTERS = ("all", "to me", "requests", "human", "system")
 SLASH_COMMANDS = (
     "/all", "/human", "/kind", "/reply", "/urgent", "/interrupt", "/interrupts", "/ref", "/retract", "/mute", "/unmute", "/pause",
-    "/nudge", "/focus", "/peek", "/who", "/filter", "/as", "/use", "/charter", "/remove", "/export", "/help", "/quit",
+    "/nudge", "/focus", "/peek", "/who", "/context", "/compact", "/clear", "/filter", "/as", "/use", "/charter", "/remove", "/export", "/help", "/quit",
 )
 #: ``/`` menu rows: command -> (placeholder, what it does). Every entry in
 #: ``SLASH_COMMANDS`` must appear here; a test keeps the two in step, so a new
@@ -57,6 +57,9 @@ SLASH_USAGE = {
     "/focus": ("name", "jump to that member's pane"),
     "/peek": ("name", "look at that member's screen"),
     "/who": ("", "the roster with roles, states and tasks"),
+    "/context": ("[name]", "how full each member's context window is"),
+    "/compact": ("name", "ask a member to summarise its context"),
+    "/clear": ("name", "throw away a member's context and brief it again"),
     "/filter": ("[all|to me|requests|human|system]", "filter the feed"),
     "/as": ("label", "change the label your posts carry"),
     "/use": ("team", "switch to another team"),
@@ -1728,6 +1731,14 @@ def _parse_slash(head: str, rest: str, default_team: str) -> Intent:
         return Intent("interrupts", {"mode": mode, "cooldown": cooldown, "team": default_team})
     if head == "/who":
         return Intent("who", {"team": default_team})
+    if head == "/context":
+        if len(args) > 1 or (args and not MEMBER_NAME_RE.match(args[0])):
+            return Intent("error", {"message": "usage: /context [<name>]"})
+        return Intent("context", {"member": args[0] if args else None, "team": default_team})
+    if head in ("/compact", "/clear"):
+        if len(args) != 1 or not MEMBER_NAME_RE.match(args[0]):
+            return Intent("error", {"message": "usage: {} <name>".format(head)})
+        return Intent(head[1:], {"member": args[0], "team": default_team, "confirm": False})
     if head == "/export":
         # Optional path and format: ``/export``, ``/export ~/board.md``, ``/export --format json``.
         fmt = "md"
@@ -1784,7 +1795,7 @@ HELP_TEXT = (
     "!name text types into that member now (!!name also while it works; ! lists members) | @@path attaches a file (@@ lists files) | "
     "@name text | @role:r text | /all text | /human text | /kind k | /reply N | /urgent | /interrupt | /ref path | "
     "/retract N | /mute [name] [10m] | /unmute [name] | /pause | /nudge name [--force] | /focus name | "
-    "/peek name | /who | /filter [name] | /as label | /use team | /charter [set [--urgent] text] | /remove name | /export | /quit"
+    "/peek name | /who | /context [name] | /compact name | /clear name | /filter [name] | /as label | /use team | /charter [set [--urgent] text] | /remove name | /export | /quit"
 )
 
 
@@ -1792,17 +1803,17 @@ HELP_LINES = (
     "post:      text (whole team)   @name text (one member)   @role:r text (a role)   /human text (yourself)",
     "           /kind k  /reply N  /urgent (nudges everyone)  /ref path  @@path attaches a file (@@ lists files)",
     "type now:  !name text types into that member's input box right now (recorded as a direct line)",
-    "           !!name text also while it works or is muted; ! lists members; the entry shows the outcome",
+    "           !!name also while it works or is muted; ! lists members; the entry shows the outcome",
+    "           a line that begins with ! never posts by itself; to post one, write /all !text",
     "menus:     / commands   @ names   @@ files   ! members   (up/down move, Tab picks, Esc hides)",
-    "board:     /retract N   /filter [all|to me|requests|human|system]   Tab cycles the filter",
-    "members:   /who   /peek name   /focus name   /nudge name [--force]   /remove name",
-    "delivery:  /mute [name] [10m]   /unmute [name]   /pause [10m]",
+    "board:     /retract N   /filter [all|to me|requests|human|system]   Tab cycles the filter   /who",
+    "members:   /peek name   /focus name   /nudge name [--force]   /remove name",
+    "context:   /context [name]   /compact name (summarise in place)   /clear name (throws it away, asks)",
+    "delivery:  /mute [name] [10m]   /unmute [name]   /pause [10m]   Esc clears the status or closes a box",
     "interrupt: /interrupt @name text (into a working turn)   /interrupts [off|on|claude,codex] [--cooldown 10m]",
-    "team:      /charter   /charter set [--urgent] text   /use team   /as label   /export [path]",
+    "team:      /charter   /charter set [--urgent] text   /use team   /as label   /export [path]   /quit",
     "keys:      Up/Down and PgUp/PgDn scroll back; End (or Esc) returns to the latest and follows again",
-    "           Alt+Enter newline   Ctrl-U clear   Ctrl-K kill to end   Ctrl-A/Ctrl-E line start/end",
-    "           Esc clears the status or closes a box   Ctrl-C clears the line, quits when empty   /quit",
-    "signs:     a line starting with ! never posts; text that starts with ! goes as /all !text",
+    "           Alt+Enter newline   Ctrl-U clear   Ctrl-K kill to end   Ctrl-A/Ctrl-E start/end   Ctrl-C quits",
 )
 
 
@@ -1915,8 +1926,15 @@ def _after_parse(model: ConsoleModel, intent: Intent) -> Intent:
             model.status = "error: {}".format(message)
             return Intent("error", {"message": message})
         return intent
-    if intent.kind in ("retract", "remove"):
-        what = "retract #{}".format(intent.args.get("seq")) if intent.kind == "retract" else "remove {}".format(intent.args.get("member"))
+    if intent.kind in ("retract", "remove", "clear"):
+        if intent.kind == "retract":
+            what = "retract #{}".format(intent.args.get("seq"))
+        elif intent.kind == "remove":
+            what = "remove {}".format(intent.args.get("member"))
+        else:
+            # Clearing is the one console action that destroys something the
+            # operator cannot get back, so it asks even though it is one word.
+            what = "clear {}'s context".format(intent.args.get("member"))
         model.pending_confirm = intent
         model.status = "{}? y/n".format(what)
         return Intent("none")

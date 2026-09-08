@@ -591,6 +591,29 @@ def execute_intent(intent: Intent, model: ConsoleModel, state: ConsoleState, api
         rc, out, err = run_cli(["--team", team, "focus", str(intent.args.get("member"))], env)
         model.status = "focus failed: {}".format(err.get("message")) if err else "focus queued for {}".format(intent.args.get("member"))
         return True
+    if kind in ("compact", "clear"):
+        member = str(intent.args.get("member"))
+        args = ["--team", team, kind, member]
+        if kind == "clear":
+            args.append("--yes")  # the console already asked, y/n, in ``_after_parse``
+        rc, out, err = run_cli(args, env)
+        if err:
+            model.status = "{} failed: {}".format(kind, err.get("message") or err.get("code"))
+        else:
+            typed = (out or {}).get("keystroke") if isinstance(out, dict) else None
+            model.status = "{} queued for {}; the notifier types {} when it is idle".format(kind, member, typed or kind)
+        return True
+    if kind == "context":
+        member = intent.args.get("member")
+        rc, out, err = run_cli(["--team", team, "context"] + ([str(member)] if member else []), env)
+        if err:
+            model.status = "context failed: {}".format(err.get("message") or err.get("code"))
+        else:
+            from herdr_team.cmd_usage import render_context
+
+            model.peek = tui_model.box(render_context(out or {}, model.width - 4, model.ascii_only).splitlines(), model.width, "context (Esc closes)")
+            model.status = "how full each member is, read from its own harness files"
+        return True
     if kind == "remove":
         rc, out, err = run_cli(["--team", team, "remove", team, str(intent.args.get("member"))], env)
         model.status = "remove failed: {}".format(err.get("message")) if err else "removed {}".format(intent.args.get("member"))

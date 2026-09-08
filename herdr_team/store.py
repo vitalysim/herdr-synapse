@@ -272,6 +272,7 @@ SYSTEM_EVENTS = (
     "rotated", "reset_detected", "charter_updated", "renamed", "typed", "member_joined",
     "knowledge_updated", "instructions_updated", "instructions_edited", "knowledge_finding",
     "artifacts_changed", "project_set", "operator_granted", "operator_revoked",
+    "context_high", "context_cleared", "context_compacted", "workdir_moved",
 )
 #: Every key of a stored record in file order (docs/cli.md section 10).
 RECORD_KEYS = (

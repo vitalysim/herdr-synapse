@@ -69,6 +69,11 @@ filter: [all]  to me  requests  human  system  (Tab cycles)   ? help
   agent could unset. When you want an agent to build and run a team itself,
   `herdr-synapse operator grant <name>` lends it that authority, with an expiry,
   a board announcement, and an audit line on every use.
+- **Context you can see and act on.** Every member shows how full its context
+  window is, read from the harness's own transcript, rollout log or database
+  rather than guessed. The board says so once at 75 % and again at 90 %, the
+  sidebar gauge turns yellow then red, and `herdr-synapse compact <name>` or
+  `clear <name>` types the kind's own command in when the member is next idle.
 - **A shared board.** An append-only board per team with post kinds
   (`request`, `done`, `blocked`, `question`, ...), replies, references, and
   file attachments. Agents read and write it through the CLI a skill teaches
@@ -81,7 +86,7 @@ filter: [all]  to me  requests  human  system  (Tab cycles)   ? help
   member's input box right now, recorded on the board, refused when a dialog
   is open. `!!name text` reaches a member mid-turn.
 - **A folder the team shares.** `herdr-synapse project set <path>` gives the
-  team `.herdr-team/<team>/` in your project: the team's rules, one
+  team `.herdr-synapse/<team>/` in your project: the team's rules, one
   instructions file per member, and an `artifacts/` directory the agents own.
 - **Agents in one folder told apart.** Everyone in a checkout reads the same
   `CLAUDE.md`. `herdr-synapse instructions <name> --set "…"` gives one member
@@ -99,7 +104,7 @@ filter: [all]  to me  requests  human  system  (Tab cycles)   ? help
   holds your DOs and DON'Ts and carries your authority; any agent can append
   what it learned with `herdr-synapse knowledge add`, attributed and clearly
   marked as a peer note rather than a rule.
-- **The board saved with the team.** `<project>/.herdr-team/<team>/board.md`
+- **The board saved with the team.** `<project>/.herdr-synapse/<team>/board.md`
   is kept current automatically, beside the team's rules and instructions, so
   the folder carries the conversation too. Git-ignored, since it is
   regenerated.
@@ -252,9 +257,17 @@ herdr-synapse daemon start --replace
 ```
 
 Repoint the `command = "herdr-team.*"` lines in `~/.config/herdr/config.toml` at
-`herdr-synapse.*` and reload. Teams, boards, the `.herdr-team/` folder in your
-projects and the state directory keep their old names on purpose, so there is
-nothing to migrate and nothing to lose.
+`herdr-synapse.*` and reload. Your teams, boards and cursors move with you and
+keep their names.
+
+0.9.0 finishes the job for the two paths you can see. The state directory moves
+to `plugins/herdr-synapse` the first time the notifier starts (nothing to run:
+the pointer it already wrote is followed, and rewritten). The team folder in
+each project is renamed from `.herdr-team/` to `.herdr-synapse/` on the next
+render, artifacts and all — only ever a rename, never a merge, so a project
+that already has both is left alone for you to sort out. Every member is told
+the new path on the board, and a `--ref` under the old one still resolves, so
+an agent holding the old path in its context is not broken by the move.
 
 ### Updating
 
@@ -335,7 +348,7 @@ Agents in one checkout all read the same `CLAUDE.md`, so nothing on disk tells
 them apart. Give the team a directory and it gets one:
 
 ```
-<your project>/.herdr-team/<team>/
+<your project>/.herdr-synapse/<team>/
   knowledge.md         the team's rules, and what its members have learned
   members/<name>.md    this member's own document; the one file you edit
   artifacts/           work products; the only part git ignores
@@ -420,7 +433,8 @@ herdr-synapse who                         # each member now shows its session
 | --- | --- |
 | Herdr restarts | every member goes back to its own pane, even two agents of one kind in one checkout, which pane labels and directories could never tell apart |
 | An agent crashes and you start a fresh one in its pane | recognised as a new conversation: the member keeps its name and pane, and is briefed again so it knows who it is |
-| A Claude member runs `/clear` | the same: a new conversation, briefed again. A compaction keeps the same session and changes nothing |
+| A Claude member runs `/clear` | the same: a new conversation, briefed again, and recorded as a clear rather than a crash when you asked for it |
+| A member compacts | the same session in a new phase, so no new generation and no "restarted" line, but it is briefed again because the briefing was in the history that was just summarized |
 | You want the old conversation back | `herdr-synapse resume <name>` from a shell pane |
 
 `resume` runs the exact command Herdr's own restore would use, in the
@@ -437,6 +451,45 @@ by pane, so in a shared checkout they can bring back a different member's
 work. `resume` covers all 17 kinds Herdr ships an integration for; a kind
 without one keeps working exactly as before, it just has no session to
 reopen. `prefix+t`, Enter on a member, action 7 shows the command.
+
+## Context windows
+
+Herdr knows nothing about tokens and no agent will tell you over a socket, but
+every kind here writes exact counts to disk. The notifier reads them every
+fifteen seconds.
+
+```bash
+herdr-synapse context                  # every member, with a bar and a percent
+herdr-synapse compact vuln-hunt-reviewer   # summarise its context in place
+herdr-synapse clear vuln-hunt-reviewer --yes    # throw it away and brief it again
+```
+
+| Kind | Where the number comes from |
+| --- | --- |
+| Claude | the session transcript's newest `message.usage`, cache reads included |
+| Codex | the rollout log's newest `token_count`, which carries the window size too |
+| OpenCode | the newest assistant message in `opencode.db` |
+
+Any other kind reads `unknown`; nothing is estimated. At 75 % and again at
+90 % the board gets one line addressed to that member and to the team. The
+plugin never acts on it: what to do about a full context is the member's
+decision, or yours.
+
+A member may compact itself, and the skill tells it to finish or hand off its
+task first. Clearing is yours alone, and asks before it runs. A member that
+wants a peer compacted posts a request; no agent gains a way to type into
+another.
+
+The keystroke goes in as raw text and a separate Enter, because a prompt is
+delivered as a bracketed paste and a pasted `/compact` arrives as text to
+answer rather than a command to run. It waits for the same gate as everything
+else, idle included, and Claude's two-to-three-minute compaction is waited
+out rather than retried into.
+
+Not yet verified live: whether a running agent of each kind treats the typed
+line as its own slash command. The transport is settled by reading Herdr's
+source, and everything around the keystroke has tests, but the last step needs
+a throwaway session with real agents. Watch the first use of each kind.
 
 ## How delivery works
 

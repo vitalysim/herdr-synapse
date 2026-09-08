@@ -263,6 +263,12 @@ METHOD_RESULT_TYPES: Dict[str, Tuple[str, ...]] = {
     "pane.rename": ("pane_info",),              # handle_pane_rename -> ResponseResult::PaneInfo
     "pane.close": ("ok",),
     "pane.report_metadata": ("ok",),
+    # handle_pane_send_text / handle_pane_send_keys, src/app/api/panes.rs: both
+    # answer a bare ok. send_text writes the bytes unwrapped; send_input, which
+    # would take text and keys in one call, brackets the text as a paste and is
+    # therefore not what a slash command can travel through.
+    "pane.send_text": ("ok",),
+    "pane.send_keys": ("ok",),
     "pane.process_info": ("pane_process_info",),
     "layout.apply": ("layout_apply",),
     "plugin.list": ("plugin_list",),
@@ -292,6 +298,8 @@ SAMPLE_PARAMS: Dict[str, Dict[str, Any]] = {
     "pane.close": {"pane_id": "w1:p1"},
     "pane.report_metadata": {"pane_id": "w2:p1", "source": "herdr-synapse:roster", "tokens": identity_tokens("alpha", "reviewer")},
     "pane.process_info": {"pane_id": "w2:p1"},
+    "pane.send_text": {"pane_id": "w2:p1", "text": "/compact"},
+    "pane.send_keys": {"pane_id": "w2:p1", "keys": ["enter"]},
     "layout.apply": cmd_roster.build_layout_request("beta", [{"role": "reviewer", "name": "beta-reviewer", "kind": "codex"}, {"role": "worker", "name": "beta-worker", "kind": "claude", "cwd": "/tmp/work"}], "/tmp/state/teams/beta", "w9"),
     "plugin.list": {},
     "plugin.pane.open": cmd_ui.open_params("console", "w1:p1", {}, "alpha"),

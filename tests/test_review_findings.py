@@ -397,14 +397,14 @@ class TokenClearingTests(unittest.TestCase):
             d.tick()
             member = next(m for m in store.read_json(ts.team.team_json)["members"] if m["name"] == "alpha-reviewer")
             self.assertEqual(member["status"], "missing")
-            self.assertEqual(len(self.cleared(api, "w2:p1")), 2, "team/team_role and team_task cleared")
+            self.assertEqual(len(self.cleared(api, "w2:p1")), 3, "team/team_role, team_task and the context gauge cleared")
 
     def test_pane_closed_event_clears_the_tokens(self):
         with TempState() as ts:
             d, api, clock = _member_daemon(ts)
             d.on_connected()
             d.handle_event({"event": "pane_closed", "data": {"pane_id": "w2:p1"}})
-            self.assertEqual(len(self.cleared(api, "w2:p1")), 2)
+            self.assertEqual(len(self.cleared(api, "w2:p1")), 3)
 
 
 class EnsureDaemonGateTests(unittest.TestCase):

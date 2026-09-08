@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from herdr_team import cmd_board, render, store
+from herdr_team import cmd_board, render, store, workdir
 from support import TempState
 from test_cmd_roster import json_out, run_cli
 
@@ -235,7 +235,7 @@ class ConsoleExportDestinationTests(unittest.TestCase):
 
         self.set_project()
         target = console.default_export_dir(self.state.layout, self.state.team_name)
-        self.assertEqual(target, self.project / ".herdr-team" / self.state.team_name / "exports")
+        self.assertEqual(target, self.project / workdir.DIR_NAME / self.state.team_name / "exports")
         self.assertTrue(target.is_dir())
 
     def test_it_never_writes_into_the_plugin_directory(self):

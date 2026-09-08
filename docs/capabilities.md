@@ -108,7 +108,7 @@ on disk tells them apart. Three additions close that:
 | What the team has learned | `knowledge add "<text>"` | any member |
 | Read both | `knowledge` | anyone |
 
-The folder is `<project>/.herdr-team/<team>/`, namespaced so two teams can
+The folder is `<project>/.herdr-synapse/<team>/`, namespaced so two teams can
 share one project. It holds `knowledge.md`, `members/<name>.md` per member,
 and `artifacts/`. `README.md` and `.gitignore` sit above it. Members reach it
 by the absolute path `herdr-synapse me` prints, which matters because members of
@@ -259,6 +259,9 @@ record shape, so an export goes back into any tool that reads a board file.
    `herdr-synapse who` (section 7).
 4. **Claude hooks** (optional, section 9): charter, brief, roster, and unread
    count at every session start; new board posts in context every turn.
+5. **Its own context**: `context_high` on the board at 75 % and again at 90 %,
+   naming the member and the team. The skill (v4) tells it to finish or hand
+   off its task, post what it learned, then `compact --self`. See section 6a.
 
 **Verified**: SK-01, SK-02 (a Claude ran `who` and posted the roster with
 roles), SK-11, SK-12.
@@ -318,7 +321,7 @@ warning) and dropped. A well-formed record whose origin cannot be trusted
 could not be proven) is rendered with `(unverified)` in its header and never
 counts for nudges. For a kind recorded as unable to read the state dir
 (`payload_readable: false` in `kinds.json`), `board --new` copies referenced
-payloads into the member's `<cwd>/.herdr-team/`.
+payloads into the member's `<cwd>/.herdr-synapse/`.
 
 ### Receipts and audit
 
@@ -333,7 +336,9 @@ k/n`. Retracted posts render struck through with `(retracted by #M)`.
 `nudged` (to the member), `toast` (to human, one per toast attempt),
 `retracted`, `expired` and `abandoned` (to human), `member_gone` (to all on
 remove or leave; to human when a member goes missing), `member_restarted`,
-`renamed`, `charter_updated` (to all), `rotated`, `reset_detected`.
+`renamed`, `charter_updated` (to all), `rotated`, `reset_detected`,
+`context_high`, `context_compacted` and `context_cleared` (to the member and
+to all).
 
 **Verified**: HP-01 to HP-15, S-01 to S-08, RS-12.
 
@@ -425,6 +430,69 @@ add up to a minute after the member goes idle.
 **Verified**: ND-01 to ND-12 (ND-05 and ND-06 by unit tests), ND-02b (model
 picker and permission dialog received no bytes), ND-04 (a real nudge
 produced a reply on the board), F-01 to F-04, SK-08.
+
+## 6a. Context windows
+
+The notifier reads how full each member is from the harness's own files every
+`CONTEXT_POLL_S` (15 s), skipping any member whose file has not moved. Nothing
+is typed and nothing is asked of the agent.
+
+| Kind | Source | Tokens | Window |
+| --- | --- | --- | --- |
+| Claude | newest `message.usage` in the transcript the hook recorded, else the transcript named by the session id | exact, cache reads included | from a model table, widened when the reading exceeds it |
+| Codex | newest `token_count` in `~/.codex/sessions/**/rollout-*-<id>.jsonl` | exact, `last_token_usage` (not the cumulative total) | exact, `model_context_window` |
+| OpenCode | newest assistant `message.data.tokens.total` in `opencode.db` | exact | from a model table |
+
+Readers tail their files rather than parsing them (`TAIL_BYTES` 256 KB) and
+open SQLite through an immutable URI, because these files reach tens of
+megabytes on a working machine. A kind with no reader reports `unknown`.
+
+| Surface | What it shows |
+| --- | --- |
+| `herdr-synapse context [<name>]` | a bar per member; the notifier's reading when it is up, the files directly when it is not |
+| `who` | a `context 94%` tag, marked `!` at 75 % and `!!` at 90 % |
+| Sidebar | `team_context`, `team_context_warn` or `team_context_crit` under source `herdr-synapse:context`, TTL 2 min; exactly one carries a value, which is how the gauge changes colour, since Herdr styles a token from a fixed `fg` and cannot colour by value |
+| Board | one `context_high` per crossing, addressed to the member and to `all` |
+
+### Compacting and clearing
+
+| Command | Effect |
+| --- | --- |
+| `herdr-synapse compact <name> \| --self [--reason TEXT]` (console `/compact`) | enqueue a `control` job; the daemon types the kind's compact command once the member is idle. Operator, or a member on itself |
+| `herdr-synapse clear <name> --yes [--reason TEXT]` (console `/clear`, which asks y/N) | the same for the clear command. Operator only; `--self` is refused |
+
+Keystrokes: Claude `/compact` and `/clear`; Codex `/compact` and `/new`;
+OpenCode `/compact` and `/new`. Codex takes `/new` deliberately, since its
+`/clear` also wipes the scrollback the detection layer reads. Any other kind
+is `control_unsupported`.
+
+Properties that hold:
+
+- The job is a pointer. The command appends a `direct` record carrying a
+  `control` block and the job names its seq; the daemon re-reads that record
+  and refuses a job whose record is missing, unverified, addressed elsewhere,
+  or carrying no such block, exactly as `say` does.
+- The keystroke is `pane.send_text` plus a separate `pane.send_keys ["enter"]`,
+  never `agent.prompt`: a prompt is a bracketed paste, and a pasted `/compact`
+  reaches a TUI agent as text to answer rather than a command to run.
+  `pane.send_input` brackets its text too, so it is not the way through either.
+- Delivery uses the ordinary gate. Only `done_hold` and the per-member
+  interval are bypassed, the way a briefing does. Idle is required; blocked,
+  dialog, overlay, draft, wrong occupant and pane-stuck all hold it.
+- It is typed once. A landed control job stays open until its effect is seen,
+  and `CONTROL_OBSERVE_S` (6 min) closes it with a note rather than a retry.
+- The effect is a session phase change (Claude reports `source=compact` on the
+  same id) or a fall to under `CONTROL_DROP_RATIO` (0.7) of the reading taken
+  when the keystroke landed. Either appends `context_compacted` naming who
+  asked. A clear is closed by the new session and appends `context_cleared`.
+- A compaction nobody asked for is recorded too, since a teammate needs to
+  know this member now works from a summary. A reading from a different
+  session is a new baseline, not a fall.
+
+**Verified**: unit tests in `tests/test_context.py` (readers, tailing,
+thresholds, forged jobs, gate holds, typed-once, all four completion paths).
+Live: the three readings on a working team, against the numbers the agents
+show themselves.
 
 ## 7. Human paths
 
@@ -714,6 +782,16 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
 - `post --interrupt` into a running turn is verified for Claude Code only
   (the queue behaviour `!!` relies on); other kinds are off by default and
   `interrupts claude,codex` opts in unverified.
+- `compact` and `clear` are **not yet verified live against a real agent of any
+  kind**. The transport is verified by reading upstream: `handle_pane_send_text`
+  writes the bytes with no wrapper, while `encode_api_text`, which
+  `agent.prompt` and `pane.send_input` both go through, brackets them as a
+  paste. What is untested is the last step, whether a running Claude, Codex or
+  OpenCode treats the typed line as its own slash command; that needs a
+  disposable session with real agents. Until it is done, treat the keystroke
+  table as a hypothesis and watch the first use of each kind. Everything
+  around it (authority, the record-backed job, the gate, typed-once, the four
+  completion paths) is covered by tests.
 - `usage` windows are verified live for Anthropic (Claude Code login) and
   OpenAI Codex (ChatGPT login). GitHub Copilot answers without a quota on
   individual plans; Gemini needs a valid token and its quota response is

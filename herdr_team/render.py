@@ -666,6 +666,9 @@ def render_who(
             tags.append("instructions: stale")
         if member.get("operator"):
             tags.append("acts as operator")
+        context_tag = context_label(member.get("context"))
+        if context_tag:
+            tags.append(context_tag)
         if member.get("delivery") == "hooks" and not brief:
             seen_hooks = parse_ts(member.get("hooks_last_seen"))
             if seen_hooks is None:
@@ -689,6 +692,19 @@ def render_who(
         if not brief and member.get("brief"):
             lines.append("    brief: {}".format(_ascii(sanitize.headline(member.get("brief"), 200), ascii_only)))
     return "\n".join(lines)
+
+
+def context_label(context: Any) -> Optional[str]:
+    """``context 94%`` for a ``who`` row, marked when it is worth acting on."""
+    if not isinstance(context, dict):
+        return None
+    percent = context.get("percent")
+    if not isinstance(percent, (int, float)):
+        return None
+    from herdr_team import usage as _usage
+
+    mark = {_usage.WARNING: " !", _usage.CRITICAL: " !!"}.get(_usage.severity_for(float(percent)), "")
+    return "context {:.0f}%{}".format(float(percent), mark)
 
 
 def render_operator_grants(grants: Sequence[Dict[str, Any]]) -> str:
