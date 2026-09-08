@@ -630,6 +630,7 @@ def _add_create_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--new", action="store_true", help="lay out fresh panes and start agents (--spawn)")
     parser.add_argument("--workspace", metavar="ID", help="workspace for --new (default: the current one)")
     parser.add_argument("--spawn", action="append", default=[], metavar="ROLE:KIND[:CWD]")
+    parser.add_argument("--manager", metavar="NAME", help="the member that coordinates the team (see: herdr-synapse manager)")
 
 
 def _run_create(args: argparse.Namespace) -> int:
@@ -646,6 +647,8 @@ def _run_create(args: argparse.Namespace) -> int:
         raise UsageError("pass --rules or --rules-file, not both")
     if args.rules is not None or args.rules_file is not None or args.instructions or args.project is not None:
         _human_only(layout, team_name, author, "create --project/--rules/--instructions")
+    if args.manager:
+        _human_only(layout, team_name, author, "create --manager")
     # Resolved before any write, so a bad path fails before the team exists.
     project_dir = _workdir.resolve_project_dir(args.project, state_root=layout.state_root.path) if args.project is not None else None
     instructions = _parse_brief_args(args.instructions, flag="--instructions")
@@ -813,9 +816,20 @@ def _create_members(args: argparse.Namespace, layout: Layout, api: Any, env: Dic
         set_default = True
     elif default_team != team_name:
         warn(args, "default team stays {!r}; run: herdr-synapse use {}".format(default_team or (others[0] if others else "?"), team_name))
+    manager_name = None
+    if getattr(args, "manager", None):
+        # After the members exist, and by name rather than by spec, so a member
+        # Herdr renamed on the way in is still found.
+        changed = set_manager(layout, team_name, author, str(args.manager))
+        manager_name = changed["member"]
+        _roster.append_system_record(team_paths, "manager_changed", MANAGER_TEXT.format(name=manager_name),
+                                     to=[m["name"] for m in members_out] + ["human", "all"],
+                                     extra={"member": manager_name, "previous": None, "urgent": True}, socket=os.fspath(layout.socket))
+        audit(layout, team_name, "manager_set", author, {"member": manager_name, "previous": None})
     # After the roster exists, so the folder renders one file per member.
     workdir_result = _apply_workdir_setup(args, layout, team_name, team_paths, author, project_dir, instructions, members_out)
     payload = {
+        "manager": manager_name,
         "team": team_name, "team_dir": os.fspath(team_paths.root), "created": True, "members": members_out,
         "charter": {"seq": charter_doc["seq"], "headline": charter_headline(charter_doc)} if charter_doc else None,
         "notifier": notifier_state(layout.session), "default_team": set_default, "briefing_jobs": jobs,
@@ -1077,6 +1091,134 @@ def _run_operator(args: argparse.Namespace) -> int:
         member.name, " until {}".format(entry["expires_at"]) if entry.get("expires_at") else "; it does not expire"))
 
 
+#: What every member is told the manager is for. One sentence, because it rides
+#: a board record that has to make sense to an agent reading it cold.
+MANAGER_TEXT = (
+    "{name} is the team manager: its posts are how the work is split and sequenced. "
+    "Take its assignments and handoffs as the plan unless they conflict with the charter, "
+    "your own instructions, or something unsafe, and say so on the board if you disagree. "
+    "It is not the operator: only the human changes the charter, the rules, or anyone's instructions."
+)
+MANAGER_CLEARED_TEXT = "{name} is no longer the team manager. Nobody is coordinating; the charter is the plan."
+
+
+def set_manager(layout: Layout, team_name: str, author: Author, member_name: Optional[str]) -> Dict[str, Any]:
+    """Designate one member the team manager, or clear the designation.
+
+    At most one member holds it, enforced here rather than by the schema: the
+    same mutation that sets one clears every other, so two managers cannot
+    exist even if two operators race (``update_team`` retries on a revision
+    conflict and this runs again against the newer roster).
+    """
+    changed: Dict[str, Any] = {"previous": None, "member": None}
+
+    def mutate(doc: _roster.Team) -> None:
+        target = None
+        if member_name is not None:
+            target = doc.find(member_name)
+            if target is None or target.is_human or target.status == "left":
+                raise HerdrTeamError("member_not_found", "{!r} is not an agent member of team {!r}".format(member_name, team_name),
+                                     EXIT_REFUSED, {"name": member_name, "team": team_name, "roster": doc.names()})
+        for member in doc.members:
+            if member.manager and member is not target:
+                changed["previous"] = member.name
+                member.manager = False
+        if target is not None:
+            target.manager = True
+            changed["member"] = target.name
+
+    _roster.update_team(layout.team(team_name), mutate)
+    return changed
+
+
+def _run_manager(args: argparse.Namespace) -> int:
+    """Show, set, or clear the team's manager.
+
+    The designation says who coordinates; it grants nothing. Writing the
+    charter, the rules or anyone's instructions stays human-only, and
+    ``--operator`` is the one way to add that, through the ordinary grant so it
+    keeps the expiry, the board announcement and the per-use audit line.
+    """
+    layout = layout_for(args)
+    api = api_for(args, layout)
+    team_name = _team_arg(args, layout, None)
+    author = _author(args, layout, api, team=team_name, require_server=False)
+    doc = _roster.load_team(layout.team(team_name))
+
+    if not args.member and not args.clear:
+        current = doc.manager()
+        payload = {"team": team_name, "member": current.name if current else None,
+                   "operator": bool(current and _operator.active(layout.session, team_name, current.name))}
+        return emit(args, payload, lambda: "{} is the team manager".format(current.name) if current
+                    else "no team manager; set one with: herdr-synapse manager <name>")
+    if args.member and args.clear:
+        raise UsageError("pass a name or --clear, not both")
+    if args.clear and args.operator:
+        raise UsageError("--operator needs a member to grant to")
+
+    _human_only(layout, team_name, author, "manager set" if args.member else "manager clear")
+    check_write_session(args, layout, team_name)
+    if args.operator:
+        # Granting is the operator's alone even when appointing is not: a
+        # delegate may name a manager, but it may not hand its own authority on.
+        _strictly_human(layout, team_name, author, "manager --operator")
+
+    changed = set_manager(layout, team_name, author, args.member or None)
+    name = changed["member"]
+    previous = changed["previous"]
+    team_paths = layout.team(team_name)
+    recipients = [m.name for m in _roster.load_team(team_paths).members if not m.is_human and m.status != "left"]
+
+    if name:
+        text = MANAGER_TEXT.format(name=name)
+    elif previous:
+        text = MANAGER_CLEARED_TEXT.format(name=previous)
+    else:
+        return emit(args, {"team": team_name, "member": None, "previous": None, "changed": False}, "there was no team manager")
+    # Every member is named as well as ``all``: a record addressed only to the
+    # team is a broadcast the delivery gate holds, and this is the one fact
+    # every one of them has to act on. ``human`` is named too, or the operator
+    # who just made the change gets no toast and nothing in ``inbox --human``:
+    # only a record addressed to ``human`` reaches that queue.
+    _roster.append_system_record(team_paths, "manager_changed", text, to=recipients + ["human", "all"],
+                                 extra={"member": name, "previous": previous, "urgent": True}, socket=os.fspath(layout.socket))
+    audit(layout, team_name, "manager_set" if name else "manager_clear", author, {"member": name, "previous": previous})
+
+    payload: Dict[str, Any] = {"team": team_name, "member": name, "previous": previous, "changed": True, "operator": False}
+    if args.operator and name:
+        ttl_s = _operator.DEFAULT_TTL_S if args.ttl is None else _cmd_misc_duration(args.ttl)
+        entry = _operator.grant(layout.session, team_name, name, ttl_s=ttl_s, note=args.note, granted_by=author.name)
+        _roster.append_system_record(
+            team_paths, "operator_granted",
+            "{} may now write the charter, the team rules and any member's instructions{}".format(
+                name, " until {}".format(entry["expires_at"]) if entry.get("expires_at") else " (no expiry)"),
+            to=["all"], extra={"member": name, "expires_at": entry.get("expires_at")}, socket=os.fspath(layout.socket))
+        audit(layout, team_name, "operator_grant", author, {"member": name, "expires_at": entry.get("expires_at"), "note": entry.get("note")})
+        payload["operator"] = True
+        payload["expires_at"] = entry.get("expires_at")
+
+    def human() -> str:
+        if not name:
+            return "{} is no longer the team manager".format(previous)
+        line = "{} is the team manager".format(name)
+        if previous:
+            line += " (was {})".format(previous)
+        if payload.get("operator"):
+            line += "; it also acts with your authority{}".format(
+                " until {}".format(payload["expires_at"]) if payload.get("expires_at") else ", with no expiry")
+        return line
+
+    return emit(args, payload, human)
+
+
+def _add_manager_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("member", nargs="?", help="the member to make manager (omit to show who it is)")
+    parser.add_argument("--clear", action="store_true", help="remove the designation; the team has no manager")
+    parser.add_argument("--operator", action="store_true", help="also grant it the operator's authority (operator only)")
+    parser.add_argument("--ttl", metavar="DURATION", help="how long that grant lasts (default 12h; 0 never expires)")
+    parser.add_argument("--note", metavar="TEXT", help="why, recorded on the grant")
+
+
 def _cmd_misc_duration(text: str) -> int:
     from herdr_team.cmd_misc import parse_duration_s
 
@@ -1214,7 +1356,8 @@ def _run_me(args: argparse.Namespace) -> int:
     unread = unread_for(team_paths, records, author.name)
     installed = skill_installed_version(env_of(args))
     teammates = [
-        {"name": m.get("name"), "role": m.get("role"), "kind": m.get("kind"), "status": m.get("status")}
+        {"name": m.get("name"), "role": m.get("role"), "kind": m.get("kind"), "status": m.get("status"),
+         "manager": bool(m.get("manager"))}
         for m in members_of(doc) if m.get("name") != author.name and m.get("status") != "left"
     ]
     charter = charter_of(doc)
@@ -1226,6 +1369,7 @@ def _run_me(args: argparse.Namespace) -> int:
         "cli": cli_path(), "notifier": notifier_state(layout.session),
         "session": _roster.short_session(me.get("session")),
         "instructions_stale": _charter.instructions_stale(me),
+        "manager": bool(me.get("manager")),
     }
     # The team folder is how an agent differentiated only by a file finds that
     # file. Both paths are absolute so a member outside the project can read them.
@@ -1318,6 +1462,9 @@ def _who_payload(args: argparse.Namespace, layout: Layout, api: Any, team_name: 
         m.setdefault("brief", member_doc.get("brief"))
         if m.get("kind") != "human":
             m["operator"] = bool(_operator.active(layout.session, team_name, name))
+            # From the roster rather than from ``who.json``, so a stale snapshot
+            # written before the designation still names the right member.
+            m["manager"] = bool(member_doc.get("manager"))
     kinds = _who_kinds(layout, members)
     if args.role:
         members = [m for m in members if m.get("role") == args.role]
@@ -1538,6 +1685,7 @@ COMMANDS: List[Command] = [
     Command("leave", "leave your team (from a member pane)", _no_arguments, _run_leave),
     Command("bind", "re-attach a missing member to a live agent", _add_bind_arguments, _run_bind),
     Command("resume", "reopen a member's own harness session in this pane (human only)", _add_resume_arguments, _run_resume),
+    Command("manager", "show, set, or clear the member that coordinates the team", _add_manager_arguments, _run_manager),
     Command("operator", "show, grant, or revoke a member's delegation of your authority", _add_operator_arguments, _run_operator),
     Command("dissolve", "archive a team and clear every member's tokens and labels", _add_dissolve_arguments, _run_dissolve),
     Command("use", "set the default team for human posts", _add_use_arguments, _run_use),

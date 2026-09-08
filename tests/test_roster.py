@@ -122,7 +122,7 @@ class ModelTests(unittest.TestCase):
             "name", "role", "kind", "terminal_id", "pane_id", "workspace_id", "tab_id", "label", "cwd", "brief",
             "managed", "session", "status", "generation", "delivery", "verified_kind", "joined_at", "last_seen_at",
             "briefed_at", "briefing_seq", "charter_seq_acked",
-            "instructions_seq", "instructions_seq_acked", "rules_seq_acked",
+            "instructions_seq", "instructions_seq_acked", "rules_seq_acked", "manager",
         })
         self.assertEqual(roster.Member.from_json(obj).to_json(), obj)
         with self.assertRaises(HerdrTeamError) as ctx:

@@ -333,6 +333,7 @@ k/n`. Retracted posts render struck through with `(retracted by #M)`.
 
 ### System records you will see on the board
 
+`manager_changed` (to every member, `human` and `all`, urgent),
 `nudged` (to the member), `toast` (to human, one per toast attempt),
 `retracted`, `expired` and `abandoned` (to human), `member_gone` (to all on
 remove or leave; to human when a member goes missing), `member_restarted`,
@@ -430,6 +431,49 @@ add up to a minute after the member goes idle.
 **Verified**: ND-01 to ND-12 (ND-05 and ND-06 by unit tests), ND-02b (model
 picker and permission dialog received no bytes), ND-04 (a real nudge
 produced a reply on the board), F-01 to F-04, SK-08.
+
+## 5b. The team manager
+
+One optional member per team, `Member.manager`, set by `herdr-synapse manager
+<name>` or `create --manager`, and toggled by action 8 in the team view. At most
+one holder, enforced by the setter: the write that sets one clears every other.
+A boolean on the member rather than a name in team config, so a rename carries
+it and a removal drops it with no stale name to clean up.
+
+It confers no authority. Every human-only gate is unchanged, and `--operator`
+is the one way to add the operator's writing powers, through the existing grant
+with its expiry and audit. Appointing is `_human_only` (a delegate may);
+granting is `_strictly_human` (a delegate may not).
+
+What it changes:
+
+| Surface | What it shows |
+| --- | --- |
+| Board | one urgent `manager_changed` naming every member, `human` and `all` |
+| `who` | a `manager` tag beside `acts as operator` |
+| `me` | the teammate is marked; the manager is told it is one |
+| Session-start (Claude) | `name (role, kind, team manager)` in the teammate list |
+| Typed briefing | `name (role, manager)` in the roster, dropped first if the 400-char budget bites |
+| Skill v5 | take its assignments as the plan; disagree on the board; it is not the operator |
+
+**Delivery.** A post addressed to the whole team is held by gate 2
+(`HOLD_BROADCAST`) unless urgent, so an ordinary agent's broadcast waits for
+each member's next board read — a 42-minute median on a live team. The
+manager's broadcast is not held. `PendingWork.from_manager` lifts that one hold
+and nothing else; it is deliberately not routed through `urgent`, which also
+bypasses `done_hold` and the per-member interval.
+
+**A system record does not deliver itself.** `_ingest_record` returns early for
+`from: system`, so naming recipients on one achieves nothing on its own. Two
+lists make it move: `URGENT_SYSTEM_EVENTS` (with `urgent: true` on the record)
+fans it out to the members, and `TOAST_SYSTEM_EVENTS` puts it in the operator's
+toast queue. Both were missing on the first cut, and the result was a record
+that existed on the board and reached nobody.
+
+**Verified**: `tests/test_manager.py` (model round-trip, the single-holder
+invariant, the authority split, the record's addressing and urgency, both
+delivery halves, the gate lifting only the broadcast hold, the briefing budget,
+`who`/`me`/hooks/picker). Live on `clickhouse-hunt`.
 
 ## 6a. Context windows
 

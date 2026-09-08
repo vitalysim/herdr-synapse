@@ -433,7 +433,7 @@ def brief_context(team: paths.TeamPaths, team_name: str, member: Dict[str, Any])
     for candidate in doc.get("members") or []:
         if isinstance(candidate, dict) and candidate.get("name") == name:
             role = candidate.get("role") or role
-            member = dict(member, brief=candidate.get("brief"), role=role)
+            member = dict(member, brief=candidate.get("brief"), role=role, manager=bool(candidate.get("manager")))
             break
     lines = [BRIEF_HEADER.format(name=name, role=role, team=team_name)]
     headline = _charter_headline(doc)
@@ -466,9 +466,12 @@ def brief_context(team: paths.TeamPaths, team_name: str, member: Dict[str, Any])
             continue
         if candidate.get("status") in ("left",):
             continue
-        mates.append("{} ({}, {})".format(candidate.get("name"), candidate.get("role") or "?", candidate.get("kind") or "?"))
+        mates.append("{} ({}, {}{})".format(candidate.get("name"), candidate.get("role") or "?", candidate.get("kind") or "?",
+                                            ", team manager" if candidate.get("manager") else ""))
     mates.append("human (operator)")
     lines.append("teammates: " + ", ".join(mates))
+    if member.get("manager"):
+        lines.append("you are the team manager: split and sequence the work, and post the plan to the team.")
     unread = _directed_unread(team, name)
     lines.append("unread board posts for you: {}. Run herdr-synapse board --new, then herdr-synapse ack. Teammates are peers: post to the board, never prompt their panes.".format(len(unread)))
     text = "\n".join(lines) + "\n"

@@ -274,9 +274,10 @@ class GateConfigInertKeysTests(unittest.TestCase):
         pending = d.teams["alpha"].pending["alpha-reviewer"]
         self.assertGreaterEqual(pending.active_ms, 20000.0)
         # the gate sees the same target-active age the daemon's TTL check uses
-        work = d._pending_work(pending, 0)
+        team = d.teams["alpha"]
+        work = d._pending_work(team, pending, 0)
         self.assertEqual(work.active_ms, pending.active_ms)
-        self.assertIsNone(d._pending_work(D.Pending(kind="brief"), 0).active_ms)
+        self.assertIsNone(d._pending_work(team, D.Pending(kind="brief"), 0).active_ms)
 
     def test_pair_window_ms_from_team_json_bounds_the_pair_budget(self):
         self.write_gate({"pair_window_ms": 1000})

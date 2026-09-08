@@ -258,6 +258,47 @@ shell, a console, and anything genuinely outside Herdr are unaffected. When
 the server or `ps` cannot answer, the caller is left where it was, because
 refusing on a failed lookup would lock the operator out of their own CLI.
 
+### `manager [<name>] [--clear] [--operator [--ttl DURATION] [--note TEXT]]`
+
+Names the one member that coordinates the team, or with no arguments says who
+it is. Setting one clears any previous holder in the same write, so two
+managers cannot exist. Human only (`_human_only`), so a delegated operator may
+appoint one; `--operator` additionally requires the operator themselves
+(`_strictly_human`), because a delegate may name a manager but may not pass its
+own authority on.
+
+The designation grants nothing. The charter, the team rules and every member's
+instructions stay human-only; `--operator` is the one way to add those, and it
+goes through the ordinary grant, keeping its expiry, board announcement and
+per-use audit line.
+
+What changes is what the other agents are told and how the manager's posts are
+delivered:
+
+- a `manager_changed` record naming every live member, `human`, and `all`,
+  marked urgent. All three parts are load-bearing: a system record takes an
+  early return in the daemon's ingest, so `manager_changed` is in
+  `URGENT_SYSTEM_EVENTS` to be fanned out to the members at all, and in
+  `TOAST_SYSTEM_EVENTS` to reach the operator's toast queue.
+- `who` tags the row `manager`; `me` marks the teammate and tells the manager
+  it is one; the Claude session-start blob names it in the teammate list; the
+  typed briefing marks it in the roster (`name (role, manager)`).
+- the skill (v5) tells every agent to take its assignments and handoffs as the
+  plan unless they conflict with the charter, their own instructions, or
+  something unsafe, and to disagree on the board rather than quietly diverge.
+  Its posts are still peer requests, not operator instructions.
+- **its posts to the whole team wake everyone.** An ordinary agent's broadcast
+  is held (`gate.py` gate 2, `HOLD_BROADCAST`) and waits for each member's next
+  board read, which measured a 42-minute median on a live team. The manager's
+  does not. This lifts that one hold and nothing else: `done_hold`, the
+  per-member interval, `pair_budget`, `blocked`, `dialog` and `draft` all still
+  apply, and it deliberately does not route through `urgent`, which would widen
+  the bypass surface.
+
+JSON `{"team","member","previous","changed","operator"[,"expires_at"]}`.
+`create <team> --manager <name>` does the same at creation, after the members
+exist. In the team view (`prefix+t`), action 8 on a member row toggles it.
+
 ### `operator [list] | grant <name> [--ttl DURATION] [--note TEXT] | revoke <name>`
 
 Shows, grants, or withdraws a member's delegation of your authority. This is

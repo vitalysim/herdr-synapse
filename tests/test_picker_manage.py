@@ -156,7 +156,7 @@ class ScrollTests(unittest.TestCase):
 
 
 class ActionMenuTests(unittest.TestCase):
-    def test_the_menu_lists_seven_numbered_actions(self):
+    def test_the_menu_lists_eight_numbered_actions(self):
         model = managed(picker_model(ALPHA, focused=None))
         lines = tui_model.picker_lines(model, 100, 24)
         self.assertIn("alpha-reviewer · reviewer · codex · w2:p1 · idle", lines[0])
@@ -164,8 +164,9 @@ class ActionMenuTests(unittest.TestCase):
         self.assertTrue(any("4  remove it from alpha" in line for line in lines))
         self.assertTrue(any("5  remove it from alpha, keep its Herdr agent name" in line for line in lines))
         self.assertTrue(any("7  show the command that reopens its own session" in line for line in lines))
+        self.assertTrue(any("8  make it the team manager" in line for line in lines))
         picker_apply_key(model, "9")
-        self.assertEqual(model.error, "type a number between 1 and 7")
+        self.assertEqual(model.error, "type a number between 1 and 8")
         picker_apply_key(model, "DOWN")
         picker_apply_key(model, "ENTER")
         self.assertEqual(model.stage, "goal")

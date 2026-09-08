@@ -131,7 +131,13 @@ BOARD_SNAPSHOT_MIN_INTERVAL_S = 60.0
 #: and ``instructions_updated`` were missing, so the ``--urgent`` flag on
 #: ``knowledge set`` and ``instructions --set`` set the record flag and did
 #: nothing, while the CLI docs promised a nudge.
-URGENT_SYSTEM_EVENTS = ("charter_updated", "member_joined", "knowledge_updated", "instructions_updated")
+URGENT_SYSTEM_EVENTS = ("charter_updated", "member_joined", "knowledge_updated", "instructions_updated", "manager_changed")
+#: System events the operator is toasted for. A system record takes the early
+#: return in ``_ingest`` and so never reaches ``human_queue``, which is the only
+#: thing that toasts: naming ``human`` on the record is not enough by itself.
+#: Kept to an explicit list rather than "any system record naming human",
+#: because that would start toasting a dozen existing events at once.
+TOAST_SYSTEM_EVENTS = ("manager_changed",)
 #: A change is announced only once the tree has stopped moving for one whole
 #: poll, so a build or a data dump yields one record instead of one every ten
 #: seconds. That costs a single drop up to ``2 * ARTIFACTS_POLL_S`` of latency,
@@ -1232,6 +1238,14 @@ class TeamState:
         for m in self.members():
             if m.get("name") == name:
                 return m
+        return None
+
+    def manager_name(self) -> Optional[str]:
+        """The member designated to coordinate this team, when there is one."""
+        for m in self.members():
+            if m.get("manager") and m.get("kind") != "human" and m.get("status") != "left":
+                name = m.get("name")
+                return str(name) if isinstance(name, str) else None
         return None
 
     def member_by_terminal(self, terminal_id: Optional[str]) -> Optional[Dict[str, Any]]:
@@ -2731,6 +2745,8 @@ class Daemon:
             return
         if author == "system":
             event = rec.get("event")
+            if event in TOAST_SYSTEM_EVENTS and "human" in [t for t in (rec.get("to") or []) if isinstance(t, str)]:
+                team.human_queue.append(rec)
             if rec.get("urgent") and event in URGENT_SYSTEM_EVENTS:
                 # An urgent system broadcast nudges every member; a join spares the newcomer (its briefing covers it).
                 newcomer = rec.get("member") if event == "member_joined" else None
@@ -2773,9 +2789,11 @@ class Daemon:
                     team.human_queue.append(rec)
                 continue
             if target == "all":
-                # The operator addressing the whole team is heard by every member (normal holds apply);
-                # an agent's broadcast waits for the next board read unless it is urgent.
-                if urgent or author == "human":
+                # The operator addressing the whole team is heard by every member (normal holds apply),
+                # and so is the manager, whose whole job is splitting and sequencing the work; any other
+                # agent's broadcast waits for the next board read unless it is urgent. Measured on a live
+                # team, that wait ran to a median of 42 minutes, which is not a way to hand out scope.
+                if urgent or author == "human" or author == team.manager_name():
                     for m in team.members():
                         if m.get("kind") != "human" and m.get("name") != author and m.get("terminal_id"):
                             self._add_pending(team, str(m["name"]), seq, urgent, author, now)
@@ -3331,7 +3349,8 @@ class Daemon:
         headline = None
         if charter and isinstance(charter.get("text"), str):
             headline = " ".join(charter["text"].split())
-        teammates = [(str(m.get("name")), str(m.get("role") or "")) for m in team.members() if m.get("name") != name and m.get("kind") != "human"]
+        teammates = [(str(m.get("name")), str(m.get("role") or ""), bool(m.get("manager")))
+                     for m in team.members() if m.get("name") != name and m.get("kind") != "human"]
         brief = member.get("brief") if isinstance(member.get("brief"), str) else None
         try:
             lines = briefing_lines_for(name, str(member.get("role") or ""), team.name, headline, teammates, brief, self.cli_path)
@@ -3514,7 +3533,7 @@ class Daemon:
             return
         self._update_interrupt_state(team, name, str(member.get("kind")), pending, now)
         snapshot = self._snapshot(team, member, agent, rt, now, pending)
-        pending_work = self._pending_work(pending, cursor)
+        pending_work = self._pending_work(team, pending, cursor)
         decision = gate_evaluate(snapshot, pending_work, now, self.global_last_nudge_ms, self._pair_exchanges(team, pending, name, now), config=team.gate_config)
         if not decision.deliver:
             # Gate 10 after the 5 min max-hold needs a detection read to judge the 3 s snapshot
@@ -3553,7 +3572,7 @@ class Daemon:
             team.pending.pop(name, None)
             self.who_dirty = True
             return
-        pending_work = self._pending_work(pending, cursor)
+        pending_work = self._pending_work(team, pending, cursor)
         decision = gate_evaluate(snapshot, pending_work, now, self.global_last_nudge_ms, self._pair_exchanges(team, pending, name, now), config=team.gate_config)
         if not decision.deliver:
             self._note_hold(team, name, pending, decision.hold, decision.detail or decision.matched_dialog_line, now)
@@ -3582,7 +3601,7 @@ class Daemon:
             pending.interrupt_state = state
             self.who_dirty = True
 
-    def _pending_work(self, pending: Pending, cursor: int) -> Any:
+    def _pending_work(self, team: TeamState, pending: Pending, cursor: int) -> Any:
         from herdr_team import gate as gate_mod
 
         seqs = list(pending.seqs)
@@ -3597,8 +3616,10 @@ class Daemon:
         # Gate 1 sees the same target-active age the TTL check above uses (``config.gate.post_ttl_ms``).
         active_ms = pending.active_ms if pending.kind == "nudge" else None
         interrupt = bool(pending.interrupt and pending.kind == "nudge")
+        manager = team.manager_name()
         return gate_mod.PendingWork(seqs, bool(pending.urgent or force), cursor, sorted(pending.authors), force=force, active_ms=active_ms,
-                                    interrupt=interrupt, interrupt_ok=interrupt and pending.interrupt_state == "armed")
+                                    interrupt=interrupt, interrupt_ok=interrupt and pending.interrupt_state == "armed",
+                                    from_manager=bool(manager and manager in pending.authors))
 
     def _pair_exchanges(self, team: TeamState, pending: Pending, name: str, now: float) -> int:
         """Exchanges between ``name`` and each author inside the team's ``pair_window_ms`` (gate 11 pair budget)."""
@@ -4464,7 +4485,8 @@ class Daemon:
                     "operator": bool(_operator.active(self.session, team.name, name)) if member.get("kind") != "human" else False,
                     "brief": member.get("brief"),
                     "session": roster.short_session(member.get("session")),
-                    "context": rt.context,
+                    "manager": bool(member.get("manager")),
+                "context": rt.context,
                 })
             teams[team.name] = {"members": members, "pending": sum(len(p.seqs) for p in team.pending.values()), "watermark": team.watermark}
         return {

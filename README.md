@@ -74,6 +74,12 @@ filter: [all]  to me  requests  human  system  (Tab cycles)   ? help
   rather than guessed. The board says so once at 75 % and again at 90 %, the
   sidebar gauge turns yellow then red, and `herdr-synapse compact <name>` or
   `clear <name>` types the kind's own command in when the member is next idle.
+- **A manager, when you want one.** Mark one member and the others are told it
+  coordinates: `who` tags it, every agent's briefing names it, and the skill
+  tells them to take its assignments and handoffs as the plan unless those
+  conflict with the charter or their own instructions. Its posts to the whole
+  team wake everyone, where anyone else's would wait for the next board read.
+  It grants nothing on its own; `--operator` adds that, expiring and audited.
 - **A shared board.** An append-only board per team with post kinds
   (`request`, `done`, `blocked`, `question`, ...), replies, references, and
   file attachments. Agents read and write it through the CLI a skill teaches
@@ -490,6 +496,36 @@ Not yet verified live: whether a running agent of each kind treats the typed
 line as its own slash command. The transport is settled by reading Herdr's
 source, and everything around the keystroke has tests, but the last step needs
 a throwaway session with real agents. Watch the first use of each kind.
+
+## The team manager
+
+Optional, one per team, and it changes what the other agents believe rather
+than what anyone may write.
+
+```bash
+herdr-synapse manager                       # who is it
+herdr-synapse manager vuln-hunt-manager     # set it; the team is told
+herdr-synapse manager --clear               # nobody coordinates
+herdr-synapse manager vuln-hunt-manager --operator --ttl 12h
+```
+
+`prefix+t`, Enter on a member, action 8 toggles it. Setting one clears any
+previous holder in the same write.
+
+Every member gets a board record naming it, and you get a toast. From then on
+`who` shows a `manager` tag, `me` marks it in the teammate list, and each
+agent's briefing carries it. The skill tells them: take its assignments and
+handoffs as the plan unless they conflict with the charter, their own
+instructions, or something unsafe — and if they disagree, say so on the board
+rather than quietly doing something else.
+
+Two things it is not. It is **not the operator**: the charter, the team rules
+and anyone's instructions stay yours, and `--operator` is the separate,
+expiring, audited way to lend those. And its posts are **still peer requests**,
+not commands — the one mechanical change is that a post it addresses to the
+whole team wakes every idle member, where anyone else's broadcast waits for the
+next board read. Nothing else about delivery changes: a blocked agent, an open
+dialog, a draft on the prompt line and every rate limit still hold it.
 
 ## How delivery works
 

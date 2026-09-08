@@ -306,7 +306,7 @@ def run(layout: Layout, api: Any, env: Dict[str, str], actions: bool = True) -> 
 
 
 #: Member actions the tree can run while the popup stays open.
-ACTION_INTENTS = ("member_rename", "member_goal", "member_send_goal", "member_remove", "member_focus", "member_resume", "team_folder_set", "team_board_open")
+ACTION_INTENTS = ("member_rename", "member_goal", "member_send_goal", "member_remove", "member_focus", "member_resume", "member_manager", "team_folder_set", "team_board_open")
 #: ``remove`` and ``rename`` do several socket round trips plus a lock wait; the console's 20 s is too
 #: tight for them, and a timeout kills the CLI mid-change (M8 review).
 ACTION_TIMEOUT_S = 45.0
@@ -318,6 +318,7 @@ ACTION_LABELS = {
     "member_remove": "removing {member} from {team}",
     "member_focus": "going to {member}",
     "member_resume": "looking up the session of {member}",
+    "member_manager": "making {member} the team manager",
     "team_folder_set": "setting the folder for {team}",
     "team_board_open": "opening the {team} board",
 }
@@ -345,6 +346,8 @@ def action_args(intent: Any) -> List[str]:
         return ["--team", team, "brief", member]
     if intent.kind == "member_resume":
         return ["--team", team, "resume", member, "--print"]
+    if intent.kind == "member_manager":
+        return ["--team", team, "manager", "--clear"] if args.get("clear") else ["--team", team, "manager", member]
     return ["--team", team, "focus", member]
 
 
@@ -405,6 +408,11 @@ def action_success_status(intent: Any, out: Any) -> str:
     if intent.kind == "member_resume":
         command = (out or {}).get("command") if isinstance(out, dict) else None
         return "in a shell pane run: herdr-synapse resume {}  ({})".format(member, command or "no command")
+    if intent.kind == "member_manager":
+        if args.get("clear"):
+            return "{} is no longer the team manager; the team was told".format(member)
+        previous = (out or {}).get("previous") if isinstance(out, dict) else None
+        return "{} is the team manager{}; every member was told".format(member, " (was {})".format(previous) if previous else "")
     if intent.kind == "member_remove":
         kept = " (its Herdr agent name was kept)" if args.get("keep_name") else ""
         return "{} removed from {}{}".format(member, args.get("team"), kept)

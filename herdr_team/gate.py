@@ -338,6 +338,12 @@ class PendingWork:
     active_ms: Optional[float] = None  # target-active age of the oldest post
     interrupt: bool = False  # a teammate's ``post --interrupt`` is among the seqs
     interrupt_ok: bool = False  # the daemon allows it now: kind in ``interrupt_kinds``, sender not in cooldown
+    #: The team manager wrote one of these posts. It lifts gate 2's broadcast
+    #: hold and nothing else: a manager's plan for the whole team should not
+    #: wait a median 42 minutes for everyone to read the board on their own.
+    #: Deliberately not routed through ``urgent``, which would also bypass the
+    #: done-hold and the per-member interval.
+    from_manager: bool = False
 
 
 @dataclass
@@ -726,12 +732,13 @@ def evaluate(snapshot: MemberSnapshot, pending: PendingWork, now_ms: float, glob
     if pending.active_ms is not None and pending.active_ms >= cfg.post_ttl_ms:
         return hold(1, HOLD_EXPIRED, "active {:.0f} ms >= ttl {} ms".format(pending.active_ms, cfg.post_ttl_ms))
 
-    # 2. not self, not console, not human; needs a terminal; broadcasts only when urgent
+    # 2. not self, not console, not human; needs a terminal; broadcasts only when
+    #    urgent or from the team manager
     if pending.authors and all(author == snapshot.name for author in pending.authors):
         return hold(2, HOLD_SELF)
     if snapshot.kind == "human" or not snapshot.terminal_id:
         return hold(2, HOLD_NO_TERMINAL)
-    if pending.broadcast and not pending.urgent:
+    if pending.broadcast and not (pending.urgent or pending.from_manager):
         return hold(2, HOLD_BROADCAST)
     if snapshot.muted_until is not None and now_ms < snapshot.muted_until:
         return hold(2, HOLD_MUTED, "{:.0f} ms left".format(snapshot.muted_until - now_ms))

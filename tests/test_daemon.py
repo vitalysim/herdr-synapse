@@ -1567,7 +1567,7 @@ class GateConfigAndFollowUpTests(unittest.TestCase):
         # the gate itself refuses a spent follow-up: same snapshot, no schedule bypass
         snapshot = d._snapshot(team, team.member("alpha-reviewer"), d.agents["term_r1"], rt, d.now_ms(), pending)
         self.assertEqual((snapshot.last_nudge_cursor_seq, snapshot.follow_up_used), (first, True))
-        decision = D.gate_evaluate(snapshot, d._pending_work(pending, second), d.now_ms(), None, 0, config=team.gate_config)
+        decision = D.gate_evaluate(snapshot, d._pending_work(team, pending, second), d.now_ms(), None, 0, config=team.gate_config)
         self.assertEqual(decision.hold, gate.HOLD_INTERVAL)
 
 

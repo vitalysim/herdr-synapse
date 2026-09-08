@@ -155,8 +155,16 @@ def interrupt_text(name: str, seqs: Sequence[int], nonce: int, sender: str) -> s
     raise NudgeTextError("interrupt text exceeds {} chars".format(MAX_INTERRUPT_CHARS))
 
 
-def _teammate_list(teammates: List[Tuple[str, str]]) -> str:
-    parts = ["{} ({})".format(n, r) for n, r in teammates]
+def _teammate_list(teammates: List[Tuple[str, ...]]) -> str:
+    """``name (role)`` for each, with the team manager marked.
+
+    A third element in the tuple, when present and true, marks that teammate as
+    the manager. Peers need to know who is splitting the work; the manager
+    itself is not told here, because the "You are ..." clause has only 29
+    characters of slack at the worst legal name and role, and the board record
+    that names it reaches every kind anyway.
+    """
+    parts = ["{} ({}{})".format(t[0], t[1], ", manager" if len(t) > 2 and t[2] else "") for t in teammates]
     if not parts:
         return "only human so far"
     if len(parts) == 1:
@@ -178,12 +186,12 @@ def briefing_lines(name: str, role: str, team: str, charter_headline: Optional[s
     if not headline:
         headline = NO_CHARTER_HEADLINE
     headline = _cut(headline.rstrip("."), MAX_CHARTER_HEADLINE_CHARS)
-    others: List[Tuple[str, str]] = []
+    others: List[Tuple[str, ...]] = []
     for pair in teammates:
         peer_name, peer_role = pair[0], pair[1]
         if peer_name == safe_name or peer_name == "human":
             continue
-        others.append((validate_name(peer_name), _one_line(str(peer_role))))
+        others.append((validate_name(peer_name), _one_line(str(peer_role)), bool(len(pair) > 2 and pair[2])))
     tail = BRIEFING_TAIL.format(cli=DEFAULT_CLI)
     suffix = "" if cli == DEFAULT_CLI else " (CLI: {})".format(cli)
 

@@ -664,6 +664,8 @@ def render_who(
             tags.append("charter: stale")
         if member.get("instructions_stale"):
             tags.append("instructions: stale")
+        if member.get("manager"):
+            tags.append("manager")
         if member.get("operator"):
             tags.append("acts as operator")
         context_tag = context_label(member.get("context"))
@@ -726,8 +728,9 @@ def render_me(member: Dict[str, Any], team_doc: Dict[str, Any]) -> str:
     """Human ``me`` output from the ``me`` JSON (``member``) and the team document."""
     team = _safe_token(member.get("team") or team_doc.get("team"))
     lines = [
-        "you are {} ({}, {}) in team {}".format(
-            _safe_token(member.get("name"), 32), _safe_token(member.get("role"), 20), _safe_token(member.get("kind"), 20), team
+        "you are {} ({}, {}) in team {}{}".format(
+            _safe_token(member.get("name"), 32), _safe_token(member.get("role"), 20), _safe_token(member.get("kind"), 20), team,
+            "; you are the team manager" if member.get("manager") else "",
         )
     ]
     if member.get("pane_id") or member.get("terminal_id"):
@@ -759,8 +762,9 @@ def render_me(member: Dict[str, Any], team_doc: Dict[str, Any]) -> str:
     if teammates:
         lines.append("teammates:")
         for mate in teammates:
-            lines.append("  {} ({}, {}){}".format(
+            lines.append("  {} ({}, {}){}{}".format(
                 _safe_token(mate.get("name"), 32), _safe_token(mate.get("role"), 20), _safe_token(mate.get("kind"), 20),
+                " manager" if mate.get("manager") else "",
                 " " + _safe_token(mate.get("status"), 16) if mate.get("status") and mate.get("status") != "active" else "",
             ))
     else:

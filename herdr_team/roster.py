@@ -190,7 +190,7 @@ SYSTEM_EVENTS = (
     "member_restarted", "rotated", "reset_detected", "charter_updated", "renamed", "typed", "member_joined",
     "knowledge_updated", "instructions_updated", "instructions_edited", "knowledge_finding",
     "artifacts_changed", "project_set", "operator_granted", "operator_revoked",
-    "context_high", "context_cleared", "context_compacted", "workdir_moved",
+    "context_high", "context_cleared", "context_compacted", "workdir_moved", "manager_changed",
 )
 
 _SAVE_RETRIES = 3
@@ -384,6 +384,11 @@ class Member:
     instructions_seq: int = 0
     instructions_seq_acked: Optional[int] = None
     rules_seq_acked: Optional[int] = None
+    #: The optional team manager. At most one member of a team holds it, which
+    #: the setter enforces rather than the schema. A boolean on the member and
+    #: not a name in ``Team.config`` on purpose: a rename carries it and a
+    #: removal drops it, so there is no stale name to clean up anywhere.
+    manager: bool = False
     previous_names: List[Dict[str, Any]] = field(default_factory=list)
 
     @property
@@ -416,6 +421,7 @@ class Member:
             "instructions_seq": int(self.instructions_seq or 0),
             "instructions_seq_acked": self.instructions_seq_acked,
             "rules_seq_acked": self.rules_seq_acked,
+            "manager": bool(self.manager),
         }
         if self.previous_names:
             obj["previous_names"] = [dict(p) for p in self.previous_names]
@@ -457,6 +463,7 @@ class Member:
             instructions_seq=int(obj.get("instructions_seq") or 0),
             instructions_seq_acked=obj.get("instructions_seq_acked"),
             rules_seq_acked=obj.get("rules_seq_acked"),
+            manager=bool(obj.get("manager", False)),
             previous_names=[dict(p) for p in previous if isinstance(p, dict)],
         )
 
@@ -564,6 +571,13 @@ class Team:
 
     def holders(self, role: str) -> List[Member]:
         return [m for m in self.members if m.role == role and m.status != "left"]
+
+    def manager(self) -> Optional[Member]:
+        """The team's manager, when one is designated and still on the team."""
+        for member in self.members:
+            if member.manager and member.status != "left" and not member.is_human:
+                return member
+        return None
 
     def agents(self) -> List[Member]:
         """Non-human members that have not left."""
@@ -1456,6 +1470,7 @@ def build_who_json(
                 "unread": int(((unread or {}).get(team_name) or {}).get(member.name, 0)),
                 "brief": member.brief,
                 "session": short_session(member.session),
+                "manager": bool(member.manager),
                 "context": None,  # only the notifier reads harness files; see herdr_team.context
                 "live_name": (live or {}).get("name") if live else None,
                 "focused": bool((live or {}).get("focused")) if live else False,

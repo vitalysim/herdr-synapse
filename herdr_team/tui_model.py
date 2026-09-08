@@ -562,6 +562,8 @@ def roster_line(
             fields.append("gone {}".format(age))
         else:
             fields.append(roster_status.replace("_", " "))
+    if member.get("manager"):
+        fields.append("manager")
     if member.get("briefed") is False and member.get("kind") != "human":
         fields.append("unbriefed")
     if member.get("charter_stale"):
@@ -2369,6 +2371,7 @@ def tree_member(member: Dict[str, Any], charter: Optional[Dict[str, Any]] = None
         "workspace_id": member.get("workspace_id"),
         "last_seen_at": member.get("last_seen_at"),
         "briefed": member.get("briefed_at") is not None,
+        "manager": bool(member.get("manager")),
         "agent_status": None,
     }
     if isinstance(charter, dict) and charter.get("seq") is not None:
@@ -3115,7 +3118,15 @@ ACTION_OPTIONS = (
     ("remove_keep", "remove it from {team}, keep its Herdr agent name"),
     ("focus", "go to its pane (closes this popup)"),
     ("resume", "show the command that reopens its own session (herdr-synapse resume)"),
+    ("manager", "make it the team manager"),
 )
+
+
+def action_label(action: str, member: Optional[Dict[str, Any]]) -> Optional[str]:
+    """A label that depends on the member, or None to use the static one."""
+    if action == "manager" and member is not None and member.get("manager"):
+        return "it is the team manager (this clears that)"
+    return None
 
 
 def action_member(model: PickerModel) -> Optional[Dict[str, Any]]:
@@ -3174,6 +3185,10 @@ def _start_action(model: PickerModel, action: str) -> Optional[Intent]:
         return Intent("member_send_goal", dict(base))
     if action == "resume":
         return Intent("member_resume", dict(base))
+    if action == "manager":
+        # A toggle: the same row sets it and clears it, so the operator never
+        # has to remember which of two commands they want.
+        return Intent("member_manager", dict(base, clear=bool(member.get("manager"))))
     if action in ("remove", "remove_keep"):
         intent = Intent("member_remove", dict(base, keep_name=action == "remove_keep"))
         model.pending_action = intent
