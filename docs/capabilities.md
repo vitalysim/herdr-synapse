@@ -36,6 +36,8 @@ holds `daemon.json`, `daemon.log`, `who.json`, `kinds.json`, `view.json`,
 | Add agents to an existing team | picker: select the agents, Enter; when teams exist a numbered choice follows (`1  add it to team <t>  (N members)`, last number `create a new team`; type the number or move with the arrows); adding skips the charter stage, asks role, name, and brief per agent, and confirms with `Add N agents to team <t>?`; every other member is nudged with a `member_joined` record and the newcomer is briefed. A kind that is not trusted yet (`kinds list`) is flagged on the confirm screen and by `add` (`kind_trusted: false`, a warning): nothing is typed into it until `herdr-synapse kinds trust <kind>` | `herdr-synapse add <team> <pane\|name> [--role <r>] [--as <name>] [--brief "…"]`, one per agent; each new member is briefed once idle |
 | Create from scratch | | `create <team> --new [--workspace ID] --spawn <role>:<kind>[:<cwd>] … [--model <role\|kind>=<model>[@<effort>]] …` lays out the panes and starts the agents with their model and effort flags (section 5e) |
 | Add a member later | | `add <team> <pane\|name> [--role r] [--as name] [--brief TEXT] [--rename] [--steal] [--model <setting>]` |
+| Link two teams through their managers | picker: `c` on a team row (Enter links or breaks; a team with no manager is refused with the reason); console `/link`, `/unlink`, `/links` | `link <team> <other> [--note]`, `unlink`, `links [--all]` (section 5f) |
+| Post to a linked team | console `/team <other> text`, `@team:` in the mention menu | `post --to team:<other>` (the manager, the operator, or a delegate) |
 | Model and effort per member | picker: a fourth prompt per agent (after role, name, brief) when creating or adding, and member action `9` afterwards; console `/model <name> <setting> [--restart]` | `models set <kind> <setting>` (team default), `model <member> <setting> [--apply live\|next\|restart] [--self]`; `who`/`me` show it (section 5e) |
 | See who is on which team | `prefix+t`: teams with their agents underneath, then the agents in no team; Enter folds a team, `↑↓`/PgUp/PgDn move, the list scrolls | `who`, `teams` |
 | Manage one member | `prefix+t`, Enter on a member: a numbered menu with rename, change its goal, send the goal now, remove it (with or without keeping its Herdr agent name), and go to its pane. Rename and goal are pre-filled and validated before anything is written; remove asks `y` (Enter is deliberately not yes). A member whose agent is missing or unsettled refuses rename, send and focus, because its pane is stale | `rename`, `brief <name> --set`, `brief <name>`, `remove`, `focus` |
@@ -629,6 +631,26 @@ origin (as `compact`), so a popup or an outside shell can record and
 **Seeing it:** `who` tags `model opus@medium` and, when the harness reports
 something else, `runs claude-sonnet-5`; `model` with no arguments is the table
 with sources; `me`, `orient`, and the session briefing name the member's own.
+
+## 5f. Teams talking to teams (0.15.0)
+
+A **link** joins two teams of the same session; their **managers** are the
+endpoints. A message across it is an ordinary board record that lives on both
+boards — the delivered copy on the receiving board, addressed to its manager
+and signed `<team>/<manager>`, and a mirror on the sending board addressed to
+`team:<other>` — so nudging, `board --new`, the Claude prompt hook and the
+console all work unchanged. Replies thread across by message id; the receiving
+notifier sends a `link_read` receipt back, shown as `read by <manager>`.
+
+Who may speak: the team manager, the operator, a delegate. Who may read: as
+always, anyone on either team. Linking and sending both need managers on both
+ends; a manager cleared later pauses the link (`links` says which team to fix).
+Dissolving a team breaks its links and tells the other side. Two Herdr servers
+do not link.
+
+In the teams view every manager is marked `★` in bold; team headers carry
+`manager: <name>` and `⇄ <other>`; `c` opens the chooser. In the console
+`/filter teams` is the inter-team lens and `/filter team` the local one.
 
 ## 6a. Context windows
 

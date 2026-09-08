@@ -53,6 +53,7 @@ from herdr_team import PLUGIN_ID, VERSION, gate, nudge, render, roster, sanitize
 from herdr_team import charter as _charter
 from herdr_team import identity as _identity
 from herdr_team import launch as _launch
+from herdr_team import links as _links
 from herdr_team import models as _models
 from herdr_team import context as _context
 from herdr_team import operator as _operator
@@ -132,6 +133,9 @@ CONTROL_DROP_RATIO = 0.7
 #: Claude answers each at once, but a second line typed on top of the first
 #: would land while the first is still being read.
 CONTROL_LINE_GAP_S = 1.0
+#: How often a team's manager cursor is checked against the messages another
+#: team's manager sent it, so the sender's console can show ``read by``.
+LINK_RECEIPT_POLL_S = 5.0
 #: A restart (``model --apply restart``) exits the agent and resumes its
 #: session with new flags. These bound each half so a member cannot sit in
 #: limbo: the exit keystroke must empty the pane, and the resumed agent must
@@ -161,6 +165,9 @@ SYSTEM_EVENT_DELIVERY: Dict[str, Dict[str, Any]] = {
     "manager_changed": {"wake": "all", "toast": True},
     "context_high": {"wake": "named"},
     "model_changed": {"wake": "named"},
+    "link_established": {"wake": "named"},
+    "link_broken": {"wake": "named"},
+    "link_read": {},  # a receipt for the sending console; nobody is woken
 }
 URGENT_SYSTEM_EVENTS = tuple(e for e, d in SYSTEM_EVENT_DELIVERY.items() if d.get("wake") == "all")
 NAMED_SYSTEM_EVENTS = tuple(e for e, d in SYSTEM_EVENT_DELIVERY.items() if d.get("wake") == "named")
@@ -1248,6 +1255,10 @@ class TeamState:
     open_asks: Dict[int, Dict[str, Any]] = field(default_factory=dict)
     #: ``(mtime, seqs)`` of ``dismissed-asks.json`` at the last read.
     dismissed_cache: Optional[Tuple[Optional[float], List[int]]] = None
+    #: Messages delivered here across a link and not yet read by this team's
+    #: manager, by seq; ``_track_link`` fills it, ``poll_link_receipts`` drains it.
+    link_inbox: Dict[int, Dict[str, Any]] = field(default_factory=dict)
+    link_receipt_ms: Optional[float] = None
     #: Last seen ``artifacts/`` fingerprint, or None before the first scan (which only seeds it).
     artifacts_seen: Optional[Dict[str, Tuple[int, int, int]]] = None
     #: When that scan last ran; the walk is throttled to ``ARTIFACTS_POLL_S``.
@@ -1780,6 +1791,7 @@ class Daemon:
         self._phase("poll_context", lambda: self.poll_all_context(now))
         self._phase("asks", lambda: self.raise_asks(now))
         self._phase("sweep_unread", lambda: self.sweep_all_unread(now))
+        self._phase("link_receipts", lambda: self.poll_link_receipts(now))
         self._phase("board_snapshot", lambda: self.snapshot_all_boards(now))
         self._phase("evaluate_pending", self.evaluate_pending)
         self._phase("heartbeat", lambda: self.heartbeat_if_due(now))
@@ -2106,6 +2118,7 @@ class Daemon:
         team.tailer = store.BoardTailer(team.paths, start_seq=min(cursors) if cursors else 0)
         team.watermark = team.tailer.watermark_seq
         self._seed_open_asks(team)
+        self._seed_link_inbox(team)
         self._rebuild_pending(team)
 
     def _seed_open_asks(self, team: TeamState) -> None:
@@ -2817,6 +2830,7 @@ class Daemon:
                 team.name, seq, author, json.dumps(rec.get("origin"), ensure_ascii=False)[:120]))
             return
         self._track_ask(team, rec)
+        self._track_link(team, rec)
         if author == "system":
             event = rec.get("event")
             if event in TOAST_SYSTEM_EVENTS and "human" in [t for t in (rec.get("to") or []) if isinstance(t, str)]:
@@ -2909,6 +2923,54 @@ class Daemon:
         retracts = rec.get("retracts")
         if isinstance(retracts, int) and not isinstance(retracts, bool):
             team.open_asks.pop(retracts, None)
+
+    def _track_link(self, team: TeamState, rec: Dict[str, Any]) -> None:
+        """A copy delivered here across a link waits for this team's manager to read it."""
+        link = rec.get("link")
+        seq = rec.get("seq")
+        if isinstance(link, dict) and not link.get("mirror") and link.get("from_team") not in (None, team.name) and isinstance(seq, int):
+            team.link_inbox[seq] = rec
+            while len(team.link_inbox) > OPEN_ASKS_MAX:
+                team.link_inbox.pop(min(team.link_inbox))
+
+    def _seed_link_inbox(self, team: TeamState) -> None:
+        """Delivered copies the manager has not read yet, from one bounded read at start."""
+        manager = team.manager_name()
+        cursor = read_cursor_seq(team.paths, manager) if manager else 0
+        try:
+            records = store.BoardStore(team.paths).read(last=OPEN_ASKS_MAX, include_retracted=False)
+        except HerdrTeamError:
+            return
+        team.link_inbox = {}
+        for rec in records:
+            if isinstance(rec.get("seq"), int) and rec["seq"] > cursor:
+                self._track_link(team, rec)
+
+    def poll_link_receipts(self, now: float) -> None:
+        """Tell the sending team's board when this team's manager has read a linked message."""
+        for team in list(self.teams.values()):
+            if not team.link_inbox:
+                continue
+            if team.link_receipt_ms is not None and now - team.link_receipt_ms < LINK_RECEIPT_POLL_S * 1000.0:
+                continue
+            team.link_receipt_ms = now
+            manager = team.manager_name()
+            if not manager:
+                continue
+            try:
+                cursor = read_cursor_seq(team.paths, manager)
+            except (HerdrTeamError, OSError):
+                continue
+            for seq in sorted(team.link_inbox):
+                if seq > cursor:
+                    break
+                rec = team.link_inbox.pop(seq)
+                link = rec.get("link") or {}
+                origin = self.teams.get(str(link.get("from_team") or ""))
+                if origin is None:
+                    continue  # the sender was dissolved; nobody to tell
+                self._append_system(origin, "link_read", "{} ({}) read the message to it (their #{})".format(manager, team.name, seq),
+                                    ["team:" + team.name], {"link_id": link.get("id"), "reader": manager, "reader_team": team.name, "read_seq": seq})
 
     def _requeue_deferred(self, team: TeamState, name: str, brief: Pending, cursor: int, now: float) -> None:
         """Posts that arrived while ``brief`` was pending become a nudge once the member is past the briefing."""
@@ -4822,7 +4884,11 @@ class Daemon:
                     "restarting": isinstance(rt.restart, dict),
                 "context": rt.context,
                 })
-            teams[team.name] = {"members": members, "pending": sum(len(p.seqs) for p in team.pending.values()), "watermark": team.watermark}
+            try:
+                links = _links.summary(self.session, team.name)
+            except (HerdrTeamError, OSError):
+                links = []
+            teams[team.name] = {"members": members, "pending": sum(len(p.seqs) for p in team.pending.values()), "watermark": team.watermark, "links": links}
         return {
             "v": 1,
             "daemon_beat_at": now_iso(),

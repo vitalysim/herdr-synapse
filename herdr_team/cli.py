@@ -42,6 +42,7 @@ COMMAND_MODULES: Tuple[str, ...] = (
     "herdr_team.cmd_asks",
     "herdr_team.cmd_knowledge",
     "herdr_team.cmd_models",
+    "herdr_team.cmd_links",
 )
 
 

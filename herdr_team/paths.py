@@ -622,6 +622,15 @@ class SessionPaths:
         return self.root / "operators.json"
 
     @property
+    def links_json(self) -> Path:
+        """Which teams may talk to each other through their managers (``herdr_team.links``)."""
+        return self.root / "links.json"
+
+    @property
+    def links_lock(self) -> Path:
+        return self.root / "links.lock"
+
+    @property
     def panes_dir(self) -> Path:
         return self.root / "panes"
 
@@ -658,6 +667,12 @@ class SessionPaths:
 
     def directories(self) -> List[Path]:
         return [self.root, self.panes_dir, self.teams_dir, self.archive_dir]
+
+
+def session_of_team(team: TeamPaths) -> SessionPaths:
+    """The session a team directory belongs to (``<session>/teams/<team>``)."""
+    root = team.root.parent.parent
+    return SessionPaths(root, root.name)
 
 
 def session_paths(state_root: Path, slug: str) -> SessionPaths:

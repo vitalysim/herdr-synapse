@@ -287,7 +287,7 @@ def watch_paths(layout: Layout, team: str) -> List[Any]:
     team_paths = layout.team(team)
     paths: List[Any] = [
         team_paths.board_jsonl, team_paths.team_json, team_paths.mute_json, team_paths.audit_jsonl,
-        layout.session.who_json, layout.session.console_json, layout.session.view_json, layout.session.daemon_json,
+        layout.session.who_json, layout.session.console_json, layout.session.view_json, layout.session.daemon_json, layout.session.links_json,
     ]
     try:
         paths.extend(sorted(team_paths.cursors_dir.iterdir()))
@@ -349,7 +349,21 @@ def build_model(layout: Layout, team: str, state: Optional[ConsoleState] = None,
     )
     # ``@@`` searches the members' project directories (the roster's cwd), not the console's own cwd.
     model.file_roots = tui_model.member_file_roots(roster_members)
+    model.links = team_links(layout, team, who)
     return model
+
+
+def team_links(layout: Layout, team: str, who: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    """This team's active links: ``who.json`` when the notifier wrote them, the registry otherwise."""
+    rows = (((who or {}).get("teams") or {}).get(team) or {}).get("links") if isinstance(who, dict) else None
+    if isinstance(rows, list):
+        return [dict(r) for r in rows if isinstance(r, dict)]
+    from herdr_team import links as _links
+
+    try:
+        return _links.summary(layout.session, team)
+    except (HerdrTeamError, OSError):
+        return []
 
 
 def refresh(model: ConsoleModel, layout: Layout, state: Optional[ConsoleState] = None) -> None:
@@ -372,6 +386,7 @@ def refresh(model: ConsoleModel, layout: Layout, state: Optional[ConsoleState] =
     model.roster_lines = fresh.roster_lines
     model.feed = fresh.feed
     model.members = fresh.members
+    model.links = fresh.links
     model.human_label = fresh.human_label
     model.file_roots = fresh.file_roots
     if model.watching_say:
@@ -609,6 +624,28 @@ def execute_intent(intent: Intent, model: ConsoleModel, state: ConsoleState, api
         else:
             typed = (out or {}).get("keystroke") if isinstance(out, dict) else None
             model.status = "{} queued for {}; the notifier types {} when it is idle".format(kind, member, typed or kind)
+        return True
+    if kind == "links":
+        rc, out, err = run_cli(["--team", team, "links"], env)
+        rows = [r for r in ((out or {}).get("links") or []) if isinstance(r, dict) and team in (r.get("teams") or [])] if isinstance(out, dict) else []
+        if err:
+            model.status = "links failed: {}".format(err.get("message") or err.get("code"))
+        elif not rows:
+            model.status = "{} is linked to no other team; /link <other-team> connects them through their managers".format(team)
+        else:
+            model.status = "links: " + "; ".join("{} ({}, manager {})".format(
+                [t for t in r["teams"] if t != team][0], r.get("state"), (r.get("managers") or {}).get([t for t in r["teams"] if t != team][0]) or "none") for r in rows)
+        return True
+    if kind in ("link", "unlink"):
+        other = str(intent.args.get("other"))
+        rc, out, err = run_cli(["--team", team, kind, team, other], env)
+        if err:
+            model.status = "{} failed: {}".format(kind, err.get("message") or err.get("code"))
+        elif kind == "link":
+            managers = (out or {}).get("managers") or {} if isinstance(out, dict) else {}
+            model.status = "{} <-> {} linked; managers {} and {} were told (post with /team {} <text>)".format(team, other, managers.get(team), managers.get(other), other)
+        else:
+            model.status = "{} <-> {} unlinked; both managers were told".format(team, other)
         return True
     if kind == "model_set":
         member = str(intent.args.get("member"))
@@ -890,6 +927,8 @@ def style_attr(style: str, members: List[Dict[str, Any]], has_colors: bool) -> i
         return pair(MEMBER_PALETTE[slot % len(MEMBER_PALETTE)])
     if style == tui_model.STYLE_HUMAN:
         return curses.A_BOLD
+    if style == tui_model.STYLE_MANAGER:
+        return pair("yellow") | curses.A_BOLD
     if style == tui_model.STYLE_SYSTEM or style == tui_model.STYLE_DIM:
         return curses.A_DIM
     if style == tui_model.STYLE_WARNING:

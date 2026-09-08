@@ -29,6 +29,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from herdr_team import SKILL_VERSION, VERSION
 from herdr_team import api as _api
 from herdr_team import models as _models
+from herdr_team import links as _links
 from herdr_team import charter as _charter
 from herdr_team import cli as _cli
 from herdr_team import daemon as _daemon
@@ -1283,6 +1284,17 @@ def _run_dissolve(args: argparse.Namespace) -> int:
             return emit(args, {"team": team_name, "dissolved": False}, "{} was not dissolved".format(team_name))
     check_write_session(args, layout, team_name)
     result = _roster.Roster(layout, team_name).dissolve(api)
+    # A dissolved team has no manager to speak for it: its links break, and
+    # the other side is told why posts to team:<this> will now be refused.
+    broken_links: List[str] = []
+    for link in _links.break_all_for(layout.session, team_name, author.name):
+        other = link.other(team_name)
+        broken_links.append(other)
+        try:
+            _roster.append_system_record(layout.team(other), "link_broken", "{} was dissolved, so its link to {} is broken".format(team_name, other),
+                                         to=[m for m in (_links.manager_of(layout.session, other),) if m] + ["all"], extra={"link": link.id, "other_team": team_name, "why": "dissolved"}, socket=os.fspath(layout.socket))
+        except HerdrTeamError:
+            pass
     view_cleared = False
     view_kept: List[str] = []
     if view_state(layout.session) == "on":
@@ -1317,7 +1329,7 @@ def _run_dissolve(args: argparse.Namespace) -> int:
         if len(remaining) == 1:
             console["default_team"] = remaining[0]
         write_console_json(layout.session, console)
-    payload = {"team": team_name, "archived_to": result["archived_to"], "members_cleared": result["members_cleared"], "view_cleared": view_cleared, "view_kept": view_kept}
+    payload = {"team": team_name, "archived_to": result["archived_to"], "members_cleared": result["members_cleared"], "view_cleared": view_cleared, "view_kept": view_kept, "links_broken": broken_links}
     return emit(args, payload, "team {} archived to {}".format(team_name, result["archived_to"]))
 
 
@@ -1475,6 +1487,7 @@ def _run_me(args: argparse.Namespace) -> int:
     model_src, effort_src = _models.source_of(doc.get("config"), me)
     payload.update({"model": own_model, "effort": own_effort, "setting": _models.label(own_model, own_effort),
                     "model_source": model_src, "effort_source": effort_src})
+    payload["links"] = _links.summary(layout.session, team_name)
     # The team folder is how an agent differentiated only by a file finds that
     # file. Both paths are absolute so a member outside the project can read them.
     project = _workdir.project_dir_of(doc)

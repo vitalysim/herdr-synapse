@@ -1108,6 +1108,66 @@ setting, a write.
 
 JSON (write): `{"team","member","kind","model","effort","setting","apply","by","job","record_seq","control"}`.
 
+## 9d. Links between teams
+
+Two teams of the same session may talk through their **managers**. The link is
+a session-level fact in `sessions/<slug>/links.json` (`herdr_team/links.py`):
+`{"links": [{"id": "<a>--<b>", "teams": [a, b], "status": "active"|"broken",
+"created_at", "created_by", "broken_at", "note", "history"}]}`; the teams are
+sorted, so a pair has one id. Cross-session links are out of scope.
+
+### `link <team> <other-team> [--note TEXT]` (human only)
+
+Both teams must exist and both must have a manager (`link_no_manager`, 1,
+naming the team). Creates or re-activates the link, audits `link_set` on both
+teams, and appends `link_established` to both boards `[manager, all]`
+(`wake: named`) with `other_team`, `other_manager` and the command to post.
+Idempotent: an active link reports `created: false` and announces nothing.
+
+### `unlink <team> <other-team>` (human only)
+
+Marks the link `broken` (kept for history), audits `link_broken`, appends
+`link_broken` to both boards. `link_missing` / `link_broken` (1) when there is
+nothing to break.
+
+### `links [--all]`
+
+Every active link with its state — `active`, `paused: <team> has no manager`
+(a manager was cleared after linking; sends refuse until one is set), or
+`broken` with `--all` — and both managers.
+
+### `post --to team:<other>`
+
+The recipient token resolves when an active link exists and both endpoints
+have a manager (`link_missing`, `link_broken`, `link_no_manager`). Authority:
+this team's manager, the operator, or a delegate; a plain member is refused
+(`author_mismatch`) and pointed at its manager. It goes alone (no other
+recipients) and without `--interrupt`, `--spill`, `--attach`, `--file`; `--ref`
+paths travel as text. Two records are written, each under its own team lock in
+team-name order:
+
+- the **delivered copy** on the other board: `to: [<their manager>]`,
+  `from_team: <this team>`, `link: {id, from_team, to_team, reply_to_id}`;
+- the **mirror** on this board: `to: ["team:<other>"]`, `link: {..., "mirror": true}`.
+
+`--reply-to <local seq>` on a link record carries `reply_to_id`; the delivered
+copy's `reply_to` is resolved to the other board's local seq by a bounded read
+(`LINK_THREAD_LOOKBACK`). JSON adds `link: {id, other_team, other_manager,
+delivered_seq, mirror_seq, reply_to_id}`. `--wait` is a usage error here (only
+`human` answers a wait).
+
+### Receipts and lenses
+
+The receiving notifier watches its manager's read position; when it passes a
+delivered copy it appends `link_read` to the **sending** board (`to:
+["team:<reader's team>"]`, `link_id`, `reader`, `read_seq`), which nudges
+nobody and shows as `read by <manager>` on the mirror in the console.
+`board --teams` and the console's `/filter teams` select link records;
+`/filter team` excludes them. `me` lists `links`; the session briefing tells a
+manager how to post to each linked team, and everyone else that only the
+manager speaks across it. `dissolve` breaks the team's links and tells the
+other side.
+
 ## 9b. Human in the loop
 
 An agent addressing the operator is the only thing on the board that needs a

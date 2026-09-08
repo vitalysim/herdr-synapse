@@ -123,6 +123,11 @@ filter: [all]  to me  requests  human  system  (Tab cycles)   ? help
   and grants — is taken from an origin Herdr can vouch for, never from a name:
   a process inside an agent's pane is that agent whatever its environment
   claims.
+- **Teams that talk to each other.** Link two teams and their managers can
+  post to one another (`post --to team:<other>`, `/team` in the console); the
+  message lands on both boards, the receiving manager is nudged, replies
+  thread across, and a read receipt comes back. `/filter teams` is the
+  inter-team lens; `prefix+t` marks managers with `★` and links teams with `c`.
 - **A model and an effort per member.** Say `opus@medium` for one agent and
   `gpt-5.6-luna@high` for another when you create the team, or change it later
   — the operator for anyone, the manager for anyone, an agent for itself.

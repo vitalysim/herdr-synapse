@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.15.0 (2026-09-08)
+
+- **Teams talk to each other, through their managers.** `herdr-synapse link <team> <other-team>` connects two teams of the same session; both need a manager, because the managers are the endpoints. Either manager posts to the other with `post --to team:<other>` (console: `/team <other> text`), and the operator may too. A plain member is told to ask its manager. `unlink` breaks it; `links` shows every link and its state.
+- **A message across a link lives on both boards.** The receiving board gets the delivered copy, addressed to that team's manager and signed `<team>/<manager>`, so every existing path just works: the manager is nudged through the ordinary gates, `board --new` shows it, the Claude prompt hook injects it with a line saying a peer team is asking. The sending board keeps a mirror addressed to `team:<other>`, which nudges nobody but lets the team see what its manager said outward. Replies thread across the two boards by message id, so `re#N` is right on both sides.
+- **Read receipts cross the link.** When the receiving manager's read position passes a delivered copy, its notifier writes a `link_read` receipt onto the sending board, and the sender's console shows `read by <manager>` on the mirror.
+- **One feed, two lenses.** `/filter teams` shows only what crossed a link, `/filter team` everything else; `board --teams` is the same on the CLI. Link lines carry a `⇄` and the sender's team.
+- **The teams view (`prefix+t`)** marks each manager with `★` in bold, shows `manager: <name>` and `⇄ <other>` on every team header (with `paused: <team> has no manager` when an endpoint is missing), and gains `c` on a team row: a chooser of the other teams where Enter links or breaks, and a team without a manager says so instead. Everything links must know is in `who.json`, so the console, the picker and `me` read one source.
+- Announcements go to both managers when a link is made or broken; dissolving a team breaks its links and tells the other side. Skill v10 tells agents that `team:` is for managers and that a linked team's manager is a peer asking, never the operator.
+- Session-scoped by design: both teams live under one Herdr server. Two servers do not link.
+
 ## 0.14.1 (2026-09-08)
 
 - The `prefix+t` team menu asks for each agent's model and effort when a team is created or agents are added — a fourth prompt after role, name and brief, validated against that agent's kind, Enter keeps the harness default. The confirm screen shows it, and `create`/`add` record it on the member.

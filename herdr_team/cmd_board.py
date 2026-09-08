@@ -30,6 +30,7 @@ from herdr_team import charter as _charter
 from herdr_team import daemon as _daemon
 from herdr_team import gate as _gate
 from herdr_team import identity as _identity
+from herdr_team import links as _links
 from herdr_team import paths as _paths
 from herdr_team import render as _render
 from herdr_team import roster as _roster
@@ -75,6 +76,7 @@ SYSTEM_EVENTS = (
     "artifacts_changed", "project_set", "operator_granted", "operator_revoked",
     "context_high", "context_cleared", "context_compacted", "workdir_moved", "manager_changed",
     "model_changed", "model_applied", "restart_failed",
+    "link_established", "link_broken", "link_read",
 )
 HUMAN_VIAS = (VIA_CONSOLE, VIA_CONSOLE_UNFOCUSED, VIA_POPUP, VIA_OUTSIDE)
 #: ``say`` (docs/cli.md section 7): only the verified team console may type into a member. A shell pane is
@@ -1068,6 +1070,11 @@ def resolve_recipients(doc: Dict[str, Any], to_args: Optional[List[str]], author
             target = holders
         elif entry == "me":
             target = [author.name] if author.is_member else [AUTHOR_HUMAN]
+        elif _links.is_team_recipient(entry):
+            # Another team, through the link between them. Kept as the token;
+            # ``_run_post`` checks the link and writes the delivered copy.
+            _links.team_of_recipient(entry)
+            target = [entry]
         else:
             member = find_member(doc, entry)
             if member is not None and member.get("kind") != "human":
@@ -1171,7 +1178,13 @@ def _run_post(args: argparse.Namespace) -> int:
     if args.name and not author.verified and author.is_human:
         warn(args, "--name ignored: author is not verified")
     to, to_role = resolve_recipients(doc, args.to, author, args.to_any)
+    link_target = next((t for t in to if _links.is_team_recipient(t)), None)
     interrupt = bool(getattr(args, "interrupt", False))
+    if link_target is not None:
+        if len(to) != 1:
+            raise UsageError("a team recipient goes alone: --to team:<name>")
+        if interrupt or args.spill or args.attach or getattr(args, "file", None):
+            raise UsageError("--interrupt, --spill, --attach and --file do not cross a link; put a path in --ref instead")
     if interrupt:
         check_interrupt(team, doc, author, to)
     urgent = bool(args.urgent or interrupt)
@@ -1189,6 +1202,8 @@ def _run_post(args: argparse.Namespace) -> int:
     if interrupt:
         record["interrupt"] = True
     timeout_s = _wait_seconds(args, doc, to, author)  # before the append: a usage error must leave nothing on the board
+    if link_target is not None:
+        return _post_across_link(args, layout, author, team_name, team, doc, record, link_target, reply_to)
 
     try:
         seq = board_append(team, record, spill_text=body, attachments=staged)
@@ -1222,6 +1237,74 @@ def _run_post(args: argparse.Namespace) -> int:
         payload["answer"] = {"seq": answer.get("seq"), "from": answer.get("from"), "text": answer.get("text")}
         return emit(args, payload, "#{} answered by {}: {}".format(seq, answer.get("from"), _one_line_text(answer.get("text"))))
     return emit(args, payload, "#{} posted to {} as {} (notifier {}){}".format(seq, ",".join(to), author.name, notifier, " (interrupt)" if interrupt else ""))
+
+
+LINK_THREAD_LOOKBACK = 400
+
+
+def _post_across_link(args: argparse.Namespace, layout: Layout, author: Author, team_name: str, team: TeamPaths, doc: Dict[str, Any],
+                      record: Dict[str, Any], link_target: str, reply_to: Optional[int]) -> int:
+    """One message, two boards: the delivered copy for the other team's manager, the mirror for this team.
+
+    Authority is the team manager, the operator, or a delegate; a plain member
+    is pointed at its manager. Both appends take their own team lock in turn
+    (``board_append`` never nests), so two managers posting to each other at
+    once cannot deadlock.
+    """
+    other = _links.team_of_recipient(link_target)
+    if other == team_name:
+        raise UsageError("that is this team; a link is to another team")
+    link, mine, theirs = _links.require_endpoint(layout.session, team_name, other)
+    if not (author.trusted_human or getattr(author, "operator", False) or (author.is_member and author.name == mine)):
+        _identity.audit(layout, team_name, "author_mismatch", author, {"action": "post --to team:", "other": other, "manager": mine})
+        raise HerdrTeamError(
+            "author_mismatch",
+            "only the manager speaks for the team across a link; post to {} and ask it to relay".format(mine),
+            EXIT_REFUSED, {"manager": mine, "other": other, "author": author.name},
+        )
+    other_paths = layout.team(other)
+    message = {"id": _links.new_message_id(), "from_team": team_name, "to_team": other, "reply_to_id": None}
+    remote_reply: Optional[int] = None
+    if reply_to is not None:
+        local = board_get(team, reply_to)
+        local_link = (local or {}).get("link") if isinstance(local, dict) else None
+        if isinstance(local_link, dict) and isinstance(local_link.get("id"), str):
+            message["reply_to_id"] = local_link["id"]
+            remote_reply = _seq_of_link_message(other_paths, local_link["id"])
+    delivered = dict(record)
+    delivered.update({"to": [theirs], "to_role": None, "from_team": team_name, "reply_to": remote_reply, "link": dict(message)})
+    mirror = dict(record)
+    mirror.update({"to": [link_target], "to_role": None, "from_team": team_name, "link": dict(message, mirror=True)})
+    # In team-name order, so every writer takes the two locks the same way round.
+    order = sorted(((team_name, team, mirror), (other, other_paths, delivered)), key=lambda item: item[0])
+    seqs: Dict[str, int] = {}
+    for name, paths, rec in order:
+        seqs[name] = board_append(paths, rec)
+    _identity.audit(layout, team_name, "link_post", author, {"link": link.id, "message": message["id"], "other": other, "seqs": seqs})
+    notifier = notifier_state(layout.session)
+    if notifier == "offline":
+        warn(args, "notifier offline: {}'s manager is nudged once the daemon runs (herdr-synapse daemon start)".format(other))
+    payload = {
+        "seq": seqs[team_name], "team": team_name, "notifier": notifier, "to": [link_target], "to_role": None, "kind": args.kind,
+        "author": {"name": author.name, "via": author.via, "verified": bool(author.verified)},
+        "spilled": False, "attached": [], "refs": list(record.get("refs") or []), "urgent": bool(record.get("urgent")), "interrupt": False,
+        "waited": False, "answer": None,
+        "link": {"id": message["id"], "other_team": other, "other_manager": theirs, "delivered_seq": seqs[other], "mirror_seq": seqs[team_name], "reply_to_id": message["reply_to_id"]},
+    }
+    return emit(args, payload, "#{} posted to {} (its manager {} is nudged; their copy is #{})".format(seqs[team_name], other, theirs, seqs[other]))
+
+
+def _seq_of_link_message(team: TeamPaths, message_id: str, lookback: int = LINK_THREAD_LOOKBACK) -> Optional[int]:
+    """The local seq of the copy carrying ``message_id`` on this board, from a bounded read."""
+    try:
+        records = store.BoardStore(team).read(last=lookback, include_retracted=True)
+    except HerdrTeamError:
+        return None
+    for rec in reversed(records):
+        link = rec.get("link")
+        if isinstance(link, dict) and link.get("id") == message_id and isinstance(rec.get("seq"), int):
+            return int(rec["seq"])
+    return None
 
 
 def _one_line_text(text: Any, limit: int = 300) -> str:
@@ -1271,6 +1354,7 @@ def _add_board_arguments(parser: argparse.ArgumentParser) -> None:
     mode.add_argument("--new", action="store_true", help="posts to me or all since my cursor; advances the cursor")
     mode.add_argument("--peek", action="store_true", help="same selection as --new, never advances")
     parser.add_argument("--to", choices=("me",), help="only posts addressed to me or all")
+    parser.add_argument("--teams", action="store_true", help="only posts that crossed a link to or from another team")
     parser.add_argument("--from", dest="from_name", metavar="NAME")
     parser.add_argument("--kind", choices=RECORD_KINDS)
     parser.add_argument("--thread", metavar="SEQ", type=int, help="a post and its replies")
@@ -1372,6 +1456,8 @@ def _run_board(args: argparse.Namespace) -> int:
         selection = [r for r in selection if r.get("from") == args.from_name]
     if args.kind:
         selection = [r for r in selection if r.get("kind") == args.kind]
+    if getattr(args, "teams", False):
+        selection = [r for r in selection if isinstance(r.get("link"), dict)]
     if args.thread is not None:
         selection = _thread_of(selection, args.thread)
     if args.last is not None:

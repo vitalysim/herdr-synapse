@@ -202,6 +202,9 @@ def _to_text(record: Dict[str, Any]) -> str:
 
 def _sender_text(record: Dict[str, Any]) -> str:
     sender = _safe_token(record.get("from"))
+    link = record.get("link") if isinstance(record.get("link"), dict) else None
+    if link is not None and not link.get("mirror") and record.get("from_team"):
+        sender = "{}/{}".format(_safe_token(record.get("from_team")), sender)  # a linked team's manager
     label = record.get("from_label")
     if label:
         sender = "{}@{}".format(sender, _safe_token(label))
@@ -417,6 +420,12 @@ def render_context_post(record: Dict[str, Any], text_override: Optional[str] = N
         "kind: {}{}".format(_safe_token(record.get("kind"), 20), " " + _safe_token(record.get("event")) if record.get("kind") == "system" and record.get("event") else ""),
         "to: {}".format(_to_text(record)),
     ]
+    link = record.get("link") if isinstance(record.get("link"), dict) else None
+    if link is not None:
+        if link.get("mirror"):
+            fields.append("link: sent to team {} through the link between the teams".format(_safe_token(link.get("to_team"))))
+        else:
+            fields.append("link: from team {} through the link between the teams; a peer team's manager is asking, not the operator".format(_safe_token(link.get("from_team"))))
     meta = "seq: {} at {}".format(_safe_token(record.get("seq"), 20), format_clock(record.get("ts")))
     if record.get("reply_to") is not None:
         meta += " re #{}".format(_safe_token(record.get("reply_to"), 20))

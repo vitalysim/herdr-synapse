@@ -32,10 +32,10 @@ from herdr_team import roster, sanitize
 from herdr_team.errors import HerdrTeamError
 from herdr_team.paths import MAX_ROLE_CHARS, MAX_TEAM_CHARS, ROLE_NAME_RE, TEAM_NAME_RE
 
-FILTERS = ("all", "to me", "requests", "human", "system")
+FILTERS = ("all", "to me", "requests", "human", "system", "teams", "team")
 SLASH_COMMANDS = (
     "/all", "/human", "/kind", "/reply", "/urgent", "/interrupt", "/interrupts", "/ref", "/retract", "/mute", "/unmute", "/pause",
-    "/nudge", "/focus", "/peek", "/who", "/context", "/compact", "/clear", "/model", "/asks", "/ask-policy", "/filter", "/as", "/use", "/charter", "/remove", "/export", "/help", "/quit",
+    "/nudge", "/focus", "/peek", "/who", "/context", "/compact", "/clear", "/model", "/team", "/links", "/link", "/unlink", "/asks", "/ask-policy", "/filter", "/as", "/use", "/charter", "/remove", "/export", "/help", "/quit",
 )
 #: ``/`` menu rows: command -> (placeholder, what it does). Every entry in
 #: ``SLASH_COMMANDS`` must appear here; a test keeps the two in step, so a new
@@ -63,6 +63,10 @@ SLASH_USAGE = {
     "/compact": ("name", "ask a member to summarise its context"),
     "/clear": ("name", "throw away a member's context and brief it again"),
     "/model": ("name model[@effort] [--restart]", "set a member's model and effort (Claude live; others at resume, or --restart now)"),
+    "/team": ("other-team text", "post to a linked team (its manager is nudged)"),
+    "/links": ("", "which teams this team is linked to, and their state"),
+    "/link": ("other-team", "link this team to another (both need a manager)"),
+    "/unlink": ("other-team", "break the link to another team"),
     "/filter": ("[all|to me|requests|human|system]", "filter the feed"),
     "/as": ("label", "change the label your posts carry"),
     "/use": ("team", "switch to another team"),
@@ -74,7 +78,7 @@ SLASH_USAGE = {
 }
 
 #: Directives that turn a line into a post rather than a command.
-POST_DIRECTIVES = ("/all", "/human", "/kind", "/reply", "/urgent", "/interrupt", "/ref")
+POST_DIRECTIVES = ("/all", "/human", "/team", "/kind", "/reply", "/urgent", "/interrupt", "/ref")
 POST_KINDS = ("note", "request", "handoff", "done", "blocked", "question", "answer")
 REQUEST_KINDS = ("request", "question", "blocked", "handoff")
 
@@ -107,7 +111,7 @@ ASCII_KIND_GLYPHS = {"request": ">", "done": "+", "blocked": "!", "question": "?
 
 MEMBER_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}\Z")
 RESERVED_NAMES = frozenset({"human", "all", "me", "none", "system", "team"})
-RECIPIENT_RE = re.compile(r"^(?:[a-z][a-z0-9_-]{0,31}|role:[a-z][a-z0-9_-]{0,63}|all|human)\Z")
+RECIPIENT_RE = re.compile(r"^(?:[a-z][a-z0-9_-]{0,31}|role:[a-z][a-z0-9_-]{0,63}|team:[a-z][a-z0-9_-]{0,63}|all|human)\Z")
 #: ``!name text`` types the line into one member now (docs/cli.md section 7, ``say``). Every input line
 #: that starts with ``!`` is such an attempt and never falls back to a post, so a mistyped name can
 #: never leak a one-member instruction to the whole team.
@@ -122,7 +126,7 @@ FORCEABLE_REASONS = ("working", "muted")
 _ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]")
 _DIRECTIVE_RE = re.compile(
     r"^\s*(?:(?P<at>@\S+)|(?P<all>/all\b)|(?P<human>/human\b)|(?P<urgent>/urgent\b)|(?P<interrupt>/interrupt\b)"
-    r"|/kind\s+(?P<kind>\S+)|/reply\s+(?P<reply>\S+)|/ref\s+(?P<ref>\S+))"
+    r"|/team\s+(?P<team>\S+)|/kind\s+(?P<kind>\S+)|/reply\s+(?P<reply>\S+)|/ref\s+(?P<ref>\S+))"
 )
 #: ``@@path`` anywhere in a post line attaches that file (``post --file``): a token at the start or after whitespace.
 _FILE_TOKEN_RE = re.compile(r"(?:(?<=\s)|^)@@(\S+)")
@@ -292,6 +296,8 @@ class ConsoleModel:
     peek: Optional[List[str]] = None
     human_label: Optional[str] = None
     members: List[Dict[str, Any]] = field(default_factory=list)
+    #: Active links of this team (``links.summary`` shape), for the ``@`` menu and ``/links``.
+    links: List[Dict[str, Any]] = field(default_factory=list)
     #: ``@`` mention menu: highlighted row, and the input snapshot Esc hid it for.
     mention_index: int = 0
     mention_hidden_for: Optional[str] = None
@@ -534,7 +540,8 @@ def roster_line(
     pane = str(member.get("pane_id") or "-")
     status = str(member.get("agent_status") or "unknown")
     roster_status = member.get("status") or "active"
-    fields = [status_glyph(status, ascii_only) + " " + name]
+    star = ("* " if ascii_only else "★ ") if member.get("manager") else ""
+    fields = [status_glyph(status, ascii_only) + " " + star + name]
     if show_role and level < 2 and member.get("role"):
         fields.append(str(member["role"]))
     if level < 2:
@@ -748,6 +755,19 @@ def derive_receipts(
         if "all" in to:
             entry["read_by"] = "{}/{}".format(len([n for n in read if n != "human"]), len(audience))
         receipts[seq] = entry
+    # Across a link the reader is on the other board; its notifier sends a
+    # ``link_read`` receipt back here, naming the message id and the reader.
+    read_across: Dict[str, str] = {}
+    for rec in recs:
+        if rec.get("from") == "system" and rec.get("kind") == "system" and rec.get("event") == "link_read" and isinstance(rec.get("link_id"), str):
+            read_across[rec["link_id"]] = str(rec.get("reader") or "?")
+    if read_across:
+        for rec in recs:
+            link = rec.get("link")
+            seq = rec.get("seq")
+            if isinstance(link, dict) and link.get("mirror") and link.get("id") in read_across and isinstance(seq, int) and seq in receipts:
+                receipts[seq]["read_by"] = read_across[link["id"]]
+                receipts[seq]["read"] = [read_across[link["id"]]]
     return receipts
 
 
@@ -771,6 +791,9 @@ def _to_label(record: Dict[str, Any]) -> str:
 
 def _author_label(record: Dict[str, Any]) -> str:
     author = str(record.get("from") or "?")
+    from_team = record.get("from_team")
+    if isinstance(from_team, str) and from_team and isinstance(record.get("link"), dict) and not record["link"].get("mirror"):
+        author = "{}/{}".format(from_team, author)  # a linked team's manager, named with its team
     origin = record.get("origin") or {}
     via = origin.get("via")
     label = record.get("from_label")
@@ -816,6 +839,8 @@ def feed_entry(
         parts = ["#{}".format(seq)]
         if level == 0:
             parts.append(clock_label(record.get("ts")))
+        if isinstance(record.get("link"), dict):
+            parts.append("<->" if ascii_only else "⇄")
         parts.append("{}{}{}".format(_author_label(record), "->" if ascii_only else "→", _to_label(record)))
         if kind != "note":
             parts.append("{}{}".format(glyph, kind) if glyph else kind)
@@ -859,6 +884,8 @@ def feed_entry(
         "kind": kind,
         "from": author,
         "to": [str(t) for t in (record.get("to") or [])],
+        "link": record.get("link") if isinstance(record.get("link"), dict) else None,
+        "from_team": record.get("from_team") if isinstance(record.get("from_team"), str) else None,
         "record": record,
     }
 
@@ -1131,6 +1158,11 @@ def filter_matches(entry: Dict[str, Any], filter_name: str) -> bool:
         return entry.get("from") == "human"
     if filter_name == "system":
         return entry.get("kind") in ("system", "warning")
+    if filter_name == "teams":
+        # the inter-team lens: what crossed a link, either way
+        return isinstance(entry.get("link"), dict)
+    if filter_name == "team":
+        return not isinstance(entry.get("link"), dict)
     return True
 
 
@@ -1436,7 +1468,7 @@ def mention_sigil(model: Any) -> str:
     return ctx[3] if ctx is not None else "@"
 
 
-def mention_candidates(members: Iterable[Dict[str, Any]], prefix: str = "", members_only: bool = False) -> List[Dict[str, str]]:
+def mention_candidates(members: Iterable[Dict[str, Any]], prefix: str = "", members_only: bool = False, links: Optional[Iterable[Dict[str, Any]]] = None) -> List[Dict[str, str]]:
     """Menu rows for ``@<prefix>``: members, then ``role:<r>`` groups, then ``all`` and ``human``.
 
     Matching is case-insensitive; a prefix match on the inserted text sorts
@@ -1473,6 +1505,14 @@ def mention_candidates(members: Iterable[Dict[str, Any]], prefix: str = "", memb
             rank = _mention_rank(needle, insert, "")
             if rank is not None:
                 rows.append((rank, order, {"insert": insert, "label": label}))
+            order += 1
+        for link in links or []:
+            if not isinstance(link, dict) or link.get("state") != "active" or not link.get("team"):
+                continue
+            insert = "team:" + str(link["team"])
+            rank = _mention_rank(needle, insert, str(link["team"]))
+            if rank is not None:
+                rows.append((rank, order, {"insert": insert, "label": "{}  the manager of team {} ({})".format(insert, link["team"], link.get("manager") or "?")}))
             order += 1
     rows.sort(key=lambda item: (item[0], item[1]))
     return [row for _, _, row in rows]
@@ -1531,7 +1571,7 @@ def mention_menu(model: Any) -> List[Dict[str, str]]:
         return slash_candidates(ctx[2], allowed) if getattr(model, "slash_menu", True) else []
     if ctx[3] != "@" and not getattr(model, "bang_menu", True):
         return []  # the compose popup refuses ! lines, so it does not offer names for them
-    return mention_candidates(model.members, ctx[2], members_only=ctx[3] != "@")
+    return mention_candidates(model.members, ctx[2], members_only=ctx[3] != "@", links=getattr(model, "links", None))
 
 
 def mention_lines(model: Any, width: int, ascii_only: bool = False) -> List[str]:
@@ -1625,6 +1665,12 @@ def parse_post_directives(line: str, default_to: Optional[str] = None) -> Tuple[
         elif m.group("human"):
             if "human" not in spec.to:
                 spec.to.append("human")
+        elif m.group("team"):
+            # Another team, through the link between them; it goes alone.
+            name = m.group("team").lower().rstrip(",")
+            if not re.match(r"^[a-z][a-z0-9_-]{0,63}\Z", name):
+                return None, "invalid team name {}".format(name)
+            spec.to = ["team:" + name]
         elif m.group("urgent"):
             spec.urgent = True
         elif m.group("interrupt"):
@@ -1786,6 +1832,12 @@ def _parse_slash(head: str, rest: str, default_team: str) -> Intent:
         if fmt not in ("md", "json", "jsonl", "text"):
             return Intent("error", {"message": "format must be md, json, jsonl or text"})
         return Intent("export", {"team": default_team, "path": " ".join(path_words) or None, "format": fmt})
+    if head == "/links":
+        return Intent("links", {"team": default_team})
+    if head in ("/link", "/unlink"):
+        if len(args) != 1 or not re.match(r"^[a-z][a-z0-9_-]{0,63}\Z", args[0]):
+            return Intent("error", {"message": "usage: {} <other-team>".format(head)})
+        return Intent(head[1:], {"team": default_team, "other": args[0]})
     if head == "/filter":
         if args:
             name = " ".join(args).lower()
@@ -2060,6 +2112,8 @@ STYLE_INPUT = "input"
 STYLE_STATUS = "status"
 STYLE_PEEK = "peek"
 STYLE_PLAIN = ""
+#: The team manager's row in the teams view: bold, and coloured where the terminal has colours.
+STYLE_MANAGER = "manager"
 
 
 def member_style(name: Optional[str]) -> str:
@@ -2245,6 +2299,12 @@ class PickerModel:
     folders: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     #: The team whose folder the ``team_folder`` stage is setting.
     folder_team: str = ""
+    #: Active links per team (``links.summary`` rows) and each team's manager, for the tree and the ``c`` chooser.
+    links: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
+    managers: Dict[str, Optional[str]] = field(default_factory=dict)
+    #: The ``link_pick`` stage: which team is being connected, and the highlighted row.
+    link_team: str = ""
+    link_index: int = 0
     error: Optional[str] = None
     #: ``create`` a new team, or ``add`` the selected agents to an existing team (the target stage).
     mode: str = "create"
@@ -2685,6 +2745,8 @@ def picker_apply_key(model: PickerModel, key: str) -> Optional[Intent]:
         return _project_key(model, key)
     if model.stage == "team_folder":
         return _team_folder_key(model, key)
+    if model.stage == "link_pick":
+        return _link_pick_key(model, key)
     if model.stage == "charter":
         return _charter_key(model, key)
     if model.stage == "members":
@@ -2775,6 +2837,21 @@ def _select_key(model: PickerModel, key: str) -> Optional[Intent]:
         intent = Intent("team_dissolve", {"team": team, "members": members})
         model.pending_action = intent
         model.status = _confirm_question(intent)
+        return None
+    if key == "c":
+        # Connect this team to another through their managers, or break that
+        # connection: one chooser, one key, and the row says which it will do.
+        team = node.team if node.kind in ("team", "member") else ""
+        if not team:
+            model.error = "put the cursor on a team to connect it"
+            return None
+        if not [t for t in model.rosters if t != team]:
+            model.error = "no other team to connect {} to".format(team)
+            return None
+        model.link_team = team
+        model.link_index = 0
+        model.stage = "link_pick"
+        model.error = None
         return None
     if key == "f":
         team = node.team if node.kind in ("team", "member") else ""
@@ -2871,6 +2948,63 @@ def _team_folder_key(model: PickerModel, key: str) -> Optional[Intent]:
         return Intent("team_folder_set", {"team": model.folder_team, "path": path})
     edit_key(_TextView(model), key)
     return None
+
+
+def link_options(model: PickerModel) -> List[Dict[str, Any]]:
+    """The ``c`` chooser's rows for ``model.link_team``: every other team, and what Enter would do to it."""
+    team = model.link_team
+    linked = {str(r.get("team")): r for r in (model.links.get(team) or [])}
+    rows: List[Dict[str, Any]] = []
+    for other in sorted(t for t in model.rosters if t != team):
+        manager = model.managers.get(other)
+        if other in linked:
+            state = str(linked[other].get("state") or "active")
+            rows.append({"team": other, "action": "unlink", "manager": manager,
+                         "label": "{} {}  linked{} - Enter breaks the link".format("<->" if model.ascii_only else "⇄", other, " ({})".format(state) if state != "active" else "")})
+        elif manager is None:
+            rows.append({"team": other, "action": None, "manager": None,
+                         "label": "   {}  no manager - set one first (8 on one of its members)".format(other)})
+        else:
+            rows.append({"team": other, "action": "link", "manager": manager,
+                         "label": "   {}  manager {} - Enter links the teams".format(other, manager)})
+    return rows
+
+
+def _link_pick_key(model: PickerModel, key: str) -> Optional[Intent]:
+    rows = link_options(model)
+    if key == "ESC":
+        model.stage = "select"
+        model.error = None
+        return None
+    if key in ("UP", "k"):
+        model.link_index = max(0, model.link_index - 1)
+        return None
+    if key in ("DOWN", "j"):
+        model.link_index = min(max(0, len(rows) - 1), model.link_index + 1)
+        return None
+    if key == "ENTER":
+        if not rows:
+            model.stage = "select"
+            return None
+        row = rows[min(model.link_index, len(rows) - 1)]
+        if model.managers.get(model.link_team) is None:
+            model.error = "{} has no manager; the link runs through the managers, so set one first (8 on one of its members)".format(model.link_team)
+            return None
+        if row["action"] is None:
+            model.error = "{} has no manager; set one first (8 on one of its members)".format(row["team"])
+            return None
+        model.stage = "select"
+        model.error = None
+        return Intent("team_link", {"team": model.link_team, "other": row["team"], "action": row["action"], "other_manager": row.get("manager")})
+    return None
+
+
+def picker_styles(model: PickerModel, lines: List[str]) -> List[str]:
+    """A style key per rendered line: the manager's row is ``STYLE_MANAGER`` in the tree, everything else plain."""
+    if model.stage != "select":
+        return [STYLE_PLAIN] * len(lines)
+    marker = re.compile(r"^(?:> |  )  \S+ (\u2605|\*) ")
+    return [STYLE_MANAGER if marker.match(line) else STYLE_PLAIN for line in lines]
 
 
 def _toggle_collapse(model: PickerModel, node: PickerNode) -> None:
@@ -3422,6 +3556,12 @@ def _team_header(model: PickerModel, node: PickerNode, width: int) -> str:
             text += "  " + ("[no folder]" if model.ascii_only else "▫ no folder")
         elif info.get("issues"):
             text += "  " + ("[!]" if model.ascii_only else "⚠")
+    if degrade_level(width) < 2:
+        manager = model.managers.get(node.team)
+        text += "  " + (("manager: " + str(manager)) if manager else "no manager")
+        for row in model.links.get(node.team) or []:
+            state = str(row.get("state") or "")
+            text += "  {} {}{}".format("<->" if model.ascii_only else "⇄", row.get("team"), " ({})".format(state) if state and state != "active" else "")
     charter = model.charters.get(node.team) or {}
     if degrade_level(width) == 0 and charter.get("text"):
         text += '  "{}"'.format(headline(str(charter["text"]), 40))
@@ -3440,7 +3580,7 @@ def _tree_lines(model: PickerModel, width: int, height: int) -> List[str]:
         scope = "  unassigned: {}".format(model.scope_workspace)
     picked = len(selected_rows(model))
     if degrade_level(width) == 0:
-        keys = "Enter acts · Space picks · b board · f folder · x dissolve · w scope · a all · r refresh · Esc quit"
+        keys = "Enter acts · Space picks · b board · c connect · f folder · x dissolve · w scope · a all · r refresh · Esc quit"
     else:
         keys = "Enter acts · Space picks · Esc quit"
     head = "{} team{} · {} agent{}{}".format(teams, "" if teams == 1 else "s", agents, "" if agents == 1 else "s", scope)
@@ -3545,6 +3685,19 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
         lines.append("setting:")
         lines.append(INPUT_PROMPT + model.input)
         has_input = True
+    elif model.stage == "link_pick":
+        team = model.link_team
+        mine = model.managers.get(team)
+        lines.append("Connect {} to another team (its manager: {}). Enter links or breaks; Esc goes back".format(team, mine or "none yet"))
+        lines.append("Messages cross a link between the two managers; the sending team sees a mirror, the receiving manager is nudged")
+        rows = link_options(model)
+        if not rows:
+            lines.append("  no other team in this session")
+        for i, row in enumerate(rows):
+            pointer = ">" if i == min(model.link_index, len(rows) - 1) else " "
+            lines.append("{} {}".format(pointer, row["label"]))
+        lines.append("")
+        lines.append("j/k or arrows move; Enter acts; Esc goes back")
     elif model.stage == "target":
         count = len(selected_rows(model))
         lines.append("{} agent{} selected. What now? (type a number, or ↑/↓ and Enter; Esc back)".format(count, "" if count == 1 else "s"))

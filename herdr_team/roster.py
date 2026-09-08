@@ -192,6 +192,7 @@ SYSTEM_EVENTS = (
     "artifacts_changed", "project_set", "operator_granted", "operator_revoked",
     "context_high", "context_cleared", "context_compacted", "workdir_moved", "manager_changed",
     "model_changed", "model_applied", "restart_failed",
+    "link_established", "link_broken", "link_read",
 )
 
 _SAVE_RETRIES = 3

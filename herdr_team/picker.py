@@ -105,10 +105,34 @@ def build_model(api: Any, context: Dict[str, Any], layout: Optional[Layout] = No
     model.folders = _folder_status(layout, sorted(teams))
     model.live_names = {str(a.get("name")) for a in agents if a.get("name")}
     model.existing_teams = sorted(rosters)
+    model.managers = {team: next((str(m.get("name")) for m in members if m.get("manager") and m.get("status") != "left"), None) for team, members in rosters.items()}
+    model.links = _team_links(layout, sorted(rosters))
     model.existing_team_sizes = {team: len([m for m in members if m.get("kind") != "human" and m.get("status") != "left"]) for team, members in rosters.items()}
     model.trusted_kinds = trusted_kinds(layout)
     model.scope_workspace = focused if focused and any(r.workspace_id == focused for r in rows) else None
     return model
+
+
+def _team_links(layout: Optional[Layout], teams: List[str]) -> Dict[str, List[Dict[str, Any]]]:
+    """Active links per team from the session registry; empty without a layout."""
+    if layout is None:
+        return {}
+    from herdr_team import links as _links
+
+    out: Dict[str, List[Dict[str, Any]]] = {}
+    for team in teams:
+        try:
+            out[team] = _links.summary(layout.session, team)
+        except (HerdrTeamError, OSError):
+            out[team] = []
+    return out
+
+
+def picker_attrs(styles: List[str]) -> List[int]:
+    """curses attributes for ``tui_model.picker_styles``: bold for the manager's row, plain otherwise."""
+    import curses
+
+    return [curses.A_BOLD if style == tui_model.STYLE_MANAGER else 0 for style in styles]
 
 
 def trusted_kinds(layout: Optional[Layout]) -> Optional[Set[str]]:
@@ -145,6 +169,8 @@ def refresh_rows(model: PickerModel, api: Any, layout: Optional[Layout]) -> None
     model.rosters = fresh.rosters
     model.charters = fresh.charters
     model.folders = fresh.folders
+    model.links = fresh.links
+    model.managers = fresh.managers
     model.collapsed &= set(model.rosters)
     if not tui_model.focus_node(model, keep_key):
         model.cursor = min(model.cursor, max(0, len(tui_model.picker_tree(model)) - 1))
@@ -238,7 +264,7 @@ def _loop(stdscr: Any, model: PickerModel, api: Any, layout: Optional[Layout], e
                 curses.curs_set(1 if cursor is not None else 0)  # no stray cursor on the list stages
             except curses.error:
                 pass
-            draw_lines(stdscr, lines, cursor)
+            draw_lines(stdscr, lines, cursor, picker_attrs(tui_model.picker_styles(model, lines)))
             # Re-armed every pass: ``_read_escape`` used to clear this, which left
             # the loop blocking for ever with no tick and no idle watchdog.
             stdscr.timeout(int(TICK_S * 1000))
@@ -310,7 +336,7 @@ def run(layout: Layout, api: Any, env: Dict[str, str], actions: bool = True) -> 
 
 
 #: Member actions the tree can run while the popup stays open.
-ACTION_INTENTS = ("member_rename", "member_goal", "member_send_goal", "member_remove", "member_focus", "member_resume", "member_manager", "member_model", "team_folder_set", "team_board_open", "team_dissolve")
+ACTION_INTENTS = ("member_rename", "member_goal", "member_send_goal", "member_remove", "member_focus", "member_resume", "member_manager", "member_model", "team_folder_set", "team_board_open", "team_dissolve", "team_link")
 #: ``remove`` and ``rename`` do several socket round trips plus a lock wait; the console's 20 s is too
 #: tight for them, and a timeout kills the CLI mid-change (M8 review).
 ACTION_TIMEOUT_S = 45.0
@@ -326,6 +352,7 @@ ACTION_LABELS = {
     "member_model": "setting the model for {member}",
     "team_folder_set": "setting the folder for {team}",
     "team_dissolve": "dissolving {team}",
+    "team_link": "connecting {team}",
     "team_board_open": "opening the {team} board",
 }
 
@@ -349,6 +376,8 @@ def action_args(intent: Any) -> List[str]:
     if intent.kind == "team_dissolve":
         # The tree asked already, so ``--yes`` here is the answer, not a bypass.
         return ["--team", team, "dissolve", team, "--yes"]
+    if intent.kind == "team_link":
+        return ["--team", team, str(args.get("action") or "link"), team, str(args.get("other") or "")]
     if intent.kind == "member_goal":
         return ["--team", team, "brief", member, "--set", str(args.get("text") or "")]
     if intent.kind == "member_send_goal":
@@ -422,6 +451,12 @@ def action_success_status(intent: Any, out: Any) -> str:
     if intent.kind == "member_resume":
         command = (out or {}).get("command") if isinstance(out, dict) else None
         return "in a shell pane run: herdr-synapse resume {}  ({})".format(member, command or "no command")
+    if intent.kind == "team_link":
+        other = args.get("other")
+        if args.get("action") == "unlink":
+            return "{} <-> {} unlinked; both managers were told".format(args.get("team"), other)
+        managers = (out or {}).get("managers") or {} if isinstance(out, dict) else {}
+        return "{} <-> {} linked through {} and {}; both were told how to post to each other".format(args.get("team"), other, managers.get(str(args.get("team"))) or "its manager", managers.get(str(other)) or args.get("other_manager") or "its manager")
     if intent.kind == "member_model":
         setting = (out or {}).get("setting") if isinstance(out, dict) else args.get("setting")
         apply = (out or {}).get("apply") if isinstance(out, dict) else None
