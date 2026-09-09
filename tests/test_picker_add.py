@@ -29,6 +29,13 @@ class PickerAddModeTests(unittest.TestCase):
         self.assertEqual(lines[0], "1 agent selected. What now? (type a number, or ↑/↓ and Enter; Esc back)")
         self.assertEqual(lines[1], "> 1  add it to team alpha  (2 members)")
         self.assertEqual(lines[2], "  2  create a new team")
+        for index, (action, team) in enumerate(tui_model.target_options(model)):
+            model.target_index = index
+            narrow = tui_model.picker_lines(model, 24, 8)
+            label = "create a new team" if action == "create" else "add it to team {}  (2 members)".format(team)
+            self.assertIn(" ".join(label.split()), " ".join("\n".join(narrow).split()))
+            self.assertTrue(all(tui_model.display_width(line) <= 24 for line in narrow))
+        model.target_index = 0
         picker_apply_key(model, "7")
         self.assertIn("between 1 and 2", model.error)
         self.assertEqual(model.stage, "target")

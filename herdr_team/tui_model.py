@@ -29,6 +29,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from herdr_team import roster, sanitize
+from herdr_team import topology as team_topology
 from herdr_team.errors import HerdrTeamError
 from herdr_team.paths import MAX_ROLE_CHARS, MAX_TEAM_CHARS, ROLE_NAME_RE, TEAM_NAME_RE
 
@@ -2299,7 +2300,7 @@ class PickerModel:
     rows: List[PickerRow]
     cursor: int = 0
     scope_workspace: Optional[str] = None
-    stage: str = "select"  # select | target | name | charter | project | members | confirm
+    stage: str = "select"  # select | topology | target | name | charter | project | members | confirm
     team_name: str = ""
     charter: str = ""
     #: The team's project directory; "" means the team gets no working folder.
@@ -2346,6 +2347,8 @@ class PickerModel:
     ascii_only: bool = False
     #: First visible tree row; owned by ``picker_lines`` the way ``feed_window`` owns the console scroll.
     top: int = 0
+    #: First visible row in the read-only ASCII topology view.
+    topology_top: int = 0
     #: Body height of the last render, so PgUp/PgDn can step a real page.
     page_rows: int = 10
     #: The member the action menu is about, and the highlighted action.
@@ -2566,6 +2569,65 @@ def scroll_window(top: int, cursor: int, count: int, height: int) -> int:
     return min(max(0, top), max(0, count - height))
 
 
+def _wrap_picker_text(text: str, width: int, continuation: str = "  ") -> List[str]:
+    """Wrap one picker sentence without losing the part past the right edge."""
+    width = max(1, width)
+    if display_width(text) <= width:
+        return [text]
+    continuation_width = min(display_width(continuation), max(0, width - 1))
+    continuation = truncate_columns(continuation, continuation_width, ellipsis="")
+    chunks = wrap_columns(text, width, max(1, width - continuation_width))
+    if not chunks:
+        return [""]
+    return [truncate_columns(chunks[0], width)] + [
+        truncate_columns(continuation + chunk, width) for chunk in chunks[1:]
+    ]
+
+
+def _option_window(groups: List[List[str]], selected: int, height: int) -> List[str]:
+    """Largest contiguous option window that keeps the selected label whole.
+
+    An option can occupy several wrapped terminal rows.  The markers count as
+    rows too, so a short popup never hides the selected choice below the crop.
+    """
+    if not groups or height <= 0:
+        return []
+    selected = min(max(0, selected), len(groups) - 1)
+    best: Optional[Tuple[Tuple[int, int, int], int, int]] = None
+    for low in range(selected + 1):
+        for high in range(selected, len(groups)):
+            used = sum(len(group) for group in groups[low: high + 1])
+            used += int(low > 0) + int(high < len(groups) - 1)
+            if used > height:
+                continue
+            score = (high - low + 1, used, -abs((low + high) - 2 * selected))
+            if best is None or score > best[0]:
+                best = (score, low, high)
+    if best is None:
+        rows = list(groups[selected][:height])
+        if len(groups[selected]) > height and rows:
+            rows[-1] = truncate_columns(rows[-1], max(1, display_width(rows[-1]) - 3), ellipsis="...")
+        return rows
+    _score, low, high = best
+    rows: List[str] = []
+    if low > 0:
+        rows.append("  ^ {} more option{}".format(low, "" if low == 1 else "s"))
+    for group in groups[low: high + 1]:
+        rows.extend(group)
+    below = len(groups) - high - 1
+    if below:
+        rows.append("  v {} more option{}".format(below, "" if below == 1 else "s"))
+    return rows
+
+
+def _picker_heading(head: str, keys: str, width: int) -> List[str]:
+    """Keep the complete key legend visible by wrapping instead of degrading it."""
+    combined = "{}    {}".format(head, keys)
+    if display_width(combined) <= width:
+        return [combined]
+    return [truncate_columns(head, width)] + _wrap_picker_text("keys: " + keys, width, "      ")
+
+
 def visible_rows(model: PickerModel) -> List[PickerRow]:
     if model.scope_workspace is None:
         return list(model.rows)
@@ -2738,6 +2800,8 @@ def picker_apply_key(model: PickerModel, key: str) -> Optional[Intent]:
         return None
     if model.stage == "select":
         return _select_key(model, key)
+    if model.stage == "topology":
+        return _topology_key(model, key)
     if model.stage == "actions":
         return _actions_key(model, key)
     if model.stage == "rename":
@@ -2824,6 +2888,11 @@ def _select_key(model: PickerModel, key: str) -> Optional[Intent]:
         for r in candidates:
             r.selected = not all_selected
         return None
+    if key == "v":
+        model.stage = "topology"
+        model.topology_top = 0
+        model.status = None
+        return None
     if node is None:
         return None
     if key == "b":
@@ -2902,6 +2971,31 @@ def _select_key(model: PickerModel, key: str) -> Optional[Intent]:
         if node.kind == "agent" and node.row is not None and not selected_rows(model) and selectable(node.row):
             node.row.selected = True  # Enter on a single agent means "this one"
         return _advance_from_select(model)
+    return None
+
+
+def _topology_key(model: PickerModel, key: str) -> Optional[Intent]:
+    """Scroll the read-only organization map, or return to the ordinary team tree."""
+    model.error = None
+    if key in ("ESC", "q", "v"):
+        model.stage = "select"
+        model.status = None
+        return None
+    if key == "r":
+        return Intent("refresh")
+    if key in ("UP", "k"):
+        model.topology_top = max(0, model.topology_top - 1)
+    elif key in ("DOWN", "j"):
+        model.topology_top += 1
+    elif key == "PGUP":
+        model.topology_top = max(0, model.topology_top - max(1, model.page_rows))
+    elif key == "PGDN":
+        model.topology_top += max(1, model.page_rows)
+    elif key == "HOME":
+        model.topology_top = 0
+    elif key == "END":
+        # The renderer clamps this after wrapping for the current terminal width.
+        model.topology_top = 1 << 30
     return None
 
 
@@ -3577,6 +3671,36 @@ def _team_header(model: PickerModel, node: PickerNode, width: int) -> str:
     return text
 
 
+def _topology_lines(model: PickerModel, width: int, height: int) -> List[str]:
+    """A scrollable ASCII map of every team and manager-to-manager link."""
+    teams = len(model.rosters)
+    link_total = team_topology.link_count(model.links, model.managers)
+    head = "Team topology | {} team{} | {} link{}".format(
+        teams, "" if teams == 1 else "s", link_total, "" if link_total == 1 else "s")
+    header = _picker_heading(head, "v/Esc tree | r refresh | Up/Down scroll | PgUp/PgDn page", width)
+    body: List[str] = []
+    for logical in team_topology.lines(model.rosters, model.managers, model.links, model.who_members):
+        if not logical:
+            body.append("")
+            continue
+        continuation = "|       " if logical.startswith("|") else ("      " if logical.startswith("  ") else "    ")
+        body.extend(_wrap_picker_text(logical, width, continuation))
+    status_rows = int(bool(model.error or model.status))
+    capacity = max(1, height - len(header) - status_rows)
+    scrolling = len(body) > capacity
+    if scrolling:
+        capacity = max(1, capacity - 1)
+    model.page_rows = capacity
+    model.topology_top = min(max(0, model.topology_top), max(0, len(body) - capacity))
+    visible = body[model.topology_top: model.topology_top + capacity]
+    lines = list(header) + visible
+    if scrolling:
+        first = model.topology_top + 1 if body else 0
+        last = min(len(body), model.topology_top + capacity)
+        lines.append(truncate_columns("rows {}-{}/{} | Up/Down scroll".format(first, last, len(body)), width))
+    return lines
+
+
 def _tree_lines(model: PickerModel, width: int, height: int) -> List[str]:
     """The team tree: a pinned header, a scrolled body, and a detail line for the row under the cursor."""
     nodes = picker_tree(model)
@@ -3588,16 +3712,13 @@ def _tree_lines(model: PickerModel, width: int, height: int) -> List[str]:
     if model.scope_workspace:
         scope = "  unassigned: {}".format(model.scope_workspace)
     picked = len(selected_rows(model))
-    if degrade_level(width) == 0:
-        keys = "Enter acts · Space picks · b board · c connect · f folder · x dissolve · w scope · a all · r refresh · Esc quit"
-    else:
-        keys = "Enter acts · Space picks · Esc quit"
+    keys = "Enter acts | Space picks | b board | c connect | v map | f folder | x dissolve | w scope | a all | r refresh | Esc quit"
     head = "{} team{} · {} agent{}{}".format(teams, "" if teams == 1 else "s", agents, "" if agents == 1 else "s", scope)
     if picked:
         head += " · {} selected".format(picked)
-    lines = [truncate_columns("{}    {}".format(head, keys), width)]
+    lines = _picker_heading(head, keys, width)
     # Always leave room for the detail line and for the error or status the caller appends.
-    body = max(1, height - 3)
+    body = max(1, height - len(lines) - 2)
     if len(nodes) > body:
         body = max(1, body - 1)  # the "more" footer
     model.page_rows = body
@@ -3661,21 +3782,35 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
     has_input = False
     if model.stage == "select":
         lines.extend(_tree_lines(model, width, height))
+    elif model.stage == "topology":
+        lines.extend(_topology_lines(model, width, height))
     elif model.stage == "actions":
         member = action_member(model)
         if member is None:
             lines.append("{} is not in {} any more (Esc back, r refreshes)".format(model.action_member, model.action_team))
         else:
-            lines.append(truncate_columns(" · ".join(str(p) for p in (
-                member.get("name"), member.get("role"), member.get("kind"), member.get("pane_id") or "-", member.get("agent_status") or "unknown") if p), width))
-            goal = str(member.get("brief") or "")
-            lines.append("goal: {}".format(headline(goal, max(20, width - 8))) if goal else "goal: (none yet)")
-            lines.append("")
+            groups: List[List[str]] = []
             for i, (_key, label) in enumerate(action_options(model)):
                 pointer = ">" if i == model.action_index else " "
-                lines.append("{} {}  {}".format(pointer, i + 1, label))
-            lines.append("")
-            lines.append("type a number, or ↑/↓ and Enter; Esc goes back" if not model.ascii_only else "type a number, or up/down and Enter; Esc goes back")
+                lead = "{} {}  ".format(pointer, i + 1)
+                groups.append(_wrap_picker_text(lead + label, width, " " * display_width(lead)))
+            identity = " · ".join(str(p) for p in (
+                member.get("name"), member.get("role"), member.get("kind"), member.get("pane_id") or "-", member.get("agent_status") or "unknown") if p)
+            header = _wrap_picker_text(identity if height >= 10 else "Actions: {}".format(member.get("name") or model.action_member), width, "  ")
+            if height >= 12:
+                goal = str(member.get("brief") or "")
+                header.extend(_wrap_picker_text("goal: {}".format(headline(goal, max(20, width - 8))) if goal else "goal: (none yet)", width, "      "))
+                header.append("")
+            footer = _wrap_picker_text("type 1-9 | Up/Down move | Enter acts | Esc back", width, "  ")
+            reserved = int(bool(model.error or model.status))
+            selected = min(model.action_index, len(groups) - 1)
+            if len(header) + len(footer) + len(groups[selected]) + reserved > height:
+                header = _wrap_picker_text("Actions: {}".format(member.get("name") or model.action_member), width, "  ")
+                footer = _wrap_picker_text("1-9, arrows, Enter, Esc", width, "  ")
+            option_height = max(1, height - len(header) - len(footer) - reserved)
+            lines.extend(header)
+            lines.extend(_option_window(groups, selected, option_height))
+            lines.extend(footer)
     elif model.stage == "rename":
         lines.append("Rename {} (lowercase letters, digits, - and _, up to {} characters)".format(model.action_member, MAX_MEMBER_NAME_CHARS))
         lines.append("Enter renames the member and its Herdr agent; the old name still resolves for 10 min")
@@ -3697,27 +3832,46 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
     elif model.stage == "link_pick":
         team = model.link_team
         mine = model.managers.get(team)
-        lines.append("Connect {} to another team (its manager: {}). Enter links or breaks; Esc goes back".format(team, mine or "none yet"))
-        lines.append("Messages cross a link between the two managers; the sending team sees a mirror, the receiving manager is nudged")
         rows = link_options(model)
         if not rows:
+            header = _wrap_picker_text("Team links: {} | manager: {} | Esc back".format(team, mine or "none yet"), width, "  ")
+            lines.extend(header)
             lines.append("  no other team in this session")
-        for i, row in enumerate(rows):
-            pointer = ">" if i == min(model.link_index, len(rows) - 1) else " "
-            lines.append("{} {}".format(pointer, row["label"]))
-        lines.append("")
-        lines.append("j/k or arrows move; Enter acts; Esc goes back")
+        else:
+            selected = min(model.link_index, len(rows) - 1)
+            groups = []
+            for i, row in enumerate(rows):
+                lead = ("> " if i == selected else "  ")
+                groups.append(_wrap_picker_text(lead + row["label"], width, "  "))
+            header = _wrap_picker_text("Connect {} to another team (its manager: {}). Enter links or breaks; Esc goes back".format(team, mine or "none yet"), width, "  ")
+            header.extend(_wrap_picker_text("Messages cross a link between the two managers; the sending team sees a mirror, the receiving manager is nudged", width, "  "))
+            footer = _wrap_picker_text("j/k or Up/Down move | Enter acts | Esc back", width, "  ")
+            reserved = int(bool(model.error or model.status))
+            if len(header) + len(footer) + len(groups[selected]) + reserved > height:
+                header = _wrap_picker_text("Team links: {} | manager: {}".format(team, mine or "none yet"), width, "  ")
+                footer = _wrap_picker_text("arrows, Enter, Esc", width, "  ")
+            option_height = max(1, height - len(header) - len(footer) - reserved)
+            lines.extend(header)
+            lines.extend(_option_window(groups, selected, option_height))
+            lines.extend(footer)
     elif model.stage == "target":
         count = len(selected_rows(model))
-        lines.append("{} agent{} selected. What now? (type a number, or ↑/↓ and Enter; Esc back)".format(count, "" if count == 1 else "s"))
+        arrows = "up/down" if model.ascii_only else "↑/↓"
+        header = _wrap_picker_text("{} agent{} selected. What now? (type a number, or {} and Enter; Esc back)".format(count, "" if count == 1 else "s", arrows), width, "  ")
+        groups = []
         for i, (action, team) in enumerate(target_options(model)):
             pointer = ">" if i == model.target_index else " "
             if action == "add":
                 size = model.existing_team_sizes.get(team)
                 members = "  ({} member{})".format(size, "" if size == 1 else "s") if size is not None else ""
-                lines.append("{} {}  add {} to team {}{}".format(pointer, i + 1, "it" if count == 1 else "them", team, members))
+                label = "add {} to team {}{}".format("it" if count == 1 else "them", team, members)
             else:
-                lines.append("{} {}  create a new team".format(pointer, i + 1))
+                label = "create a new team"
+            lead = "{} {}  ".format(pointer, i + 1)
+            groups.append(_wrap_picker_text(lead + label, width, " " * display_width(lead)))
+        reserved = int(bool(model.error or model.status))
+        lines.extend(header)
+        lines.extend(_option_window(groups, model.target_index, max(1, height - len(header) - reserved)))
     elif model.stage == "name":
         lines.append("New team name ([a-z][a-z0-9_-]{{0,{}}}; normalized on Enter, Esc back)".format(MAX_TEAM_CHARS - 1))
         lines.append(INPUT_PROMPT + model.input)

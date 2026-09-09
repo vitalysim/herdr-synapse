@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.4 (2026-09-09)
+
+- **See the organization behind the boards.** The Teams view gains `v`, a scrollable ASCII topology of every team, its manager and members, plus the manager-to-manager links between teams. It reads the picker's existing session snapshot and stays a client-only view: no new server state or protocol.
+- Long key legends and every choice in the member-action, team-link and add/create menus wrap instead of disappearing past the right edge. Short windows keep the highlighted choice complete, scroll the surrounding choices, and say how many lie above or below it.
+
 ## 0.15.3 (2026-09-09)
 
 - **Board history is no longer mistaken for actionable mail.** Claude's Stop hook, the periodic idle sweep, and manual nudge discovery now act only on human- or member-authored messages addressed to that member (including authored broadcasts). System events, delivery receipts, direct lines, and retractions stay visible on the board and in prompt context, but cannot recursively create nudges or hold a finished turn open.

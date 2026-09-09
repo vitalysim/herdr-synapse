@@ -354,8 +354,31 @@ class PickerTests(unittest.TestCase):
         self.assertIn("manager: {}".format(A_MANAGER), header)
         self.assertIn("⇄ beta", header)
         self.assertIn("no manager", next(l for l in lines if "gamma  (1 member)" in l))
-        self.assertIn("c connect", lines[0])
+        self.assertTrue(any("c connect" in line for line in lines))
+        self.assertTrue(any("v map" in line for line in lines))
         self.assertEqual(picker.picker_attrs.__name__, "picker_attrs")
+
+    def test_v_opens_a_scrollable_ascii_topology_of_managers_members_and_links(self):
+        m = self.model()
+        self.assertIsNone(tui_model.picker_apply_key(m, "v"))
+        self.assertEqual(m.stage, "topology")
+        lines = tui_model.picker_lines(m, 76, 30)
+        rendered = "\n".join(lines)
+        self.assertIn("Team topology | 3 teams | 1 link", rendered)
+        self.assertIn("+-- TEAM alpha", rendered)
+        self.assertIn("* MANAGER {}".format(A_MANAGER), rendered)
+        self.assertIn("MEMBER {}".format(A_PEER), rendered)
+        self.assertIn("! MANAGER not set", rendered)
+        self.assertIn("alpha/{} <====[active]====> beta/{}".format(A_MANAGER, B_MANAGER), rendered)
+        self.assertNotIn("⇄", rendered, "the topology uses ASCII even in a Unicode-capable terminal")
+        narrow = tui_model.picker_lines(m, 40, 12)
+        self.assertTrue(all(tui_model.display_width(line) <= 40 for line in narrow))
+        tui_model.picker_apply_key(m, "END")
+        bottom = "\n".join(tui_model.picker_lines(m, 40, 12))
+        self.assertIn("LINKS", bottom)
+        self.assertIn("[active]", bottom)
+        self.assertIsNone(tui_model.picker_apply_key(m, "v"))
+        self.assertEqual(m.stage, "select")
 
     def test_c_opens_the_chooser_with_the_three_row_states_and_enter_maps_to_the_argv(self):
         m = self.model()
@@ -365,6 +388,12 @@ class PickerTests(unittest.TestCase):
         labels = [r["label"] for r in tui_model.link_options(m)]
         self.assertIn("beta  linked - Enter breaks the link", labels[0])
         self.assertIn("gamma  no manager - set one first", labels[1])
+        for index, row in enumerate(tui_model.link_options(m)):
+            m.link_index = index
+            lines = tui_model.picker_lines(m, 24, 8)
+            rendered = " ".join("\n".join(lines).split())
+            self.assertIn(" ".join(row["label"].split()), rendered)
+            self.assertTrue(all(tui_model.display_width(line) <= 24 for line in lines))
         tui_model.picker_apply_key(m, "DOWN")
         self.assertIsNone(tui_model.picker_apply_key(m, "ENTER"))
         self.assertIn("gamma has no manager", m.error or "")

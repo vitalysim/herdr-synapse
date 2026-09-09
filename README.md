@@ -322,6 +322,7 @@ to; each manager row is marked `★`.
 | Space, `a` | pick an unassigned agent; `a` picks or clears them all; on a team row Space folds it |
 | `b` | open that team's board |
 | `c` | connect that team to another, or break the link |
+| `v` | open the scrollable ASCII topology of teams, managers and links |
 | `f` | set that team's project folder |
 | `x` | dissolve that team (asks first) |
 | `w` | show unassigned agents from this space only, or from every space |
@@ -331,6 +332,11 @@ Enter on a member offers, without closing the popup: rename it, change its
 goal, send that goal to it now, remove it (keeping or clearing its Herdr
 name), go to its pane, show the command that reopens its own session, make it
 the team manager, and set its model and effort.
+
+Long key legends and menu choices wrap instead of disappearing past the right
+edge. Short windows keep the highlighted choice fully visible and show how
+many choices lie above or below it. In the topology view, `v` or Esc returns
+to the tree; arrows and PgUp/PgDn scroll, and `r` refreshes live state.
 
 ## The console in one table
 
@@ -806,7 +812,7 @@ peer mail.
 
 ## Status
 
-Current release: 0.15.3, skill v10.
+Current release: 0.15.4, skill v10.
 
 Verified live with Claude Code, Codex, and OpenCode: team formation, board
 delivery, session identity, `resume`, the operator gate, and the trusted-origin

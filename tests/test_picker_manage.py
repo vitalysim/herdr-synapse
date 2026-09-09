@@ -222,6 +222,25 @@ class ActionMenuTests(unittest.TestCase):
         picker_apply_key(model, "ENTER")
         self.assertEqual(model.stage, "goal")
 
+    def test_narrow_menu_wraps_and_keeps_every_selected_action_visible(self):
+        for width in (40, 24):
+            model = managed(picker_model(ALPHA, focused=None))
+            for index, (_action, label) in enumerate(tui_model.action_options(model)):
+                model.action_index = index
+                lines = tui_model.picker_lines(model, width, 8)
+                flattened = " ".join("\n".join(lines).split())
+                self.assertIn(" ".join(label.split()), flattened, (width, index, lines))
+                self.assertTrue(all(tui_model.display_width(line) <= width for line in lines))
+        self.assertTrue(any("more option" in line for line in tui_model.picker_lines(model, 40, 8)))
+
+    def test_tree_key_legend_wraps_without_dropping_actions(self):
+        model = picker_model(ALPHA, focused=None)
+        lines = tui_model.picker_lines(model, 42, 24)
+        flattened = " ".join(line.strip() for line in lines)
+        for action in ("Enter acts", "Space picks", "b board", "c connect", "v map", "f folder", "x dissolve", "w scope", "a all", "r refresh", "Esc quit"):
+            self.assertIn(action, flattened)
+        self.assertTrue(all(tui_model.display_width(line) <= 42 for line in lines))
+
     def test_actions_refuse_a_member_whose_pane_is_stale(self):
         roster = [dict(m) for m in FAKE_MEMBERS]
         for m in roster:
