@@ -61,7 +61,7 @@ Environment the CLI reads: `HERDR_SOCKET_PATH`, `HERDR_SESSION`,
 | Code | Meaning | Typical error codes |
 | --- | --- | --- |
 | 0 | ok | |
-| 1 | refused or validation failure | `team_name_invalid`, `name_invalid`, `name_reserved`, `role_invalid`, `agent_name_taken`, `member_claimed`, `team_exists`, `team_not_found`, `member_not_found`, `author_mismatch`, `text_too_long`, `invalid_utf8`, `charter_too_long`, `ref_invalid`, `path_symlink`, `team_session_mismatch`, `team_ambiguous`, `view_foreign`, `plugin_disabled`, `agent_not_found`, `agent_blocked`, `agent_not_ready`, `launch_pending`, `not_an_agent`, `board_write_failed`, `roster_conflict`, `home_unset`, `internal`, `say_unverified`, `say_multiline`, `say_too_long`, `say_control_command`, `say_timeout`, `kind_unverified`, `retract_invalid`, `edit_invalid`, `interrupt_needs_recipient`, `interrupt_cooldown`, `session_unknown`, `session_unsupported`, `outside_herdr`, `command_not_found`, `pane_busy`, `member_alive`, `no_project_dir`, `workdir_foreign_file`, `instructions_too_long`, `rules_too_long`, `operator_grant` (in `needs`) |
+| 1 | refused or validation failure | `team_name_invalid`, `name_invalid`, `name_reserved`, `role_invalid`, `agent_name_taken`, `member_claimed`, `team_exists`, `team_not_found`, `member_not_found`, `author_mismatch`, `text_too_long`, `invalid_utf8`, `charter_too_long`, `ref_invalid`, `path_symlink`, `team_session_mismatch`, `team_ambiguous`, `view_foreign`, `plugin_disabled`, `plugin_not_installed`, `plugin_source_invalid`, `plugin_source_local`, `plugin_source_unsupported`, `plugin_update_failed`, `update_step_failed`, `update_step_timeout`, `skill_update_refused`, `agent_not_found`, `agent_blocked`, `agent_not_ready`, `launch_pending`, `not_an_agent`, `board_write_failed`, `roster_conflict`, `home_unset`, `internal`, `say_unverified`, `say_multiline`, `say_too_long`, `say_control_command`, `say_timeout`, `kind_unverified`, `retract_invalid`, `edit_invalid`, `interrupt_needs_recipient`, `interrupt_cooldown`, `session_unknown`, `session_unsupported`, `outside_herdr`, `command_not_found`, `pane_busy`, `member_alive`, `no_project_dir`, `workdir_foreign_file`, `instructions_too_long`, `rules_too_long`, `operator_grant` (in `needs`) |
 | 2 | usage | `usage`, `unknown_command` |
 | 3 | not a member, or Herdr unreachable | `not_a_member`, `team_required`, `server_not_running`, `herdr_unreachable`, `herdr_timeout`, `herdr_not_found` |
 | 4 | echo rejected | `echo_rejected` |
@@ -819,9 +819,12 @@ and record it on the board. The console's `!<member> <text>` runs this;
   identity and state sequence returned by `agent.get`. Herdr checks both and
   the idle state in the same app turn that queues the input. A concurrent
   state change is `state_changed`, a newly working member is `working`, and a
-  replacement is `wrong_occupant`; none writes bytes. Herdr 0.8 cannot make
-  this guarantee, so plain delivery is `update_required` until Herdr is
-  updated. `--force` intentionally keeps `agent.prompt`.
+  replacement is `wrong_occupant`; none writes bytes. At every connection the
+  daemon sends an empty, zero-write probe to the *running server*, because a
+  release string does not prove that an optional API method exists. Without
+  the method, plain delivery is `capability_unavailable` and its detail points
+  to `@name text` for board delivery; it never falls back to a racy
+  check-then-prompt sequence. `--force` intentionally keeps `agent.prompt`.
 - The daemon refuses in both modes when the member is absent, another
   process occupies its terminal, the kind is untrusted, the agent is
   `blocked` or `unknown`, `agent explain` shows a blocker or an overlay
@@ -836,7 +839,7 @@ and record it on the board. The console's `!<member> <text>` runs this;
   (typed into a running turn) or `dry`; `refused` carries `working`, `muted`,
   `blocked`, `dialog`, `draft`, `skip_state_update`, `unknown`, `not_ready`,
   `absent`, `wrong_occupant`, `wrong_target`, `state_changed`,
-  `update_required`, `in_flight`, `stale`, `unverified_source`,
+  `capability_unavailable`, `update_required` (legacy history), `in_flight`, `stale`, `unverified_source`,
   `member_not_found`, `kind_unverified`; `failed`
   carries `hung`, `transient`, or `unconfirmed` (still idle 5 s after typing
   with the text gone from the prompt line; `not_submitted` when it is still
@@ -934,7 +937,7 @@ missing, unverified, addressed elsewhere, or carrying no such block.
 Detaches the daemon (plan 8.1). Second start with a live daemon exits 0
 `already_running`. `--replace` waits up to 10 s for the lock then SIGTERMs
 the pid in `daemon.json` (start-time verified). JSON
-`{"session_dir","started":true|false,"already_running":bool,"replaced":bool,"daemon":{"pid","start_time","socket","herdr_version","protocol"}}`.
+`{"session_dir","started":true|false,"already_running":bool,"replaced":bool,"daemon":{"pid","start_time","socket","herdr_version","protocol","version","capabilities":{"atomic_idle_prompt":true|false|null}}}`.
 Errors: `herdr_version_mismatch` (1) without `--allow-version`,
 `socket_not_allowed` exits 0 with `{"skipped":"socket_not_allowed"}`.
 
@@ -944,7 +947,7 @@ JSON `{"stopped":bool,"pid":N|null}`.
 
 ### `daemon status`
 
-JSON `{"alive":bool,"pid","start_time","beat_age_s","socket","socket_source","herdr_version","protocol","version","teams":["…"],"pending":{"<team>":n},"ledger":{"wrong_target":0,"landed_working":n,…}}`.
+JSON `{"alive":bool,"pid","start_time","beat_age_s","socket","socket_source","herdr_version","protocol","version","capabilities":{"atomic_idle_prompt":true|false|null},"teams":["…"],"pending":{"<team>":n},"ledger":{"wrong_target":0,"landed_working":n,…}}`.
 
 ### `notifier stats [--team NAME] [--kind KIND]`
 
@@ -1340,6 +1343,20 @@ twice runs twice` whenever `duplicates` is non-empty (same text as `install`; M6
 
 Symlinks `~/.local/bin/herdr-synapse` to `bin/herdr-synapse`. JSON `{"path","target","created":bool,"replaced":bool}`.
 
+### `update [--ref REF] [--force-skill]`
+
+Refreshes the plugin installation as one bounded sequence: a GitHub-managed
+source is reinstalled with `herdr plugin install … --yes` (preserving its
+recorded ref unless `--ref` overrides it), the CLI symlink is refreshed, the
+bundled skill is installed, and the notifier is replaced. A `local` plugin
+link is re-registered with Herdr but deliberately not pulled or modified; that
+checkout is the source of truth and the latter three surfaces are refreshed.
+`--ref` on a local link refuses `plugin_source_local`. Foreign skill paths
+remain untouched and finish as `skill_update_refused`; `--force-skill`
+explicitly replaces them.
+
+JSON `{"before","after","source_kind","checkout","plugin_root","cli","skill","daemon"}`.
+
 ### `view on|off|toggle [--force]`
 
 Ownership probe first. JSON `{"view":"on|off","source":"plugin:herdr-synapse","label":"team:vuln-hunt","owner":"own|none|foreign","previous":"…"|null}`.
@@ -1503,7 +1520,7 @@ run the default gate, so one bad field never changes every gate. Example:
 `{"config":{"gate":{"done_hold_ms":0}}}` delivers to an idle member right
 after the stable window.
 
-`daemon.json` (one line, compact): `{"pid":4021,"start_time":"Thu Sep  4 13:53:10 2026","beat_at":"…","socket":"…","socket_inode":123,"version":"0.1.0","herdr_version":"0.8.2","protocol":20}`.
+`daemon.json` (one line, compact): `{"pid":4021,"start_time":"Thu Sep  4 13:53:10 2026","beat_at":"…","socket":"…","socket_inode":123,"version":"0.16.0","herdr_version":"0.9.0","protocol":22,"capabilities":{"atomic_idle_prompt":true}}`.
 `start_time` is `ps -o lstart= -p <pid>` with surrounding whitespace trimmed.
 
 `console.json`: `{"pane_id","terminal_id","pid","open":true,"default_team":"…","human_label":"…","opened_at","launched_at"}`,

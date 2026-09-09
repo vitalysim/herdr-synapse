@@ -42,6 +42,7 @@ def _info_json(info: Any) -> Optional[Dict[str, Any]]:
         "protocol": obj.get("protocol"),
         "version": obj.get("version"),
         "beat_at": obj.get("beat_at"),
+        "capabilities": obj.get("capabilities"),
     }
 
 
@@ -62,7 +63,7 @@ def _write_pointer(layout: paths.Layout) -> Optional[str]:
 def _daemon_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("action", choices=("start", "stop", "status"))
     parser.add_argument("--replace", action="store_true", help="start: take over from a running daemon")
-    parser.add_argument("--allow-version", action="store_true", help="start: run against a Herdr other than 0.8.x")
+    parser.add_argument("--allow-version", action="store_true", help="start: run against a Herdr version outside the supported 0.8.x/0.9.x lines")
     parser.add_argument("--dry-nudge", action="store_true", help="start: log nudges instead of typing them (HERDR_TEAM_DRY_NUDGE=1)")
     parser.add_argument("--timeout", type=float, default=10.0, help="stop: seconds to wait for the daemon to exit")
 
@@ -74,8 +75,10 @@ def _human_start(payload: Dict[str, Any]) -> str:
     if payload.get("already_running"):
         return "notifier already running (pid {}, started {})\n".format(daemon.get("pid"), daemon.get("start_time"))
     verb = "replaced the running notifier" if payload.get("replaced") else "notifier started"
-    return "{}: pid {} on {} (Herdr {}, protocol {})\nsession dir: {}\n".format(
-        verb, daemon.get("pid"), daemon.get("socket"), daemon.get("herdr_version") or "?", daemon.get("protocol") or "?", payload.get("session_dir"),
+    safe_say = ((daemon.get("capabilities") or {}).get("atomic_idle_prompt") if isinstance(daemon.get("capabilities"), dict) else None)
+    safe_label = "ready" if safe_say is True else "unavailable" if safe_say is False else "unknown"
+    return "{}: pid {} on {} (Herdr {}, protocol {}; safe ! {})\nsession dir: {}\n".format(
+        verb, daemon.get("pid"), daemon.get("socket"), daemon.get("herdr_version") or "?", daemon.get("protocol") or "?", safe_label, payload.get("session_dir"),
     )
 
 
@@ -213,6 +216,7 @@ def daemon_status(layout: paths.Layout) -> Dict[str, Any]:
         "ledger_by_team": per_team,
         "identity_env_unset": info.identity_env_unset if info is not None else None,
         "manifest_version": info.manifest_version if info is not None else None,
+        "capabilities": info.capabilities if info is not None else None,
     }
 
 
@@ -222,6 +226,9 @@ def _human_status(payload: Dict[str, Any]) -> str:
         lines.append("  pid {} started {} (beat {}s ago)".format(payload["pid"], payload.get("start_time"), payload.get("beat_age_s")))
     lines.append("  socket: {} ({})".format(payload["socket"], payload["socket_source"]))
     lines.append("  herdr: {} protocol {}; plugin {}".format(payload.get("herdr_version") or "?", payload.get("protocol") or "?", payload.get("version") or payload.get("plugin_version")))
+    capabilities = payload.get("capabilities") if isinstance(payload.get("capabilities"), dict) else {}
+    atomic = capabilities.get("atomic_idle_prompt")
+    lines.append("  safe !: {}".format("ready (atomic idle-only delivery)" if atomic is True else "unavailable; use @name text or explicit !!name text" if atomic is False else "unknown"))
     lines.append("  teams: {}".format(", ".join(payload["teams"]) if payload["teams"] else "none"))
     if payload["pending"]:
         lines.append("  pending: " + ", ".join("{}={}".format(k, v) for k, v in payload["pending"].items()))

@@ -29,8 +29,10 @@ tests/                   unittest suite; tests/support.py has TempState, FakeHer
 
 ## Try it
 
-The plugin runs on the installed Herdr 0.8.2; no fork build is needed. The
-zero-interference way is the sandbox launcher, a named session with its own
+The plugin runs on supported Herdr 0.8.x and 0.9.x builds. Safe single-bang
+direct chat is capability-gated: the running server must expose
+`agent.prompt_if_idle`; no release number is treated as proof. The
+zero-interference way to develop is the sandbox launcher, a named session with its own
 config, registry, and state: from a terminal outside Herdr run
 `bin/herdr-synapse-sandbox start`, then `prefix+t` inside it. Read
 `docs/human-testing.md` (the guided first run) and `docs/capabilities.md`

@@ -53,17 +53,16 @@ MAX_COMBINING_RUN = 3
 #: Words a member, role, or team may never be called (plan 5.1).
 RESERVED_NAMES: FrozenSet[str] = frozenset({"human", "all", "me", "none", "system", "team"})
 
-#: The 22 kind labels of the installed Herdr 0.8.2 binary, verified against
-#: ``herdr agent start --help`` (``[possible values: ...]``) on 2026-09-04.
+#: The 23 kind labels of the installed Herdr 0.9.0 binary, verified against
+#: ``herdr agent start --help`` (``[possible values: ...]``) on 2026-09-09.
 #: ``test_sanitize`` re-checks this list against the binary when one is on PATH.
 KIND_LABELS: FrozenSet[str] = frozenset({
     "pi", "claude", "codex", "gemini", "cursor", "devin", "agy", "cline", "omp",
     "mastracode", "opencode", "copilot", "kimi", "kiro", "droid", "amp", "grok",
-    "hermes", "kilo", "qodercli", "qwen", "maki",
+    "hermes", "kilo", "qodercli", "qwen", "maki", "muse",
 })
 
-#: Every alias ``src/detect/mod.rs::lookup_agent`` maps to a kind at HEAD
-#: (``3150bd92``), including the ``muse`` kind that exists only past the tag.
+#: Every alias ``src/detect/mod.rs::lookup_agent`` maps to a kind at HEAD.
 #: Aliases with spaces never pass the grammar but are listed for completeness.
 KIND_ALIASES: FrozenSet[str] = frozenset({
     "claude-code",
@@ -81,7 +80,7 @@ KIND_ALIASES: FrozenSet[str] = frozenset({
     "kilo-code", "kilo code",
     "qoderclicn", "qoder", "qodercn",
     "qwen-code", "qwen code",
-    "muse", "muse-code", "muse-cli",
+    "muse-code", "muse-cli",
 })
 
 #: The full refusal set for names, roles, and team names.

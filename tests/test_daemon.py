@@ -144,6 +144,7 @@ class DetachTests(unittest.TestCase):
         self.assertEqual(info.socket, os.path.realpath(self.ts.socket_path))
         self.assertEqual(info.socket_inode, os.stat(self.ts.socket_path).st_ino)
         self.assertEqual((info.herdr_version, info.protocol), ("0.8.2", 20))
+        self.assertEqual(info.capabilities, {"atomic_idle_prompt": True})
         self.assertTrue(D.daemon_alive(self.ts.session))
         # the grandchild holds daemon.lock: a non-blocking try from here fails
         lock = store.daemon_lock(self.ts.session)
@@ -298,6 +299,8 @@ class ReconnectTests(unittest.TestCase):
                 api.set_response("ping", {"type": "pong", "version": version, "protocol": protocol})
                 pong = d.connect_server()
                 self.assertEqual((pong["version"], d.server_version, d.server_protocol), (version, version, protocol))
+                self.assertTrue(d.atomic_idle_prompt)
+                self.assertEqual(d.info().capabilities, {"atomic_idle_prompt": True})
 
     def test_backoff_sequence_then_give_up_releases_lock(self):
         api = FakeApi(self.ts.socket_path)

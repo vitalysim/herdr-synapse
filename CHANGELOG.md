@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.16.0 (2026-09-09)
+
+- **Compatibility is now a fact, not a version guess.** The notifier safely probes the running server for `agent.prompt_if_idle` without writing terminal bytes, persists the result in `daemon.json`, and shows Herdr, protocol, plugin, daemon, and safe-`!` status directly in the console. A fork that backports the method works regardless of its release string; an official build without it fails closed even if it reports the same version.
+- A refused `!name text` now says `capability_unavailable` and offers the two honest alternatives: `@name text` for safe board delivery, or `!!name text` for intentional forced terminal input. Existing `update_required` board history still renders normally.
+- **One update command refreshes every installed surface.** `herdr-synapse update` reinstalls a GitHub-managed checkout through Herdr, refreshes the `~/.local/bin` link and every installed skill copy, then replaces the notifier. A locally linked development checkout is kept untouched and used as the source of truth; `--force-skill` is explicit when a foreign skill path would need replacement.
+- Synapse's canonical agent-kind set now includes `muse`, matching Herdr 0.9's `agent start --help`; it remains impossible to reuse an agent kind as a team, role, or member name.
+
 ## 0.15.5 (2026-09-09)
 
 - **A single bang cannot race into a running turn.** `!name text` now submits through Herdr's atomic `agent.prompt_if_idle` method with the terminal identity and state sequence the notifier inspected. If the agent starts working, changes state, or is replaced before Herdr queues the line, nothing is typed and the console reports the exact refusal. `!!name text` deliberately keeps the unrestricted prompt path.

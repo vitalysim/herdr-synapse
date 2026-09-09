@@ -224,6 +224,7 @@ class TypedLabelTests(unittest.TestCase):
             ({"result": "refused", "reason": "wrong_occupant"}, (False, "not typed (absent)", "✗ not typed (absent)", "x not typed (absent)")),
             ({"result": "refused", "reason": "state_changed"}, (False, "not typed (state changed; retry)", "✗ not typed (state changed; retry)", "x not typed (state changed; retry)")),
             ({"result": "refused", "reason": "update_required"}, (False, "not typed (update Herdr)", "✗ not typed (update Herdr)", "x not typed (update Herdr)")),
+            ({"result": "refused", "reason": "capability_unavailable"}, (False, "safe ! unavailable; use @name", "✗ safe ! unavailable; use @name", "x safe ! unavailable; use @name")),
             ({"result": "refused", "reason": "in_flight"}, (False, "not typed (busy)", "✗ not typed (busy)", "x not typed (busy)")),
             ({"result": "refused", "reason": "unverified_source"}, (False, "refused (unverified source)", "✗ refused (unverified source)", "x refused (unverified source)")),
             ({"result": "refused", "reason": "weird"}, (False, "not typed (weird)", "✗ not typed (weird)", "x not typed (weird)")),

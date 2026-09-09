@@ -28,6 +28,7 @@ rest).
 ```
 team red-dev · 3 members · view:on · nudges:on · toasts:herdr · unread(you):0
 charter #1: Ship the HTML report for susfind
+runtime: safe !:ready · Herdr 0.9.0/p22 · Synapse 0.16.0 · daemon 0.16.0
 
 ○  red-dev-claude-dev     claude-dev      claude    w1:p1  idle     "report.py: templates done"   manager  model opus@medium
 ◐  red-dev-codex-reviwer  codex-reviewer  codex     w1:p2  working  "reviewing report.py"         ↪1 (not_idle)
@@ -143,6 +144,11 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
 Requirements: Herdr 0.8.2 or newer, Python 3.9 or newer (standard library
 only), macOS or Linux. Windows is not supported.
 
+Boards, teams, nudges, and explicit `!!` delivery work across those supported
+Herdr lines. Race-free `!name text` additionally requires the running server
+to expose `agent.prompt_if_idle`; the console and `daemon status` show that
+capability directly and offer `@name text` when it is unavailable.
+
 Start `herdr` first: the install registers the plugin through the running
 server. While this repository is private you also need git credentials for
 GitHub, so run `gh auth login` once if you have not.
@@ -250,19 +256,21 @@ must act, and `--urgent` when it cannot wait.
 
 ### Updating
 
-Run the install again; it replaces the checkout in place, so the
-`install-cli` link keeps working:
+One command refreshes the managed checkout, CLI link, installed skill copies,
+and notifier:
 
 ```bash
-herdr plugin install vitalysim/herdr-synapse
-herdr-synapse daemon start --replace   # the notifier exits by itself when the plugin version changes
-herdr-synapse skill check              # says "stale" when the skill version moved
-herdr-synapse skill install            # refresh it for every agent that has it
+herdr-synapse update
 ```
 
-`skill check` is worth a look every time: agents follow the copy in their own
-home directory, so a stale one keeps them on the previous release's rules.
-Then `/quit` and reopen the console if it is open.
+For a GitHub install this asks Herdr to replace its managed checkout. For a
+locally linked development checkout it never runs `git pull` or rewrites your
+tree; it re-registers that link and refreshes the installed surfaces from the
+checkout. Foreign skill directories are left alone unless you explicitly use
+`--force-skill`. The
+console immediately shows both the loaded plugin and daemon versions, so a
+stale process is visible. Then `/quit` and reopen an already-open console to
+load new console code.
 
 Teams, boards and the state pointer all survive an update, because the
 plugin's state lives outside the checkout. Even `herdr plugin uninstall
@@ -785,8 +793,10 @@ peer mail.
   draft, except your own `!!name text` and an interrupt you have allowed for
   that kind.
 - The single-bang idle check and terminal write are one Herdr operation. A
-  state or occupant change refuses the line; Herdr 0.8 reports `update Herdr`
-  rather than attempting the older check-then-prompt sequence.
+  state or occupant change refuses the line. Synapse probes the running
+  server, not its version string; without the atomic method `!` reports the
+  missing capability and points to safe `@name` board delivery. It never
+  falls back to the older check-then-prompt sequence.
 - Authorship is stamped from the pane and process, never claimed by text.
   `--as human` from an agent pane is refused and audited; `say` accepts only
   the verified console; a process descended from an agent's pane is that agent
@@ -816,7 +826,7 @@ peer mail.
 
 ## Status
 
-Current release: 0.15.5, skill v10.
+Current release: 0.16.0, skill v10.
 
 Verified live with Claude Code, Codex, and OpenCode: team formation, board
 delivery, session identity, `resume`, the operator gate, and the trusted-origin
@@ -842,7 +852,7 @@ is not.
 ```bash
 git clone https://github.com/vitalysim/herdr-synapse.git
 cd herdr-synapse
-python3 -m unittest discover -s tests             # 1849 tests, no dependencies
+python3 -m unittest discover -s tests             # 1863 tests, no dependencies
 bin/herdr-synapse-sandbox start ~/your/project    # an isolated Herdr session for live testing
 ```
 

@@ -396,7 +396,7 @@ class PackagingInvariantTests(unittest.TestCase):
         names = {c.name for c in commands}
         for name in ("create", "add", "remove", "leave", "bind", "dissolve", "use", "teams", "rename", "me", "who", "audit", "charter", "brief",
                      "post", "board", "show", "retract", "edit", "task", "ack", "say",
-                     "daemon", "doctor", "setup", "keys", "skill", "hooks", "install-cli", "view", "ui", "teardown", "gc", "prune",
+                     "daemon", "doctor", "setup", "keys", "skill", "hooks", "install-cli", "update", "view", "ui", "teardown", "gc", "prune",
                      "nudge", "mute", "unmute", "pause", "focus", "read", "hook-event", "console", "compose", "picker", "usage", "usage-pane"):
             self.assertIn(name, names, name)
         self.assertTrue(all(type(c) is cli.Command for c in commands))

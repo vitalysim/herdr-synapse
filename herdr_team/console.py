@@ -31,6 +31,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from herdr_team import VERSION
 from herdr_team import api as _api
 from herdr_team import paths as _paths
 from herdr_team import store
@@ -343,6 +344,7 @@ def build_model(layout: Layout, team: str, state: Optional[ConsoleState] = None,
     who = read_who(layout)
     team_paths = layout.team(team)
     roster_doc = store.read_json(team_paths.team_json, None)
+    daemon_doc = store.read_json(layout.session.daemon_json, None)
     roster_members = [m for m in (roster_doc or {}).get("members", []) if isinstance(m, dict)] if isinstance(roster_doc, dict) else []
     model = tui_model.build_console_model(
         team,
@@ -360,6 +362,7 @@ def build_model(layout: Layout, team: str, state: Optional[ConsoleState] = None,
         now=datetime.now(timezone.utc),
         previous=previous,
         audit=read_audit_warnings(layout, team),
+        runtime=tui_model.runtime_from_daemon(daemon_doc, VERSION),
     )
     # ``@@`` searches the members' project directories (the roster's cwd), not the console's own cwd.
     model.file_roots = tui_model.member_file_roots(roster_members)
@@ -403,6 +406,7 @@ def refresh(model: ConsoleModel, layout: Layout, state: Optional[ConsoleState] =
     model.links = fresh.links
     model.human_label = fresh.human_label
     model.file_roots = fresh.file_roots
+    model.runtime = fresh.runtime
     if model.watching_say:
         tui_model.settle_say_watch(model, state.tail.records, time.monotonic())
 

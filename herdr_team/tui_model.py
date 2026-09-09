@@ -270,6 +270,17 @@ class ConsoleHeader:
     charter_headline: Optional[str]
 
 
+@dataclass(frozen=True)
+class ConsoleRuntime:
+    """Installed/plugin and live-daemon compatibility shown above the feed."""
+
+    plugin_version: str
+    daemon_version: Optional[str] = None
+    herdr_version: Optional[str] = None
+    protocol: Optional[int] = None
+    atomic_idle_prompt: Optional[bool] = None
+
+
 @dataclass
 class ConsoleModel:
     team: str
@@ -293,6 +304,7 @@ class ConsoleModel:
     width: int = 80
     height: int = 24
     ascii_only: bool = False
+    runtime: Optional[ConsoleRuntime] = None
     paste_mode: bool = False
     pending_confirm: Optional["Intent"] = None
     peek: Optional[List[str]] = None
@@ -502,6 +514,38 @@ def header_lines(header: ConsoleHeader, width: int = 80) -> List[str]:
     return [truncate_columns(first, width), truncate_columns(second, width)]
 
 
+def runtime_from_daemon(daemon: Any, plugin_version: str) -> ConsoleRuntime:
+    """Normalize the optional, backward-compatible ``daemon.json`` fields."""
+
+    from herdr_team import capabilities
+
+    doc = daemon if isinstance(daemon, dict) else {}
+    protocol = doc.get("protocol")
+    return ConsoleRuntime(
+        plugin_version=plugin_version,
+        daemon_version=doc.get("version") if isinstance(doc.get("version"), str) and doc.get("version") else None,
+        herdr_version=doc.get("herdr_version") if isinstance(doc.get("herdr_version"), str) and doc.get("herdr_version") else None,
+        protocol=int(protocol) if isinstance(protocol, int) and not isinstance(protocol, bool) else None,
+        atomic_idle_prompt=capabilities.atomic_idle_prompt_of(doc),
+    )
+
+
+def runtime_line(runtime: ConsoleRuntime, width: int = 80) -> str:
+    """One capability-first line; the safety result survives narrow clipping."""
+
+    safe = "ready" if runtime.atomic_idle_prompt is True else "unavailable" if runtime.atomic_idle_prompt is False else "unknown"
+    herdr = runtime.herdr_version or "?"
+    protocol = "p{}".format(runtime.protocol) if runtime.protocol is not None else "p?"
+    daemon = runtime.daemon_version or "down"
+    if width >= WIDE_COLUMNS:
+        line = "runtime: safe !:{} · Herdr {}/{} · Synapse {} · daemon {}".format(safe, herdr, protocol, runtime.plugin_version, daemon)
+    elif width >= NARROW_COLUMNS:
+        line = "safe !:{} · H {}/{} · S/D {}/{}".format(safe, herdr, protocol, runtime.plugin_version, daemon)
+    else:
+        line = "safe !:{} · H {}/{}".format(safe, herdr, protocol)
+    return truncate_columns(line, width)
+
+
 def status_glyph(status: Optional[str], ascii_only: bool = False) -> str:
     table = ASCII_STATUS_GLYPHS if ascii_only else STATUS_GLYPHS
     return table.get(status or "unknown", table["unknown"])
@@ -654,7 +698,9 @@ _TYPED_REFUSED_LABELS = {
     "wrong_target": "not typed (absent)", "in_flight": "not typed (busy)", "stale": "not typed (stale job)",
     "unverified_source": "refused (unverified source)", "member_not_found": "not typed (no such member)",
     "kind_unverified": "not typed (kind not trusted)", "state_changed": "not typed (state changed; retry)",
+    # ``update_required`` remains readable for board history written by 0.15.5.
     "update_required": "not typed (update Herdr)",
+    "capability_unavailable": "safe ! unavailable; use @name",
 }
 
 
@@ -1100,6 +1146,7 @@ def build_console_model(
     now: Optional[datetime] = None,
     previous: Optional[ConsoleModel] = None,
     audit: Optional[Iterable[Dict[str, Any]]] = None,
+    runtime: Optional[ConsoleRuntime] = None,
 ) -> ConsoleModel:
     """Assemble the whole console state from files; ``previous`` keeps input, scroll, filter."""
     recs = list(records)
@@ -1124,6 +1171,7 @@ def build_console_model(
         width=width,
         height=height,
         ascii_only=ascii_only,
+        runtime=runtime,
         human_label=label,
         members=members,
         default_recipient=(previous.default_recipient if previous else None),
@@ -2071,7 +2119,10 @@ def settle_say_watch(model: ConsoleModel, records: Iterable[Dict[str, Any]], now
         outcome = outcomes.get(seq)
         if outcome is not None:
             ok, label = typed_label(outcome)
-            status = "say #{} to {}: {}".format(seq, member, label)
+            if outcome.get("reason") == "capability_unavailable":
+                status = "say #{}: safe ! unavailable; post with @{} or force with !!{}".format(seq, member, member)
+            else:
+                status = "say #{} to {}: {}".format(seq, member, label)
             if not ok and outcome.get("reason") in FORCEABLE_REASONS:
                 status += " (!!{} text forces)".format(member)
             del model.watching_say[seq]
@@ -2197,7 +2248,11 @@ def render_console_styled(model: ConsoleModel, width: Optional[int] = None, heig
     if len(footer) > h:
         footer = footer[-h:]  # the input line always wins
     budget = h - len(footer)
-    lines: List[Tuple[str, str]] = [(line, STYLE_HEADER) for line in header_lines(model.header, w)[:budget]]
+    header = [(line, STYLE_HEADER) for line in header_lines(model.header, w)]
+    if model.runtime is not None:
+        runtime_style = STYLE_WARNING if model.runtime.atomic_idle_prompt is False else STYLE_DIM
+        header.append((runtime_line(model.runtime, w), runtime_style))
+    lines: List[Tuple[str, str]] = header[:budget]
     budget -= len(lines)
     roster_cap = min(len(model.roster_lines), max(3, h // 4), max(0, budget - 1))
     roster_names = [str(m.get("name") or "") for m in model.members] if len(model.members) == len(model.roster_lines) else []

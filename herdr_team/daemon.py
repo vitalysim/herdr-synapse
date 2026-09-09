@@ -49,7 +49,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
-from herdr_team import PLUGIN_ID, VERSION, gate, nudge, render, roster, sanitize, store
+from herdr_team import PLUGIN_ID, VERSION, capabilities, gate, nudge, render, roster, sanitize, store
 from herdr_team import charter as _charter
 from herdr_team import identity as _identity
 from herdr_team import launch as _launch
@@ -319,6 +319,7 @@ class DaemonInfo:
     last_ping_at: Optional[str] = None
     started_at: Optional[str] = None
     identity_env_unset: Optional[bool] = None
+    capabilities: Optional[Dict[str, Optional[bool]]] = None
 
     def to_json(self) -> Dict[str, Any]:
         obj: Dict[str, Any] = {
@@ -339,6 +340,8 @@ class DaemonInfo:
             obj["started_at"] = self.started_at
         if self.identity_env_unset is not None:
             obj["identity_env_unset"] = self.identity_env_unset
+        if self.capabilities is not None:
+            obj["capabilities"] = dict(self.capabilities)
         return obj
 
     @classmethod
@@ -365,6 +368,7 @@ class DaemonInfo:
             last_ping_at=obj.get("last_ping_at") if isinstance(obj.get("last_ping_at"), str) else None,
             started_at=obj.get("started_at") if isinstance(obj.get("started_at"), str) else None,
             identity_env_unset=obj.get("identity_env_unset") if isinstance(obj.get("identity_env_unset"), bool) else None,
+            capabilities=dict(obj["capabilities"]) if isinstance(obj.get("capabilities"), dict) else None,
         )
 
 
@@ -1370,6 +1374,8 @@ class Daemon:
         self.tick_s = TAIL_TICK_S
         self.server_version: Optional[str] = None
         self.server_protocol: Optional[int] = None
+        #: ``None`` until the live server has answered the zero-write probe.
+        self.atomic_idle_prompt: Optional[bool] = None
         self.socket_inode: Optional[int] = socket_inode(layout.socket)
         self.started_at = now_iso()
         self.start_time = process_start_time(os.getpid()) or ""
@@ -1459,6 +1465,7 @@ class Daemon:
             last_ping_at=self.last_ping_at,
             started_at=self.started_at,
             identity_env_unset=_identity_env_unset() and not any(name in self.env for name in IDENTITY_ENV_VARS),
+            capabilities=capabilities.capability_map(self.atomic_idle_prompt),
         )
 
     def write_info(self, started: bool = False) -> DaemonInfo:
@@ -1487,6 +1494,7 @@ class Daemon:
                 EXIT_REFUSED,
                 {"herdr_version": version, "supported": list(SUPPORTED_HERDR_MAJOR_MINORS)},
             )
+        self.atomic_idle_prompt = capabilities.probe_atomic_idle_prompt(self.api)
         self.socket_inode = socket_inode(self.layout.socket)
         return pong
 
@@ -4581,11 +4589,10 @@ class Daemon:
         if draft and draft.strip():
             return refuse("draft", draft.strip().splitlines()[0][:40])
         gate_seq = int(fresh.get("state_change_seq") or 0)
-        server_major_minor = ".".join(self.server_version.split(".")[:2]) if self.server_version else None
-        if not force and server_major_minor == "0.8":
+        if not force and self.atomic_idle_prompt is False:
             return refuse(
-                "update_required",
-                "Herdr {} cannot submit idle-only prompts atomically; update Herdr to 0.9.0 or newer".format(self.server_version),
+                "capability_unavailable",
+                capabilities.unavailable_detail(name),
             )
         force_verified: Optional[bool] = (kind in FORCE_VERIFIED_KINDS) if force else None
         attempt_id = "say-{}-{}".format(name, int(time.time() * 1000))
@@ -4620,10 +4627,12 @@ class Daemon:
                 )
         except HerdrTeamError as err:
             elapsed_ms = (time.monotonic() - t0) * 1000.0
-            result, reason, detail, ledger_result = self._classify_say_error(rt, err, now, guarded=not force)
+            result, reason, detail, ledger_result = self._classify_say_error(rt, err, now, guarded=not force, member=name)
             team.ledger.record_result(attempt_id, ledger_result, {"elapsed_ms": elapsed_ms, "code": err.code, "message": err.message})
             self._say_outcome(team, seq, name, result, reason, detail, force, attempt_id=attempt_id, elapsed_ms=elapsed_ms, kind=kind, force_verified=force_verified, requested_by=job.get("requested_by"))
             return
+        if not force:
+            self.atomic_idle_prompt = True
         elapsed_ms = (time.monotonic() - t0) * 1000.0
         self.counters["says"] += 1
         self.global_last_nudge_ms = now
@@ -4632,16 +4641,24 @@ class Daemon:
         self.who_dirty = True
         self.log("{}: say #{} typed into {} ({}) in {:.0f} ms; confirming".format(team.name, seq, name, pane_id, elapsed_ms))
 
-    def _classify_say_error(self, rt: MemberRuntime, err: HerdrTeamError, now: float, guarded: bool = False) -> Tuple[str, str, str, str]:
+    def _classify_say_error(self, rt: MemberRuntime, err: HerdrTeamError, now: float, guarded: bool = False, member: Optional[str] = None) -> Tuple[str, str, str, str]:
         """``(result, reason, detail, ledger_result)`` for a prompt error on a say (no wait, so no stall code)."""
         code = err.code
         message = (err.message or "").lower()
         detail = "{}: {}".format(code, err.message)
-        if guarded and code in ("unknown_method", "unsupported_method", "invalid_request", "herdr_protocol"):
+        method_missing = code in ("unknown_method", "unsupported_method", "invalid_request", "method_not_found")
+        # An old server answers an unrecognised method with id "".  The normal
+        # request path reports that as an id mismatch; the connect-time raw
+        # probe normally prevents this fallback from being needed.
+        method_missing = method_missing or (
+            code == "herdr_protocol" and self.atomic_idle_prompt is not True and "response id mismatch" in message
+        )
+        if guarded and method_missing:
+            self.atomic_idle_prompt = False
             return (
                 "refused",
-                "update_required",
-                "Herdr does not support atomic idle-only prompts; update Herdr to 0.9.0 or newer ({})".format(detail),
+                "capability_unavailable",
+                capabilities.unavailable_detail(member, detail),
                 RESULT_REFUSED,
             )
         if code == "agent_not_idle":

@@ -1659,6 +1659,8 @@ def say_human_text(payload: Dict[str, Any]) -> str:
             hint = "; retry after checking the member"
         elif reason == "update_required":
             hint = "; update Herdr to 0.9.0 or newer"
+        elif reason == "capability_unavailable":
+            hint = "; post with @{} text for board delivery, or use --force only intentionally".format(name)
         else:
             hint = ""
         return "#{} not typed into {}: {}{}".format(seq, name, reason, hint)

@@ -611,13 +611,15 @@ class SayJobTests(unittest.TestCase):
                 if code == "agent_changed":
                     self.assertTrue(self.d.reconcile_due)
 
-    def test_plain_say_fails_closed_when_atomic_prompt_is_unavailable(self):
+    def test_plain_say_uses_capability_not_the_herdr_release_string(self):
         self.d.server_version = "0.8.2"
+        self.d.atomic_idle_prompt = False
         before = len(self.prompt_calls())
         self.say()
         typed = self.last_typed()
-        self.assertEqual((typed["result"], typed["reason"]), ("refused", "update_required"))
-        self.assertIn("update Herdr", typed["detail"])
+        self.assertEqual((typed["result"], typed["reason"]), ("refused", "capability_unavailable"))
+        self.assertIn("@alpha-reviewer", typed["detail"])
+        self.assertIn("!!alpha-reviewer", typed["detail"])
         self.assertEqual(len(self.prompt_calls()), before)
 
         self.say(force=True)
@@ -625,12 +627,25 @@ class SayJobTests(unittest.TestCase):
         self.agents(**{"alpha-reviewer": {"agent_status": "working", "state_change_seq": 2}})
         self.poll()
 
+        # A backported/forked 0.8 server with the capability is safe; the
+        # nominal version must not disable it.
+        self.d.atomic_idle_prompt = True
+        self.api.set_response("agent.prompt_if_idle", lambda p: {"type": "agent_prompted", "agent": fake_agent("w2:p1", "term_r1", "codex", "alpha-reviewer", status="working", state_change_seq=2)})
+        self.say()
+        self.assertEqual(self.prompt_calls()[-1][0], "agent.prompt_if_idle")
+        self.agents(**{"alpha-reviewer": {"agent_status": "working", "state_change_seq": 2}})
+        self.poll()
+
+        # Conversely, a server reporting 0.9 without the method fails closed
+        # and caches the observed capability result.
         self.d.server_version = "0.9.0"
+        self.d.atomic_idle_prompt = None
         self.api.set_error("agent.prompt_if_idle", "unknown_method", "unknown method")
         self.say()
         typed = self.last_typed()
-        self.assertEqual((typed["result"], typed["reason"]), ("refused", "update_required"))
-        self.assertIn("atomic idle-only prompts", typed["detail"])
+        self.assertEqual((typed["result"], typed["reason"]), ("refused", "capability_unavailable"))
+        self.assertIn("safe board delivery", typed["detail"])
+        self.assertFalse(self.d.atomic_idle_prompt)
 
     def test_idle_after_the_window_is_unconfirmed_or_not_submitted(self):
         self.say()

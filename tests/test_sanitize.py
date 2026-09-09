@@ -206,7 +206,7 @@ class NameGrammarTests(unittest.TestCase):
         self.assertEqual(sanitize.sanitize_name(derived + "-2"), derived + "-2")
 
     def test_reserved_sets_are_consistent(self):
-        self.assertEqual(len(sanitize.KIND_LABELS), 22)
+        self.assertEqual(len(sanitize.KIND_LABELS), 23)
         self.assertTrue(sanitize.KIND_LABELS.isdisjoint(sanitize.RESERVED_NAMES))
         self.assertTrue(sanitize.KIND_LABELS.isdisjoint(sanitize.KIND_ALIASES))
         self.assertEqual(sanitize.RESERVED_WORDS, sanitize.RESERVED_NAMES | sanitize.KIND_LABELS | sanitize.KIND_ALIASES)

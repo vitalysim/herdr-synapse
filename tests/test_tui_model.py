@@ -134,6 +134,20 @@ class HeaderTests(unittest.TestCase):
         self.assertEqual(tui_model.degrade_level(40), 1)
         self.assertEqual(tui_model.degrade_level(39), 2)
 
+    def test_runtime_line_leads_with_the_live_safe_say_capability(self):
+        runtime = tui_model.runtime_from_daemon({
+            "version": "0.16.0", "herdr_version": "0.9.0", "protocol": 22,
+            "capabilities": {"atomic_idle_prompt": False},
+        }, "0.16.0")
+        self.assertEqual(
+            tui_model.runtime_line(runtime, 80),
+            "runtime: safe !:unavailable · Herdr 0.9.0/p22 · Synapse 0.16.0 · daemon 0.16.0",
+        )
+        self.assertTrue(tui_model.runtime_line(runtime, 39).startswith("safe !:unavailable"))
+        model = model_with([], runtime=runtime, height=8)
+        styled = tui_model.render_console_styled(model)
+        self.assertEqual(styled[2][1], tui_model.STYLE_WARNING)
+
 
 # --------------------------------------------------------------------------
 # roster lines (plan 11 who format)

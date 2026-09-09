@@ -34,6 +34,7 @@ COMMAND_MODULES: Tuple[str, ...] = (
     "herdr_team.cmd_roster",
     "herdr_team.cmd_board",
     "herdr_team.cmd_misc",
+    "herdr_team.cmd_update",
     "herdr_team.cmd_hooks",
     "herdr_team.cmd_skill",
     "herdr_team.cmd_daemon",

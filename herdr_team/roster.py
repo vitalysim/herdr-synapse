@@ -58,12 +58,8 @@ MEMBER_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}\Z")
 
 MAX_NAME_CHARS = 32
 RESERVED_NAMES = frozenset({"human", "all", "me", "none", "system", "team"})
-#: Canonical kind labels from ``src/detect/mod.rs::agent_label`` at ``3150bd92``
-#: (22 in the installed 0.8.2 binary plus ``muse`` from HEAD).
-#: ``sanitize.KIND_LABELS`` holds the 22 labels of the installed 0.8.2 binary
-#: (verified against ``herdr agent start --help``); ``muse`` exists only in this
-#: checkout past the tag (``src/detect/mod.rs`` at 3150bd92) and is refused too.
-KIND_LABELS = frozenset(sanitize.KIND_LABELS | {"muse"})
+#: Canonical kind labels advertised by the supported Herdr binary.
+KIND_LABELS = sanitize.KIND_LABELS
 #: Aliases ``src/detect/mod.rs::lookup_agent`` maps onto the labels above.
 KIND_ALIASES = frozenset(sanitize.KIND_ALIASES - KIND_LABELS)
 ALL_KIND_WORDS = KIND_LABELS | KIND_ALIASES
