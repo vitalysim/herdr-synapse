@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/banner.svg" alt="Herdr Synapse - many agents, one board, one name for each of them" width="100%">
+  <img src="docs/banner.svg" alt="Herdr Synapse - the coordination layer for every coding agent" width="100%">
 </p>
 
 <p align="center">

@@ -1,46 +1,135 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 340" width="1200" height="340" role="img" aria-label="Herdr Synapse - many agents, one board, one name for each of them">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 340" width="1200" height="340" role="img" aria-label="Herdr Synapse — the coordination layer for every coding agent">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#0b0b0d"/><stop offset="0.55" stop-color="#161619"/><stop offset="1" stop-color="#0d0d10"/>
+      <stop offset="0" stop-color="#0b0b0d"/>
+      <stop offset="0.55" stop-color="#161619"/>
+      <stop offset="1" stop-color="#0d0d10"/>
     </linearGradient>
     <linearGradient id="wm" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#c7c7d0"/>
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#c7c7d0"/>
     </linearGradient>
     <radialGradient id="glow" cx="0.3" cy="0.3" r="0.7">
-      <stop offset="0" stop-color="#3c3c45" stop-opacity="0.5"/><stop offset="1" stop-color="#3c3c45" stop-opacity="0"/>
+      <stop offset="0" stop-color="#3c3c45" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#3c3c45" stop-opacity="0"/>
     </radialGradient>
   </defs>
 
-  <rect x="0" y="0" width="1200" height="340" rx="18" fill="url(#bg)"/>
-  <rect x="0" y="0" width="1200" height="340" rx="18" fill="url(#glow)"/>
+  <rect width="1200" height="340" rx="18" fill="url(#bg)"/>
+  <rect width="1200" height="340" rx="18" fill="url(#glow)"/>
 
-  <!-- a flock of panes: many agents, one system, one of them being spoken to -->
-  <g opacity="0.5">
-    <g stroke="#3f3f47" stroke-width="1.2" fill="none" opacity="0.9">
-      <path d="M 872 96 L 964 140"/><path d="M 964 140 L 1064 104"/><path d="M 964 140 L 1006 214"/>
-      <path d="M 1006 214 L 1108 186"/><path d="M 1006 214 L 916 252"/><path d="M 1064 104 L 1136 148"/>
+  <!-- Two agent teams orbit one shared board under human authority. -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Team boundaries and cross-team route. -->
+    <g stroke="#34343c" stroke-width="1.1" opacity="0.65">
+      <ellipse cx="833" cy="171" rx="80" ry="110" stroke-dasharray="2 8"/>
+      <ellipse cx="1090" cy="171" rx="76" ry="110" stroke-dasharray="2 8"/>
+      <path d="M866 92 C916 55 1030 55 1072 92"/>
+      <path d="M866 250 C916 287 1030 287 1072 250" opacity="0.55"/>
     </g>
-    <g stroke="#52525b" stroke-width="1.5" fill="none">
-      <rect x="842" y="80" width="60" height="32" rx="5"/>
-      <rect x="1034" y="88" width="60" height="32" rx="5"/>
-      <rect x="1106" y="132" width="60" height="32" rx="5"/>
-      <rect x="1078" y="170" width="60" height="32" rx="5"/>
-      <rect x="886" y="236" width="60" height="32" rx="5"/>
+
+    <!-- Shared routes. One message is held at a closed gate; one passes an open gate. -->
+    <g stroke="#55555f" stroke-width="1.25" opacity="0.9">
+      <path d="M833 171 H944"/>
+      <path d="M1004 171 H1090"/>
+      <path d="M833 171 L807 112"/>
+      <path d="M833 171 L782 188"/>
+      <path d="M833 171 L818 246"/>
+      <path d="M1090 171 L1111 108"/>
+      <path d="M1090 171 L1140 184"/>
+      <path d="M1090 171 L1108 246"/>
     </g>
-    <g stroke="#9a9aa8" stroke-width="1.8" fill="none">
-      <rect x="934" y="124" width="60" height="32" rx="5"/>
+    <g stroke="#8c8c99" stroke-width="1.5" opacity="0.9">
+      <path d="M846 171 H892"/>
+      <path d="M916 171 H944"/>
+      <path d="M1004 171 H1050"/>
+      <path d="M1065 171 H1081"/>
     </g>
-    <circle cx="964" cy="140" r="3.6" fill="#9a9aa8" stroke="none"/>
-    <g stroke="#9a9aa8" stroke-width="1.4" fill="none" opacity="0.75">
-      <path d="M 964 108 A 40 40 0 0 1 964 172" />
-      <path d="M 964 92 A 56 56 0 0 1 964 188" opacity="0.5"/>
+    <g stroke="#9a9aa8" stroke-width="1.4" opacity="0.9">
+      <path d="M902 163 V179"/>
+      <path d="M908 163 V179"/>
+      <path d="M1055 164 L1063 171 L1055 178"/>
+    </g>
+    <circle cx="892" cy="171" r="3.2" fill="#a8a8b2" stroke="none"/>
+    <circle cx="1070" cy="171" r="3.2" fill="#777782" stroke="none"/>
+
+    <!-- Persistent agent identities, expressed as the same pane glyphs as today's banner. -->
+    <g stroke="#54545e" stroke-width="1.4" opacity="0.9">
+      <rect x="780" y="96" width="54" height="30" rx="5"/>
+      <rect x="755" y="173" width="54" height="30" rx="5"/>
+      <rect x="791" y="231" width="54" height="30" rx="5"/>
+      <rect x="1084" y="93" width="54" height="30" rx="5"/>
+      <rect x="1113" y="169" width="54" height="30" rx="5"/>
+      <rect x="1081" y="231" width="54" height="30" rx="5"/>
+    </g>
+    <g stroke="#777782" stroke-width="1.2" opacity="0.75">
+      <path d="M789 106 H812"/><path d="M789 114 H823"/>
+      <path d="M764 183 H788"/><path d="M764 191 H798"/>
+      <path d="M800 241 H824"/><path d="M800 249 H834"/>
+      <path d="M1093 103 H1117"/><path d="M1093 111 H1127"/>
+      <path d="M1122 179 H1146"/><path d="M1122 187 H1156"/>
+      <path d="M1090 241 H1114"/><path d="M1090 249 H1124"/>
+    </g>
+    <g fill="#858590" stroke="none" opacity="0.85">
+      <circle cx="825" cy="105" r="2.3"/>
+      <circle cx="800" cy="182" r="2.3"/>
+      <circle cx="836" cy="240" r="2.3"/>
+      <circle cx="1129" cy="102" r="2.3"/>
+      <circle cx="1158" cy="178" r="2.3"/>
+      <circle cx="1126" cy="240" r="2.3"/>
+    </g>
+
+    <!-- Team hubs and context-capacity arcs. -->
+    <g stroke="#777782" stroke-width="1.4" opacity="0.9">
+      <circle cx="833" cy="171" r="12"/>
+      <circle cx="1090" cy="171" r="12"/>
+      <path d="M828 166 V176 M838 166 V176"/>
+      <path d="M1085 166 L1095 176 M1095 166 L1085 176"/>
+    </g>
+    <g stroke="#9a9aa8" stroke-width="1.3" opacity="0.65">
+      <path d="M773 86 A76 76 0 0 1 839 65"/>
+      <path d="M1070 65 A76 76 0 0 1 1140 89"/>
+      <path d="M769 227 A76 76 0 0 0 831 275" opacity="0.55"/>
+      <path d="M1085 277 A76 76 0 0 0 1147 229" opacity="0.55"/>
+    </g>
+
+    <!-- Append-only shared board. -->
+    <g stroke="#9a9aa8" stroke-width="1.4">
+      <rect x="944" y="143" width="60" height="42" rx="6" fill="#151519" fill-opacity="0.95"/>
+      <path d="M952 154 H991"/>
+      <path d="M952 164 H985" opacity="0.78"/>
+      <path d="M952 174 H994" opacity="0.58"/>
+    </g>
+    <path d="M950 137 H998" stroke="#676772" stroke-width="1.2" opacity="0.7"/>
+    <path d="M955 132 H993" stroke="#4d4d56" stroke-width="1.2" opacity="0.55"/>
+    <circle cx="974" cy="164" r="28" stroke="#60606b" stroke-width="1.1" opacity="0.28"/>
+
+    <!-- Verified human authority above the routing layer. -->
+    <g stroke="#9a9aa8" stroke-width="1.35" opacity="0.9">
+      <path d="M974 45 L990 51 V64 C990 75 983 83 974 88 C965 83 958 75 958 64 V51 Z"/>
+      <circle cx="974" cy="59" r="4"/>
+      <path d="M974 63 V72 M974 68 H979"/>
+      <path d="M974 88 V132" opacity="0.7"/>
+    </g>
+    <circle cx="974" cy="116" r="3" fill="#9a9aa8" stroke="none" opacity="0.8"/>
+
+    <!-- Shared project artifacts and durable memory below the board. -->
+    <g stroke="#62626d" stroke-width="1.2" opacity="0.8">
+      <path d="M974 185 V218 M974 205 H932 V228 M974 205 H1016 V228"/>
+      <rect x="916" y="228" width="32" height="28" rx="5"/>
+      <rect x="958" y="228" width="32" height="28" rx="5"/>
+      <rect x="1000" y="228" width="32" height="28" rx="5"/>
+      <path d="M925 236 H939 M925 242 H937 M925 248 H934"/>
+      <ellipse cx="974" cy="236" rx="7" ry="3"/>
+      <path d="M967 236 V247 C967 251 981 251 981 247 V236 M967 242 C967 246 981 246 981 242"/>
+      <path d="M1009 237 L1016 233 L1023 237 V246 L1016 251 L1009 246 Z M1009 237 L1016 241 L1023 237 M1016 241 V251"/>
     </g>
   </g>
 
   <rect x="0.75" y="0.75" width="1198.5" height="338.5" rx="17.25" fill="none" stroke="#2a2a31" stroke-width="1.5"/>
 
-  <text x="78" y="86" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="15" letter-spacing="4" font-weight="600" fill="#8a8a93">HERDR PLUGIN &#160;&#183;&#160; ANY MIX OF AGENTS</text>
+  <text x="78" y="86" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="15" letter-spacing="4" font-weight="600" fill="#8a8a93">HERDR PLUGIN &#160;&#183;&#160; MULTI-AGENT COORDINATION</text>
   <text x="76" y="188" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="82" font-weight="800" letter-spacing="-2" fill="url(#wm)">Herdr Synapse</text>
-  <text x="80" y="236" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="25" font-weight="400" fill="#a8a8b2">Many agents, one board, one name for each of them.</text>
-  <text x="80" y="280" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="17" letter-spacing="0.3" fill="#6b6b75">roster &#183; charter &#183; instructions &#183; board &#160;&#183;&#160; every agent kind</text>
+  <text x="80" y="236" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="25" font-weight="400" fill="#a8a8b2">The coordination layer for every coding agent.</text>
+  <text x="80" y="280" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="17" letter-spacing="0.3" fill="#6b6b75">safe delivery &#183; shared board &#183; durable identity &#183; human authority</text>
 </svg>
