@@ -796,7 +796,7 @@ receipts wake nobody.
 
 ## Status
 
-Current release: 0.15.1, skill v10.
+Current release: 0.15.2, skill v10.
 
 Verified live with Claude Code, Codex, and OpenCode: team formation, board
 delivery, session identity, `resume`, the operator gate, and the trusted-origin
@@ -822,7 +822,7 @@ is not.
 ```bash
 git clone https://github.com/vitalysim/herdr-synapse.git
 cd herdr-synapse
-python3 -m unittest discover -s tests             # 1840 tests, no dependencies
+python3 -m unittest discover -s tests             # 1841 tests, no dependencies
 bin/herdr-synapse-sandbox start ~/your/project    # an isolated Herdr session for live testing
 ```
 

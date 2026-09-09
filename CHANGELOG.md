@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.2 (2026-09-09)
+
+- The notifier no longer opens an empty **Waiting on you** popup every 30 seconds after an old ask falls outside the popup's 400-record board window. Its in-memory ask tracker remains read-free during ordinary ticks, but is now revalidated against the popup's exact bounded view immediately before taking focus.
+
 ## 0.15.1 (2026-09-08)
 
 - **Clear a board.** `herdr-synapse wipe` (console `/wipe`) empties a team's board. It is the store's own rotation, forced: every post moves to `archive/board.<first>-<last>.jsonl`, seqs keep counting, and the fresh board opens with a `board_cleared` note naming who did it — so a member's read position still means what it meant, the notifier's tailer follows it as it follows any rotation, and the next `board --new` says why the board is short. `herdr-synapse board --since 1` still reads the history. `--purge` deletes the archive and the payloads as well; that is the one thing here nobody can get back, and both forms ask first (`--yes` off a terminal). Operator only. The console resets its own feed cache afterwards, since that cache holds every record it ever tailed.

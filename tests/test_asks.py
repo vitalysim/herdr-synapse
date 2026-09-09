@@ -461,6 +461,23 @@ class DaemonPopupTests(unittest.TestCase):
         self.d.raise_asks(self.clock() * 1000)
         self.assertEqual(self.opens(), [], "Esc means not now, not ask me again in a second")
 
+    def test_an_ask_that_aged_out_of_the_popup_window_does_not_open_an_empty_popup(self):
+        seq = post(self.ts)
+        self.ingest()
+        self.assertIn(seq, self.team.open_asks)
+        for i in range(asks.LOOKBACK):
+            post(self.ts, "ordinary board traffic {}".format(i), kind="note", author=PEER, to=(MEMBER,))
+        self.ingest()
+        self.assertIn(seq, self.team.open_asks, "the cheap in-memory tracker retains the old ask")
+        self.assertEqual(asks.pending(self.ts.team), [], "the popup reads only the current bounded window")
+
+        self.d.raise_asks(self.clock() * 1000)
+        self.assertEqual(self.opens(), [], "never steal focus for a popup that will render empty")
+        self.assertEqual(self.team.open_asks, {}, "the side-effect boundary refreshes the stale tracker")
+        self.clock.advance(D.ASK_POPUP_RETRY_S + 1)
+        self.d.raise_asks(self.clock() * 1000)
+        self.assertEqual(self.opens(), [], "a stale ask must not reopen on the retry interval")
+
     def test_the_policy_turns_the_popup_off(self):
         run_cli(["--json", "--team", "alpha", "ask-policy", "--no-popup"], self.ts.env, FakeApi())
         post(self.ts)

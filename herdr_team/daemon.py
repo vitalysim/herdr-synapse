@@ -3016,7 +3016,6 @@ class Daemon:
             return
 
     def _ask_popup_wanted(self, team: TeamState) -> bool:
-        from herdr_team import asks as _asks
         from herdr_team.cmd_misc import ask_view
 
         if not ask_view(team.roster).get("popup"):
@@ -3037,8 +3036,25 @@ class Daemon:
         team.dismissed_cache = (mtime, seqs)
         return seqs
 
+    def _revalidate_asks_for_popup(self, team: TeamState) -> bool:
+        """Refresh the cheap tracker before taking focus with a popup.
+
+        ``open_asks`` follows every ingested record without re-reading the
+        board, so a long-running daemon can retain an ask after it falls out of
+        the bounded window that the popup itself reads. Re-read only here, at
+        the focus-stealing side-effect boundary, and use the popup's exact
+        view as the authority.
+        """
+        from herdr_team import asks as _asks
+
+        current = _asks.pending(team.paths)
+        team.open_asks = {int(record["seq"]): record for record in current if isinstance(record.get("seq"), int)}
+        return bool(set(team.open_asks) - set(self._dismissed_asks(team)))
+
     def _open_ask_popup(self, team: TeamState, now: float) -> None:
         """One ``plugin.pane.open``; a busy slot is a retry, never an error."""
+        if not self._revalidate_asks_for_popup(team):
+            return
         try:
             self.api.request("plugin.pane.open", {"plugin_id": PLUGIN_ID, "entrypoint": "asks", "focus": True,
                                                   "env": {"HERDR_TEAM": team.name}}, timeout=5.0)
