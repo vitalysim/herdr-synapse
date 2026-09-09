@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Herdr current-only plugin API methods",
+  "schemas": {
+    "request": {
+      "$defs": {
+        "AgentPromptIfIdleParams": {
+          "description": "Submit a prompt only if the resolved pane still hosts the idle agent that the caller inspected.",
+          "properties": {
+            "expected_state_change_seq": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "expected_terminal_id": {
+              "type": "string"
+            },
+            "target": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "target",
+            "text",
+            "expected_terminal_id",
+            "expected_state_change_seq"
+          ],
+          "type": "object"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "method": {
+              "const": "agent.prompt_if_idle",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/AgentPromptIfIdleParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        }
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    }
+  }
+}

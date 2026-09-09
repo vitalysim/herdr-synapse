@@ -430,7 +430,7 @@ what was actually sent: intents, results, per-kind clean-landing rate,
 | `herdr-synapse nudge <name> [--force]` | evaluate now; builds pending work from unread human/member-authored messages (to it or to all) if none is pending; system and delivery history is never converted to mail; terminal automatic deliveries are skipped unless `--force`, which also marks the work urgent and skips the done-hold and interval, never the dialog, draft, or focus checks |
 | `herdr-synapse mute <name> \| --all [--for 10m\|2h\|1d\|N]`, `unmute <name> \| --all`, `pause` | silence nudges (gate 2) and the Claude Stop hook; posts still land and **toasts are not muted** |
 | `herdr-synapse focus <name>` | focus the member's pane through the daemon |
-| `herdr-synapse say <name> "<text>" [--force]` (console: `!name text`, `!!name text`) | type one line into the member's input box now, with operator authority, recorded as a `direct` board record; refused while the member shows a dialog, a permission prompt, an overlay, or a draft, and while it is working unless `--force`; the outcome is a `typed` record and a feed tag (`✓typed`, `✗ not typed (working)`, …); human only, from the focused console only |
+| `herdr-synapse say <name> "<text>" [--force]` (console: `!name text`, `!!name text`) | type one line into the member's input box now, with operator authority, recorded as a `direct` board record; plain `!` atomically requires the inspected terminal to remain idle through submission, while `--force`/`!!` deliberately permits a running turn; dialogs, permission prompts, overlays, and drafts refuse both; the outcome is a `typed` record and a feed tag (`✓typed`, `✗ not typed (working)`, …); human only, from the focused console only |
 | `herdr-synapse post --to <name> --interrupt "<text>"` (console: `/interrupt @name text`) | urgent, and when the recipient's kind is in `config.gate.interrupt_kinds` (default `claude`) and the sender is out of its cooldown for that teammate (10 min), the daemon types the nudge into the recipient's *running turn* instead of waiting for idle: `[herdr-team interrupt] <sender> could not wait: 1 urgent board post for <name> (seq N). Run: herdr-synapse board --new [nK]`. Dialog, overlay, draft, focus, and rate-limit gates still hold it; otherwise it is an ordinary urgent nudge. The feed shows `⚡INTERRUPT` on the post and `⚡interrupted` once typed; `who` shows `⚡armed`, `⚡cooldown`, or `⚡kind_not_allowed` next to `↪N`. Named recipients only; a member's repeat inside the cooldown is `interrupt_cooldown` at the CLI; the human has no cooldown |
 | `herdr-synapse interrupts [show\|off\|on\|<kind>,<kind>] [--cooldown 10m]` (console: `/interrupts …`) | show or set the team's interrupt kinds and cooldown (`config.gate`); changing them is human only |
 | `herdr-synapse read <name>` | the member's visible screen; `--lines` is refused for every member because scrolling an alternate screen types into it |
@@ -758,8 +758,9 @@ a popup on the roster box.
   `role:<r>` groups, `all`, and `human`; keep typing to filter (a role or
   part of a name matches), Up/Down move, Tab or Enter insert the pick, Esc
   hides the list. The compose popup has the same list. `!name text` types
-  the line into that member's input box right now (a `direct` record; the
-  member is not nudged and does not see it as mail); `!!name text` also
+  the line only if Herdr atomically confirms that the inspected terminal is
+  still idle (a `direct` record; the member is not nudged and does not see it
+  as mail); `!!name text` deliberately uses the unrestricted path and also
   types into a member that is working or muted. Typing `!` at the start of
   the line opens the same list with members only. Every line that starts
   with `!` is such an attempt and never becomes a post: a wrong name is an
@@ -984,8 +985,12 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
   that are in a team roster. `herdr-synapse notifier stats` reports
   `wrong_target`; it must stay 0. The one exception to *waiting for idle* is
   `say`: the human, verified at the focused console, asks the daemon to type
-  one recorded line now (`!name text`); a dialog, permission prompt, overlay,
-  or draft still refuses it, members can never enqueue it (a member pane is
+  one recorded line now (`!name text`). Herdr validates the terminal identity,
+  idle state, and observed state sequence in the same app turn that queues
+  the line, so a member that starts work between the daemon's read and the
+  submit is refused rather than interrupted. Herdr 0.8 fails this path closed
+  with `update_required`; `!!` remains explicit. A dialog, permission prompt,
+  overlay, or draft still refuses it, members can never enqueue it (a member pane is
   `author_mismatch`, a shell pane or popup `say_unverified`, both audited),
   and the daemon types only a `direct` record whose origin is the console.
   Residual limit: Herdr itself lets any same-user process type into any
@@ -1028,7 +1033,9 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
   commands or start it with an approval policy that allows them.
 - Hooks exist for Claude only. The only briefing path is the typed line.
 - `!!name text` into a running turn is verified for Claude Code only (it
-  queues the line as its next message). For other kinds the line is typed
+  queues the line as its next message). On Herdr 0.9, prompt text and its
+  delayed Enter are one ordered submission, so an immediate Ctrl+C queues
+  after Enter. For other kinds the line is typed
   and the outcome carries `unverified for <kind>`; Codex is the next to
   verify live.
 - `post --interrupt` into a running turn is verified for Claude Code only

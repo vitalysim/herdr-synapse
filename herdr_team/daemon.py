@@ -98,7 +98,7 @@ CONSOLE_RECONCILE_ATTEMPTS = 12
 LOCK_TAKEOVER_WAIT_S = 10.0
 SUBSCRIPTIONS = ("pane.agent_detected", "pane.closed", "pane.exited", "pane.moved", "pane.focused", "pane.updated")
 
-SUPPORTED_HERDR_MAJOR_MINOR = "0.8"
+SUPPORTED_HERDR_MAJOR_MINORS = ("0.8", "0.9")
 VERSION_WATCH_S = 5.0
 RECONCILE_POLL_S = 10.0
 #: The team artifacts walk is filesystem work on a per-team loop, so it runs on
@@ -1469,7 +1469,7 @@ class Daemon:
     # -- server connection ---------------------------------------------------------
 
     def connect_server(self) -> Dict[str, Any]:
-        """Ping, record version and protocol, refuse a different major.minor without ``allow_version``."""
+        """Ping, record version and protocol, refuse an unsupported major.minor without ``allow_version``."""
         pong = self.api.ping(timeout=5.0)
         version = str(pong.get("version") or "")
         protocol = pong.get("protocol")
@@ -1479,12 +1479,13 @@ class Daemon:
         self.ping_failures = 0
         self.reconnect_requested = False
         major_minor = ".".join(version.split(".")[:2])
-        if version and major_minor != SUPPORTED_HERDR_MAJOR_MINOR and not self.allow_version:
+        if version and major_minor not in SUPPORTED_HERDR_MAJOR_MINORS and not self.allow_version:
+            supported = ", ".join("{}.x".format(item) for item in SUPPORTED_HERDR_MAJOR_MINORS)
             raise HerdrTeamError(
                 "herdr_version_mismatch",
-                "Herdr {} is not {}.x; pass --allow-version to run anyway".format(version, SUPPORTED_HERDR_MAJOR_MINOR),
+                "Herdr {} is not supported ({}); pass --allow-version to run anyway".format(version, supported),
                 EXIT_REFUSED,
-                {"herdr_version": version, "supported": SUPPORTED_HERDR_MAJOR_MINOR},
+                {"herdr_version": version, "supported": list(SUPPORTED_HERDR_MAJOR_MINORS)},
             )
         self.socket_inode = socket_inode(self.layout.socket)
         return pong
@@ -4580,6 +4581,12 @@ class Daemon:
         if draft and draft.strip():
             return refuse("draft", draft.strip().splitlines()[0][:40])
         gate_seq = int(fresh.get("state_change_seq") or 0)
+        server_major_minor = ".".join(self.server_version.split(".")[:2]) if self.server_version else None
+        if not force and server_major_minor == "0.8":
+            return refuse(
+                "update_required",
+                "Herdr {} cannot submit idle-only prompts atomically; update Herdr to 0.9.0 or newer".format(self.server_version),
+            )
         force_verified: Optional[bool] = (kind in FORCE_VERIFIED_KINDS) if force else None
         attempt_id = "say-{}-{}".format(name, int(time.time() * 1000))
         attempt = Attempt(
@@ -4598,10 +4605,22 @@ class Daemon:
             return
         t0 = time.monotonic()
         try:
-            self.api.request("agent.prompt", {"target": pane_id, "text": text}, timeout=SAY_PROMPT_TIMEOUT_S)
+            if force:
+                self.api.request("agent.prompt", {"target": pane_id, "text": text}, timeout=SAY_PROMPT_TIMEOUT_S)
+            else:
+                self.api.request(
+                    "agent.prompt_if_idle",
+                    {
+                        "target": pane_id,
+                        "text": text,
+                        "expected_terminal_id": str(fresh.get("terminal_id") or ""),
+                        "expected_state_change_seq": gate_seq,
+                    },
+                    timeout=SAY_PROMPT_TIMEOUT_S,
+                )
         except HerdrTeamError as err:
             elapsed_ms = (time.monotonic() - t0) * 1000.0
-            result, reason, detail, ledger_result = self._classify_say_error(rt, err, now)
+            result, reason, detail, ledger_result = self._classify_say_error(rt, err, now, guarded=not force)
             team.ledger.record_result(attempt_id, ledger_result, {"elapsed_ms": elapsed_ms, "code": err.code, "message": err.message})
             self._say_outcome(team, seq, name, result, reason, detail, force, attempt_id=attempt_id, elapsed_ms=elapsed_ms, kind=kind, force_verified=force_verified, requested_by=job.get("requested_by"))
             return
@@ -4613,11 +4632,25 @@ class Daemon:
         self.who_dirty = True
         self.log("{}: say #{} typed into {} ({}) in {:.0f} ms; confirming".format(team.name, seq, name, pane_id, elapsed_ms))
 
-    def _classify_say_error(self, rt: MemberRuntime, err: HerdrTeamError, now: float) -> Tuple[str, str, str, str]:
-        """``(result, reason, detail, ledger_result)`` for an ``agent.prompt`` error on a say (no wait, so no stall code)."""
+    def _classify_say_error(self, rt: MemberRuntime, err: HerdrTeamError, now: float, guarded: bool = False) -> Tuple[str, str, str, str]:
+        """``(result, reason, detail, ledger_result)`` for a prompt error on a say (no wait, so no stall code)."""
         code = err.code
         message = (err.message or "").lower()
         detail = "{}: {}".format(code, err.message)
+        if guarded and code in ("unknown_method", "unsupported_method", "invalid_request", "herdr_protocol"):
+            return (
+                "refused",
+                "update_required",
+                "Herdr does not support atomic idle-only prompts; update Herdr to 0.9.0 or newer ({})".format(detail),
+                RESULT_REFUSED,
+            )
+        if code == "agent_not_idle":
+            return "refused", "working", detail, RESULT_REFUSED
+        if code == "agent_state_changed":
+            return "refused", "state_changed", detail, RESULT_TRANSIENT
+        if code == "agent_changed":
+            self.reconcile_due = True
+            return "refused", "wrong_occupant", detail, RESULT_WRONG_OCCUPANT
         if code == "agent_blocked":
             return "refused", "blocked", detail, RESULT_REFUSED
         if code == "agent_not_ready":

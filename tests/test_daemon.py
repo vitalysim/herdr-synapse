@@ -245,7 +245,7 @@ class DetachTests(unittest.TestCase):
         self.assertIn("alpha", payload["teams"])
 
     def test_version_mismatch_refuses_without_allow_version(self):
-        self.server.set_response("ping", {"type": "pong", "version": "0.9.1", "protocol": 21})
+        self.server.set_response("ping", {"type": "pong", "version": "1.0.0", "protocol": 23})
         result, _ = self.detach()
         self.assertEqual(result["status"], "error", result)
         self.assertEqual(result["error"]["code"], "herdr_version_mismatch")
@@ -290,6 +290,14 @@ class ReconnectTests(unittest.TestCase):
     def setUp(self):
         self.ts = TempState()
         self.addCleanup(self.ts.cleanup)
+
+    def test_connect_accepts_both_supported_herdr_lines(self):
+        d, api, _clock = make_daemon(self.ts)
+        for version, protocol in (("0.8.2", 20), ("0.9.0", 22)):
+            with self.subTest(version=version):
+                api.set_response("ping", {"type": "pong", "version": version, "protocol": protocol})
+                pong = d.connect_server()
+                self.assertEqual((pong["version"], d.server_version, d.server_protocol), (version, version, protocol))
 
     def test_backoff_sequence_then_give_up_releases_lock(self):
         api = FakeApi(self.ts.socket_path)

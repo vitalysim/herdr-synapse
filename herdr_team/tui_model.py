@@ -653,7 +653,8 @@ _TYPED_REFUSED_LABELS = {
     "not_ready": "not typed (not ready)", "absent": "not typed (absent)", "wrong_occupant": "not typed (absent)",
     "wrong_target": "not typed (absent)", "in_flight": "not typed (busy)", "stale": "not typed (stale job)",
     "unverified_source": "refused (unverified source)", "member_not_found": "not typed (no such member)",
-    "kind_unverified": "not typed (kind not trusted)",
+    "kind_unverified": "not typed (kind not trusted)", "state_changed": "not typed (state changed; retry)",
+    "update_required": "not typed (update Herdr)",
 }
 
 
@@ -1882,7 +1883,7 @@ def _parse_slash(head: str, rest: str, default_team: str) -> Intent:
 
 HELP_TEXT = (
     "? or /help opens the full list | @ opens the name list (↑/↓ move, Tab or Enter picks, Esc hides) | "
-    "!name text types into that member now (!!name also while it works; ! lists members) | @@path attaches a file (@@ lists files) | "
+    "!name text types only if that member stays idle (!!name explicitly permits working; ! lists members) | @@path attaches a file (@@ lists files) | "
     "@name text | @role:r text | /all text | /human text | /kind k | /reply N | /urgent | /interrupt | /ref path | "
     "/retract N | /mute [name] [10m] | /unmute [name] | /pause | /nudge name [--force] | /focus name | "
     "/peek name | /who | /context [name] | /compact name | /clear name | /filter [name] | /as label | /use team | /charter [set [--urgent] text] | /remove name | /export | /quit"
@@ -1892,8 +1893,8 @@ HELP_TEXT = (
 HELP_LINES = (
     "post:      text (whole team)   @name text (one member)   @role:r text (a role)   /human text (yourself)",
     "           /kind k  /reply N  /urgent (nudges everyone)  /ref path  @@path attaches a file (@@ lists files)",
-    "type now:  !name text types into that member's input box right now (recorded as a direct line)",
-    "           !!name also while it works or is muted; ! lists members; the entry shows the outcome",
+    "type now:  !name text types only if that same member is still idle at atomic submission",
+    "           !!name explicitly permits working or muted; ! lists members; every attempt is recorded",
     "           a line that begins with ! never posts by itself; to post one, write /all !text",
     "menus:     / commands   @ names   @@ files   ! members   (up/down move, Tab picks, Esc hides)",
     "board:     /retract N   /filter [all|to me|requests|human|system]   Tab cycles   /who",

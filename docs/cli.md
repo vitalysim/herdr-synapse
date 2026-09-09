@@ -815,6 +815,13 @@ and record it on the board. The console's `!<member> <text>` runs this;
   `force`) is appended and a `say` job carrying only its seq is queued. The
   daemon types the record's text as-is (never a job payload, never a
   `[herdr-team` header) after checking that the record is the console's own.
+- Without `--force`, the daemon sends `agent.prompt_if_idle` with the terminal
+  identity and state sequence returned by `agent.get`. Herdr checks both and
+  the idle state in the same app turn that queues the input. A concurrent
+  state change is `state_changed`, a newly working member is `working`, and a
+  replacement is `wrong_occupant`; none writes bytes. Herdr 0.8 cannot make
+  this guarantee, so plain delivery is `update_required` until Herdr is
+  updated. `--force` intentionally keeps `agent.prompt`.
 - The daemon refuses in both modes when the member is absent, another
   process occupies its terminal, the kind is untrusted, the agent is
   `blocked` or `unknown`, `agent explain` shows a blocker or an overlay
@@ -828,8 +835,9 @@ and record it on the board. The console's `!<member> <text>` runs this;
   `force_verified`, `elapsed_ms`. Reasons: `typed` carries `null`, `in_turn`
   (typed into a running turn) or `dry`; `refused` carries `working`, `muted`,
   `blocked`, `dialog`, `draft`, `skip_state_update`, `unknown`, `not_ready`,
-  `absent`, `wrong_occupant`, `wrong_target`, `in_flight`, `stale`,
-  `unverified_source`, `member_not_found`, `kind_unverified`; `failed`
+  `absent`, `wrong_occupant`, `wrong_target`, `state_changed`,
+  `update_required`, `in_flight`, `stale`, `unverified_source`,
+  `member_not_found`, `kind_unverified`; `failed`
   carries `hung`, `transient`, or `unconfirmed` (still idle 5 s after typing
   with the text gone from the prompt line; `not_submitted` when it is still
   there). Typing into a running turn is verified for Claude Code only; for

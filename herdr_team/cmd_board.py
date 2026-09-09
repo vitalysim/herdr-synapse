@@ -1653,7 +1653,14 @@ def say_human_text(payload: Dict[str, Any]) -> str:
         suffix = "'s running turn" if reason == "in_turn" else (" (dry run)" if reason == "dry" else "")
         return "#{} typed into {}{}".format(seq, name, suffix)
     if result == "refused":
-        hint = "; --force types anyway" if reason in ("working", "muted") else ""
+        if reason in ("working", "muted"):
+            hint = "; --force types anyway"
+        elif reason == "state_changed":
+            hint = "; retry after checking the member"
+        elif reason == "update_required":
+            hint = "; update Herdr to 0.9.0 or newer"
+        else:
+            hint = ""
         return "#{} not typed into {}: {}{}".format(seq, name, reason, hint)
     if result == "not_submitted":
         return "#{} is on {}'s prompt line but was not submitted".format(seq, name)

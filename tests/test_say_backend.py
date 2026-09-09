@@ -373,7 +373,10 @@ class SayJobTests(unittest.TestCase):
         return [r for r in store.BoardStore(self.ts.team).read() if r.get("event") == "typed"]
 
     def prompts(self):
-        return [p for m, p in self.api.calls if m == "agent.prompt"]
+        return [p for m, p in self.api.calls if m in ("agent.prompt", "agent.prompt_if_idle")]
+
+    def prompt_calls(self):
+        return [(m, p) for m, p in self.api.calls if m in ("agent.prompt", "agent.prompt_if_idle")]
 
     def agents(self, **overrides):
         rows = []
@@ -395,9 +398,12 @@ class SayJobTests(unittest.TestCase):
 
     def test_plain_say_types_the_record_text_and_confirms_on_the_next_poll(self):
         seq = self.say()
-        prompts = self.prompts()
+        prompts = self.prompt_calls()
         self.assertEqual(len(prompts), 1)
-        self.assertEqual(prompts[0], {"target": "w2:p1", "text": "stop and summarize"})  # raw text, no wait, no marker, no nonce
+        self.assertEqual(prompts[0], ("agent.prompt_if_idle", {
+            "target": "w2:p1", "text": "stop and summarize", "expected_terminal_id": "term_r1",
+            "expected_state_change_seq": 1,
+        }))  # raw text, no wait, no marker, no nonce; the inspected identity and state guard the submit
         self.assertIn("alpha-reviewer", self.team.say_inflight)
         rt = self.team.rt("alpha-reviewer")
         self.assertTrue(rt.in_flight)
@@ -425,7 +431,7 @@ class SayJobTests(unittest.TestCase):
         original = self.api.request
 
         def request(method, params=None, timeout=None):
-            if method == "agent.prompt":
+            if method in ("agent.prompt", "agent.prompt_if_idle"):
                 seen.append(timeout)
             return original(method, params, timeout)
 
@@ -442,6 +448,7 @@ class SayJobTests(unittest.TestCase):
         self.assertEqual(self.team.ledger.counts()["intents"], 0)
         seq = self.say("alpha-worker", force=True)
         self.assertEqual(len(self.prompts()), 1)
+        self.assertEqual(self.prompt_calls()[0][0], "agent.prompt")
         self.poll()
         typed = self.last_typed()
         self.assertEqual((typed["result"], typed["reason"], typed["force"], typed["force_verified"], typed["seqs"]), ("typed", "in_turn", True, True, [seq]))
@@ -487,7 +494,7 @@ class SayJobTests(unittest.TestCase):
         self.assertEqual((self.last_typed()["result"], self.last_typed()["reason"]), ("refused", "unknown"))
         self.assertEqual(self.prompts(), [])
         self.api.set_response("agent.get", lambda p: {"type": "agent_info", "agent": fake_agent("w2:p1", "term_r1", "codex", "alpha-reviewer")})
-        self.api.set_error("agent.prompt", "agent_blocked", "agent is blocked and requires interactive input")
+        self.api.set_error("agent.prompt_if_idle", "agent_blocked", "agent is blocked and requires interactive input")
         self.say()
         self.assertEqual(len(self.prompts()), 1)
         typed = self.last_typed()
@@ -563,19 +570,19 @@ class SayJobTests(unittest.TestCase):
 
     def test_prompt_errors_map_to_outcomes(self):
         rt = self.team.rt("alpha-reviewer")
-        self.api.set_error("agent.prompt", "herdr_timeout", "timed out")
+        self.api.set_error("agent.prompt_if_idle", "herdr_timeout", "timed out")
         self.say()
         typed = self.last_typed()
         self.assertEqual((typed["result"], typed["reason"]), ("failed", "hung"))
         self.assertIsNotNone(rt.pane_stuck_until_ms)
         self.assertFalse(rt.in_flight)
-        self.api.set_error("agent.prompt", "agent_not_ready", "agent is launching")
+        self.api.set_error("agent.prompt_if_idle", "agent_not_ready", "agent is launching")
         self.say()
         self.assertEqual((self.last_typed()["result"], self.last_typed()["reason"]), ("refused", "not_ready"))
-        self.api.set_error("agent.prompt", "agent_prompt_failed", "input buffer full")
+        self.api.set_error("agent.prompt_if_idle", "agent_prompt_failed", "input buffer full")
         self.say()
         self.assertEqual((self.last_typed()["result"], self.last_typed()["reason"]), ("failed", "hung"))
-        self.api.set_error("agent.prompt", "internal", "boom")
+        self.api.set_error("agent.prompt_if_idle", "internal", "boom")
         self.say()
         typed = self.last_typed()
         self.assertEqual((typed["result"], typed["reason"]), ("failed", "transient"))
@@ -583,6 +590,47 @@ class SayJobTests(unittest.TestCase):
         counts = self.team.ledger.counts()
         self.assertEqual((counts["hung"], counts["transient"], counts["intents"]), (2, 2, 4))
         self.assertEqual(self.team.say_inflight, {})
+
+    def test_idle_guard_races_are_refused_without_typing(self):
+        cases = (
+            ("agent_not_idle", "agent became working", "working"),
+            ("agent_state_changed", "state sequence changed", "state_changed"),
+            ("agent_changed", "terminal changed", "wrong_occupant"),
+        )
+        for code, message, reason in cases:
+            with self.subTest(code=code):
+                self.api.set_error("agent.prompt_if_idle", code, message)
+                self.d.reconcile_due = False
+                before = len(self.prompt_calls())
+                self.say()
+                self.assertEqual(len(self.prompt_calls()), before + 1)
+                self.assertEqual(self.prompt_calls()[-1][0], "agent.prompt_if_idle")
+                typed = self.last_typed()
+                self.assertEqual((typed["result"], typed["reason"]), ("refused", reason))
+                self.assertEqual(self.team.say_inflight, {})
+                if code == "agent_changed":
+                    self.assertTrue(self.d.reconcile_due)
+
+    def test_plain_say_fails_closed_when_atomic_prompt_is_unavailable(self):
+        self.d.server_version = "0.8.2"
+        before = len(self.prompt_calls())
+        self.say()
+        typed = self.last_typed()
+        self.assertEqual((typed["result"], typed["reason"]), ("refused", "update_required"))
+        self.assertIn("update Herdr", typed["detail"])
+        self.assertEqual(len(self.prompt_calls()), before)
+
+        self.say(force=True)
+        self.assertEqual(self.prompt_calls()[-1][0], "agent.prompt")
+        self.agents(**{"alpha-reviewer": {"agent_status": "working", "state_change_seq": 2}})
+        self.poll()
+
+        self.d.server_version = "0.9.0"
+        self.api.set_error("agent.prompt_if_idle", "unknown_method", "unknown method")
+        self.say()
+        typed = self.last_typed()
+        self.assertEqual((typed["result"], typed["reason"]), ("refused", "update_required"))
+        self.assertIn("atomic idle-only prompts", typed["detail"])
 
     def test_idle_after_the_window_is_unconfirmed_or_not_submitted(self):
         self.say()
@@ -652,7 +700,7 @@ class SayJobTests(unittest.TestCase):
         self.job("alpha-reviewer", seq)
         clock.advance(1)
         d.consume_jobs(clock() * 1000)
-        self.assertEqual([m for m, _ in api.calls if m == "agent.prompt"], [])
+        self.assertEqual([m for m, _ in api.calls if m in ("agent.prompt", "agent.prompt_if_idle")], [])
         typed = [r for r in store.BoardStore(self.ts.team).read() if r.get("event") == "typed"][-1]
         self.assertEqual((typed["result"], typed["reason"]), ("typed", "dry"))
         self.assertEqual(d.teams["alpha"].ledger.counts()["dry"], 1)

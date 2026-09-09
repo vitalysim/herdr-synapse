@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.5 (2026-09-09)
+
+- **A single bang cannot race into a running turn.** `!name text` now submits through Herdr's atomic `agent.prompt_if_idle` method with the terminal identity and state sequence the notifier inspected. If the agent starts working, changes state, or is replaced before Herdr queues the line, nothing is typed and the console reports the exact refusal. `!!name text` deliberately keeps the unrestricted prompt path.
+- Herdr 0.8 remains supported for boards, teams, nudges, and explicit `!!` delivery, but safe single-bang submission fails closed with `update Herdr` instead of falling back to the racy check-then-prompt sequence. Herdr 0.9 submits the text and delayed Enter as one ordered operation, so an immediate Ctrl+C is queued after Enter instead of splitting the prompt.
+
 ## 0.15.4 (2026-09-09)
 
 - **See the organization behind the boards.** The Teams view gains `v`, a scrollable ASCII topology of every team, its manager and members, plus the manager-to-manager links between teams. It reads the picker's existing session snapshot and stays a client-only view: no new server state or protocol.

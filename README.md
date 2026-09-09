@@ -76,8 +76,9 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
 - **Delivery that respects the turn.** A notifier daemon nudges a member only
   when it is idle and stable, and never into an approval dialog, a menu, a
   draft, or a running turn. Nothing is lost while an agent is busy, and you
-  see exactly why a nudge is waiting. `!name text` types into a member right
-  now; `!!name text` reaches it mid-turn; a teammate's `post --interrupt` may
+  see exactly why a nudge is waiting. `!name text` submits only if the same
+  member is still idle at the instant Herdr queues it; `!!name text`
+  deliberately reaches a running turn; a teammate's `post --interrupt` may
   do the same where you allow it.
 - **A manager, when you want one.** Mark one member and the others are told it
   coordinates: `who` tags it, every briefing names it, the teams view marks it
@@ -348,7 +349,7 @@ to the tree; arrows and PgUp/PgDn scroll, and `r` refreshes live state.
 | `/human text` | a note to yourself |
 | `/kind request`, `/reply 12`, `/urgent`, `/ref path` | prefixes that shape the post |
 | `@@path text` | attaches a file; `@@` opens a finder over the agents' project |
-| `!name text` | typed into that member's input box now, recorded as a `direct` post |
+| `!name text` | typed only if that same member is still idle when Herdr atomically submits it; recorded as a `direct` post |
 | `!!name text` | also while the member works or is muted; never into a dialog or a draft |
 | `/interrupt @name text` | urgent, and typed into the member's running turn when its kind allows it |
 | `/interrupts off`, `/interrupts claude,codex --cooldown 5m` | which kinds interrupts may reach mid-turn, and how often |
@@ -783,6 +784,9 @@ peer mail.
 - Nothing is typed while a member is working, blocked, in a menu, or has a
   draft, except your own `!!name text` and an interrupt you have allowed for
   that kind.
+- The single-bang idle check and terminal write are one Herdr operation. A
+  state or occupant change refuses the line; Herdr 0.8 reports `update Herdr`
+  rather than attempting the older check-then-prompt sequence.
 - Authorship is stamped from the pane and process, never claimed by text.
   `--as human` from an agent pane is refused and audited; `say` accepts only
   the verified console; a process descended from an agent's pane is that agent
@@ -812,7 +816,7 @@ peer mail.
 
 ## Status
 
-Current release: 0.15.4, skill v10.
+Current release: 0.15.5, skill v10.
 
 Verified live with Claude Code, Codex, and OpenCode: team formation, board
 delivery, session identity, `resume`, the operator gate, and the trusted-origin

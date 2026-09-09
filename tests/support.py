@@ -193,7 +193,7 @@ def default_responses() -> Dict[str, Any]:
 
 def _DEFAULT_METHODS() -> List[Tuple[str, Any]]:
     catalogue = canned_responses()
-    return [(m, catalogue[m]) for m in ("ping", "agent.list", "agent.get", "agent.prompt", "notification.show", "pane.report_metadata", "pane.send_text", "pane.send_keys")]
+    return [(m, catalogue[m]) for m in ("ping", "agent.list", "agent.get", "agent.prompt", "agent.prompt_if_idle", "notification.show", "pane.report_metadata", "pane.send_text", "pane.send_keys")]
 
 
 def _server_spec(spec: Any) -> Any:
@@ -221,6 +221,7 @@ def canned_responses() -> Dict[str, Any]:
         "agent.list": {"type": "agent_list", "agents": [dict(a) for a in FAKE_AGENTS]},
         "agent.get": _agent_get,
         "agent.prompt": lambda params: {"type": "agent_prompted", "agent": _prompted(params)},
+        "agent.prompt_if_idle": lambda params: {"type": "agent_prompted", "agent": _prompted(params)},
         "agent.read": lambda params: fake_read(_resolve_pane_id(params.get("target")), "$ \n", str(params.get("source") or "recent"), str(params.get("format") or "text")),
         "agent.explain": lambda params: fake_explain(str(_agent_get(params)["agent"].get("agent") or "codex"), str(_agent_get(params)["agent"].get("agent_status") or "idle")),
         "agent.rename": lambda params: {"type": "agent_info", "agent": dict(_agent_get(params)["agent"], name=params.get("name"))},

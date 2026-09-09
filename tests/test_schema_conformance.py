@@ -1,4 +1,4 @@
-"""Schema conformance: the plugin's requests and the test fakes' responses against Herdr 0.8.2.
+"""Schema conformance against the frozen Herdr 0.8.2 contract and current source.
 
 ``tests/fixtures/herdr-api-0.8.2.schema.json`` is the verbatim output of
 ``herdr api schema --json`` from the installed 0.8.2 binary (protocol 20).
@@ -9,7 +9,9 @@ with ``ResponseResult`` a ``oneOf`` over ``type``-tagged results),
 subscriptions, ``{"event": "<kind>", "data": {"type": "<kind>", ...}}``)
 and ``subscription_event`` (the three pane-scoped subscriptions).
 
-The schema does not say which result ``type`` a method answers with;
+The frozen schema remains the compatibility baseline. Current-only methods are
+checked against ``docs/next/api/herdr-api.schema.json`` without rewriting that
+baseline. The schema does not say which result ``type`` a method answers with;
 ``METHOD_RESULT_TYPES`` below records that from the upstream handlers
 (``src/app/api/*.rs`` at v0.8.2) and the docs.
 
@@ -48,6 +50,12 @@ from support import (
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "herdr-api-0.8.2.schema.json"
 REPO_ROOT = Path(__file__).resolve().parents[3]
+CURRENT_FIXTURE = REPO_ROOT / "docs" / "next" / "api" / "herdr-api.schema.json"
+if not CURRENT_FIXTURE.is_file():
+    # The standalone subtree release has no Herdr docs tree. Keep the complete
+    # generated schema authoritative in the monorepo while shipping the exact
+    # current-only method shape needed by these plugin conformance tests.
+    CURRENT_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "herdr-api-current-only.schema.json"
 DOC_FILES = (
     "docs/next/website/src/content/docs/socket-api.mdx",
     "docs/next/website/src/content/docs/agent-automation.mdx",
@@ -186,8 +194,14 @@ def load_schema() -> Dict[str, Any]:
 
 SCHEMA = load_schema()
 CHECKER = SchemaChecker(SCHEMA)
+with CURRENT_FIXTURE.open("r", encoding="utf-8") as _current_fh:
+    CURRENT_SCHEMA = json.load(_current_fh)
+CURRENT_CHECKER = SchemaChecker(CURRENT_SCHEMA)
 REQUEST_VARIANTS: Dict[str, Dict[str, Any]] = {
     entry["properties"]["method"]["const"]: entry for entry in SCHEMA["schemas"]["request"]["oneOf"]
+}
+CURRENT_REQUEST_VARIANTS: Dict[str, Dict[str, Any]] = {
+    entry["properties"]["method"]["const"]: entry for entry in CURRENT_SCHEMA["schemas"]["request"]["oneOf"]
 }
 RESULT_VARIANTS: Dict[str, Dict[str, Any]] = {
     entry["properties"]["type"]["const"]: entry for entry in SCHEMA["schemas"]["success_response"]["$defs"]["ResponseResult"]["oneOf"]
@@ -209,6 +223,11 @@ def check_params(method: str, params: Dict[str, Any]) -> List[str]:
     return CHECKER.errors(request, SCHEMA["schemas"]["request"], "request({})".format(method))
 
 
+def check_current_params(method: str, params: Dict[str, Any]) -> List[str]:
+    request = {"id": "t", "method": method, "params": params}
+    return CURRENT_CHECKER.errors(request, CURRENT_SCHEMA["schemas"]["request"], "request({})".format(method))
+
+
 def check_result(result: Any) -> List[str]:
     """Errors for one success envelope ``{"id","result": result}``."""
     return CHECKER.errors({"id": "t", "result": result}, SCHEMA["schemas"]["success_response"], "response")
@@ -226,13 +245,15 @@ def check_subscription_event(envelope: Dict[str, Any]) -> List[str]:
 # what the plugin calls
 
 #: Every socket method the plugin sends (grep of ``api.request`` / ``api.ping`` / ``api.subscribe`` call sites).
-SOCKET_METHODS_USED = (
+LEGACY_SOCKET_METHODS_USED = (
     "ping", "events.subscribe",
     "agent.list", "agent.get", "agent.prompt", "agent.read", "agent.explain", "agent.rename", "agent.focus",
     "agent.view.set", "agent.view.clear",
     "pane.get", "pane.list", "pane.rename", "pane.close", "pane.report_metadata", "pane.process_info",
     "layout.apply", "plugin.list", "plugin.pane.open", "plugin.pane.focus", "popup.close", "notification.show",
 )
+CURRENT_ONLY_SOCKET_METHODS_USED = ("agent.prompt_if_idle",)
+SOCKET_METHODS_USED = LEGACY_SOCKET_METHODS_USED + CURRENT_ONLY_SOCKET_METHODS_USED
 
 #: CLI verbs the plugin runs through ``api.run`` / ``api.run_json`` (``herdr <argv>``).
 CLI_VERBS_USED = (
@@ -251,6 +272,7 @@ METHOD_RESULT_TYPES: Dict[str, Tuple[str, ...]] = {
     "agent.list": ("agent_list",),
     "agent.get": ("agent_info",),
     "agent.prompt": ("agent_prompted",),
+    "agent.prompt_if_idle": ("agent_prompted",),
     "agent.read": ("pane_read",),               # handle_agent_read -> ResponseResult::PaneRead
     "agent.explain": ("agent_explain",),
     "agent.rename": ("agent_info",),            # handle_agent_rename -> ResponseResult::AgentInfo
@@ -285,6 +307,7 @@ SAMPLE_PARAMS: Dict[str, Dict[str, Any]] = {
     "agent.list": {},
     "agent.get": {"target": "w2:p1"},
     "agent.prompt": {"target": "w2:p1", "text": "hi", "wait": {"until": ["working", "blocked"], "timeout_ms": 8000}},
+    "agent.prompt_if_idle": {"target": "w2:p1", "text": "hi", "expected_terminal_id": "term_r1", "expected_state_change_seq": 1},
     "agent.read": {"target": "w2:p1", "source": "detection", "format": "text"},
     "agent.explain": {"target": "w2:p1"},
     "agent.rename": {"target": "w2:p1", "name": "alpha-reviewer"},
@@ -324,7 +347,7 @@ def plugin_request_params() -> List[Tuple[str, str, Dict[str, Any]]]:
         ("roster.resolve_target by name", "agent.get", {"target": "alpha-reviewer"}),
         ("daemon.deliver_line first line", "agent.prompt", {"target": "w2:p1", "text": "[herdr-team] request from human", "wait": {"until": ["working", "blocked"], "timeout_ms": 8000}}),
         ("daemon.deliver_line follow-on line", "agent.prompt", {"target": "w2:p1", "text": "second line"}),
-        ("daemon._run_say (no wait; confirmed by the next agent poll)", "agent.prompt", {"target": "w2:p1", "text": "stop and summarize"}),
+        ("daemon._run_say idle-only (no wait; confirmed by the next agent poll)", "agent.prompt_if_idle", {"target": "w2:p1", "text": "stop and summarize", "expected_terminal_id": "term_r1", "expected_state_change_seq": 1}),
         ("daemon._detection_text", "agent.read", {"target": "w2:p1", "source": "detection", "format": "text"}),
         ("daemon._visible_ansi (gate 9 ghost-text check)", "agent.read", {"target": "w2:p1", "source": "visible", "format": "ansi"}),
         ("cmd_misc._run_read", "agent.read", {"target": "w2:p1", "source": "visible"}),
@@ -376,7 +399,8 @@ PLUGIN_ERROR_CODES = (
     "agent_blocked", "agent_not_ready", "agent_not_found", "agent_prompt_stalled", "agent_not_running",
     "agent_name_taken", "agent_target_ambiguous", "ui_busy", "plugin_pane_open_failed", "plugin_disabled",
     "server_not_running", "busy", "rate_limited", "disabled", "no_foreground_client", "agent_not_idle",
-    "agent_pane_busy", "agent_launch_pending",
+    "agent_pane_busy", "agent_launch_pending", "agent_changed", "agent_state_changed", "unknown_method",
+    "unsupported_method", "invalid_request", "herdr_protocol",
 )
 
 #: Codes and reasons documented at tag v0.8.2 (``git show v0.8.2:<DOC_FILES>``; ``test_doc_codes_match_tagged_docs`` re-derives this).
@@ -399,6 +423,12 @@ SOURCE_ONLY_CODES = {
     "plugin_pane_open_failed": "src/app/api/plugins/panes.rs",
     "agent_pane_busy": "src/app/agents.rs (code: \"agent_pane_busy\")",
     "agent_launch_pending": "src/app/agents.rs (code: \"agent_launch_pending\")",
+    "agent_changed": "src/app/api/agents.rs guarded prompt identity check",
+    "agent_state_changed": "src/app/api/agents.rs guarded prompt state sequence check",
+    "unknown_method": "older/fake server response for an unavailable method",
+    "unsupported_method": "forward-compatible server response for an unavailable method",
+    "invalid_request": "older Herdr cannot deserialize a current-only method",
+    "herdr_protocol": "herdr_team.api response-id validation for old-server parse failures",
     # Never a server code: the CLI synthesises it when the socket is missing
     # (src/cli/server_not_running.rs); herdr_team.api synthesises it the same way.
     "server_not_running": "src/cli/server_not_running.rs (client-side only)",
@@ -467,8 +497,10 @@ class FixtureTests(unittest.TestCase):
 
 class MethodInventoryTests(unittest.TestCase):
     def test_every_used_method_exists_in_the_schema(self) -> None:
-        missing = [m for m in SOCKET_METHODS_USED if m not in REQUEST_VARIANTS]
-        self.assertEqual(missing, [])
+        legacy_missing = [m for m in LEGACY_SOCKET_METHODS_USED if m not in REQUEST_VARIANTS]
+        current_missing = [m for m in CURRENT_ONLY_SOCKET_METHODS_USED if m not in CURRENT_REQUEST_VARIANTS]
+        self.assertEqual(legacy_missing, [])
+        self.assertEqual(current_missing, [])
         self.assertNotIn("agent.send", REQUEST_VARIANTS)
 
     def test_every_used_method_has_a_recorded_result_type(self) -> None:
@@ -483,10 +515,11 @@ class MethodInventoryTests(unittest.TestCase):
         callers = {}
         for path in sorted(plugin_dir.glob("*.py")):
             text = path.read_text(encoding="utf-8")
-            for method in ("agent.prompt", "notification.show"):
+            for method in ("agent.prompt", "agent.prompt_if_idle", "notification.show"):
                 if re.search(r"request\(\s*[\"']{}[\"']".format(re.escape(method)), text):
                     callers.setdefault(method, []).append(path.name)
         self.assertEqual(callers.get("agent.prompt"), ["daemon.py"])
+        self.assertEqual(callers.get("agent.prompt_if_idle"), ["daemon.py"])
         self.assertEqual(sorted(callers.get("notification.show", [])), ["cmd_misc.py", "daemon.py"])
 
 
@@ -495,13 +528,15 @@ class RequestParamsTests(unittest.TestCase):
         failures: List[str] = []
         for site, method, params in plugin_request_params():
             self.assertIn(method, SOCKET_METHODS_USED, site)
-            for error in check_params(method, params):
+            checker = check_current_params if method in CURRENT_ONLY_SOCKET_METHODS_USED else check_params
+            for error in checker(method, params):
                 failures.append("{} [{}]: {}".format(site, method, error))
         self.assertEqual(failures, [], "\n".join(failures))
 
     def test_sample_params_validate(self) -> None:
         for method, params in SAMPLE_PARAMS.items():
-            self.assertEqual(check_params(method, params), [], method)
+            checker = check_current_params if method in CURRENT_ONLY_SOCKET_METHODS_USED else check_params
+            self.assertEqual(checker(method, params), [], method)
 
     def test_subscriptions_are_known_kinds(self) -> None:
         for kind in daemon.SUBSCRIPTIONS:
