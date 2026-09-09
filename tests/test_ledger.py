@@ -57,6 +57,18 @@ class LedgerWriteTests(unittest.TestCase):
         self.assertEqual([o["id"] for o in opened], ["a2"])
         self.assertEqual(opened[0]["member"], "alpha-worker")
 
+    def test_terminal_seqs_include_old_failed_outcomes_and_explicit_finishes(self):
+        self.ledger.record_intent(attempt("old", member="alpha-reviewer", seqs=(41, 42)))
+        self.ledger.record_result("old", L.RESULT_LANDED_WORKING)
+        self.ledger.record_outcome("old", False, None)
+        self.ledger.record_terminal("alpha-worker", [50, 51], "expired")
+        self.ledger.record_terminal("alpha-worker", [51, 52], "abandoned")
+
+        self.assertEqual(self.ledger.terminal_seqs(), {
+            "alpha-reviewer": {41, 42},
+            "alpha-worker": {50, 51, 52},
+        })
+
     def test_replay_skips_torn_and_garbage_lines(self):
         self.ledger.record_intent(attempt("a1"))
         store.append_line(self.ts.team.ledger, b"{not json", fsync=False)

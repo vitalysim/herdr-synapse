@@ -532,8 +532,9 @@ The first scan after the daemon starts only seeds the fingerprint, so a
 restart does not re-announce an existing folder. Deep (over 5 levels) or wide
 (over 32 files) subtrees are collapsed to one entry rather than walked, and
 generated directories (`.git`, `node_modules`, `__pycache__`, `dist`, …) are
-skipped. `artifacts_changed` deliberately does not hold Claude's Stop hook
-open; it still reaches `board --new` and the prompt-submit context.
+skipped. `artifacts_changed`, like other system awareness, deliberately does
+not hold Claude's Stop hook open; it still reaches `board --new` and the
+prompt-submit context.
 
 Set `config.artifacts = {"watch": false}` in `team.json` to turn the watcher
 off for one team.
@@ -885,9 +886,10 @@ followed by one indented line per entry, `<ts> <kind> [<reason>] <title>`.
 Empty the board. Without `--purge`, the store's rotation is forced: the active
 file moves to `archive/board.<first>-<last>.jsonl`, `board.seq` continues, and
 the fresh board opens with a `board_cleared` system note (`by`, `reason`,
-`cleared_first_seq`, `cleared_last_seq`) addressed to `all`, which the idle
-sweep hands to each member as an unread post. Cursors are untouched; `board
---since 1` still reads the archive. With `--purge`, the archive segments, the
+`cleared_first_seq`, `cleared_last_seq`) addressed to `all`. It remains visible
+on the board and in hook context but does not wake a member or hold Stop open.
+Cursors are untouched; `board --since 1` still reads the archive. With
+`--purge`, the archive segments, the
 index and every payload are deleted too. Both ask on a terminal; off one,
 `--yes` is required (`confirmation_required`, 1). Audited as `board_wiped` /
 `board_purged`. JSON: `{"team","wiped","records","archived_to","note_seq",
@@ -900,7 +902,7 @@ ingests the note. Console: `/wipe [--purge] [reason]`, y/n first.
 | Command | Effect | JSON |
 | --- | --- | --- |
 | `brief <name>` | enqueue a briefing job (full gate) | `{"team","member","job":"<id>"}` |
-| `nudge <name> [--force]` | enqueue an immediate nudge evaluation; `--force` skips `done_hold` and the interval, never the gate | `{"team","member","job"}` |
+| `nudge <name> [--force]` | enqueue an immediate nudge evaluation over unread authored mail; system/control history is ignored; terminal automatic deliveries are retried only with `--force`, which also skips `done_hold` and the interval, never the gate | `{"team","member","job"}` |
 | `mute <name> \| --all [--for 10m]` | write `mute.json`; daemon and Claude shim honour it | `{"team","muted":{"*":"<until>\|null,"<name>":"<until>"}}` |
 | `unmute <name> \| --all` | | same shape |
 | `pause` | alias `mute --all` | same shape |
@@ -1476,7 +1478,10 @@ optional, milliseconds unless named otherwise, defaults in parentheses:
 agent kinds whose running turn a teammate's `post --interrupt` may be typed
 into; an empty list turns interrupts off), `interrupt_cooldown_ms` (600000,
 one interrupt per sender and target). `post_ttl_ms` is the target-active time after which an
-unread post is `expired` (paused while the member is `missing`);
+unread post is `expired` (paused while the member is `missing`); expiry and
+abandonment leave the cursor unread but are terminal for automatic delivery,
+persist across daemon restarts, and may be retried explicitly with
+`nudge --force`;
 `pair_window_ms` is the window of the `pair_budget` ping-pong count between
 two members; `sample_gap_reset_ms` is the `agent list` sample gap that voids
 the stable window of that team's terminals (other terminals keep the

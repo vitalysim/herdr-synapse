@@ -735,10 +735,11 @@ does the same.
 
 ## How delivery works
 
-Every post to a member becomes pending work for the daemon. Before it types
-the one-line nudge, the daemon checks, in order: the post is still unread;
-the recipient is an agent with a terminal in the roster; the same agent still
-occupies that terminal; the kind is trusted; the agent is idle; it has been
+Every human- or member-authored post to a member becomes pending work for the
+daemon. Before it types the one-line nudge, the daemon checks, in order: the
+post is still unread; the recipient is an agent with a terminal in the roster;
+the same agent still occupies that terminal; the kind is trusted; the agent is
+idle; it has been
 stable long enough (longer for screen-only detection than for hook-backed
 kinds); Herdr reports no blocker; no dialog is on screen; the prompt line is
 empty; the pane is not the one you are looking at; and rate limits allow it.
@@ -754,10 +755,19 @@ in `who` and the console, and in the daemon log. All timings are tunable per
 team through `config.gate` in `team.json`; a misspelt key there is skipped and
 named in the log rather than switching the others off.
 
+The periodic catch-up sweep uses the same definition of mail: authored
+messages to the member or `all`, never system/control history, delivery
+receipts, direct lines, or retractions. It honours filtered-read `seen` seqs.
+If delivery expires or is abandoned, the message remains unread on the board,
+but a durable ledger tombstone prevents the sweep from recreating it forever;
+`nudge --force` explicitly retries it.
+
 System events follow one delivery table: a charter or rules change wakes
 every idle member, a context warning or a model change reaches the member it
 names through the same gates, a link announcement reaches both managers, and
-receipts wake nobody.
+receipts wake nobody. They remain visible board awareness, but never fall
+through the catch-up sweep or hold Claude's Stop hook open as if they were
+peer mail.
 
 ## Safety properties
 
@@ -796,7 +806,7 @@ receipts wake nobody.
 
 ## Status
 
-Current release: 0.15.2, skill v10.
+Current release: 0.15.3, skill v10.
 
 Verified live with Claude Code, Codex, and OpenCode: team formation, board
 delivery, session identity, `resume`, the operator gate, and the trusted-origin
@@ -822,7 +832,7 @@ is not.
 ```bash
 git clone https://github.com/vitalysim/herdr-synapse.git
 cd herdr-synapse
-python3 -m unittest discover -s tests             # 1841 tests, no dependencies
+python3 -m unittest discover -s tests             # 1849 tests, no dependencies
 bin/herdr-synapse-sandbox start ~/your/project    # an isolated Herdr session for live testing
 ```
 

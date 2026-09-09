@@ -147,6 +147,52 @@ class IdleSweepTests(unittest.TestCase):
         self.sweep()
         self.assertEqual(self.team.pending, {})
 
+    def test_system_delivery_receipts_are_not_swept_as_new_mail(self):
+        from herdr_team import roster as _roster
+
+        _roster.append_system_record(
+            self.ts.team, "nudged", "nudged alpha-reviewer for #41",
+            to=["alpha-reviewer"], extra={"seqs": [41]},
+        )
+        self.d.tail_boards()
+        self.sweep()
+        self.assertNotIn("alpha-reviewer", self.team.pending)
+
+    def test_a_filtered_seen_broadcast_is_not_swept_again(self):
+        unread = broadcast(self.ts, text="still unread")
+        seen = broadcast(self.ts, text="already read through a filter")
+        cursor = store.Cursors(self.ts.team).advance("alpha-reviewer", 0, "term_r1", "cli", seen=[seen])
+        self.assertEqual((cursor["seq"], cursor["seen"]), (0, [seen]))
+        self.d.tail_boards()
+        self.sweep()
+        self.assertEqual(self.team.pending["alpha-reviewer"].seqs, [unread])
+
+    def test_expired_delivery_is_terminal_across_sweeps_and_restart(self):
+        seq = broadcast(self.ts)
+        self.d.tail_boards()
+        self.sweep()
+        pending = self.team.pending["alpha-reviewer"]
+        self.d._finish_pending(self.team, "alpha-reviewer", pending, "expired", "expired in test")
+
+        self.clock.advance(D.IDLE_SWEEP_AFTER_S + 1)
+        self.sweep()
+        self.assertNotIn("alpha-reviewer", self.team.pending, "the same unread seq was swept after expiry")
+
+        restarted, _api, _clock = make_daemon(self.ts)
+        restarted.on_connected()
+        restarted_team = restarted.teams[self.ts.team_name]
+        for agent in restarted.agents.values():
+            agent["agent_status"] = "idle"
+        restarted_team.sweep_scanned_ms = None
+        restarted.sweep_unread(restarted_team, restarted.now_ms())
+        self.assertNotIn("alpha-reviewer", restarted_team.pending, "expiry was forgotten across restart")
+
+        newer = broadcast(self.ts, text="new mail after the terminal delivery")
+        restarted.tail_boards()
+        restarted_team.sweep_scanned_ms = None
+        restarted.sweep_unread(restarted_team, restarted.now_ms())
+        self.assertEqual(restarted_team.pending["alpha-reviewer"].seqs, [newer])
+
     def test_nothing_unread_means_nothing_swept(self):
         self.sweep()
         self.assertEqual(self.team.pending, {})

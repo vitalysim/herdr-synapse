@@ -848,6 +848,30 @@ class JobTests(unittest.TestCase):
         self.assertEqual(pending.seqs, [seq])
         self.assertTrue(pending.force)
 
+    def test_nudge_job_does_not_turn_system_history_into_mail(self):
+        store.BoardStore(self.ts.team).append({
+            "from": "system", "kind": "system", "event": "nudged",
+            "to": ["alpha-reviewer", "all"], "text": "nudged alpha-worker for #41",
+            "origin": {"via": "system", "verified": True},
+        })
+        self.job("nudge")
+        self.consume()
+        self.assertNotIn("alpha-reviewer", self.d.teams["alpha"].pending)
+
+    def test_nudge_job_retries_terminal_mail_only_when_forced(self):
+        seq = post(self.ts, "alpha-reviewer")
+        team = self.d.teams["alpha"]
+        team.delivery_terminal["alpha-reviewer"] = {seq}
+
+        self.job("nudge")
+        self.consume()
+        self.assertNotIn("alpha-reviewer", team.pending)
+
+        self.job("nudge", force=True)
+        self.consume()
+        self.assertEqual(team.pending["alpha-reviewer"].seqs, [seq])
+        self.assertTrue(team.pending["alpha-reviewer"].force)
+
     def test_focus_job_calls_agent_focus(self):
         self.job("focus")
         self.consume()

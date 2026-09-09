@@ -150,8 +150,8 @@ IDLE_SWEEP_AFTER_S = 180.0
 #: move many times a minute and the file is the whole archive, so it is written
 #: on change but no more often than this.
 BOARD_SNAPSHOT_MIN_INTERVAL_S = 60.0
-#: How each system event is delivered. A system record takes the early return
-#: in ``_ingest_record``, so an event reaches anybody only by being listed here:
+#: How each system event is proactively delivered. Every system record remains
+#: visible board awareness; this table alone may turn one into a wake or toast:
 #: ``wake: all`` nudges every member when the record is ``urgent``, ``wake:
 #: named`` gives each named member an ordinary (gated) nudge, ``toast`` reaches
 #: the operator's toast queue. One table, because the two lists this replaced
@@ -168,7 +168,7 @@ SYSTEM_EVENT_DELIVERY: Dict[str, Dict[str, Any]] = {
     "link_established": {"wake": "named"},
     "link_broken": {"wake": "named"},
     "link_read": {},  # a receipt for the sending console; nobody is woken
-    "board_cleared": {},  # the idle sweep hands it to each member as an unread post
+    "board_cleared": {},  # visible on the board and in hook context; nobody is woken
 }
 URGENT_SYSTEM_EVENTS = tuple(e for e, d in SYSTEM_EVENT_DELIVERY.items() if d.get("wake") == "all")
 NAMED_SYSTEM_EVENTS = tuple(e for e, d in SYSTEM_EVENT_DELIVERY.items() if d.get("wake") == "named")
@@ -1270,11 +1270,14 @@ class TeamState:
     artifacts_pending_since_ms: Optional[float] = None
     #: When a record was last posted for this team.
     artifacts_posted_ms: Optional[float] = None
-    #: When the unread sweep last created a pending for each member.
     #: Member file -> digest of the edit already announced, so one edit is
     #: reported once however many times the mirror is re-rendered.
     adopt_announced: Dict[str, str] = field(default_factory=dict)
+    #: When the unread sweep last created a pending for each member.
     swept_ms: Dict[str, float] = field(default_factory=dict)
+    #: Unread seqs whose automatic delivery expired or was abandoned, by
+    #: member. They remain readable; only automatic retry is terminal.
+    delivery_terminal: Dict[str, Set[int]] = field(default_factory=dict)
     #: When the sweep last ran for this team.
     sweep_scanned_ms: Optional[float] = None
     #: Board watermark last written to ``board.md``, and when.
@@ -2115,6 +2118,7 @@ class Daemon:
         """``store.BoardTailer`` resumes from ``notifier/state.json``, else from the lowest member cursor."""
         if team.tailer is not None:
             team.tailer.close()
+        team.delivery_terminal = team.ledger.terminal_seqs()
         cursors = [read_cursor_seq(team.paths, str(m.get("name"))) for m in team.members() if m.get("terminal_id")]
         team.tailer = store.BoardTailer(team.paths, start_seq=min(cursors) if cursors else 0)
         team.watermark = team.tailer.watermark_seq
@@ -2187,7 +2191,7 @@ class Daemon:
                 if name == author or name not in cursors:
                     continue
                 cursor, seen = cursors[name]
-                if seq <= cursor or seq in seen:
+                if seq <= cursor or seq in seen or seq in team.delivery_terminal.get(name, set()):
                     continue
                 self._add_pending(team, name, seq, urgent, author, now, interrupt=bool(rec.get("interrupt")))
                 added.setdefault(name, []).append(seq)
@@ -2818,6 +2822,27 @@ class Daemon:
             return True
         origin = rec.get("origin") if isinstance(rec.get("origin"), dict) else {}
         return rec.get("from") == "human" and _identity.human_origin_ok(origin)
+
+    def _unread_mail_seqs(self, team: TeamState, name: str, retry_terminal: bool = False) -> List[int]:
+        """Authored unread mail eligible for automatic delivery to ``name``.
+
+        The board also carries system history and sparse filtered-read state.
+        Neither may be flattened into mail: system records have their own
+        explicit ingest policy, and ``seen`` seqs were already shown even when
+        an older unread record keeps the contiguous cursor behind them.
+        """
+        cursor, seen = read_cursor_state(team.paths, name)
+        terminal = set() if retry_terminal else team.delivery_terminal.get(name, set())
+        seqs: List[int] = []
+        for rec in read_board_records(team.paths, cursor):
+            seq = rec.get("seq")
+            if not isinstance(seq, int) or isinstance(seq, bool):
+                continue
+            if seq in seen or seq in terminal or seq in team.retracted:
+                continue
+            if store.is_member_mail(rec, name) and self._counts_for_nudges(rec):
+                seqs.append(seq)
+        return seqs
 
     def _ingest_record(self, team: TeamState, rec: Dict[str, Any]) -> None:
         seq = rec["seq"]
@@ -3609,19 +3634,9 @@ class Daemon:
             if agent.get("agent_status") not in ("idle", "done"):
                 continue  # a working member reads the board at its own turn boundary
             try:
-                cursor = read_cursor_seq(team.paths, name)
-                unread = [
-                    r for r in read_board_records(team.paths, cursor)
-                    if (name in (r.get("to") or []) or "all" in (r.get("to") or []))
-                    and r.get("from") != name and not store.is_direct_line(r)
-                ]
+                unread = self._unread_mail_seqs(team, name)
             except (HerdrTeamError, OSError):
                 continue
-            # The same reader rule the ingest path applies: a record that renders
-            # ``(unverified)`` never counts for a nudge, so the sweep cannot be used
-            # to launder a forged post into one.
-            unread = [r["seq"] for r in unread if self._counts_for_nudges(r)]
-            unread = [seq for seq in unread if seq not in team.retracted]
             if not unread:
                 continue
             team.swept_ms[name] = now
@@ -3710,9 +3725,7 @@ class Daemon:
             name = str(member["name"])
             pending = team.pending.get(name)
             if pending is None:
-                cursor = read_cursor_seq(team.paths, name)
-                unread = [r["seq"] for r in read_board_records(team.paths, cursor) if (name in r.get("to", []) or "all" in r.get("to", [])) and not store.is_direct_line(r)]
-                unread = [s for s in unread if s not in team.retracted]
+                unread = self._unread_mail_seqs(team, name, retry_terminal=bool(job.get("force")))
                 if not unread:
                     self.log("{}: nothing unread for {}; nudge job dropped".format(team.name, name))
                     return
@@ -4677,7 +4690,10 @@ class Daemon:
             del team.pending[name]
         if pending.attempt_id:
             team.ledger.record_outcome(pending.attempt_id, False, None)
-        self._append_system(team, event, text, ["human"], {"seqs": list(pending.seqs)})
+        if pending.kind == "nudge" and event in ("expired", "abandoned") and pending.seqs:
+            team.ledger.record_terminal(name, pending.seqs, event)
+            team.delivery_terminal.setdefault(name, set()).update(pending.seqs)
+        self._append_system(team, event, text, ["human"], {"seqs": list(pending.seqs), "member": name})
         self.enqueue_toast(team.name, pending.seqs, "herdr-synapse {}: {}".format(team.name, event), text, "none", kind="outcome")
         self.log("{}: {} {}".format(team.name, event, text))
         self.who_dirty = True

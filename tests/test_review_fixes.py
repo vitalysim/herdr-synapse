@@ -208,7 +208,7 @@ class CompactionRebriefTests(unittest.TestCase):
         self.assertEqual(D.TOAST_SYSTEM_EVENTS, ("manager_changed",))
         self.assertEqual(D.NAMED_SYSTEM_EVENTS, ("context_high", "model_changed", "link_established", "link_broken"))
         declared_without_wake = {e for e, d in D.SYSTEM_EVENT_DELIVERY.items() if not d.get("wake")}
-        self.assertEqual(declared_without_wake, {"link_read", "board_cleared"}, "declared so it is deliberate; wakes nobody (the sweep or the console carries it)")
+        self.assertEqual(declared_without_wake, {"link_read", "board_cleared"}, "declared so it is deliberate; wakes nobody (board readers and hook context carry it)")
         self.assertEqual(set(D.URGENT_SYSTEM_EVENTS) | set(D.NAMED_SYSTEM_EVENTS) | declared_without_wake, set(D.SYSTEM_EVENT_DELIVERY))
 
 

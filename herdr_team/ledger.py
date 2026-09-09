@@ -5,7 +5,8 @@ Append-only JSON lines, one per phase, every line fsynced through
 
 * ``intent``  written before ``agent.prompt`` (carries the attempt metrics),
 * ``result``  written after the call returned or failed,
-* ``outcome`` written when the recipient's cursor moves past the nudged seqs,
+* ``outcome`` written when the cursor moves past the seqs or a delivery closes,
+* ``terminal`` written when automatic delivery expires or is abandoned,
 * ``wrong_target`` written when the daemon caught itself about to prompt a
   terminal that is not in any roster (the count must stay zero).
 
@@ -20,7 +21,7 @@ import json
 import os
 import time
 from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Set
 
 from herdr_team import store
 from herdr_team.paths import TeamPaths
@@ -28,6 +29,7 @@ from herdr_team.paths import TeamPaths
 PHASE_INTENT = "intent"
 PHASE_RESULT = "result"
 PHASE_OUTCOME = "outcome"
+PHASE_TERMINAL = "terminal"
 PHASE_WRONG_TARGET = "wrong_target"
 
 RESULT_LANDED_WORKING = "landed_working"
@@ -133,6 +135,24 @@ class Ledger:
             "cursor_latency_ms": latency_ms,
         })
 
+    def record_terminal(self, member: str, seqs: List[int], reason: str) -> None:
+        """Remember that automatic delivery has permanently stopped for these unread seqs.
+
+        Reading remains controlled by the member cursor. This is a separate
+        delivery tombstone so an idle sweep cannot resurrect an expired or
+        abandoned job, including after the daemon restarts.
+        """
+        values = sorted({int(seq) for seq in seqs if isinstance(seq, int) and not isinstance(seq, bool) and seq > 0})
+        if not member or not values:
+            return
+        self._append({
+            "phase": PHASE_TERMINAL,
+            "ts": now_iso(),
+            "member": member,
+            "seqs": values,
+            "reason": reason,
+        })
+
     def record_wrong_target(self, member: str, terminal_id: Optional[str], pane_id: Optional[str], reason: str) -> None:
         """The hard rule tripped: the daemon refused to prompt a non-roster terminal."""
         self._append({
@@ -193,6 +213,33 @@ class Ledger:
     def open_intents(self) -> List[Dict[str, Any]]:
         """Intents with no result: treated as sent after a restart."""
         return [entry for entry in self.attempts().values() if entry.get("result") is None and "member" in entry and is_round_trip(entry)]
+
+    def terminal_seqs(self) -> Dict[str, Set[int]]:
+        """Unread seqs automatic delivery must not retry, grouped by member.
+
+        Explicit ``terminal`` phases cover every new finish. Failed outcomes
+        from older ledgers are folded in as a compatibility migration because
+        ``cursor_advanced:false`` was written only when a pending delivery
+        expired or was abandoned.
+        """
+        out: Dict[str, Set[int]] = {}
+        for entry in self.attempts().values():
+            member = entry.get("member")
+            if entry.get("cursor_advanced") is not False or not isinstance(member, str) or not member:
+                continue
+            out.setdefault(member, set()).update(
+                int(seq) for seq in (entry.get("seqs") or [])
+                if isinstance(seq, int) and not isinstance(seq, bool) and seq > 0
+            )
+        for entry in self.replay():
+            member = entry.get("member")
+            if entry.get("phase") != PHASE_TERMINAL or not isinstance(member, str) or not member:
+                continue
+            out.setdefault(member, set()).update(
+                int(seq) for seq in (entry.get("seqs") or [])
+                if isinstance(seq, int) and not isinstance(seq, bool) and seq > 0
+            )
+        return out
 
     def counts(self) -> Dict[str, int]:
         """Per-result totals including ``wrong_target``; every known result key is present."""

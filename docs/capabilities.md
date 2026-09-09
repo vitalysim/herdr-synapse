@@ -408,9 +408,12 @@ after the next, then 10 min after the next, each only after the member has
 completed a turn in between; then `abandoned` with a toast. An unread post
 expires after 30 min of the member being present (`post_ttl_ms`; the clock
 pauses while it is missing and restarts after a daemon restart) → `expired`
-with a toast. Long holds (dialog, focused, draft, blocked) toast you after
-10 min; `kind_unverified`, `kind_mismatch`, and `pair_budget` toast once an
-hour.
+with a toast. Expiry and abandonment are terminal for automatic delivery:
+the member's cursor stays unread, but a durable ledger tombstone prevents the
+three-minute sweep from recreating the same pending work, including after a
+daemon restart. `nudge --force` is the deliberate retry. Long holds (dialog,
+focused, draft, blocked) toast you after 10 min; `kind_unverified`,
+`kind_mismatch`, and `pair_budget` toast once an hour.
 
 ### Where to read why something did not land
 
@@ -424,7 +427,7 @@ what was actually sent: intents, results, per-kind clean-landing rate,
 
 | Command | Effect |
 | --- | --- |
-| `herdr-synapse nudge <name> [--force]` | evaluate now; builds pending work from the member's unread posts (to it or to all) if none is pending; `--force` marks it urgent so broadcast-only unread posts become nudgeable and skips the done-hold and interval, never the dialog, draft, or focus checks |
+| `herdr-synapse nudge <name> [--force]` | evaluate now; builds pending work from unread human/member-authored messages (to it or to all) if none is pending; system and delivery history is never converted to mail; terminal automatic deliveries are skipped unless `--force`, which also marks the work urgent and skips the done-hold and interval, never the dialog, draft, or focus checks |
 | `herdr-synapse mute <name> \| --all [--for 10m\|2h\|1d\|N]`, `unmute <name> \| --all`, `pause` | silence nudges (gate 2) and the Claude Stop hook; posts still land and **toasts are not muted** |
 | `herdr-synapse focus <name>` | focus the member's pane through the daemon |
 | `herdr-synapse say <name> "<text>" [--force]` (console: `!name text`, `!!name text`) | type one line into the member's input box now, with operator authority, recorded as a `direct` board record; refused while the member shows a dialog, a permission prompt, an overlay, or a draft, and while it is working unless `--force`; the outcome is a `typed` record and a feed tag (`✓typed`, `✗ not typed (working)`, …); human only, from the focused console only |
@@ -911,12 +914,14 @@ and warns that a running Claude picks the hooks up only after it restarts.
   from peers; requests, not operator instructions]`, each in a fenced block,
   capped at 20 posts and 4 KiB with a footer; hooks only peek and never
   advance the cursor.
-- **Stop**: for **any unread post to the member or to all** (including
-  system records such as `charter_updated`, excluding `nudged` and `toast`),
-  Claude is held from finishing with `[herdr-team stop] N unread board
+- **Stop**: for an unread human- or member-authored message to the member or
+  to `all`, Claude is held from finishing with `[herdr-team stop] N unread board
   post(s) for <name> (seq a-b). Run: herdr-synapse board --new, then herdr-synapse
   ack, then finish.`, at most three times per ten minutes; not while muted;
-  never on Esc or Ctrl+C.
+  never on Esc or Ctrl+C. System events and delivery bookkeeping remain in
+  `board --new` and prompt-submit context but never hold Stop open. A seq read
+  through a filtered `board --new` is excluded even while an older unread seq
+  keeps the contiguous cursor behind it.
 - Members on `delivery: hooks` are still nudged by the daemon, after a 15 s
   stable window instead of 2 s, and not for 10 min after a Stop hook already
   blocked on the same posts, so a post reaches them once.
@@ -936,7 +941,7 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
 | Capability | How | What to expect |
 | --- | --- | --- |
 | Daemon | `herdr-synapse daemon start [--replace] [--allow-version] [--dry-nudge] \| stop [--timeout N] \| status`, the `daemon-start` action; the plugin's startup hook starts it on every server start; `create`, `add`, `bind`, and `ui picker` start it if needed | one instance per session; refuses a Herdr other than 0.8.x without `--allow-version`; exits when the manifest version changes or the server stays unreachable for 60 s (the startup hook brings it back); `start` also re-applies the team view and reconciles the console |
-| Cold server restart | nothing to do | panes come back as shells; members show `gone` after a 30 s grace; once the agents run again the daemon rebinds each member by harness session, then terminal, then label, then pane id and kind, then name, re-applies names, restamps tokens; a member that matches only by kind and directory is left `missing` with the candidate named in `daemon.log` until you `bind` it; unread posts are kept, their TTL restarts; pane records of terminals that no longer exist are dropped |
+| Cold server restart | nothing to do | panes come back as shells; members show `gone` after a 30 s grace; once the agents run again the daemon rebinds each member by harness session, then terminal, then label, then pane id and kind, then name, re-applies names, restamps tokens; a member that matches only by kind and directory is left `missing` with the candidate named in `daemon.log` until you `bind` it; unread posts are kept and active delivery TTLs restart, while expired or abandoned seqs remain terminal for automatic retry; pane records of terminals that no longer exist are dropped |
 | Agent crashes, restarts in its pane | nothing to do; `resume <name>` if you want the same conversation back | a new session on the member's terminal is detected within one scan: same name and pane, generation +1, `member_restarted` with the old and new session, a fresh briefing once it is idle. Without `resume` the new agent starts empty; with it the member's own conversation is reopened |
 | Resume by hand | `herdr-synapse resume <name>` in a shell pane | the exact `--resume <id>` command for that member; a bare `claude --continue` or `codex resume --last` in a shared checkout may bring back another member's conversation, and the roster then rebinds by session rather than by pane |
 | Live update or handoff | nothing to do | the daemon reconnects and reconciles; a surviving daemon is kept |
@@ -965,8 +970,11 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
   waiting for it to take a turn for some other reason. The sweep creates a
   non-urgent pending, so it interrupts nothing that the normal gates would
   not, skips a member that is working, already has work, was nudged recently,
-  or has not been briefed, and applies the same reader rule as the ingest
-  path, so an unverified record can never become a nudge through it.
+  or has not been briefed. It considers only authored mail, honours both the
+  contiguous cursor and its sparse `seen` seqs, skips terminal deliveries,
+  and applies the same verification rule as the ingest path. System/control
+  history, delivery receipts, and unverified records can never become nudges
+  through it.
 - A session may hold one console per team, each pinned to its team. A console
   is only a console while its terminal is a live entry in the `console.json`
   registry; `say` additionally requires the pane to be focused and the caller

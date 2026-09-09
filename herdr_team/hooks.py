@@ -687,32 +687,42 @@ def _stop_state_path(team: TeamPaths, name: str) -> Path:
     return team.root / "hooks" / (stem + ".last_stop_block")
 
 
-def _cursor_seq(team: TeamPaths, name: str) -> int:
+def _cursor_state(team: TeamPaths, name: str) -> Tuple[int, "set[int]"]:
     try:
-        return int(store.Cursors(team).get(name).get("seq", 0) or 0)
+        state = store.Cursors(team).get(name)
     except (HerdrTeamError, ValueError, TypeError, AttributeError):
-        return 0
+        return 0, set()
+    try:
+        seq = max(0, int(state.get("seq", 0) or 0))
+    except (ValueError, TypeError, AttributeError):
+        seq = 0
+    seen = {int(value) for value in (state.get("seen") or []) if isinstance(value, int) and not isinstance(value, bool)}
+    return seq, seen
 
 
-#: System events that never hold a Stop open on their own (see ``stop_decision``).
-NON_BLOCKING_STOP_EVENTS = ("artifacts_changed",)
+def _cursor_seq(team: TeamPaths, name: str) -> int:
+    return _cursor_state(team, name)[0]
 
 
 def unread_for(team: TeamPaths, name: str, since_seq: int = 0) -> List[Dict[str, Any]]:
-    """Unread posts for ``name``: to it or ``all``, from someone else, past its cursor (and ``since_seq``).
+    """Unread board context for ``name``: to it or ``all``, from someone else, past its cursor (and ``since_seq``).
 
     Retracted posts and retract records are excluded; ``nudged``/``toast``
     system records never count, nor does a ``direct`` line the human typed
-    into the member or its ``typed`` outcome (``store.is_direct_line``). Shared by the Stop decision (``stop_decision``)
-    and the prompt-submit context (``cmd_hooks``) so both see the same mail.
+    into the member or its ``typed`` outcome (``store.is_direct_line``).
+    Prompt-submit shows all remaining awareness; the Stop decision narrows it
+    to authored mail with ``store.is_member_mail``.
     """
-    floor = max(_cursor_seq(team, name), since_seq)
+    cursor, seen = _cursor_state(team, name)
+    floor = max(cursor, since_seq)
     try:
         records = store.BoardStore(team).read(since_seq=floor, include_retracted=False)
     except HerdrTeamError:
         records = []
     out: List[Dict[str, Any]] = []
     for record in records:
+        if record.get("seq") in seen:
+            continue
         if record.get("from") == name or store.is_direct_line(record):
             continue
         if record.get("kind") == "system" and record.get("event") in ("nudged", "toast"):
@@ -757,13 +767,10 @@ def stop_decision(layout: Layout, team: str, member: str, stdin_payload: Dict[st
         state = {}
     last_seq = state.get("seq", 0)
     last_seq = int(last_seq) if isinstance(last_seq, int) and not isinstance(last_seq, bool) else 0
-    unread = unread_for(team_paths, member, last_seq)
-    # Awareness records are not mail: they still reach the member through
-    # ``board --new`` and the prompt-submit context, but they must not hold a
-    # finished turn open. ``artifacts_changed`` fires on its own schedule, so
-    # letting it block meant a member could be sent back to the board because
-    # a teammate happened to save a file.
-    unread = [r for r in unread if r.get("event") not in NON_BLOCKING_STOP_EVENTS]
+    # System and delivery records are board awareness, not authored mail. They
+    # still reach ``board --new`` and prompt-submit context, but never send a
+    # finished agent back into a turn just to acknowledge runtime bookkeeping.
+    unread = [r for r in unread_for(team_paths, member, last_seq) if store.is_member_mail(r, member)]
     if not unread:
         return 0, ""
     blocks = [t for t in (_parse_iso(x) for x in (state.get("blocks") or [])) if t is not None and now - t < STOP_WINDOW_S]

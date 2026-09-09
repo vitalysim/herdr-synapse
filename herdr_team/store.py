@@ -266,7 +266,8 @@ ARCHIVE_INDEX_VERSION = 1
 TAILER_STATE_VERSION = 1
 TAILER_ENOENT_LOG_S = 5.0
 
-RECORD_KINDS = ("note", "request", "handoff", "done", "blocked", "question", "answer", "direct", "retract", "system")
+MESSAGE_KINDS = ("note", "request", "handoff", "done", "blocked", "question", "answer")
+RECORD_KINDS = MESSAGE_KINDS + ("direct", "retract", "system")
 SYSTEM_EVENTS = (
     "nudged", "toast", "retracted", "expired", "abandoned", "member_gone", "member_restarted",
     "rotated", "reset_detected", "charter_updated", "renamed", "typed", "member_joined",
@@ -366,6 +367,24 @@ def is_direct_line(record: Any) -> bool:
     if kind == "direct":
         return True
     return kind == "system" and record.get("event") == "typed"
+
+
+def is_member_mail(record: Any, name: str) -> bool:
+    """True for a human/member-authored board message addressed to ``name``.
+
+    System, delivery-receipt, retract, and direct-line records remain visible
+    board history, but are not new mail to deliver or a reason to hold an
+    agent's Stop hook open. ``all`` still means a real authored broadcast to
+    every member.
+    """
+    if not isinstance(record, dict) or record.get("kind") not in MESSAGE_KINDS:
+        return False
+    if not isinstance(name, str) or not name or record.get("from") == name:
+        return False
+    targets = record.get("to") or []
+    if isinstance(targets, str):
+        targets = [targets]
+    return isinstance(targets, list) and (name in targets or "all" in targets)
 
 
 def normalize_record(record: Dict[str, Any]) -> Dict[str, Any]:

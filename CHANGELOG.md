@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.3 (2026-09-09)
+
+- **Board history is no longer mistaken for actionable mail.** Claude's Stop hook, the periodic idle sweep, and manual nudge discovery now act only on human- or member-authored messages addressed to that member (including authored broadcasts). System events, delivery receipts, direct lines, and retractions stay visible on the board and in prompt context, but cannot recursively create nudges or hold a finished turn open.
+- Filtered reads now count everywhere: a seq already recorded in a cursor's sparse `seen` list no longer reappears through hook context, Stop, the idle sweep, or a manual nudge. When automatic delivery expires or is abandoned, a durable ledger tombstone prevents the same unread seqs from being swept back into work after the next three-minute scan or daemon restart. The messages remain unread and visible; `nudge --force` is the explicit retry.
+
 ## 0.15.2 (2026-09-09)
 
 - The notifier no longer opens an empty **Waiting on you** popup every 30 seconds after an old ask falls outside the popup's 400-record board window. Its in-memory ask tracker remains read-free during ordinary ticks, but is now revalidated against the popup's exact bounded view immediately before taking focus.

@@ -110,11 +110,21 @@ def _read_team_doc(team: paths.TeamPaths) -> Optional[Dict[str, Any]]:
     return doc if isinstance(doc, dict) else None
 
 
-def _cursor_seq(team: paths.TeamPaths, name: str) -> int:
+def _cursor_state(team: paths.TeamPaths, name: str) -> Tuple[int, "set[int]"]:
     try:
-        return int(store.Cursors(team).get(name).get("seq", 0) or 0)
+        state = store.Cursors(team).get(name)
     except (HerdrTeamError, TypeError, ValueError, AttributeError):
-        return 0
+        return 0, set()
+    try:
+        seq = max(0, int(state.get("seq", 0) or 0))
+    except (TypeError, ValueError, AttributeError):
+        seq = 0
+    seen = {int(value) for value in (state.get("seen") or []) if isinstance(value, int) and not isinstance(value, bool)}
+    return seq, seen
+
+
+def _cursor_seq(team: paths.TeamPaths, name: str) -> int:
+    return _cursor_state(team, name)[0]
 
 
 def _directed_unread(team: paths.TeamPaths, name: str, since_seq: Optional[int] = None) -> List[Dict[str, Any]]:
@@ -131,12 +141,13 @@ def _offset_state_path(team: paths.TeamPaths, name: str) -> Path:
     return team.root / "hooks" / (stem + ".offset.json")
 
 
-def _addressed_unread(records: List[Dict[str, Any]], name: str, cursor: int) -> List[Dict[str, Any]]:
+def _addressed_unread(records: List[Dict[str, Any]], name: str, cursor: int, seen: Optional["set[int]"] = None) -> List[Dict[str, Any]]:
     retracted = {r.get("retracts") for r in records if isinstance(r.get("retracts"), int)}
+    individually_seen = seen or set()
     out: List[Dict[str, Any]] = []
     for record in records:
         seq = record.get("seq")
-        if not isinstance(seq, int) or seq <= cursor or seq in retracted:
+        if not isinstance(seq, int) or seq <= cursor or seq in individually_seen or seq in retracted:
             continue
         if record.get("from") == name or record.get("kind") == "retract" or store.is_direct_line(record):
             continue
@@ -165,7 +176,7 @@ def _unread_from_offset(team: paths.TeamPaths, name: str) -> List[Dict[str, Any]
     state = store.read_json(state_path, default=None)
     if not isinstance(state, dict):
         state = {}
-    cursor = _cursor_seq(team, name)
+    cursor, seen = _cursor_state(team, name)
     try:
         fd = store.secure_open(path, os.O_RDONLY)
     except (FileNotFoundError, HerdrTeamError, OSError):
@@ -215,7 +226,7 @@ def _unread_from_offset(team: paths.TeamPaths, name: str) -> List[Dict[str, Any]
         store.write_json(state_path, {"v": 1, "inode": st.st_ino, "offset": boundary, "cursor": cursor, "updated": _now_iso()}, fsync=False)
     except (HerdrTeamError, OSError):
         pass
-    return _addressed_unread(records, name, cursor)
+    return _addressed_unread(records, name, cursor, seen)
 
 
 def _record_hook_seen(layout: paths.Layout, terminal_id: Any, action: str) -> None:
