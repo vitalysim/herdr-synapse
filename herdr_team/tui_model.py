@@ -48,7 +48,7 @@ SLASH_USAGE = {
     "/reply": ("N", "reply to post #N"),
     "/urgent": ("", "nudge everyone, not just on their next read"),
     "/interrupt": ("@name text", "type into a working teammate's turn"),
-    "/interrupts": ("[off|on|claude,codex] [--cooldown 10m]", "which kinds interrupts may reach"),
+    "/interrupts": ("[off|on|kind,…] [--cooldown 10m]", "which kinds interrupts may reach"),
     "/ref": ("path", "attach a file by reference"),
     "/retract": ("N", "retract post #N"),
     "/mute": ("[name] [10m]", "stop nudging a member"),
@@ -63,7 +63,7 @@ SLASH_USAGE = {
     "/context": ("[name]", "how full each member's context window is"),
     "/compact": ("name", "ask a member to summarise its context"),
     "/clear": ("name", "throw away a member's context and brief it again"),
-    "/model": ("name model[@effort] [--restart]", "set a member's model and effort (Claude live; others at resume, or --restart now)"),
+    "/model": ("name model[@effort] [--restart]", "set model/effort (Claude and OpenCode effort can apply live; other changes at resume or --restart)"),
     "/team": ("other-team text", "post to a linked team (its manager is nudged)"),
     "/links": ("", "which teams this team is linked to, and their state"),
     "/link": ("other-team", "link this team to another (both need a manager)"),
@@ -1833,7 +1833,7 @@ def _parse_slash(head: str, rest: str, default_team: str) -> Intent:
             elif mode is None and a != "--cooldown":
                 mode = a
             else:
-                return Intent("error", {"message": "usage: /interrupts [show|off|on|claude,codex] [--cooldown 10m]"})
+                return Intent("error", {"message": "usage: /interrupts [show|off|on|kind,…] [--cooldown 10m]"})
         return Intent("interrupts", {"mode": mode, "cooldown": cooldown, "team": default_team})
     if head == "/who":
         return Intent("who", {"team": default_team})
@@ -1949,7 +1949,7 @@ HELP_LINES = (
     "members:   /peek name   /focus name   /nudge name [--force]   /remove name   /asks",
     "context:   /context [name]   /compact name   /clear name (throws it away, asks)   /ask-policy",
     "delivery:  /mute [name] [10m]   /unmute [name]   /pause [10m]   Esc clears the status or closes a box",
-    "interrupt: /interrupt @name text (into a working turn)   /interrupts [off|on|claude,codex] [--cooldown 10m]",
+    "interrupt: /interrupt @name text (into a working turn)   /interrupts [off|on|kind,…] [--cooldown 10m]",
     "team:      /charter   /charter set [--urgent] text   /use team   /as label   /export [path]   /quit",
     "keys:      Up/Down and PgUp/PgDn scroll back; End (or Esc) returns to the latest and follows again",
     "           Alt+Enter newline   Ctrl-U clear   Ctrl-K kill to end   Ctrl-A/Ctrl-E start/end   Ctrl-C quits",
@@ -3477,7 +3477,7 @@ ACTION_OPTIONS = (
     ("focus", "go to its pane (closes this popup)"),
     ("resume", "show the command that reopens its own session (herdr-synapse resume)"),
     ("manager", "make it the team manager"),
-    ("model", "set its model and effort (Claude applies live; Codex and OpenCode at the next resume)"),
+    ("model", "set its model and effort (Claude and OpenCode effort can apply live; other changes at resume)"),
 )
 
 
@@ -3881,7 +3881,7 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
         has_input = True
     elif model.stage == "model":
         lines.append("Model and effort for {}: <model>[@<effort>], e.g. opus@medium, gpt-5.6-luna@high, @xhigh (Esc goes back)".format(model.action_member))
-        lines.append("Enter records it and announces it; Claude switches live, Codex and OpenCode at their next resume")
+        lines.append("Enter records it and announces it; Claude and OpenCode effort can switch live; other changes apply at resume")
         lines.append("setting:")
         lines.append(INPUT_PROMPT + model.input)
         has_input = True

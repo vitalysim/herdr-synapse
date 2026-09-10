@@ -4,15 +4,17 @@ Pure and I/O-free. Everything is argv, never a shell string, because Herdr's
 ``agent.start`` hands ``args`` to the binary verbatim and ``resume`` execs.
 
 What the three supported harnesses accept (verified on the installed
-binaries, 2026-09-08):
+binaries, most recently 2026-09-10):
 
 - **Claude Code** ``--model <alias|name>`` and ``--effort low|medium|high|xhigh|max``
   at launch and on ``--resume``; ``/model <m>`` and ``/effort <e>`` typed live.
 - **Codex** ``-m <model>`` and ``-c model_reasoning_effort="<e>"`` (the value is
   TOML, hence the quotes -- its own help shows ``-c model="o3"``), on ``codex``
   and on ``codex resume <id>``; ``/model`` is a picker, so no live keystroke.
-- **OpenCode** ``-m provider/model`` and ``--variant <e>`` (provider-specific
-  reasoning effort); on ``--session <id>`` too; ``/models`` is a picker.
+- **OpenCode** ``-m provider/model`` on both a fresh TUI and ``--session <id>``.
+  The full TUI does *not* accept ``--variant`` (that flag belongs to
+  ``opencode run``); select provider-specific effort through its native
+  ``/variants`` dialog by typing the exact variant and pressing Enter.
 
 The vocabulary is the harness's own, passed through untranslated: ``medium``
 means whatever the harness means by it. A kind not listed here cannot carry a
@@ -20,6 +22,7 @@ model at all (``model_unsupported``), which is honest about what was verified.
 """
 from __future__ import annotations
 
+import os
 from typing import Any, Dict, List, Optional, Tuple
 
 from herdr_team.errors import EXIT_REFUSED, HerdrTeamError, UsageError
@@ -42,6 +45,47 @@ CLAUDE_ALIASES: Tuple[str, ...] = ("opus", "sonnet", "haiku", "fable")
 
 MAX_TOKEN_CHARS = 80
 _TOKEN_OK = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/:")
+
+# Runtime policy switches worth carrying across a model-change restart. This
+# is deliberately an allowlist: copying an arbitrary process argv into the
+# board could persist secrets supplied through unrelated CLI options.
+_PRESERVED_FLAGS: Dict[str, Dict[str, int]] = {
+    "claude": {
+        "--allow-dangerously-skip-permissions": 0,
+        "--dangerously-skip-permissions": 0,
+        "--permission-mode": 1,
+        "--restricted": 0,
+        "--safe": 0,
+        "--settings": 1,
+    },
+    "codex": {
+        "-a": 1,
+        "--ask-for-approval": 1,
+        "-s": 1,
+        "--sandbox": 1,
+        "--approve-for-me": 0,
+        "--dangerously-bypass-approvals-and-sandbox": 0,
+        "--dangerously-bypass-hook-trust": 0,
+        "--strict-config": 0,
+        "--oss": 0,
+        "--local-provider": 1,
+        "-p": 1,
+        "--profile": 1,
+        "-C": 1,
+        "--cd": 1,
+        "--add-dir": 1,
+        "--search": 0,
+        "--no-alt-screen": 0,
+    },
+    "opencode": {
+        "--pure": 0,
+        "--agent": 1,
+        "--auto": 0,
+        "--mini": 0,
+        "--no-replay": 0,
+        "--replay-limit": 1,
+    },
+}
 
 
 def _token(value: Any, what: str) -> Optional[str]:
@@ -119,8 +163,6 @@ def launch_args(kind: Any, model: Optional[str], effort: Optional[str]) -> List[
     elif key == "opencode":
         if model:
             out += ["-m", model]
-        if effort:
-            out += ["--variant", effort]
     return out
 
 
@@ -131,17 +173,115 @@ def resume_argv(kind: Any, session: Any, model: Optional[str], effort: Optional[
     return list(_roster.resume_argv(session)) + launch_args(kind, model, effort)
 
 
+def foreground_argv(kind: Any, processes: Any) -> Optional[List[str]]:
+    """The live harness argv in ``pane.process_info.foreground_processes``."""
+    key = str(kind or "").strip().lower()
+    if key not in KINDS or not isinstance(processes, list):
+        return None
+    for process in processes:
+        if not isinstance(process, dict):
+            continue
+        argv = process.get("argv")
+        if not isinstance(argv, list) or not argv or not all(isinstance(arg, str) for arg in argv):
+            continue
+        head = os.path.basename(argv[0]).lower()
+        if head.endswith(".exe"):
+            head = head[:-4]
+        name = str(process.get("name") or "").lower()
+        if head == key or name == key:
+            return list(argv)
+    return None
+
+
+def preserved_launch_args(kind: Any, current_argv: Any) -> List[str]:
+    """Allowlisted runtime-policy flags from a live harness argv.
+
+    Session, model and effort selectors are intentionally absent from the
+    allowlist because the restart builds those from the roster. Unknown flags
+    are dropped instead of being copied into a durable board record.
+    """
+    key = str(kind or "").strip()
+    specs = _PRESERVED_FLAGS.get(key)
+    if specs is None or not isinstance(current_argv, (list, tuple)):
+        return []
+    argv = [str(arg) for arg in current_argv]
+    out: List[str] = []
+    index = 1 if argv else 0
+    while index < len(argv):
+        token = argv[index]
+        matched = False
+        for flag, arity in specs.items():
+            if token == flag:
+                if arity == 0:
+                    out.append(token)
+                    index += 1
+                elif index + 1 < len(argv):
+                    value = argv[index + 1]
+                    if len(value) <= 4096 and not any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+                        out.extend([token, value])
+                    index += 2
+                else:
+                    index += 1
+                matched = True
+                break
+            if arity == 1 and token.startswith(flag + "="):
+                value = token[len(flag) + 1:]
+                if value and len(value) <= 4096 and not any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+                    out.append(token)
+                index += 1
+                matched = True
+                break
+        if not matched:
+            index += 1
+    return out
+
+
+def restart_argv(kind: Any, session: Any, model: Optional[str], effort: Optional[str], current_argv: Any = None) -> List[str]:
+    """Exact controlled-resume argv plus safe live policy flags.
+
+    Codex's version chooser is a legitimate startup blocker, but a notifier
+    cannot decide whether to upgrade on the user's behalf. Disable that check
+    for this one automated restart; ordinary launches and ``resume`` commands
+    retain the user's normal update behavior.
+    """
+    key = str(kind or "").strip()
+    out = resume_argv(key, session, model, effort)
+    if key == "codex":
+        out += ["-c", "check_for_update_on_startup=false"]
+    return out + preserved_launch_args(key, current_argv)
+
+
+def fresh_argv(kind: Any, model: Optional[str], effort: Optional[str], current_argv: Any = None) -> List[str]:
+    """A fresh harness argv with its setting and safe live policy retained."""
+    key = str(kind or "").strip()
+    validate(key, model, effort)
+    return [key] + launch_args(key, model, effort) + preserved_launch_args(key, current_argv)
+
+
 def live_keystrokes(kind: Any, model: Optional[str], effort: Optional[str]) -> Optional[List[str]]:
     """The lines a notifier types to change a running agent, or None when the kind has no typeable command."""
     validate(kind, model, effort)
-    if str(kind or "").strip() != "claude":
-        return None
-    lines: List[str] = []
-    if model:
-        lines.append("/model {}".format(model))
-    if effort:
-        lines.append("/effort {}".format(effort))
-    return lines
+    key = str(kind or "").strip()
+    if key == "claude":
+        lines: List[str] = []
+        if model:
+            lines.append("/model {}".format(model))
+        if effort:
+            lines.append("/effort {}".format(effort))
+        return lines
+    if key == "opencode" and model is None and effort:
+        # /variants opens a searchable native picker. The second line filters
+        # it to the exact provider-defined variant and Enter selects it.
+        return ["/variants", effort]
+    return None
+
+
+def post_start_keystrokes(kind: Any, effort: Optional[str]) -> List[str]:
+    """Native UI steps still required after argv starts or resumes a harness."""
+    validate(kind, None, effort)
+    if str(kind or "").strip() == "opencode" and effort:
+        return ["/variants", effort]
+    return []
 
 
 def exit_keystroke(kind: Any) -> str:

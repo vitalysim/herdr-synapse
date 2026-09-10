@@ -1,8 +1,8 @@
 """Model and reasoning effort per member (0.14.0). Every test here fails against 0.13.0.
 
-The harness facts these encode were read from the installed binaries on
-2026-09-08 (``herdr_team/models.py`` docstring); the live round trips are
-still owed.
+The harness facts these encode were read from the installed binaries
+(``herdr_team/models.py`` docstring); the live round trips are pinned below
+and covered by the disposable live compatibility run.
 """
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import time
 import unittest
 from unittest import mock
 
-from support import FakeApi, TempState, fake_agent, fake_pane
+from support import FAKE_AGENTS, FakeApi, TempState, fake_agent, fake_pane, fake_process_info
 from test_cmd_roster import env_no_daemon, json_out, live_api, run_cli
 from test_context import STRONG_IDLE, ticks
 from test_daemon import make_daemon
@@ -63,7 +63,7 @@ class SettingTests(unittest.TestCase):
         self.assertEqual(models.launch_args("claude", None, "max"), ["--effort", "max"])
         # Codex's -c value is TOML: the quotes are part of the argument, not of a shell
         self.assertEqual(models.launch_args("codex", "gpt-5.6-luna", "high"), ["-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"'])
-        self.assertEqual(models.launch_args("opencode", "opencode/claude-opus-4-8", "max"), ["-m", "opencode/claude-opus-4-8", "--variant", "max"])
+        self.assertEqual(models.launch_args("opencode", "opencode/claude-opus-4-8", "max"), ["-m", "opencode/claude-opus-4-8"])
         self.assertEqual(models.launch_args("codex", None, None), [])
 
     def test_an_unsupported_kind_and_an_unknown_effort_are_refused_by_name(self):
@@ -86,12 +86,40 @@ class SettingTests(unittest.TestCase):
                          ["claude", "--resume", "abc", "--model", "opus", "--effort", "medium"])
         self.assertEqual(models.resume_argv("opencode", sess("s1", "herdr:opencode", "opencode"), "opencode/big-pickle", None),
                          ["opencode", "--session", "s1", "-m", "opencode/big-pickle"])
+        self.assertEqual(models.resume_argv("opencode", sess("s1", "herdr:opencode", "opencode"), "opencode/big-pickle", "high"),
+                         ["opencode", "--session", "s1", "-m", "opencode/big-pickle"])
 
-    def test_only_claude_has_typeable_live_commands(self):
+    def test_restart_argv_preserves_only_allowlisted_runtime_policy(self):
+        current = [
+            "/opt/bin/codex", "resume", "0199", "-m", "old-model",
+            "-c", 'model_reasoning_effort="low"', "-a", "never",
+            "-s=danger-full-access", "--search", "--image", "/private/input.png",
+        ]
+        self.assertEqual(models.foreground_argv("codex", [{"name": "codex", "argv": current}]), current)
+        self.assertEqual(
+            models.preserved_launch_args("codex", current),
+            ["-a", "never", "-s=danger-full-access", "--search"],
+        )
+        self.assertEqual(
+            models.restart_argv("codex", sess("0199"), "gpt-5.6-luna", "high", current),
+            ["codex", "resume", "0199", "-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"',
+             "-c", "check_for_update_on_startup=false", "-a", "never", "-s=danger-full-access", "--search"],
+        )
+        self.assertIsNone(models.foreground_argv("codex", [{"name": "zsh", "argv": ["-zsh"]}]))
+        self.assertEqual(
+            models.fresh_argv("opencode", "opencode/glm-5.3-flash", "high",
+                              ["opencode", "--session", "old", "-m", "old/model", "--pure", "--auto"]),
+            ["opencode", "-m", "opencode/glm-5.3-flash", "--pure", "--auto"],
+        )
+
+    def test_native_live_commands_are_exact_per_harness(self):
         self.assertEqual(models.live_keystrokes("claude", "opus", "medium"), ["/model opus", "/effort medium"])
         self.assertEqual(models.live_keystrokes("claude", None, "high"), ["/effort high"])
         self.assertIsNone(models.live_keystrokes("codex", "gpt-5.6-luna", "high"))
-        self.assertIsNone(models.live_keystrokes("opencode", "x/y", None))
+        self.assertEqual(models.live_keystrokes("opencode", None, "max"), ["/variants", "max"])
+        self.assertIsNone(models.live_keystrokes("opencode", "x/y", "max"), "OpenCode's model picker has no exact argument form")
+        self.assertEqual(models.post_start_keystrokes("opencode", "max"), ["/variants", "max"])
+        self.assertEqual(models.post_start_keystrokes("codex", "high"), [])
         self.assertEqual((models.exit_keystroke("claude"), models.exit_keystroke("codex"), models.exit_keystroke("opencode")), ("/exit", "/quit", "/exit"))
 
     def test_observed_matches_understands_aliases_and_provider_prefixes(self):
@@ -128,6 +156,7 @@ class RosterTests(unittest.TestCase):
 class SpawnTests(unittest.TestCase):
     STARTED_CODEX = {"type": "agent_started", "agent": fake_agent("w9:p1", "term_new", "codex", "delta-reviewer", launch_pending=False), "argv": ["codex"]}
     STARTED_CLAUDE = {"type": "agent_started", "agent": fake_agent("w9:p2", "term_new2", "claude", "delta-worker", launch_pending=False), "argv": ["claude"]}
+    STARTED_OPENCODE = {"type": "agent_started", "agent": fake_agent("w9:p1", "term_oc", "opencode", "delta-builder", launch_pending=False), "argv": ["opencode"]}
 
     def api(self):
         api = live_api()
@@ -185,6 +214,29 @@ class SpawnTests(unittest.TestCase):
             self.assertFalse(ts.session.team("delta").team_json.exists())
             code, _payload, err = json_out(run_cli(["--json", "create", "delta", "--new", "--workspace", "w9", "--spawn", "qa:codex", "--model", "nobody=@high"], env_no_daemon(ts), api))
             self.assertEqual((code, err["code"]), (2, "usage"))
+
+    def test_opencode_spawn_selects_the_variant_before_it_queues_the_briefing(self):
+        with TempState(write_team=False) as ts:
+            agent = fake_agent("w9:p1", "term_oc", "opencode", "delta-builder", launch_pending=False)
+            api = live_api([agent])
+            api.set_response("layout.apply", {"type": "layout_apply", "layout": {"workspace_id": "w9", "tab_id": "w9:t1",
+                                                                                     "zoomed": False, "focused_pane_id": "w9:p1",
+                                                                                     "root": {"type": "pane", "pane_id": "w9:p1"}}})
+            api.set_cli_result(["agent", "start"], self.STARTED_OPENCODE, request_id="cli:agent:start")
+            code, payload, err = json_out(run_cli([
+                "--json", "create", "delta", "--new", "--workspace", "w9",
+                "--spawn", "builder:opencode", "--model", "builder=opencode/glm-5.3-flash@high",
+            ], env_no_daemon(ts), api))
+            self.assertEqual(code, 0, err)
+            start = next(argv for argv in api.runs if argv[:2] == ["agent", "start"])
+            self.assertEqual(start[start.index("--") + 1:], ["-m", "opencode/glm-5.3-flash"])
+            jobs = [store.read_json(path) for path in ts.session.team("delta").jobs_dir.glob("*.json")]
+            self.assertEqual(len(jobs), 1)
+            self.assertEqual((jobs[0]["kind"], jobs[0]["action"]), ("control", "model"))
+            control = next(record["control"] for record in store.BoardStore(ts.session.team("delta")).read()
+                           if isinstance(record.get("control"), dict))
+            self.assertEqual(control["keystrokes"], ["/variants", "high"])
+            self.assertTrue(control["brief_after"])
 
     def test_add_records_a_setting_for_a_live_agent(self):
         with TempState() as ts:
@@ -259,7 +311,7 @@ class ModelCommandTests(unittest.TestCase):
         code, _payload, err = self.model([PEER, "--self", "@low"], env=env)
         self.assertEqual((code, err["code"]), (2, "usage"))
 
-    def test_live_is_claude_only_and_restart_needs_a_session(self):
+    def test_unsupported_live_change_and_restart_without_a_session_are_refused(self):
         code, _payload, err = self.model([MEMBER, "gpt-5.6-luna", "--apply", "live"])
         self.assertEqual((code, err["code"]), (1, "model_apply_unsupported"))
         self.assertIn("--apply restart", err["message"])
@@ -275,10 +327,41 @@ class ModelCommandTests(unittest.TestCase):
         self.assertEqual(code, 0, err)
         control = payload["control"]
         self.assertEqual((control["action"], control["exit"]), ("restart", "/quit"))
-        self.assertEqual(control["argv"], ["codex", "resume", "0199-reviewer", "-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"'])
+        self.assertEqual(control["argv"], ["codex", "resume", "0199-reviewer", "-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"',
+                                                   "-c", "check_for_update_on_startup=false"])
+        self.assertEqual(control["after"], [])
         record = next(r for r in store.BoardStore(self.ts.team).read() if r.get("seq") == payload["record_seq"])
         self.assertEqual((record["kind"], record["to"], record["control"]["action"]), ("direct", [MEMBER], "restart"))
         self.assertEqual(len(list(self.ts.team.jobs_dir.glob("*.json"))), 1)
+
+    def test_restart_preserves_the_live_codex_approval_and_sandbox_policy(self):
+        from test_cmd_board import write_live_daemon
+
+        write_live_daemon(self.ts)
+        api = live_api()
+        api.set_response("pane.process_info", fake_process_info("w2:p1", processes=[{
+            "pid": 77, "name": "codex",
+            "argv": ["/opt/bin/codex", "resume", "0199-reviewer", "-m", "old", "-c", 'model_reasoning_effort="low"',
+                     "-a", "never", "-s", "danger-full-access"],
+        }]))
+        code, payload, err = self.model([MEMBER, "gpt-5.6-luna@high", "--apply", "restart"], api=api)
+        self.assertEqual(code, 0, err)
+        self.assertEqual(payload["control"]["preserved"], ["-a", "never", "-s", "danger-full-access"])
+        self.assertEqual(
+            payload["control"]["argv"],
+            ["codex", "resume", "0199-reviewer", "-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"',
+             "-c", "check_for_update_on_startup=false", "-a", "never", "-s", "danger-full-access"],
+        )
+
+    def test_opencode_restart_uses_its_tui_for_the_variant_not_the_run_only_flag(self):
+        from test_cmd_board import write_live_daemon
+
+        set_member(self.ts, MEMBER, kind="opencode", session=sess("oc-1", "herdr:opencode", "opencode"))
+        write_live_daemon(self.ts)
+        code, payload, err = self.model([MEMBER, "opencode/glm-5.3-flash@high", "--apply", "restart"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual(payload["control"]["argv"], ["opencode", "--session", "oc-1", "-m", "opencode/glm-5.3-flash"])
+        self.assertEqual(payload["control"]["after"], ["/variants", "high"])
 
     def test_live_on_claude_types_model_then_effort(self):
         from test_cmd_board import write_live_daemon
@@ -287,6 +370,15 @@ class ModelCommandTests(unittest.TestCase):
         code, payload, err = self.model([PEER, "opus@medium"])
         self.assertEqual(code, 0, err)
         self.assertEqual((payload["apply"], payload["control"]["keystrokes"]), ("live", ["/model opus", "/effort medium"]))
+
+    def test_opencode_effort_only_defaults_to_its_exact_live_variant_picker(self):
+        from test_cmd_board import write_live_daemon
+
+        set_member(self.ts, MEMBER, kind="opencode")
+        write_live_daemon(self.ts)
+        code, payload, err = self.model([MEMBER, "@high"])
+        self.assertEqual(code, 0, err)
+        self.assertEqual((payload["apply"], payload["control"]["keystrokes"]), ("live", ["/variants", "high"]))
 
     def test_models_sets_and_clears_the_team_default(self):
         code, payload, err = json_out(run_cli(["--json", "--team", "alpha", "models", "set", "claude", "opus@medium"], env_no_daemon(self.ts), live_api()))
@@ -352,6 +444,18 @@ class LiveModelJobTests(ControlRig):
         self.assertEqual(self.sent("agent.prompt"), [])
         self.assertEqual(self.team.rt(MEMBER).control_pending["action"], "model")
 
+    def test_each_control_line_settles_before_enter(self):
+        pauses = []
+        self.d.control_gap_sleep = pauses.append
+        result, _details = self.d._type_keystroke("w2:p1", "/quit")
+        self.assertEqual(result, D.RESULT_LANDED_WORKING)
+        self.assertEqual(pauses, [D.CONTROL_SUBMIT_GAP_S])
+        calls = [(method, params) for method, params in self.api.calls if method in ("pane.send_text", "pane.send_keys")]
+        self.assertEqual(calls[-2:], [
+            ("pane.send_text", {"pane_id": "w2:p1", "text": "/quit"}),
+            ("pane.send_keys", {"pane_id": "w2:p1", "keys": ["enter"]}),
+        ])
+
     def observe(self, model):
         reading = context.Reading(used=5_000, window=200_000, source="/t.jsonl", model=model)
         with mock.patch.object(D._context, "read_member", return_value=reading), mock.patch.object(self.d, "_file_mtime", return_value=1.0):
@@ -385,9 +489,41 @@ class LiveModelJobTests(ControlRig):
         self.assertEqual(len(self.records("model_applied")), 1)
         self.assertIn("not observable", self.records("model_applied")[0]["text"])
 
+    def test_opencode_selects_an_exact_variant_and_then_queues_its_deferred_brief(self):
+        set_member(self.ts, MEMBER, kind="opencode", effort="high", verified_kind=True)
+        self.team.member(MEMBER)["kind"] = "opencode"
+        self.team.member(MEMBER)["verified_kind"] = True
+        live = fake_agent("w2:p1", "term_r1", "opencode", MEMBER)
+        self.api.set_response("agent.get", {"type": "agent_info", "agent": live})
+        self.api.set_response("agent.list", {"type": "agent_list", "agents": [live, dict(FAKE_AGENTS[1])]})
+        self.api.set_response("pane.list", {"type": "pane_list", "panes": [fake_pane("w2:p1", "term_r1", "opencode"),
+                                                                            fake_pane("w2:p2", "term_w1", "claude")]})
+        self.d.agents["term_r1"] = live
+        self.d.agents_by_pane["w2:p1"] = live
+        self.api.set_response("agent.explain", {"type": "agent_explain", "explain": {
+            "state": "idle", "matched_rule": {"id": "opencode.idle", "region": "after_last_prompt_marker"},
+        }})
+        self.control(MEMBER, {"action": "model", "kind": "opencode", "model": None, "effort": "high",
+                              "setting": "opencode/glm-5.3-flash@high", "keystrokes": ["/variants", "high"],
+                              "brief_after": True})
+        self.settle()
+        self.assertEqual([p["text"] for p in self.sent("pane.send_text") if p["pane_id"] == "w2:p1"], ["/variants", "high"], self.d.logged)
+        self.assertEqual(self.team.pending[MEMBER].kind, "brief")
+        applied = self.records("model_applied")[-1]
+        self.assertIn("variant selected in OpenCode", applied["text"])
+
+    def test_a_forged_opencode_picker_sequence_is_refused(self):
+        set_member(self.ts, MEMBER, kind="opencode")
+        self.team.member(MEMBER)["kind"] = "opencode"
+        self.control(MEMBER, {"action": "model", "kind": "opencode", "model": None, "effort": "high",
+                              "keystrokes": ["/variants", "not-high"]})
+        self.assertNotIn(MEMBER, self.team.pending)
+        self.assertIn("nothing to type", self.records("typed")[-1]["text"])
+
 
 class RestartJobTests(ControlRig):
-    ARGV = ["codex", "resume", "0199-reviewer", "-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"']
+    ARGV = ["codex", "resume", "0199-reviewer", "-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"',
+            "-c", "check_for_update_on_startup=false"]
     STARTED = {"type": "agent_started", "agent": fake_agent("w2:p1", "term_r1", "codex", MEMBER, launch_pending=False), "argv": ["codex"]}
 
     def setUp(self):
@@ -413,6 +549,10 @@ class RestartJobTests(ControlRig):
         # the pane emptied: the harness is started again with the resume argv after --
         self.pane_is_empty()
         self.api.set_cli_result(["agent", "start"], self.STARTED, request_id="cli:agent:start")
+        self.api.set_response("agent.get", {
+            "type": "agent_info",
+            "agent": fake_agent("w2:p1", "term_r1", "codex", MEMBER, launch_pending=True),
+        })
         self.clock.advance(2)
         self.d.advance_restarts(self.clock() * 1000)
         starts = [a for a in self.api.runs if a[:2] == ["agent", "start"]]
@@ -459,6 +599,87 @@ class RestartJobTests(ControlRig):
         self.assertEqual(len(failed), 1)
         self.assertIn("agent start failed", failed[0]["text"])
         self.assertIsNone(self.team.rt(MEMBER).restart)
+
+    def test_a_ready_agent_with_the_same_session_completes_without_a_roster_delta(self):
+        self.request()
+        self.settle()
+        self.pane_is_empty()
+        self.api.set_cli_result(["agent", "start"], self.STARTED, request_id="cli:agent:start")
+        returned = fake_agent(
+            "w2:p1", "term_r1", "codex", MEMBER, launch_pending=False,
+            interactive_ready=True, agent_session=sess("0199-reviewer"),
+        )
+        self.api.set_response("agent.get", {"type": "agent_info", "agent": returned})
+        self.clock.advance(2)
+        self.d.advance_restarts(self.clock() * 1000)
+        rt = self.team.rt(MEMBER)
+        self.assertIsNone(rt.restart)
+        self.assertIsNone(rt.control_pending)
+        self.assertNotIn(MEMBER, self.team.pending)
+        self.assertEqual(len(self.records("model_applied")), 1)
+        self.assertEqual(self.records("restart_failed"), [])
+
+    def test_a_ready_agent_can_complete_before_the_integration_reports_its_session(self):
+        self.request()
+        self.settle()
+        self.pane_is_empty()
+        self.api.set_cli_result(["agent", "start"], self.STARTED, request_id="cli:agent:start")
+        returned = fake_agent(
+            "w2:p1", "term_r1", "codex", MEMBER, launch_pending=False,
+            interactive_ready=True, agent_session=None,
+        )
+        self.api.set_response("agent.get", {"type": "agent_info", "agent": returned})
+        self.clock.advance(2)
+        self.d.advance_restarts(self.clock() * 1000)
+        self.assertIsNone(self.team.rt(MEMBER).restart)
+        self.assertEqual(len(self.records("model_applied")), 1)
+        self.assertEqual(self.records("restart_failed"), [])
+
+    def test_a_different_returned_session_does_not_complete_the_restart(self):
+        self.request()
+        self.settle()
+        self.pane_is_empty()
+        self.api.set_cli_result(["agent", "start"], self.STARTED, request_id="cli:agent:start")
+        returned = fake_agent(
+            "w2:p1", "term_r1", "codex", MEMBER, launch_pending=False,
+            interactive_ready=True, agent_session=sess("some-other-session"),
+        )
+        self.api.set_response("agent.get", {"type": "agent_info", "agent": returned})
+        self.clock.advance(2)
+        self.d.advance_restarts(self.clock() * 1000)
+        self.assertEqual(self.team.rt(MEMBER).restart["phase"], "started")
+        self.assertEqual(self.records("model_applied"), [])
+
+    def test_a_forged_restart_argv_is_refused_before_typing(self):
+        self.control(MEMBER, {
+            "action": "restart", "kind": "codex", "model": "gpt-5.6-luna", "effort": "high",
+            "exit": "/quit", "argv": ["codex", "resume", "somebody-elses-session"],
+        })
+        self.assertNotIn(MEMBER, self.team.pending)
+        self.assertIn("does not match its recorded session", self.records("typed")[-1]["text"])
+
+    def test_a_restart_cannot_smuggle_an_unapproved_launch_flag(self):
+        self.control(MEMBER, {
+            "action": "restart", "kind": "codex", "model": "gpt-5.6-luna", "effort": "high",
+            "exit": "/quit", "preserved": ["-c", 'mcp_servers.bad.command="steal"'],
+            "argv": self.ARGV + ["-c", 'mcp_servers.bad.command="steal"'],
+        })
+        self.assertNotIn(MEMBER, self.team.pending)
+        self.assertIn("does not match its recorded session", self.records("typed")[-1]["text"])
+
+    def test_opencode_restart_defers_success_until_its_variant_is_selected(self):
+        rt = self.team.rt(MEMBER)
+        self.team.pending[MEMBER] = D.Pending(first_ms=self.clock() * 1000, kind="control")
+        rt.control_pending = {"action": "restart", "requested_by": "human"}
+        rt.restart = {"kind": "opencode", "model": "opencode/glm-5.3-flash", "effort": "high",
+                      "after": ["/variants", "high"], "requested_by": "human"}
+        self.d._note_restart_done(self.team, MEMBER, {"briefed_at": None}, self.clock() * 1000)
+        followup = self.team.pending[MEMBER]
+        self.assertEqual((followup.kind, followup.lines), ("control", ["/variants", "high"]))
+        self.assertEqual(followup.control["setting"], "opencode/glm-5.3-flash@high")
+        self.assertTrue(followup.control["restarted"])
+        self.assertTrue(followup.control["brief_after"])
+        self.assertEqual(self.records("model_applied"), [])
 
 
 class DeliveryTests(ControlRig):

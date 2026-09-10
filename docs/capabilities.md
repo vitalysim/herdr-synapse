@@ -432,12 +432,12 @@ what was actually sent: intents, results, per-kind clean-landing rate,
 | `herdr-synapse mute <name> \| --all [--for 10m\|2h\|1d\|N]`, `unmute <name> \| --all`, `pause` | silence nudges (gate 2) and the Claude Stop hook; posts still land and **toasts are not muted** |
 | `herdr-synapse focus <name>` | focus the member's pane through the daemon |
 | `herdr-synapse say <name> "<text>" [--force]` (console: `!name text`, `!!name text`) | type one line into the member's input box now, with operator authority, recorded as a `direct` board record; plain `!` atomically requires the inspected terminal to remain idle through submission, while `--force`/`!!` deliberately permits a running turn; dialogs, permission prompts, overlays, and drafts refuse both; the outcome is a `typed` record and a feed tag (`✓typed`, `✗ not typed (working)`, …); human only, from the focused console only |
-| `herdr-synapse post --to <name> --interrupt "<text>"` (console: `/interrupt @name text`) | urgent, and when the recipient's kind is in `config.gate.interrupt_kinds` (default `claude`) and the sender is out of its cooldown for that teammate (10 min), the daemon types the nudge into the recipient's *running turn* instead of waiting for idle: `[herdr-team interrupt] <sender> could not wait: 1 urgent board post for <name> (seq N). Run: herdr-synapse board --new [nK]`. Dialog, overlay, draft, focus, and rate-limit gates still hold it; otherwise it is an ordinary urgent nudge. The feed shows `⚡INTERRUPT` on the post and `⚡interrupted` once typed; `who` shows `⚡armed`, `⚡cooldown`, or `⚡kind_not_allowed` next to `↪N`. Named recipients only; a member's repeat inside the cooldown is `interrupt_cooldown` at the CLI; the human has no cooldown |
+| `herdr-synapse post --to <name> --interrupt "<text>"` (console: `/interrupt @name text`) | urgent, and when the recipient's kind is in `config.gate.interrupt_kinds` (default `claude`, `codex`, `opencode`) and the sender is out of its cooldown for that teammate (10 min), the daemon types the nudge into the recipient's *running turn* instead of waiting for idle: `[herdr-team interrupt] <sender> could not wait: 1 urgent board post for <name> (seq N). Run: herdr-synapse board --new [nK]`. Dialog, overlay, draft, focus, and rate-limit gates still hold it; otherwise it is an ordinary urgent nudge. The feed shows `⚡INTERRUPT` on the post and `⚡interrupted` once typed; `who` shows `⚡armed`, `⚡cooldown`, or `⚡kind_not_allowed` next to `↪N`. Named recipients only; a member's repeat inside the cooldown is `interrupt_cooldown` at the CLI; the human has no cooldown |
 | `herdr-synapse interrupts [show\|off\|on\|<kind>,<kind>] [--cooldown 10m]` (console: `/interrupts …`) | show or set the team's interrupt kinds and cooldown (`config.gate`); changing them is human only |
 | `herdr-synapse read <name>` | the member's visible screen; `--lines` is refused for every member because scrolling an alternate screen types into it |
 | `herdr-synapse notifier stats [--team] [--kind]` | the delivery ledger |
 | `herdr-synapse kinds list \| trust <kind> [--reason "…"] \| untrust <kind>` | the trust override behind gate 4; `list` prints `<kind>  delivers\|held  <flags>`; a kind also becomes `verified` on its own after 20 clean round trips |
-| `team.json` → `config.gate` | `stable_ms_screen` 2000, `stable_ms_hook` 750, `stable_ms_hooks_delivery` 15000, `done_hold_ms` 60000, `min_interval_ms` 20000, `global_interval_ms` 1500, `focus_max_hold_ms` 300000, `focus_snapshot_stable_ms` 3000, `dialog_hold_cap_ms` 600000, `pair_budget` 10, `pair_window_ms` 600000, `sample_gap_reset_ms` 10000, `post_ttl_ms` 1800000, `burst_window_ms` 1000, `nudge_focused` `never\|always`, `interrupt_kinds` `["claude"]`, `interrupt_cooldown_ms` 600000; the daemon reloads it within 2 s and ignores the whole block if any key is invalid |
+| `team.json` → `config.gate` | `stable_ms_screen` 2000, `stable_ms_hook` 750, `stable_ms_hooks_delivery` 15000, `done_hold_ms` 60000, `min_interval_ms` 20000, `global_interval_ms` 1500, `focus_max_hold_ms` 300000, `focus_snapshot_stable_ms` 3000, `dialog_hold_cap_ms` 600000, `pair_budget` 10, `pair_window_ms` 600000, `sample_gap_reset_ms` 10000, `post_ttl_ms` 1800000, `burst_window_ms` 1000, `nudge_focused` `never\|always`, `interrupt_kinds` `["claude","codex","opencode"]`, `interrupt_cooldown_ms` 600000; the daemon reloads it within 2 s and ignores the whole block if any key is invalid |
 | `daemon start --dry-nudge` | log nudges instead of typing them (for a dry run) |
 
 Measured in the rig with `done_hold_ms 5000`: post to the member working in
@@ -567,12 +567,11 @@ as good as the shell tool it runs in, and the cap was calibrated to Claude Code:
 | --- | --- | --- |
 | Claude Code | kills the command at 10 min; output only at the end | give the tool a 10-minute timeout |
 | Codex | runs it in an exec cell that **yields after 10 s with the process still running**; the model must keep calling `wait` | keep waiting on the exec cell until it exits |
-| OpenCode | optional `timeout`, believed 2 min by default, 10 min max | pass a 10-minute timeout |
+| OpenCode | optional `timeout`, 2 min by default and 10 min max | pass a 10-minute timeout |
 
-The Codex and OpenCode rows are read from the installed binaries and not yet
-verified live; one round trip per kind in a disposable session is the missing
-evidence. The stderr heartbeat exists for the Codex row: a silent wait looks
-hung to a model watching a yielded cell.
+The wait, operator answer and unblock round trip is live-verified for all three
+rows. The stderr heartbeat remains useful for Codex: a silent wait looks hung
+to a model watching a yielded cell.
 
 **Not an ask:** a `question` sent `--to all`. It is for teammates, and it
 neither pops up nor blocks; `--to human` is the operator channel.
@@ -597,31 +596,33 @@ once and treating `ui_busy` as a retry.
 Each member carries an optional model and reasoning effort, `<model>[@<effort>]`,
 resolved member override → team default for the kind (`config.models`) →
 harness default. The vocabulary is the harness's own and is passed through
-untranslated. What each installed harness accepts (read from the binaries on
-2026-09-08):
+untranslated. What each installed harness accepts (checked against the
+binaries and then live-verified on 2026-09-10):
 
 | Kind | At launch (and on `resume`) | Live | Effort words |
 | --- | --- | --- | --- |
-| Claude Code 2.1.263 | `--model <alias\|name>`, `--effort <e>`; `claude --resume <id> …` | `/model <m>` and `/effort <e>` both take an argument: the notifier types them | `low medium high xhigh max` |
-| Codex | `-m <model>`, `-c model_reasoning_effort="<e>"`; on `codex resume <id>` too | `/model` is a picker: no keystroke. `--apply restart` exits (`/quit`) and resumes with the flags | `minimal low medium high xhigh` |
-| OpenCode | `-m provider/model`, `--variant <e>`; `--session <id>` too | `/models` is a picker: as Codex (`/exit`) | provider-specific; any token |
+| Claude Code 2.1.267 | `--model <alias\|name>`, `--effort <e>`; `claude --resume <id> …` | `/model <m>` and `/effort <e>` both take an argument: the notifier types them | `low medium high xhigh max` |
+| Codex 0.153.4 | `-m <model>`, `-c model_reasoning_effort="<e>"`; on `codex resume <id>` too | `/model` is a picker: no keystroke. `--apply restart` exits (`/quit`) and resumes with the flags | `minimal low medium high xhigh` |
+| OpenCode 1.18.30 | `-m provider/model`; `--session <id>` too; effort is selected after startup | `/variants` accepts the effort selection live; a model change uses `/exit` and a controlled restart | provider-specific; any token |
 
 Herdr's `agent.start` hands `args` to the binary verbatim
 (`herdr agent start NAME --kind K --pane P -- ARG…`), so every flag above is
 argv, never a shell string.
 
-**Verified live:** nothing yet in this version. The Claude rows come from
-`claude --help` and the slash-command table in the binary; the Codex rows
-from `codex --help` and `codex resume --help`; OpenCode's `--variant` is
-documented on `run` and the TUI is non-strict, so an unknown flag is harmless
-there. One round trip per kind in a disposable session is the missing evidence.
+**Verified live:** Claude changed model and effort inside the running TUI;
+Codex restarted its exact session with the requested model and effort; OpenCode
+changed effort through `/variants`, then restarted the exact session for a
+model change and re-applied the effort. Controlled restarts validate the exact
+returning record and argv, preserve allowlisted policy flags, and disable the
+Codex startup update picker for that restart.
 
 **Changing it while the agent runs.** A change is recorded on the roster and
 announced (`model_changed`, the member nudged). Claude: a control job types
 the lines once the member is idle; the job closes when the transcript reports
 the model (`model_applied`), or on typing when only the effort changed, since
-the effort is not observable. Codex/OpenCode: at the next resume by default;
-`--apply restart` is a control job that types the exit command when idle,
+the effort is not observable. OpenCode effort changes are selected live with
+`/variants`. Codex changes and OpenCode model changes apply at the next resume
+by default; `--apply restart` is a control job that types the exit command when idle,
 waits for the pane to empty (30 s), starts the harness again with the resume
 argv plus the flags (90 s), and closes when the session is reported again. A
 resumed agent reports the *same* session id with a new phase — the exact shape
@@ -670,11 +671,11 @@ is typed and nothing is asked of the agent.
 | OpenCode | newest assistant `message.data.tokens.total` in `opencode.db` | exact | `limit.context` for its `providerID` + `modelID` in OpenCode's cached model catalogue |
 
 Readers tail their files rather than parsing them (`TAIL_BYTES` 256 KB), open
-SQLite through an immutable URI, and cache OpenCode's catalogue by mtime,
-because these files reach tens of megabytes on a working machine. A kind with
-no reader reports `unknown`. A readable token count whose model window cannot
-be resolved keeps the count but reports a null window and percentage; it never
-inherits 200k or raises a context warning from a guess.
+SQLite read-only with WAL updates visible, and cache OpenCode's catalogue by
+mtime, because these files reach tens of megabytes on a working machine. A
+kind with no reader reports `unknown`. A readable token count whose model
+window cannot be resolved keeps the count but reports a null window and
+percentage; it never inherits 200k or raises a context warning from a guess.
 
 | Surface | What it shows |
 | --- | --- |
@@ -691,9 +692,12 @@ inherits 200k or raises a context warning from a guess.
 | `herdr-synapse clear <name> --yes [--reason TEXT]` (console `/clear`, which asks y/N) | the same for the clear command. Operator only; `--self` is refused |
 
 Keystrokes: Claude `/compact` and `/clear`; Codex `/compact` and `/new`;
-OpenCode `/compact` and `/new`. Codex takes `/new` deliberately, since its
-`/clear` also wipes the scrollback the detection layer reads. Any other kind
-is `control_unsupported`.
+OpenCode `/compact`, while clear exits with `/exit` and starts a fresh full TUI
+for the same member. Codex takes `/new` deliberately, since its `/clear` also
+wipes the scrollback the detection layer reads. OpenCode clear is refused
+before exit when `pane.layout` reports a width below 38 (about a 40-column PTY),
+because OpenCode 1.18.30 crashes while starting its full TUI that narrow. Any
+other kind is `control_unsupported`.
 
 Properties that hold:
 
@@ -719,9 +723,10 @@ Properties that hold:
   session is a new baseline, not a fall.
 
 **Verified**: unit tests in `tests/test_context.py` (readers, tailing,
-thresholds, forged jobs, gate holds, typed-once, all four completion paths).
-Live: the three readings on a working team, against the numbers the agents
-show themselves.
+thresholds, forged jobs, gate holds, typed-once, all completion paths). Live:
+the three readings against the numbers the agents showed themselves, plus a
+compact and clear of every harness with its context/session transition and
+single re-brief observed.
 
 ## 7. Human paths
 
@@ -756,7 +761,7 @@ a popup on the roster box.
 - **Input**: plain text → whole team; `@name text` → one member; `@role:r
   text` → a role; `/interrupt @name text` → an interrupt (section 6): urgent,
   and typed into that member's running turn when its kind allows it and the
-  sender is out of cooldown; `/interrupts off|on|claude,codex [--cooldown
+  sender is out of cooldown; `/interrupts off|on|<kind>,… [--cooldown
   10m]` sets that policy. Typing `@` (at the start or after a space) opens a name
   list above the input line: every member with role, kind, and status, then
   `role:<r>` groups, `all`, and `human`; keep typing to filter (a role or
@@ -1011,7 +1016,8 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
   expires and its screen has been still for 3 s). Two things type into a
   *working* member: your own `!!name text`, and a teammate's `post
   --interrupt` when the team allows it for that kind (`interrupt_kinds`,
-  default Claude only), at most once per sender and teammate per 10 min,
+  default Claude Code, Codex and OpenCode), at most once per sender and
+  teammate per 10 min,
   always as the `[herdr-team interrupt]` envelope and never the post text,
   so attribution is unchanged; `herdr-synapse interrupts off` turns it off.
 - `herdr-synapse usage` reads the agent CLIs' own login tokens only to query
@@ -1025,34 +1031,22 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
 - Emergency stop: `herdr-synapse daemon stop`. Nothing is typed anywhere after
   that.
 
-## 12. Not built or not verified yet
+## 12. Current limits
 
-- Delivery verified end to end only for Claude and Codex. opencode, gemini,
-  cursor-agent, kimi, agy need one `hooks probe` each (or `kinds trust`)
-  before they receive nudges.
+- Claude Code, Codex and OpenCode are live-verified end to end for the core
+  workflow. Other kinds, including Gemini, Cursor Agent, Kimi and Antigravity,
+  need `hooks probe` or `kinds trust` before terminal delivery and remain
+  conditional rather than fully supported.
 - Codex under its default sandbox cannot reach the Herdr socket from a tool
   call and asks to rerun unsandboxed; approve its read-only `herdr-synapse`
   commands or start it with an approval policy that allows them.
-- Hooks exist for Claude only. The only briefing path is the typed line.
-- `!!name text` into a running turn is verified for Claude Code only (it
-  queues the line as its next message). On Herdr 0.9, prompt text and its
-  delayed Enter are one ordered submission, so an immediate Ctrl+C queues
-  after Enter. For other kinds the line is typed
-  and the outcome carries `unverified for <kind>`; Codex is the next to
-  verify live.
-- `post --interrupt` into a running turn is verified for Claude Code only
-  (the queue behaviour `!!` relies on); other kinds are off by default and
-  `interrupts claude,codex` opts in unverified.
-- `compact` and `clear` are **not yet verified live against a real agent of any
-  kind**. The transport is verified by reading upstream: `handle_pane_send_text`
-  writes the bytes with no wrapper, while `encode_api_text`, which
-  `agent.prompt` and `pane.send_input` both go through, brackets them as a
-  paste. What is untested is the last step, whether a running Claude, Codex or
-  OpenCode treats the typed line as its own slash command; that needs a
-  disposable session with real agents. Until it is done, treat the keystroke
-  table as a hypothesis and watch the first use of each kind. Everything
-  around it (authority, the record-backed job, the gate, typed-once, the four
-  completion paths) is covered by tests.
+- Hooks exist for Claude only. Codex and OpenCode use the typed briefing path.
+- `!!name text` and `post --interrupt` are live-verified for all three supported
+  harnesses. Other kinds still carry `unverified for <kind>` and are excluded
+  from the default interrupt set.
+- Compact and clear are live-verified for all three supported harnesses.
+  OpenCode 1.18.30 cannot safely start its full TUI in a very narrow terminal,
+  so clear refuses before `/exit` below the 38-column layout guard.
 - `usage` windows are verified live for Anthropic (Claude Code login) and
   OpenAI Codex (ChatGPT login). GitHub Copilot answers without a quota on
   individual plans; Gemini needs a valid token and its quota response is
@@ -1072,7 +1066,7 @@ Each row: do this, expect that.
 | # | Do | Expect |
 | --- | --- | --- |
 | C1 | `herdr-synapse doctor` after linking and `daemon-start` | daemon alive, your socket, slug `default`, no errors |
-| C2 | `herdr-synapse kinds trust claude`; `kinds list` | a `claude` row in the `delivers` column with `trusted` in the flags (`--json`: `delivers: true, trusted: true`) |
+| C2 | trust `claude`, `codex` and `opencode`; `kinds list` | all three rows are in the `delivers` column with `trusted` in the flags (`--json`: `delivers: true, trusted: true`) |
 | C3 | two fresh idle agents; `prefix+t`; Space on both; Enter; team name; charter; per member role, name, brief (fields are prefilled: Ctrl-U clears before typing, Enter accepts the default); confirm | `who` lists both with roles; `herdr agent list` shows names and tokens; `herdr pane list` shows labels `team:<t>/<role>` |
 | C4 | wait about a minute; `who` | the `unbriefed` tag disappears from both rows once the briefing lines landed; each screen shows the `[herdr-team briefing]` lines and the agent running `herdr-synapse ack` (otherwise one re-brief after 90 s, then a `<name> unbriefed` toast) |
 | C5 | ask a member "what is this team for and what is your role" | it answers from `charter` and `me` with the right names |
@@ -1098,8 +1092,9 @@ Each row: do this, expect that.
 | C25 | `herdr plugin disable herdr-synapse` | tokens and the view gone within 10 s, daemon exited; pane labels remain until `teardown`; `enable` and `daemon start` recover |
 | C26 | `herdr-synapse notifier stats` at the end | `wrong_target 0`, `open_intents 0`, a clean rate per kind; hold reasons are in `daemon.log` and `who --json`, not here |
 | C27 | in the console, while a member is idle: `!<member> reply with the word pong` | the text is in its input box within about a second with no `[herdr-team` header and the member starts working; the feed shows a `»direct` entry with `… typing` then `✓typed`; `board --thread <seq>` shows the `typed` record under it; the member's `board --new` does not list it; `notifier stats` intents grow by one and the clean rate is unchanged |
-| C28 | `!<member> x` while it works; then `!!<member> summarize so far`; `!<member> /clear`; the compose popup `!<member> hi`; `herdr-synapse say <member> x` from a shell pane | `✗ not typed (working)` with the `!!` hint in the status line, nothing typed; the forced line lands as `✓typed (in running turn)` (`, unverified for codex` on Codex); `/clear` is refused `say_control_command`; the popup answers `direct typing is console-only`; the shell answers `say_unverified` and `herdr-synapse audit` lists it |
+| C28 | for each supported harness, run `!<member> x` while it works; then `!!<member> summarize so far`; `!<member> /clear`; the compose popup `!<member> hi`; `herdr-synapse say <member> x` from a shell pane | `✗ not typed (working)` with the `!!` hint in the status line, nothing typed; the forced line lands as `✓typed (in running turn)` without an unverified label; `/clear` is refused `say_control_command`; the popup answers `direct typing is console-only`; the shell answers `say_unverified` and `herdr-synapse audit` lists it |
 | C29 | `prefix+i` (or `herdr-synapse usage`) | a popup lists every agent grouped by provider with session and weekly bars, `% used`, `⚠`/`‼` past 75/90 %, and reset times; `r` refreshes; `herdr-synapse usage --json` contains no token |
-| C30 | while a Claude member works, have another member run `herdr-synapse post --to <claude> --interrupt "stop, wrong branch"`; repeat within 10 min; then `/interrupts off` and once more | the feed shows `⚡INTERRUPT`; `[herdr-team interrupt] <sender> could not wait …` lands in the working member's input and it reads the board after its current step (`⚡interrupted`); the repeat is `interrupt_cooldown` at the CLI; after `/interrupts off` the post waits for idle (`who`: `⚡kind_not_allowed`) |
+| C30 | while each supported kind works, have a teammate run `herdr-synapse post --to <member> --interrupt "stop, wrong branch"`; repeat within 10 min; then `/interrupts off` and once more | for Claude Code, Codex and OpenCode the feed shows `⚡INTERRUPT`; `[herdr-team interrupt] <sender> could not wait …` lands in the working turn (`⚡interrupted`); the repeat is `interrupt_cooldown`; after `/interrupts off` the post waits for idle (`who`: `⚡kind_not_allowed`) |
 | C31 | inspect the console header and run `herdr-synapse daemon status`; then try `!<member> x` against a server without `agent.prompt_if_idle` | both surfaces show Herdr/protocol/plugin/daemon versions and `safe !` as ready, unavailable, or unknown; without the method nothing is typed, the outcome is `capability_unavailable`, and the status offers `@<member>` or explicit `!!<member>` |
 | C32 | run `herdr-synapse update` from a managed install, then from a local link | the managed checkout is reinstalled; the local checkout is only re-registered and its files remain untouched; both refresh the CLI link and skill, replace the notifier, and report all steps in one result |
+| C33 | for Claude Code, Codex and OpenCode, change model/effort, inspect `context`, run `compact`, then `clear` | each harness reports the requested setting and exact context window; compact drops carried tokens and re-briefs once; clear changes session/generation and re-briefs once; an OpenCode pane below the safe-width guard refuses clear before exiting |

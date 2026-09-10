@@ -3,10 +3,11 @@
 ``models`` holds the team defaults per kind (``config.models``); ``model``
 reads or sets one member. A change is recorded on the roster and announced
 on the board; whether it *applies* now depends on the harness
-(``herdr_team.models``): Claude takes ``/model`` and ``/effort`` typed live,
-Codex and OpenCode have picker-only commands and so take effect at the next
-``resume`` -- or now, with ``--apply restart``, when the notifier exits the
-agent and resumes its session with the new flags.
+(``herdr_team.models``): Claude takes ``/model`` and ``/effort`` typed live;
+OpenCode effort can be selected exactly through ``/variants``; model changes
+for Codex and OpenCode take effect at the next ``resume`` -- or now, with
+``--apply restart``, when the notifier exits and resumes the session. OpenCode
+variant selection follows that resume because its full TUI has no effort flag.
 
 Authority (owner decision, 2026-09-08): the operator or a delegate may set
 anyone, the team manager may set anyone, a member may set itself with
@@ -66,6 +67,20 @@ def observed_models(layout: Any, team_name: str) -> Dict[str, Optional[str]]:
             context = member.get("context")
             out[member["name"]] = context.get("model") if isinstance(context, dict) and isinstance(context.get("model"), str) else None
     return out
+
+
+def running_argv(api: Any, member: Dict[str, Any]) -> Optional[List[str]]:
+    """Best-effort argv for policy flags that should survive a restart."""
+    pane_id = member.get("pane_id")
+    if not isinstance(pane_id, str) or not pane_id:
+        return None
+    try:
+        result = api.request("pane.process_info", {"pane_id": pane_id})
+    except HerdrTeamError:
+        return None
+    info = result.get("process_info") if isinstance(result, dict) else None
+    processes = info.get("foreground_processes") if isinstance(info, dict) else None
+    return _models.foreground_argv(member.get("kind"), processes)
 
 
 def model_authority(layout: Any, team_name: str, doc: Dict[str, Any], author: Any, target: str, on_self: bool) -> str:
@@ -157,7 +172,7 @@ def _add_model_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("setting", nargs="?", metavar="MODEL[@EFFORT]", help="e.g. opus@medium, gpt-5.6-luna@high, @xhigh")
     parser.add_argument("--effort", metavar="EFFORT", help="the effort half on its own")
     parser.add_argument("--self", dest="on_self", action="store_true", help="act on your own pane (members only)")
-    parser.add_argument("--apply", choices=APPLY_MODES, help="live (Claude: type /model and /effort), next (at the next resume), restart (exit and resume the session with the new flags)")
+    parser.add_argument("--apply", choices=APPLY_MODES, help="live (Claude model/effort or OpenCode effort), next (at the next resume), restart (exit, resume, then finish any native UI selection)")
     parser.add_argument("--reason", metavar="TEXT", help="why, for the board record")
 
 
@@ -208,14 +223,15 @@ def _run_model(args: argparse.Namespace) -> int:
         effort = _models._token(args.effort, "effort")
     kind = str(member.get("kind") or "")
     _models.validate(kind, model, effort)
-    apply = args.apply or ("live" if kind == "claude" else "next")
+    apply = args.apply or ("live" if kind == "claude" or (kind == "opencode" and model is None and effort is not None) else "next")
     if apply == "live" and _models.live_keystrokes(kind, model, effort) is None:
-        raise HerdrTeamError("model_apply_unsupported", "{} has no typeable model command; use --apply restart (exit and resume with the new flags) or --apply next".format(kind), EXIT_REFUSED, {"kind": kind, "apply": apply})
+        raise HerdrTeamError("model_apply_unsupported", "{} cannot apply that setting as an exact live command; use --apply restart or --apply next".format(kind), EXIT_REFUSED, {"kind": kind, "apply": apply})
     check_write_session(args, layout, team_name)
     if apply == "restart":
         # Planned before anything is written: a member with no recorded
         # session cannot be resumed, and must not be left half-changed.
         _models.resume_argv(kind, member.get("session"), model or _models.effective_setting(doc.get("config"), member)[0], effort or _models.effective_setting(doc.get("config"), member)[1])
+    current_argv = running_argv(api, member) if apply == "restart" else None
 
     def mutate(t: _roster.Team) -> None:
         row = t.find(name)
@@ -246,9 +262,11 @@ def _run_model(args: argparse.Namespace) -> int:
     require_daemon(layout.session)
     if apply == "restart":
         session = member.get("session")
-        argv = _models.resume_argv(kind, session, eff_model, eff_effort)  # session_unknown / session_unsupported surface here
+        preserved = _models.preserved_launch_args(kind, current_argv)
+        argv = _models.restart_argv(kind, session, eff_model, eff_effort, current_argv)  # session_unknown / session_unsupported surface here
+        after = _models.post_start_keystrokes(kind, eff_effort)
         control = {"action": "restart", "kind": kind, "model": eff_model, "effort": eff_effort,
-                   "exit": _models.exit_keystroke(kind), "argv": argv}
+                   "exit": _models.exit_keystroke(kind), "argv": argv, "preserved": preserved, "after": after}
         line = "restart {}: {}".format(name, " ".join(argv))
     else:
         keystrokes = _models.live_keystrokes(kind, eff_model if model is not None else None, eff_effort if effort is not None else None) or []
@@ -263,7 +281,8 @@ def _run_model(args: argparse.Namespace) -> int:
     job = enqueue_job(team, "control", name, author, extra={"seq": seq, "action": control["action"]})
     payload.update({"job": job, "record_seq": seq, "control": control})
     if apply == "restart":
-        return emit(args, payload, "{}: {} recorded; the notifier exits it when idle and resumes its session with the new flags".format(name, setting))
+        suffix = ", then selects its OpenCode variant" if control.get("after") else ""
+        return emit(args, payload, "{}: {} recorded; the notifier exits it when idle and resumes its session{}".format(name, setting, suffix))
     return emit(args, payload, "{}: {} recorded; the notifier types {} when it is idle".format(name, setting, " then ".join(repr(k) for k in control["keystrokes"])))
 
 

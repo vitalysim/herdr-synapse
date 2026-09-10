@@ -11,8 +11,9 @@ Two properties every reader keeps:
   on the machine this was written against). A reader seeks to the end and scans
   back over ``TAIL_BYTES``; it never parses the whole file, and it never holds
   more than that slice in memory.
-- **Read-only.** SQLite is opened through an immutable URI so a live agent
-  writing to its own database is never blocked or corrupted by us.
+- **Read-only.** SQLite is opened through a read-only URI so a live agent
+  cannot be modified by an observability feature while committed WAL updates
+  remain visible.
 
 The numbers mean "what the next request will carry", not "what this session has
 spent in total". Codex publishes both and the distinction is stark: on a live
@@ -190,20 +191,36 @@ def codex_rollout(session_value: Optional[str], home: Optional[Path] = None) -> 
 
 
 def read_codex(session_value: Optional[str], home: Optional[Path] = None) -> Optional[Reading]:
-    """The newest ``token_count`` event in a Codex rollout.
+    """The newest ``token_count`` event and active model in a Codex rollout.
 
     Codex publishes the window itself, so nothing is assumed. ``last_token_usage``
     is the context; ``total_token_usage`` is cumulative for the session and
-    routinely exceeds the window.
+    routinely exceeds the window. The model is published separately on
+    ``turn_context`` and ``thread_settings_applied`` records, so keep scanning
+    the same bounded tail after finding the token count instead of returning
+    early and losing which model owns that window.
     """
     path = codex_rollout(session_value, home)
     if path is None:
         return None
+    model: Optional[str] = None
+    reading: Optional[Tuple[int, Optional[int], Optional[str]]] = None
     for record in _records(path):
-        if record.get("type") != "event_msg":
-            continue
         payload = record.get("payload")
-        if not isinstance(payload, dict) or payload.get("type") != "token_count":
+        if not isinstance(payload, dict):
+            continue
+
+        if model is None:
+            candidate: Any = None
+            if record.get("type") == "turn_context":
+                candidate = payload.get("model")
+            elif record.get("type") == "event_msg" and payload.get("type") == "thread_settings_applied":
+                settings = payload.get("thread_settings")
+                candidate = settings.get("model") if isinstance(settings, dict) else None
+            if isinstance(candidate, str) and candidate.strip():
+                model = candidate.strip()
+
+        if reading is not None or record.get("type") != "event_msg" or payload.get("type") != "token_count":
             continue
         info = payload.get("info")
         if not isinstance(info, dict):
@@ -219,8 +236,13 @@ def read_codex(session_value: Optional[str], home: Optional[Path] = None) -> Opt
         window = info.get("model_context_window")
         window = int(window) if isinstance(window, int) and not isinstance(window, bool) and window > 0 else None
         at = record.get("timestamp") if isinstance(record.get("timestamp"), str) else None
-        return Reading(used=used, window=window, source=os.fspath(path), at=at)
-    return None
+        reading = (used, window, at)
+        if model is not None:
+            break
+    if reading is None:
+        return None
+    used, window, at = reading
+    return Reading(used=used, window=window, source=os.fspath(path), model=model, at=at)
 
 
 def opencode_db(home: Optional[Path] = None) -> Path:
@@ -313,8 +335,11 @@ def read_opencode(session_value: Optional[str], home: Optional[Path] = None,
     if not path.is_file():
         return None
     try:
-        # immutable: never block or disturb an agent writing its own database
-        conn = sqlite3.connect("file:{}?immutable=1".format(path), uri=True, timeout=1.0)
+        # Read-only mode participates in SQLite's WAL snapshot, so it sees the
+        # live agent's committed messages without ever writing. ``immutable``
+        # looks attractive here but deliberately ignores WAL updates, leaving
+        # context and compaction readings stale until OpenCode checkpoints.
+        conn = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=1.0)
     except sqlite3.Error:
         return None
     try:

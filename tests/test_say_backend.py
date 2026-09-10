@@ -455,15 +455,19 @@ class SayJobTests(unittest.TestCase):
         self.assertIsNone(typed["detail"])
 
     def test_force_on_an_unverified_kind_is_typed_but_flagged(self):
-        self.api.set_response("agent.get", lambda p: {"type": "agent_info", "agent": fake_agent("w2:p1", "term_r1", "codex", "alpha-reviewer", status="working", state_change_seq=3)})
+        member = self.team.member("alpha-reviewer")
+        self.assertIsNotNone(member)
+        member["kind"] = "gemini"
+        trust_kinds(self.ts, "gemini")
+        self.api.set_response("agent.get", lambda p: {"type": "agent_info", "agent": fake_agent("w2:p1", "term_r1", "gemini", "alpha-reviewer", status="working", state_change_seq=3)})
         self.say(force=True)
         self.assertEqual(len(self.prompts()), 1)
-        self.agents(**{"alpha-reviewer": {"agent_status": "working", "state_change_seq": 3}})
+        self.agents(**{"alpha-reviewer": {"agent": "gemini", "agent_status": "working", "state_change_seq": 3}})
         self.poll()
         typed = self.last_typed()
         self.assertEqual((typed["result"], typed["reason"], typed["force_verified"]), ("typed", "in_turn", False))
-        self.assertIn("unverified for codex", typed["detail"])
-        self.assertIn("unverified for codex", typed["text"])
+        self.assertIn("unverified for gemini", typed["detail"])
+        self.assertIn("unverified for gemini", typed["text"])
 
     def test_dialog_is_refused_in_both_modes(self):
         self.api.set_response("agent.read", lambda p: fake_read(str(p["target"]), fixture("codex_approval"), "detection"))

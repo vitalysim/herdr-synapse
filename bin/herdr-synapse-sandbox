@@ -6,7 +6,7 @@
 # it does is visible to your default Herdr session. It uses the installed
 # `herdr` binary; no fork build is involved.
 #
-#   herdr-synapse-sandbox prepare          create the sandbox, copy your config, link the plugin, trust claude/codex
+#   herdr-synapse-sandbox prepare          create the sandbox, copy config, link the plugin, trust supported kinds
 #   herdr-synapse-sandbox start [<dir>]    prepare, then launch the sandbox session in <dir> (default: the current
 #                                       directory); new panes and agents open there, so pass your project
 #   herdr-synapse-sandbox attach           attach another terminal to the running sandbox
@@ -104,14 +104,14 @@ prepare() {
     fi
   fi
 
-  # Trust the two kinds verified in the rigs so deliveries are not held
+  # Trust the three kinds verified in the rigs so deliveries are not held
   # `kind_unverified` on first use. Owner override, recorded as such.
   if [ ! -f "$KINDS" ]; then
     mkdir -p "$(dirname "$KINDS")"
     now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-    printf '{"claude": {"trusted": true, "trusted_by": "owner", "reason": "sandbox default", "trusted_at": "%s"}, "codex": {"trusted": true, "trusted_by": "owner", "reason": "sandbox default", "trusted_at": "%s"}}\n' "$now" "$now" > "$KINDS"
+    printf '{"claude": {"trusted": true, "trusted_by": "owner", "reason": "sandbox default", "trusted_at": "%s"}, "codex": {"trusted": true, "trusted_by": "owner", "reason": "sandbox default", "trusted_at": "%s"}, "opencode": {"trusted": true, "trusted_by": "owner", "reason": "sandbox default", "trusted_at": "%s"}}\n' "$now" "$now" "$now" > "$KINDS"
     chmod 600 "$KINDS"
-    say "trusted claude and codex for delivery in the sandbox (herdr-synapse kinds list to review)"
+    say "trusted claude, codex, and opencode for delivery in the sandbox (herdr-synapse kinds list to review)"
   fi
 
   # Link the plugin into the sandbox registry only. Works offline.

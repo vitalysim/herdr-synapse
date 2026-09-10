@@ -133,6 +133,15 @@ CONTROL_DROP_RATIO = 0.7
 #: Claude answers each at once, but a second line typed on top of the first
 #: would land while the first is still being read.
 CONTROL_LINE_GAP_S = 1.0
+# Codex classifies a fast synthetic character burst as a paste and suppresses
+# Enter for 120 ms. Let slash-command text settle before pressing Enter so the
+# TUI dispatches it instead of leaving it as a draft.
+CONTROL_SUBMIT_GAP_S = 0.2
+#: OpenCode 1.18's full TUI aborts while creating a session when its pane is
+#: narrower than this layout width (38 layout columns are 40 PTY columns in
+#: the bordered Herdr pane tested here). Refuse before ``/exit`` so a cramped
+#: layout never turns a healthy member into a crashed shell.
+OPENCODE_FRESH_TUI_MIN_WIDTH = 38
 #: How often a team's manager cursor is checked against the messages another
 #: team's manager sent it, so the sender's console can show ``read by``.
 LINK_RECEIPT_POLL_S = 5.0
@@ -202,7 +211,7 @@ SAY_MAX_AGE_S = 10.0
 #: Origins whose ``direct`` records the daemon types: the verified console only (``cmd_board.SAY_VIAS``).
 SAY_VIAS = ("console",)
 #: Kinds verified live to queue text typed into a running turn (``!!``); other kinds are typed but flagged.
-FORCE_VERIFIED_KINDS = ("claude",)
+FORCE_VERIFIED_KINDS = ("claude", "codex", "opencode")
 RENUDGE_AFTER_S = (120.0, 300.0, 600.0)
 # The post TTL (plan 8.3, 30 min of target-active time) is ``gate.POST_TTL_MS``, per team via ``config.gate.post_ttl_ms``.
 BRIEF_ACK_S = 90.0
@@ -1210,6 +1219,11 @@ class MemberRuntime:
     #: An open restart: ``{"phase": exiting|starting|started, "since_ms", "argv", "kind", "pane_id", ...}``.
     #: While set, a pane with no agent is a member on its way back, not one gone missing.
     restart: Optional[Dict[str, Any]] = None
+    #: A clear whose fresh session is first reported after its bootstrap work.
+    #: Codex does not mint/report ``/new`` until the first prompt; OpenCode's
+    #: fresh-process clear can likewise report after its variant/briefing.
+    #: The later session report must not brief twice.
+    clear_bootstrap: bool = False
     #: Harness session the last context reading belonged to. A reading from a
     #: different session is a different history, so it is a new baseline rather
     #: than a fall in the old one.
@@ -2598,6 +2612,20 @@ class Daemon:
         return True
 
     def _apply_changes(self, team: TeamState, changes: List[Tuple[str, Dict[str, Any]]]) -> None:
+        # Codex only reports the new ``/new`` session after the bootstrap
+        # briefing has begun. If that briefing already landed, retain its
+        # stamp instead of letting the late session report erase it.
+        for name, update in changes:
+            rt = team.runtime.get(name)
+            pending = team.pending.get(name)
+            current = team.member(name)
+            if (rt is not None and rt.clear_bootstrap and "generation" in update
+                    and update.get("briefed_at", False) is None
+                    and pending is not None and pending.kind == "brief" and pending.landed_ms is not None
+                    and current is not None and current.get("briefed_at")):
+                update["briefed_at"] = current.get("briefed_at")
+                update["briefing_seq"] = current.get("briefing_seq")
+
         def mutate(doc: Dict[str, Any]) -> None:
             for name, update in changes:
                 for member in doc.get("members", []):
@@ -2615,8 +2643,10 @@ class Daemon:
                     # The same session id with a new phase is what a resumed
                     # agent reports -- the very shape the branch below reads as
                     # a compaction. The open restart says which it is.
+                    clear_restart = (team.rt(name).restart or {}).get("action") == "clear"
                     self._note_restart_done(team, name, update, self.now_ms())
-                    continue
+                    if not clear_restart or "generation" not in update:
+                        continue
                 new_name = update.get("name")
                 if isinstance(new_name, str) and new_name != name and roster.migrate_cursor(team.paths, name, new_name):
                     self.log("{}: carried {}'s read position to {}".format(team.name, name, new_name))
@@ -2624,6 +2654,9 @@ class Daemon:
                     self._append_system(team, "member_gone", "{} is missing".format(name), ["human"])
                 elif "generation" in update:
                     shown = update.get("name", name)
+                    rt = team.rt(str(shown))
+                    bootstrapped_clear = rt.clear_bootstrap
+                    rt.clear_bootstrap = False
                     text = "{} restarted{} (generation {})".format(shown, " on {}".format(update["pane_id"]) if update.get("pane_id") else "", update["generation"])
                     extra: Dict[str, Any] = {}
                     if "session" in update:
@@ -2634,10 +2667,15 @@ class Daemon:
                     self._append_system(team, "member_restarted", text, ["all"], extra or None)
                     self._note_cleared(team, name, shown)
                     if "briefed_at" in update and update["briefed_at"] is None:
-                        try:
-                            roster.write_briefing_job(team.paths, str(shown))
-                        except HerdrTeamError as err:
-                            self.log("{}: could not enqueue a briefing for {}: {}".format(team.name, shown, err.code))
+                        if not bootstrapped_clear:
+                            queued_variant = self._queue_configured_opencode_variant(
+                                team, str(shown), self.now_ms(), requested_by="its recorded setting", brief_after=True,
+                            )
+                            if not queued_variant:
+                                try:
+                                    roster.write_briefing_job(team.paths, str(shown))
+                                except HerdrTeamError as err:
+                                    self.log("{}: could not enqueue a briefing for {}: {}".format(team.name, shown, err.code))
                 elif "session" in update and update.get("briefed_at", False) is None:
                     # Same id, new phase (see ``_rebind_update``): a compaction, not a restart.
                     self._note_compacted(team, name, str(roster.session_source(update["session"]) or "?"))
@@ -3275,26 +3313,61 @@ class Daemon:
         extra: Dict[str, Any] = {}
         if action == "model":
             # The lines come from the record, which the origin check above vouched for.
-            lines = [str(k).strip() for k in (control_doc.get("keystrokes") or []) if str(k).strip().startswith("/")]
+            lines = [str(k).strip() for k in (control_doc.get("keystrokes") or []) if str(k).strip()]
+            kind = str(member.get("kind") or "")
+            if kind == "opencode":
+                expected = _models.live_keystrokes(kind, control_doc.get("model"), control_doc.get("effort"))
+                if expected != lines:
+                    lines = []
+            else:
+                lines = [line for line in lines if line.startswith("/")]
             if not lines:
                 self._append_system(team, "typed", "model change of {} refused: nothing to type".format(name), ["human"], {"member": name})
                 return
-            extra = {"model": control_doc.get("model"), "effort": control_doc.get("effort")}
+            extra = {"model": control_doc.get("model"), "effort": control_doc.get("effort"),
+                     "setting": control_doc.get("setting"), "brief_after": bool(control_doc.get("brief_after")),
+                     "restarted": bool(control_doc.get("restarted"))}
         elif action == "restart":
             exit_key = str(control_doc.get("exit") or "").strip()
-            argv = [str(a) for a in (control_doc.get("argv") or []) if str(a)]
-            if not exit_key.startswith("/") or not argv:
-                self._append_system(team, "typed", "restart of {} refused: no exit command or resume argv on the record".format(name), ["human"], {"member": name})
+            raw_argv = control_doc.get("argv")
+            raw_preserved = control_doc.get("preserved")
+            raw_after = control_doc.get("after")
+            argv = [str(a) for a in raw_argv if str(a)] if isinstance(raw_argv, list) else []
+            preserved = [str(a) for a in raw_preserved if str(a)] if isinstance(raw_preserved, list) else []
+            after = [str(k).strip() for k in raw_after if str(k).strip()] if isinstance(raw_after, list) else []
+            kind = str(member.get("kind") or "")
+            try:
+                expected_exit = _models.exit_keystroke(kind)
+                safe_preserved = _models.preserved_launch_args(kind, [kind] + preserved)
+                expected_argv = _models.restart_argv(
+                    kind, member.get("session"), control_doc.get("model"), control_doc.get("effort"),
+                    [kind] + preserved,
+                )
+            except HerdrTeamError:
+                expected_exit, expected_argv, safe_preserved = "", [], []
+            expected_after = _models.post_start_keystrokes(kind, control_doc.get("effort"))
+            if (exit_key != expected_exit or preserved != safe_preserved
+                    or argv != expected_argv or after != expected_after):
+                self._append_system(team, "typed", "restart of {} refused: control does not match its recorded session and setting".format(name), ["human"], {"member": name})
                 return
             lines = [exit_key]
-            extra = {"model": control_doc.get("model"), "effort": control_doc.get("effort"), "argv": argv}
+            extra = {"model": control_doc.get("model"), "effort": control_doc.get("effort"), "argv": argv,
+                     "preserved": preserved, "after": after, "session": member.get("session")}
         else:
             try:
-                lines = [self._keystroke_for(member.get("kind"), action)]
+                kind = str(member.get("kind") or "")
+                lines = [self._keystroke_for(kind, action)]
             except HerdrTeamError as err:
                 self.log("{}: {}".format(team.name, err.message))
                 self._append_system(team, "typed", "{} of {} refused: {}".format(action, name, err.code), ["human"], {"member": name})
                 return
+            if action == "clear" and kind == "opencode":
+                model, effort = _models.effective_setting(team.roster.get("config"), member)
+                current_argv = self._foreground_argv(member)
+                extra = {"fresh_restart": True, "model": model, "effort": effort,
+                         "setting": _models.label(model, effort),
+                         "argv": _models.fresh_argv(kind, model, effort, current_argv),
+                         "after": _models.post_start_keystrokes(kind, effort)}
         pending = Pending(first_ms=now, kind="control", lines=list(lines), force=True, seqs=[])
         pending.control = dict({"action": action, "keystroke": lines[0], "keystrokes": list(lines), "requested_by": (record or {}).get("from"), "kind": member.get("kind")}, **extra)
         team.pending[name] = pending
@@ -3363,23 +3436,43 @@ class Daemon:
                 self.log("{}: DRY {} of {} ({}): {!r}".format(team.name, action, name, pane_id, keystroke))
                 result, details = RESULT_DRY, {"text": keystroke}
             else:
-                result, details = RESULT_LANDED_WORKING, {}
-                for index, line in enumerate(keystrokes):
-                    if index:
-                        self.control_gap_sleep(CONTROL_LINE_GAP_S)
-                    result, details = self._type_keystroke(pane_id, line)
-                    if result != RESULT_LANDED_WORKING:
-                        break
+                try:
+                    if control.get("fresh_restart"):
+                        width = self._pane_layout_width(pane_id)
+                        if width < OPENCODE_FRESH_TUI_MIN_WIDTH:
+                            result, details = RESULT_REFUSED, {
+                                "code": "pane_too_narrow",
+                                "message": "OpenCode needs a wider pane to clear safely (layout width {}; minimum {})".format(
+                                    width, OPENCODE_FRESH_TUI_MIN_WIDTH),
+                            }
+                        else:
+                            result, details = RESULT_LANDED_WORKING, {}
+                    else:
+                        result, details = RESULT_LANDED_WORKING, {}
+                    if result == RESULT_LANDED_WORKING:
+                        for index, line in enumerate(keystrokes):
+                            if index:
+                                self.control_gap_sleep(CONTROL_LINE_GAP_S)
+                            result, details = self._type_keystroke(pane_id, line)
+                            if result != RESULT_LANDED_WORKING:
+                                break
+                except HerdrTeamError as err:
+                    result, details = RESULT_TRANSIENT, {"code": err.code, "message": err.message}
         finally:
             rt.in_flight = False
         team.ledger.record_result(attempt_id, result, details)
         if result not in (RESULT_LANDED_WORKING, RESULT_DRY):
+            if result == RESULT_REFUSED:
+                self._finish_pending(team, name, pending, "typed", "{} of {} refused: {}".format(
+                    action, name, details.get("message") or details.get("code") or "unsafe pane layout"))
+                return
             pending.transient_failures += 1
             backoff = min(TRANSIENT_BACKOFF_MAX_S, TRANSIENT_BACKOFF_MIN_S * (2 ** (pending.transient_failures - 1)))
             pending.next_eligible_ms = now + backoff * 1000.0
             self.log("{}: {} of {} failed: {} {}".format(team.name, action, name, result, json.dumps(details, ensure_ascii=False)[:200]))
             if pending.attempts >= 3:
                 self._finish_pending(team, name, pending, "typed", "{} of {} failed: {}".format(action, name, details.get("code") or result))
+                self._brief_after_control(team, name, control, now)
             return
         pending.landed_ms = now
         rt.last_nudge_ms = now
@@ -3390,6 +3483,8 @@ class Daemon:
             "typed_ms": now, "used": used if isinstance(used, int) else None,
             "session": roster.short_session(member.get("session")),
             "model": control.get("model"), "effort": control.get("effort"),
+            "setting": control.get("setting"), "kind": control.get("kind") or member.get("kind"),
+            "brief_after": bool(control.get("brief_after")), "restarted": bool(control.get("restarted")),
         }
         self.log("{}: typed {!r} into {} ({}); waiting for the effect".format(team.name, keystroke, name, pane_id))
         self._append_system(team, "typed", "{} typed into {}, asked by {}".format(keystroke, name, rt.control_pending["requested_by"]),
@@ -3398,17 +3493,25 @@ class Daemon:
         if action == "restart":
             rt.restart = {"phase": "exiting", "since_ms": now, "argv": list(control.get("argv") or []), "kind": str(member.get("kind") or ""),
                           "pane_id": pane_id, "model": control.get("model"), "effort": control.get("effort"),
-                          "requested_by": rt.control_pending["requested_by"]}
+                          "after": list(control.get("after") or []), "requested_by": rt.control_pending["requested_by"],
+                          "session": control.get("session")}
+        elif action == "clear" and control.get("fresh_restart"):
+            rt.restart = {"phase": "exiting", "since_ms": now, "action": "clear",
+                          "argv": list(control.get("argv") or []), "kind": str(member.get("kind") or ""),
+                          "pane_id": pane_id, "model": control.get("model"), "effort": control.get("effort"),
+                          "after": list(control.get("after") or []), "requested_by": rt.control_pending["requested_by"],
+                          "session": member.get("session")}
         elif action == "model" and not control.get("model"):
             # Effort alone has no observable: the transcript records the model,
             # not the thinking budget. Typed is as far as this can be proven.
             self._note_model_applied(team, name, None, now)
 
     def _type_keystroke(self, pane_id: str, keystroke: str) -> Tuple[str, Dict[str, Any]]:
-        """``pane.send_text`` then Enter; a failure on either half is one failure."""
+        """``pane.send_text``, a short TUI settle, then Enter; either API failure is one failure."""
         t0 = time.monotonic()
         try:
             self.api.request("pane.send_text", {"pane_id": pane_id, "text": keystroke}, timeout=PROMPT_TIMEOUT_S)
+            self.control_gap_sleep(CONTROL_SUBMIT_GAP_S)
             self.api.request("pane.send_keys", {"pane_id": pane_id, "keys": ["enter"]}, timeout=PROMPT_TIMEOUT_S)
         except HerdrTeamError as err:
             return RESULT_TRANSIENT, {"elapsed_ms": (time.monotonic() - t0) * 1000.0, "code": err.code, "message": err.message}
@@ -3435,7 +3538,7 @@ class Daemon:
         self.who_dirty = True
         return True
 
-    def _note_cleared(self, team: TeamState, name: str, shown: Any) -> None:
+    def _note_cleared(self, team: TeamState, name: str, shown: Any, note: str = "new session") -> bool:
         """Say a restart was a requested ``clear``, when it was one.
 
         A deliberate clear and a crash look identical from outside: both mint a
@@ -3446,10 +3549,34 @@ class Daemon:
         now = self.now_ms()
         rt = team.rt(name)
         by = str((rt.control_pending or {}).get("requested_by") or "human")
-        if not self._control_observed(team, name, "clear", "new session", now):
-            return
+        if not self._control_observed(team, name, "clear", note, now):
+            return False
         self._append_system(team, "context_cleared", "{}'s context was cleared, asked by {}".format(shown, by), [str(shown), "all"],
                             {"member": str(shown), "requested_by": by})
+        return True
+
+    def _bootstrap_codex_clear(self, team: TeamState, member: Dict[str, Any], now: float) -> None:
+        """Brief a reset Codex session so it can report the new session id.
+
+        Codex ``/new`` returns to an empty, idle prompt before creating a new
+        rollout. Waiting for that rollout before sending the first prompt is a
+        deadlock. The post-command working/idle sequence is the effect signal;
+        the regular briefing is then the first prompt in the new session.
+        """
+        name = str(member.get("name") or "")
+        if not name or not self._note_cleared(team, name, name, "Codex /new returned idle"):
+            return
+        rt = team.rt(name)
+        rt.clear_bootstrap = True
+        rt.context = None
+        rt.context_session = None
+        rt.context_mtime = None
+        rt.context_severity = None
+        rt.context_read_ms = now
+        pane_id = member.get("pane_id")
+        if isinstance(pane_id, str):
+            self._clear_tokens(pane_id)
+        self._enqueue_briefing(team, member, now)
 
     def _note_compacted(self, team: TeamState, name: str, note: str) -> None:
         """One record for a compaction, whoever asked for it."""
@@ -3491,11 +3618,54 @@ class Daemon:
     def _note_model_applied(self, team: TeamState, name: str, observed: Optional[str], now: float) -> None:
         """Close an open ``model`` job: the transcript reports the model, or only the effort was changed."""
         rt = team.rt(name)
-        wanted = _models.label((rt.control_pending or {}).get("model"), (rt.control_pending or {}).get("effort"))
+        control = dict(rt.control_pending or {})
+        wanted = control.get("setting") or _models.label(control.get("model"), control.get("effort"))
         if not self._control_observed(team, name, "model", "transcript reports {}".format(observed) if observed else "effort typed", now):
             return
-        text = "{} now runs {}".format(name, observed) if observed else "{} now runs {} (effort typed; not observable in the transcript)".format(name, wanted)
-        self._append_system(team, "model_applied", text, [name, "all"], {"member": name, "observed": observed, "setting": wanted})
+        if observed:
+            text = "{} now runs {}".format(name, observed)
+        elif control.get("kind") == "opencode":
+            text = "{}{} now runs {} (variant selected in OpenCode)".format(name, " restarted and" if control.get("restarted") else "", wanted)
+        else:
+            text = "{} now runs {} (effort typed; not observable in the transcript)".format(name, wanted)
+        self._append_system(team, "model_applied", text, [name, "all"], {"member": name, "observed": observed, "setting": wanted,
+                                                                                  "restarted": bool(control.get("restarted"))})
+        self._brief_after_control(team, name, control, now)
+
+    def _brief_after_control(self, team: TeamState, name: str, control: Dict[str, Any], now: float) -> None:
+        """Resume a deferred briefing after OpenCode's post-start variant picker."""
+        if not control.get("brief_after"):
+            return
+        member = team.member(name)
+        if member is not None:
+            self._enqueue_briefing(team, member, now)
+
+    def _queue_configured_opencode_variant(self, team: TeamState, name: str, now: float,
+                                           requested_by: str, brief_after: bool) -> bool:
+        """Apply a member's recorded OpenCode variant after a process/session start.
+
+        OpenCode's full TUI accepts the model on argv but exposes effort only
+        through ``/variants``. A rebind with the same session id still needs
+        this step because another member may have changed the shared last-used
+        variant since this process last ran.
+        """
+        member = team.member(name)
+        if member is None or member.get("kind") != "opencode" or name in team.pending:
+            return False
+        model, effort = _models.effective_setting(team.roster.get("config"), member)
+        lines = _models.post_start_keystrokes("opencode", effort)
+        if not lines:
+            return False
+        pending = Pending(first_ms=now, kind="control", lines=lines, force=True, seqs=[])
+        pending.control = {"action": "model", "keystroke": lines[0], "keystrokes": lines,
+                           "requested_by": requested_by, "kind": "opencode", "model": None,
+                           "effort": effort, "setting": _models.label(model, effort),
+                           "restarted": True, "brief_after": bool(brief_after)}
+        team.pending[name] = pending
+        self.log("{}: {} returned; selecting its recorded OpenCode variant ({})".format(
+            team.name, name, "; ".join(repr(k) for k in lines)))
+        self.who_dirty = True
+        return True
 
     def advance_restarts(self, now: float) -> None:
         for team in list(self.teams.values()):
@@ -3535,7 +3705,31 @@ class Daemon:
                     self._restart_failed(team, name, rt, "agent start failed: {}".format(text[:200] or "unknown error"), now)
                     return
                 state["phase"] = "started"
+                phase = "started"
                 self.log("{}: {} is back; waiting for it to report its session".format(team.name, name))
+        if phase == "started":
+            # A successful resume normally returns the *same* harness session
+            # on the same terminal. Reconciliation therefore has no roster
+            # field to change and cannot be the only completion signal. We
+            # observed this pane become empty before launching it, so a fresh,
+            # ready AgentInfo with the requested kind and recorded session is
+            # proof that the replacement process is the intended one.
+            member = team.member(name)
+            agent = self.fresh_agent(pane_id)
+            live_session = roster.session_of(agent)
+            expected_session = state.get("session") or (member.get("session") if member is not None else None)
+            if state.get("action") == "clear":
+                session_ok = live_session is None or not roster.same_session_value(expected_session, live_session)
+            else:
+                session_ok = live_session is None or roster.same_session_value(expected_session, live_session)
+            if (member is not None and agent is not None
+                    and agent.get("pane_id") == pane_id
+                    and agent.get("agent") == state.get("kind")
+                    and agent.get("name") == name
+                    and not agent.get("launch_pending")
+                    and session_ok):
+                self._note_restart_done(team, name, {}, now)
+                return
         if phase in ("starting", "started") and now - float(state.get("started_ms") or now) > RESTART_START_S * 1000.0:
             self._restart_failed(team, name, rt, "did not come back within {:.0f}s".format(RESTART_START_S), now)
 
@@ -3546,6 +3740,38 @@ class Daemon:
             return None
         pane = result.get("pane") if isinstance(result, dict) else None
         return pane if isinstance(pane, dict) else None
+
+    def _foreground_argv(self, member: Dict[str, Any]) -> Optional[List[str]]:
+        """Best-effort live harness argv for a controlled process restart."""
+        pane_id = member.get("pane_id")
+        if not isinstance(pane_id, str) or not pane_id:
+            return None
+        try:
+            result = self.api.request("pane.process_info", {"pane_id": pane_id}, timeout=5.0)
+        except HerdrTeamError:
+            return None
+        info = result.get("process_info") if isinstance(result, dict) else None
+        processes = info.get("foreground_processes") if isinstance(info, dict) else None
+        return _models.foreground_argv(member.get("kind"), processes)
+
+    def _pane_layout_width(self, pane_id: str) -> int:
+        """Return ``pane_id``'s layout width, or reject a malformed response."""
+        result = self.api.request("pane.layout", {"pane_id": pane_id}, timeout=5.0)
+        layout = result.get("layout") if isinstance(result, dict) else None
+        if not isinstance(layout, dict):
+            raise HerdrTeamError("herdr_protocol", "pane.layout returned no layout", EXIT_UNREACHABLE,
+                                 {"method": "pane.layout", "pane_id": pane_id})
+        panes = layout.get("panes")
+        if isinstance(panes, list):
+            for pane in panes:
+                if not isinstance(pane, dict) or pane.get("pane_id") != pane_id:
+                    continue
+                rect = pane.get("rect")
+                width = rect.get("width") if isinstance(rect, dict) else None
+                if isinstance(width, int) and not isinstance(width, bool) and width > 0:
+                    return width
+        raise HerdrTeamError("herdr_protocol", "pane.layout returned no width for {}".format(pane_id),
+                             EXIT_UNREACHABLE, {"method": "pane.layout", "pane_id": pane_id})
 
     def _restart_failed(self, team: TeamState, name: str, rt: MemberRuntime, why: str, now: float) -> None:
         state = rt.restart or {}
@@ -3559,12 +3785,49 @@ class Daemon:
         self.who_dirty = True
 
     def _note_restart_done(self, team: TeamState, name: str, update: Dict[str, Any], now: float) -> None:
-        """The resumed agent reported its session: the restart is complete, and it was not a compaction."""
+        """The controlled agent is ready again: complete its restart or fresh clear."""
         rt = team.rt(name)
         state = rt.restart or {}
         rt.restart = None
         setting = _models.label(state.get("model"), state.get("effort"))
+        if state.get("action") == "clear":
+            if not self._note_cleared(team, name, name, "fresh OpenCode process ready"):
+                return
+            rt.clear_bootstrap = True
+            rt.context = None
+            rt.context_session = None
+            rt.context_mtime = None
+            rt.context_severity = None
+            rt.context_read_ms = now
+            member = team.member(name)
+            if member is not None and isinstance(member.get("pane_id"), str):
+                self._clear_tokens(str(member["pane_id"]))
+            after = [str(line) for line in state.get("after") or [] if str(line)]
+            if after:
+                pending = Pending(first_ms=now, kind="control", lines=after, force=True, seqs=[])
+                pending.control = {"action": "model", "keystroke": after[0], "keystrokes": after,
+                                   "requested_by": state.get("requested_by") or "human", "kind": state.get("kind"),
+                                   "model": None, "effort": state.get("effort"), "setting": setting,
+                                   "restarted": True, "brief_after": True}
+                team.pending[name] = pending
+                self.log("{}: {} cleared; selecting its OpenCode variant ({})".format(
+                    team.name, name, "; ".join(repr(line) for line in after)))
+            elif member is not None:
+                self._enqueue_briefing(team, member, now)
+            self.who_dirty = True
+            return
         self._control_observed(team, name, "restart", "session resumed", now)
+        after = [str(line) for line in state.get("after") or [] if str(line)]
+        if after:
+            pending = Pending(first_ms=now, kind="control", lines=after, force=True, seqs=[])
+            pending.control = {"action": "model", "keystroke": after[0], "keystrokes": after,
+                               "requested_by": state.get("requested_by") or "human", "kind": state.get("kind"),
+                               "model": None, "effort": state.get("effort"), "setting": setting,
+                               "restarted": True, "brief_after": update.get("briefed_at", False) is None}
+            team.pending[name] = pending
+            self.log("{}: {} resumed; selecting its OpenCode variant ({})".format(team.name, name, "; ".join(repr(k) for k in after)))
+            self.who_dirty = True
+            return
         self._append_system(team, "model_applied", "{} restarted with {} (its session was resumed, asked by {})".format(name, setting or "its recorded setting", state.get("requested_by") or "human"),
                             [name, "all"], {"member": name, "setting": setting, "restarted": True})
         if update.get("briefed_at", False) is None:
@@ -3580,10 +3843,12 @@ class Daemon:
     def _control_unobserved(self, team: TeamState, name: str, pending: Pending, now: float) -> None:
         """The keystroke landed but nothing changed within ``CONTROL_OBSERVE_S``."""
         rt = team.rt(name)
+        control = dict(rt.control_pending or pending.control or {})
         action = str((pending.control or {}).get("action") or "control")
         rt.control_pending = None
         if action == "model":
             self._finish_pending(team, name, pending, "typed", "model change of {} was typed but the transcript has not shown the new model in {:.0f}s".format(name, CONTROL_OBSERVE_S))
+            self._brief_after_control(team, name, control, now)
             return
         self._finish_pending(team, name, pending, "typed", "{} of {} was typed but no effect was seen in {:.0f}s".format(action, name, CONTROL_OBSERVE_S))
 
@@ -3907,6 +4172,16 @@ class Daemon:
             # would land inside the compaction it is waiting for. The job is
             # closed by ``_control_observed`` when the effect shows up, and
             # only bounded here so it cannot sit open forever.
+            control = rt.control_pending
+            if (isinstance(control, dict) and control.get("action") == "clear"
+                    and member.get("kind") == "codex"):
+                agent = self.agents.get(str(member.get("terminal_id") or "")) or {}
+                seq = agent.get("state_change_seq")
+                gate_seq = pending.gate_seq
+                if (agent.get("agent_status") in ("idle", "done")
+                        and isinstance(seq, int) and isinstance(gate_seq, int) and seq > gate_seq):
+                    self._bootstrap_codex_clear(team, member, now)
+                    return
             if now - pending.landed_ms > CONTROL_OBSERVE_S * 1000.0:
                 self._control_unobserved(team, name, pending, now)
             return

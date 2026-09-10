@@ -1889,14 +1889,14 @@ def _run_ack(args: argparse.Namespace) -> int:
     return emit(args, payload, "{} acknowledged: cursor {}, charter #{}".format(author.name, payload["cursor"], charter_seq if charter_seq is not None else "none"))
 
 
-#: What each kind is told to do. ``clear`` starts a fresh context in the same
-#: session; ``compact`` summarises in place. Codex deliberately gets ``/new``
-#: rather than ``/clear``: its ``/clear`` also wipes the terminal scrollback,
-#: which is the surface the detection layer reads to tell idle from working.
+#: What each kind is told to do. ``compact`` summarises in place. Codex gets
+#: ``/new`` rather than ``/clear`` because its ``/clear`` also wipes the
+#: terminal scrollback used by detection. OpenCode 1.18.30 crashes on ``/new``,
+#: so the notifier exits it and starts a fresh TUI instead.
 CONTROL_KEYSTROKES: Dict[str, Dict[str, str]] = {
     "claude": {"compact": "/compact", "clear": "/clear"},
     "codex": {"compact": "/compact", "clear": "/new"},
-    "opencode": {"compact": "/compact", "clear": "/new"},
+    "opencode": {"compact": "/compact", "clear": "/exit"},
 }
 CONTROL_ACTIONS = ("compact", "clear")
 

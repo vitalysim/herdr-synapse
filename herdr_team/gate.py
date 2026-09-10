@@ -50,11 +50,10 @@ BURST_WINDOW_MS = 1000
 POST_TTL_MS = 1800000
 #: Accepted ``nudge_focused`` values: gate 10 holds a focused pane only for the exact word ``never``.
 NUDGE_FOCUSED_VALUES = ("never", "always")
-#: Kinds whose running turn a teammate's ``post --interrupt`` may be typed into. Claude Code queues a
-#: line typed mid-turn behind its current step (verified live with the console's ``!!`` on 2026-09-05);
-#: other kinds are unverified, so the default is Claude only. ``team.json`` ``config.gate.interrupt_kinds``
-#: widens it or, empty, turns interrupts off.
-INTERRUPT_KINDS = ("claude",)
+#: Kinds whose running turn a teammate's ``post --interrupt`` may be typed into. Claude Code, Codex,
+#: and OpenCode all accept the line inside the active turn (verified live on 2026-09-10).
+#: ``team.json`` ``config.gate.interrupt_kinds`` narrows/widens it or, empty, turns interrupts off.
+INTERRUPT_KINDS = ("claude", "codex", "opencode")
 #: One interrupt per sender and target inside this window; a second one is an ordinary urgent nudge.
 INTERRUPT_COOLDOWN_MS = 600000
 HOLD_REEVAL_MS = 5000

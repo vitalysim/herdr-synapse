@@ -537,9 +537,27 @@ def _spawn_member(layout: Layout, api: Any, team: _roster.Team, team_paths: Team
         cursor_advance(team_paths, name, board_max_seq(team_paths), resolved.terminal_id, "cli")
     except HerdrTeamError:
         pass
-    job = _roster.write_briefing_job(team_paths, name, requested_by=_requested_by(author))
+    after = _models.post_start_keystrokes(kind, leaf.get("launch_effort"))
+    if after:
+        # OpenCode's full TUI has no --variant launch flag. Select the exact
+        # provider-defined variant through its native picker, then let the
+        # daemon deliver the normal briefing. Keeping both steps in one
+        # control chain prevents two jobs for the same member overwriting one
+        # another in the daemon's single pending slot.
+        from herdr_team.cmd_board import board_append, build_record, enqueue_job
+
+        setting = _models.label(leaf.get("launch_model"), leaf.get("launch_effort"))
+        record = build_record(author, [name], "direct", "model {} after start: {}".format(name, "; ".join(after)),
+                              socket_path=os.fspath(layout.socket))
+        record["control"] = {"action": "model", "kind": kind, "model": None,
+                             "effort": leaf.get("launch_effort"), "setting": setting,
+                             "keystrokes": after, "brief_after": True}
+        seq = board_append(team_paths, record)
+        job = enqueue_job(team_paths, "control", name, author, extra={"seq": seq, "action": "model"})
+    else:
+        job = _roster.write_briefing_job(team_paths, name, requested_by=_requested_by(author)).stem
     out["member"] = _member_json(active, renamed)
-    out["job"] = job.stem
+    out["job"] = job
     team.members = roster.load().members
     return out
 

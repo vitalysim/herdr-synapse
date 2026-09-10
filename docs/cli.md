@@ -639,8 +639,8 @@ post "<text>" [--to <name>[,<name>…] | all | human | role:<r>] [--kind note|re
   member it is read at the next board read unless `--urgent`.
 - `--interrupt` (implies `--urgent`) marks a post that could not wait. The
   notifier may type its nudge into the recipient's *running turn* when the
-  recipient's kind is in `config.gate.interrupt_kinds` (default `claude`:
-  Claude Code queues a line typed mid-turn behind its current step) and the
+  recipient's kind is in `config.gate.interrupt_kinds` (default `claude`,
+  `codex`, `opencode`, all live-verified to accept a line mid-turn) and the
   sender has not interrupted that teammate inside `interrupt_cooldown_ms`
   (default 10 min); otherwise it is an ordinary urgent nudge, delivered once
   idle. The typed line is the `[herdr-team interrupt] <sender> could not
@@ -848,8 +848,8 @@ and record it on the board. The console's `!<member> <text>` runs this;
   `member_not_found`, `kind_unverified`; `failed`
   carries `hung`, `transient`, or `unconfirmed` (still idle 5 s after typing
   with the text gone from the prompt line; `not_submitted` when it is still
-  there). Typing into a running turn is verified for Claude Code only; for
-  other kinds `force_verified` is false and `detail` says so.
+  there). Typing into a running turn is verified for Claude Code, Codex and
+  OpenCode; for other kinds `force_verified` is false and `detail` says so.
 - `--wait` (default) polls for that record up to `--timeout` (10 s) and
   returns it as `outcome`; a refused or failed outcome is still exit 0.
   No record in time is `say_timeout` (1) with `seq` and `job`. `--no-wait`
@@ -924,7 +924,7 @@ ingests the note. Console: `/wipe [--purge] [reason]`, y/n first.
 | `pause` | alias `mute --all` | same shape |
 | `focus <name>` | enqueue `agent.focus` on the member's current pane | `{"team","member","job"}` |
 | `say <name> "<text>" [--force]` | write a `direct` record and enqueue a type-now job (section 7); the daemon types it without waiting for idle and confirms it on the next agent poll | `{"team","member","seq","job","outcome"}` |
-| `interrupts [show\|off\|on\|<kind>[,<kind>]] [--cooldown 10m]` | show or set `config.gate.interrupt_kinds` (the kinds a teammate's `post --interrupt` may be typed into mid-turn; `on` restores `claude`) and `interrupt_cooldown_ms`; the daemon reloads within 2 s; a change is human only (`author_mismatch`) | `{"team","kinds","cooldown_ms","default_kinds","changed"}` |
+| `interrupts [show\|off\|on\|<kind>[,<kind>]] [--cooldown 10m]` | show or set `config.gate.interrupt_kinds` (the kinds a teammate's `post --interrupt` may be typed into mid-turn; `on` restores `claude,codex,opencode`) and `interrupt_cooldown_ms`; the daemon reloads within 2 s; a change is human only (`author_mismatch`) | `{"team","kinds","cooldown_ms","default_kinds","changed"}` |
 | `compact <name> \| --self [--reason TEXT]` | write a `direct` record carrying a `control` block and enqueue a control job; the daemon types the kind's compact command once the member is idle (section 9a) | `{"team","member","action","keystroke","kind","record_seq","job","requested"}` |
 | `clear <name> --yes [--reason TEXT]` | the same, for the kind's clear command; operator only, and it asks before it runs | same shape |
 | `read <name> [--lines N]` | `agent read --source visible` directly; `--lines` is refused for every member (`lines_refused`, exit 1), because scrolling an idle alternate screen types keys into the agent and only the daemon may type into a member | `{"team","member","pane_id","lines":[…]}` |
@@ -1082,9 +1082,12 @@ reading the board knows this member now works from a summary.
 
 ### `clear <name> --yes [--reason TEXT]`
 
-The same path for the kind's clear command: Claude `/clear`, Codex and
-OpenCode `/new`. Codex deliberately gets `/new` rather than `/clear`, whose
-scrollback wipe removes the surface Herdr's detection reads.
+The same path for the kind's clear operation: Claude `/clear`; Codex `/new`;
+OpenCode `/exit` followed by a fresh full TUI for the same member. Codex
+deliberately gets `/new` rather than `/clear`, whose scrollback wipe removes
+the surface Herdr's detection reads. OpenCode clear first reads `pane.layout`
+and refuses with `pane_too_narrow` before exiting below width 38 (about a
+40-column PTY), because OpenCode 1.18.30 crashes while starting that narrow.
 
 Operator only, and `--self` is refused (`author_mismatch`): a member may ask
 to be cleared by posting a request, but throwing away an agent's working
@@ -1123,20 +1126,26 @@ setting, a write.
 - **Record**: the roster row's `model`/`effort`; audit `model_set`; a
   `model_changed` system record to `[member, all]` (the member is nudged,
   ordinary gates apply).
-- **`--apply`**: default `live` for Claude, `next` otherwise.
+- **`--apply`**: default `live` for Claude and for an OpenCode effort-only
+  change; `next` otherwise.
   - `next`: nothing else; it applies at the next `resume` or restart.
-  - `live` (Claude): a `direct` record with `control: {"action": "model",
-    "keystrokes": ["/model …", "/effort …"]}` and a control job; the notifier
-    types each line with its own Enter once the member is idle, and closes the
-    job when the transcript reports the model (`model_applied`), or on typing
-    when only the effort changed (not observable). Other kinds:
+  - `live`: for Claude, a `direct` record with `control: {"action": "model",
+    "keystrokes": ["/model …", "/effort …"]}`; for an OpenCode effort-only
+    change, `/variants` plus the native selection. The notifier types each
+    step once the member is idle. Claude closes when the transcript reports
+    the model (`model_applied`), or on typing when only effort changed;
+    OpenCode closes after the selection. Unsupported live combinations return
     `model_apply_unsupported` (1).
   - `restart`: needs a recorded session (`session_unknown` otherwise). A
     `direct` record with `control: {"action": "restart", "exit", "argv"}`; the
     notifier types the kind's exit command when idle, waits for the pane to
     empty (`RESTART_EXIT_S`, 30 s), starts the harness again in that pane with
     the resume argv plus the flags (`RESTART_START_S`, 90 s), and closes the
-    job when the session is reported again (`model_applied`, `restarted: true`).
+    job when the same expected session is reported again (`model_applied`,
+    `restarted: true`). The returning record and launch argv are validated;
+    allowlisted harness policy flags are preserved, Codex's update picker is
+    disabled for the controlled start, and OpenCode effort is selected after
+    startup.
     Either bound missed: `restart_failed` to `[human, all]` naming
     `herdr-synapse resume <name>`; the member is left as it was. While a
     restart is open the member is never marked missing.
@@ -1509,7 +1518,8 @@ optional, milliseconds unless named otherwise, defaults in parentheses:
 `dialog_hold_cap_ms` (600000), `pair_budget` (10, count),
 `pair_window_ms` (600000), `sample_gap_reset_ms` (10000),
 `post_ttl_ms` (1800000), `burst_window_ms` (1000), `nudge_focused`
-(`"never"`, one of `never|always`), `interrupt_kinds` (`["claude"]`, the
+(`"never"`, one of `never|always`), `interrupt_kinds`
+(`["claude","codex","opencode"]`, the
 agent kinds whose running turn a teammate's `post --interrupt` may be typed
 into; an empty list turns interrupts off), `interrupt_cooldown_ms` (600000,
 one interrupt per sender and target). `post_ttl_ms` is the target-active time after which an

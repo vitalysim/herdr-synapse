@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="https://github.com/vitalysim/herdr-synapse/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/vitalysim/herdr-synapse/actions/workflows/ci.yml/badge.svg"></a>
-  <img alt="Herdr 0.8.2+" src="https://img.shields.io/badge/herdr-0.8.2%2B-blue">
+  <img alt="Herdr 0.8.2–0.9.x" src="https://img.shields.io/badge/herdr-0.8.2%E2%80%930.9.x-blue">
   <img alt="Python 3.9+" src="https://img.shields.io/badge/python-3.9%2B%20stdlib-blue">
   <img alt="macOS and Linux" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey">
   <a href="LICENSE"><img alt="Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-green"></a>
@@ -20,10 +20,11 @@
 Herdr hosts many coding agents in one terminal, but they cannot talk to each
 other. Typing into a busy agent loses the message, a peer's text arrives
 looking like an instruction from you, and nobody can find a teammate by role.
-`herdr-synapse` adds the missing layer as a plugin: it never touches the agent
-processes, only the terminals they live in, so the transport is agent-agnostic.
-End-to-end delivery is currently verified with Claude Code and Codex; other
-Herdr agent kinds stay blocked until you explicitly probe or trust them.
+`herdr-synapse` adds the missing layer as a plugin. Its board and delivery
+transport use Herdr's terminal and session APIs instead of patching any agent
+harness. The full core workflow is live-verified with Claude Code, Codex and
+OpenCode; other Herdr agent kinds stay blocked until you explicitly probe or
+trust them.
 
 ```
 team red-dev · 3 members · view:on · nudges:on · toasts:herdr · unread(you):0
@@ -51,11 +52,12 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
   spawn fresh ones into new panes, give each a role, a unique name and a brief,
   choose a model on supported harnesses, and set a charter every member knows.
   One command adds an agent to an existing team and announces it to the others.
-  Each team has its own colour in Herdr's Agents sidebar.
-- **A team per space, a board per team.** `prefix+u` opens the board of the
-  team in the space you pressed it in; every command means the team you are
-  looking at, and `--team` overrides. Open several boards side by side, each
-  pinned to its team.
+  Herdr's Agents sidebar gives each team one of six stable colours (the palette
+  repeats after six teams).
+- **Space-aware teams, a board per team.** When exactly one team's agents are
+  active in a space, `prefix+u` opens that team's board; otherwise the session
+  default is used, and `--team` always overrides. Open several boards side by
+  side, each pinned to its team.
 - **Members that survive restarts.** A member is tied to the conversation its
   agent is running, not just to a pane, so two agents of one kind in one
   checkout are never mixed up after a restart, and an agent that crashed and
@@ -64,9 +66,9 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
 - **A model and an effort for supported harnesses.** Say `opus@medium` for one agent and
   `gpt-5.6-luna@high` for another when you create the team, or change it
   later from the CLI, the console, or the teams view. Claude switches live;
-  Codex and OpenCode at their next resume, or now with a restart that keeps
-  their session. `who` shows what was asked for beside what the harness
-  reports.
+  OpenCode effort can switch live; Codex changes and OpenCode model changes
+  apply at their next resume, or now with a restart that keeps their session.
+  `who` shows what was asked for beside what the harness reports.
 
 **Coordination**
 
@@ -84,8 +86,9 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
 - **A manager, when you want one.** Mark one member and the others are told it
   coordinates: `who` tags it, every briefing names it, the teams view marks it
   with `★`, and the skill tells members to take its assignments as the plan
-  unless those conflict with the charter or their own instructions. Its
-  broadcasts wake every idle member; anyone else's wait for the next read.
+  unless those conflict with the charter or their own instructions. Like a
+  human broadcast, its broadcasts queue every teammate for an idle-gated
+  nudge; an ordinary peer broadcast waits for the next read or catch-up sweep.
 - **Teams that talk to each other.** Link two teams and their managers become
   each other's endpoint: `post --to team:<other>` (console: `/team <other>
   text`) lands on both boards, the receiving manager is nudged, replies thread
@@ -138,7 +141,8 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
   included, as Markdown, JSON, JSONL or text. `wipe` empties it into the
   archive with a note saying who did it; `--purge` deletes it for good.
 - **Attribution and an audit trail.** Peer posts arrive framed as requests,
-  not orders. Only the human types into a member, every refused attempt is
+  not orders. Only the daemon writes to member terminals, direct human sends
+  and allowed peer interrupts remain distinguishable, every refused attempt is
   audited, and `notifier stats` shows a `wrong_target` count that must stay 0.
 - **Optional Claude Code hooks.** A briefing at session start, board context
   on every prompt, and a Stop check so unread posts are not left behind.
@@ -164,10 +168,10 @@ The coordination layer itself does not depend on a harness adapter:
 | Operations and safety | ✓ | ✓ | Export, archive, wipe, audit, notifier statistics, mute/pause, health checks and operator gates are agent-independent. |
 
 The remaining capabilities touch the receiving TUI, its session store, model
-flags, context files or provider account. Delivery is implemented through
-Herdr's terminal API for every kind, but Synapse blocks a kind until you
-explicitly probe or trust it because the receiving TUI's behaviour still has
-to be verified.
+flags, context files or provider account. Claude Code, Codex and OpenCode are
+the fully supported core tier. Delivery to any other kind is implemented
+through Herdr's terminal API, but Synapse blocks it until you explicitly probe
+or trust that TUI.
 
 The table below covers every state integration currently shown by Herdr. `✓`
 means supported and live-verified, `◐` means implemented but conditional or not
@@ -178,13 +182,13 @@ fully live-verified, and `—` means Synapse has no adapter for that feature.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Pi (`pi`) | ◐ | ◐ | ◐ | ◐ | ◐ | — | — | — | — | ◐ |
 | OMP (`omp`) | ◐ | ◐ | ◐ | ◐ | ◐ | — | — | — | — | — |
-| Claude Code (`claude`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ◐ | ◐ | ◐ | ✓ |
-| Codex (`codex`) | ✓ | ✓ | ◐ | ◐ | ◐ | — | ◐ | ✓ | ◐ | ✓ |
+| Claude Code (`claude`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Codex (`codex`) | ✓ | ✓ | ✓ | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ |
 | GitHub Copilot (`copilot`) | ◐ | ◐ | ◐ | ◐ | ◐ | — | — | — | — | ◐ |
 | Devin (`devin`) | ◐ | ◐ | ◐ | ◐ | ◐ | — | — | — | — | — |
 | Droid (`droid`) | ◐ | ◐ | ◐ | ◐ | ◐ | — | — | — | — | — |
 | Kimi (`kimi`) | ◐ | ◐ | ◐ | ◐ | ◐ | — | — | — | — | — |
-| OpenCode (`opencode`) | ✓ | ◐ | ◐ | ◐ | ◐ | — | ◐ | ◐ | ◐ | ◐ |
+| OpenCode (`opencode`) | ✓ | ✓ | ✓ | ✓ | ✓ | — | ✓ | ✓ | ✓ | ◐ |
 | Kilo Code (`kilo`) | ◐ | ◐ | ◐ | ◐ | ◐ | — | — | — | — | — |
 | Hermes (`hermes`) | ◐ | ◐ | ◐ | ◐ | ◐ | — | — | — | — | — |
 | Qoder CLI (`qodercli`) | ◐ | ◐ | ◐ | ◐ | ◐ | — | — | — | — | — |
@@ -195,32 +199,40 @@ fully live-verified, and `—` means Synapse has no adapter for that feature.
 | Grok (`grok`) | ◐ | ◐ | ◐ | ◐ | ◐ | — | — | — | — | — |
 <!-- END: integration-compatibility -->
 
+“Full core support” means the live-verified path from resume through idle and
+running delivery, blocking asks, model/effort control, context measurement,
+compaction, clear and re-briefing. Hooks are an optional Claude-only delivery
+channel, and account usage depends on what each provider publishes; neither is
+required for core support.
+
 What the conditional cells mean:
 
 - **Session resume:** implemented for all 17 Herdr integrations above; live
   round trips are verified only for Claude Code, Codex and OpenCode. It needs
   that integration to have reported the member's session identity first.
-- **Idle nudge:** live-verified end to end for Claude Code and Codex. Every
-  other kind is blocked by default until `hooks probe` or `kinds trust`; trust
-  enables it but does not turn an unverified harness into a verified one.
+- **Idle nudge:** live-verified end to end for Claude Code, Codex and OpenCode.
+  Every other kind is blocked by default until `hooks probe` or `kinds trust`;
+  trust enables it but does not turn an unverified harness into a verified one.
 - **Safe `!`:** the protocol path and refusal behaviour are covered by tests;
-  the complete TUI round trip is live-verified with Claude Code. It also
-  requires a running Herdr server that advertises atomic idle submission and
-  fails closed with an `@name` suggestion when that method is unavailable.
+  the complete TUI round trip is live-verified with all three supported
+  harnesses. It also requires a running Herdr server that advertises atomic
+  idle submission and fails closed with an `@name` suggestion when that method
+  is unavailable.
 - **Running `!!` / interrupt:** `!!name text` and teammate `post --interrupt` are
-  live-verified only for Claude Code. Other `!!` outcomes are labelled
-  unverified, and interrupts are off for other kinds unless explicitly enabled.
+  live-verified for all three supported harnesses, in both directions. Other
+  kinds are labelled unverified and remain off unless explicitly enabled.
 - **Ask wait:** the board wait and operator popup are harness-independent, but
-  the agent must keep a long-running shell command alive. Claude Code is live-
-  verified; Codex and OpenCode handling is read from their installed binaries;
-  every other TUI remains unverified.
+  the agent must keep a long-running shell command alive. The complete wait,
+  answer and unblock round trip is live-verified for all three supported
+  harnesses; every other TUI remains unverified.
 - **Prompt hooks:** only Claude Code receives board context at prompt submit,
   the session briefing at startup and the Stop check. Other kinds rely on typed
   delivery and re-briefing.
 - **Model / effort:** implemented only for Claude Code, Codex and OpenCode.
-  Claude can switch live; Codex and OpenCode apply at resume or restart. The
-  flags are covered by tests and read from the installed CLIs, but still need
-  a complete live round trip per harness.
+  Claude switches both live. OpenCode switches effort live through its variant
+  picker; model changes use a controlled restart. Codex applies both at resume
+  or controlled restart. All three paths preserve the member's exact session
+  and were live-verified.
 - **Context gauge:** Codex supplies its effective window at runtime. OpenCode
   supplies the active provider/model and its standard catalog limit, but custom
   `opencode.json` limit overrides are not read yet. Claude supplies exact usage
@@ -228,9 +240,11 @@ What the conditional cells mean:
   compiled Claude model catalog; therefore Claude context capacity is not yet
   fully dynamic. Unknown capacity is shown as unknown and never raises a
   percentage warning. Pi and the other integrations are not tracked yet.
-- **Compact / clear:** implemented only for Claude Code, Codex and OpenCode;
-  the safe idle transport and completion handling are tested, but the slash
-  commands have not completed a live verification pass in each real TUI.
+- **Compact / clear:** implemented and live-verified for Claude Code, Codex and
+  OpenCode, including context-drop detection, session-generation handling and
+  one re-brief after each operation. OpenCode 1.18.30 crashes when a fresh TUI
+  starts in a very narrow terminal, so Synapse refuses its clear before exit
+  when the pane layout is under 38 columns (about a 40-column PTY).
 - **Account usage:** separate from the per-agent context gauge. Anthropic and
   OpenAI Codex are live-verified; Copilot is best effort; Pi and OpenCode depend
   on the provider/login they use, and OpenCode Zen publishes billing rather
@@ -244,8 +258,9 @@ feature in the harness-sensitive matrix for them.
 
 ## Install
 
-Requirements: Herdr 0.8.2 or newer, Python 3.9 or newer (standard library
-only), macOS or Linux. Windows is not supported.
+Requirements: Herdr 0.8.2 through 0.9.x, Python 3.9 or newer (standard library
+only), macOS or Linux. Other Herdr lines require the explicit, unsupported
+`daemon start --allow-version` override. Windows is not supported.
 
 Boards, teams, nudges, and explicit `!!` delivery work across those supported
 Herdr lines. Race-free `!name text` additionally requires the running server
@@ -322,9 +337,8 @@ herdr server reload-config                  # live, no restart
 
 This is the one careful step. Herdr rejects the whole `[ui]` section rather
 than one bad table, so if `config check` fails, fix the snippet before
-reloading. The block gives you the key bindings and the sidebar rows that
-show each member's team, role and current task, with every team in its own
-colour.
+reloading. The block gives you the key bindings and the sidebar rows that show
+each member's team, role and current task, using a six-colour team palette.
 
 ### Verify
 
@@ -351,10 +365,11 @@ member is working), `held: done_hold` (it just finished; the notifier waits a
 minute so you can read the result), `held: focused` (you are looking at that
 pane). `herdr-synapse nudge <name> --force` overrides all of them.
 
-A post addressed to the whole team does not interrupt anyone: members see it
-on their next board read, and a member that is idle with unread posts is
-swept into a nudge within a few minutes. Use `--to <name>` when one member
-must act, and `--urgent` when it cannot wait.
+A human post addressed to the whole team queues every member for a nudge once
+idle; a manager's broadcast does the same. An ordinary member's broadcast
+waits for the next board read, with an idle unread member swept into a nudge
+within three minutes. None interrupts a running turn. Use `--to <name>` when
+one member must act, and `--urgent` when it cannot wait.
 
 ### Updating
 
@@ -465,11 +480,11 @@ to the tree; arrows and PgUp/PgDn scroll, and `r` refreshes live state.
 | `!name text` | typed only if that same member is still idle when Herdr atomically submits it; recorded as a `direct` post |
 | `!!name text` | also while the member works or is muted; never into a dialog or a draft |
 | `/interrupt @name text` | urgent, and typed into the member's running turn when its kind allows it |
-| `/interrupts off`, `/interrupts claude,codex --cooldown 5m` | which kinds interrupts may reach mid-turn, and how often |
+| `/interrupts off`, `/interrupts claude,codex,opencode --cooldown 5m` | which kinds interrupts may reach mid-turn, and how often |
 | `/nudge name`, `/mute name 10m`, `/pause`, `/focus name`, `/peek name` | delivery and pane controls |
 | `/asks`, `/ask-policy block 8m` | what is waiting on you; whether agents wait, and how long |
 | `/context`, `/compact name`, `/clear name` | context windows, and the two ways to make room |
-| `/model name opus@medium [--restart]` | a member's model and effort; Claude live, others at resume or `--restart` now |
+| `/model name opus@medium [--restart]` | a member's model and effort; Claude and OpenCode effort can apply live, while Codex changes and OpenCode model changes apply at resume or `--restart` now |
 | `/links`, `/link other-team`, `/unlink other-team` | the links this team has, and making or breaking one |
 | `/filter teams`, `/filter team`, Tab | the inter-team lens, the local lens, or cycle through all of them |
 | `/who`, `/charter`, `/charter set text`, `/use team`, `/retract N`, `/remove name` | roster, charter, teams, board |
@@ -545,7 +560,7 @@ herdr-synapse model --self opus@high                   # a member, for itself
 | --- | --- | --- | --- |
 | Claude Code | `--model`, `--effort` | `/model` and `/effort` typed by the notifier when idle | `low medium high xhigh max` |
 | Codex | `-m`, `-c model_reasoning_effort` | picker only: applies at the next resume, or now with `--apply restart` | `minimal low medium high xhigh` |
-| OpenCode | `-m provider/model`, `--variant` | picker only: as Codex | provider-specific |
+| OpenCode | `-m provider/model`; effort is selected with `/variants` after startup | effort switches live with `/variants`; model applies at the next resume or with `--apply restart` | provider-specific |
 
 Resolution is the member's own setting, then the team default for its kind,
 then the harness default. The setting travels with the session: `resume`
@@ -554,7 +569,10 @@ them as arguments, never as a shell string.
 
 `--apply restart` exits the agent cleanly and resumes its own session with the
 new flags; the member is never marked missing while that is in progress, and
-both the exit and the return are bounded. Who may change a setting: the
+both the exit and the return are bounded. Controlled restarts preserve the
+harness's allowlisted policy flags, and Codex restarts suppress its update
+picker so the requested model cannot be stranded behind a startup screen. Who
+may change a setting: the
 operator or a delegate for anyone, the team manager for anyone, and a member
 for itself with `--self`. Every change is announced to the member and the
 team, and `who` shows the configured setting beside what the harness actually
@@ -674,8 +692,9 @@ Two things it is not. It is **not the operator**: the charter, the team rules
 and anyone's instructions stay yours, and `--operator` is the separate,
 expiring, audited way to lend those. And its posts are **still peer requests**,
 not commands. The mechanical changes are two: a post it addresses to the whole
-team wakes every idle member, where anyone else's broadcast waits for the next
-board read, and it is the team's voice across a link to another team. Nothing
+team queues every teammate for an idle-gated nudge, just as a human broadcast
+does, while an ordinary peer's broadcast waits for the next read; it is also
+the team's voice across a link to another team. Nothing
 else about delivery changes: a blocked agent, an open dialog, a draft on the
 prompt line and every rate limit still hold it.
 
@@ -694,7 +713,7 @@ herdr-synapse who                      # each member now shows its session
 | --- | --- |
 | Herdr restarts | every member goes back to its own pane, even two agents of one kind in one checkout, which pane labels and directories could never tell apart |
 | An agent crashes and you start a fresh one in its pane | recognised as a new conversation: the member keeps its name and pane, and is briefed again so it knows who it is |
-| A Claude member runs `/clear` | the same: a new conversation, briefed again, and recorded as a clear rather than a crash when you asked for it |
+| Synapse clears a Claude Code, Codex or OpenCode member | a fresh conversation or process, briefed again and recorded as an intentional clear rather than a crash |
 | A member compacts | the same session in a new phase, so no new generation and no "restarted" line, but it is briefed again because the briefing was in the history that was just summarized |
 | You want the old conversation back | `herdr-synapse resume <name>` from a shell pane |
 
@@ -737,9 +756,11 @@ Any other kind reads `unknown`; nothing is estimated. At 75 % and again at
 the member is nudged with it. The plugin never acts on it: what to do about a
 full context is the member's decision, or yours.
 
-`compact` and `clear` are available only for these three kinds. Their transport
-and completion handling are tested, but the slash command itself is still
-awaiting a live verification pass in each TUI.
+`compact` and `clear` are available only for these three kinds. Both operations
+and the following re-brief were live-verified in each real TUI. OpenCode clear
+exits and starts a fresh full TUI on the same member rather than sending
+`/new`; Synapse refuses before exiting when the pane layout is under 38 columns
+because OpenCode 1.18.30 crashes while starting in a terminal that narrow.
 
 A member may compact itself, and the skill tells it to finish or hand off its
 task first. Clearing is yours alone, and asks before it runs. A member that
@@ -830,8 +851,8 @@ And the agent **waits**. `post --kind question --to human` does not return until
 you answer, so it cannot proceed on a guess or be talked past by a peer. Only
 the operator closes an ask; a teammate's reply is a note on the thread, not an
 answer. The board-side wait is harness-independent and reports that it is still
-waiting every 30 s. How a TUI surfaces a long-running shell command is
-documented for Claude Code, Codex and OpenCode; other kinds should be treated as
+waiting every 30 s. The complete wait, answer and unblock path is live-verified
+with Claude Code, Codex and OpenCode; other kinds should be treated as
 conditional until verified. If nobody answers within eight minutes the command
 gives up with a distinct exit code, the question stays on the board, and the
 skill tells the agent not to guess.
@@ -945,22 +966,20 @@ peer mail.
 
 Current source version: 0.16.0, skill v10.
 
-Team formation, session identity, `resume`, the operator gate, and the
-trusted-origin rule have been verified live with Claude Code, Codex, and
-OpenCode. Board delivery is verified end to end with Claude Code and Codex.
-Typing into a running turn (`!!`, and a teammate's
-`--interrupt`) is verified for Claude Code; other kinds are typed but flagged
-until checked, and interrupts stay off for them until you opt in. Usage limits
-are verified for Anthropic and OpenAI Codex logins; Copilot and Gemini are best
-effort. Hooks exist for Claude Code only.
+Claude Code 2.1.267, Codex 0.153.4 and OpenCode 1.18.30 were exercised together
+in one disposable Herdr 0.9.0/p22 session. Formation, exact-session resume, idle
+nudge, safe `!`, running `!!`, teammate interrupt, blocking ask, model and
+effort changes, context readings, compact, clear and re-briefing all completed
+end to end for each harness. The notifier's `wrong_target` counter remained
+zero, and the complete automated suite covers the surrounding failure paths.
 
-Read from the binaries but not yet exercised against a live agent: the model
-and effort flags of the three harnesses, the Codex `/quit` → `codex resume`
-round trip that `--apply restart` relies on, OpenCode's `--variant` on its
-interactive TUI, and whether each kind treats a typed `/compact` as its own
-command. The transport and everything around these keystrokes is covered by
-tests; the last step needs one throwaway session per kind, and
-[docs/capabilities.md](docs/capabilities.md) records which rows have it.
+Hooks remain Claude-only. Provider account usage is separate from core agent
+support: Anthropic and OpenAI Codex logins are verified, while OpenCode depends
+on its provider and OpenCode Zen exposes billing rather than a quota window.
+OpenCode clear is intentionally refused below the safe pane width described
+above. Other Herdr integrations keep the shared team and board features, but
+their harness-sensitive terminal paths remain conditional until probed or
+trusted.
 
 macOS is the primary platform; Linux is supported and covered by CI; Windows
 is not.

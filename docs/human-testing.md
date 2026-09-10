@@ -3,8 +3,9 @@
 How to try herdr-synapse in your own Herdr session for the first time. The
 complete list of capabilities, with UI and CLI paths, expected behaviour, and
 a test checklist, is `capabilities.md` in this directory. Written
-2026-09-05 after four rig runs against Herdr 0.8.2. Everything here has run
-in a throwaway session; this is the first time it meets your real one.
+2026-09-10 after automated tests and a three-harness run against Herdr 0.9.0.
+Everything here has run in a throwaway session; this is the first time it
+meets your real one.
 
 ## The easiest way: the sandbox launcher
 
@@ -20,8 +21,8 @@ default session.
 ```
 
 `start` creates `~/herdr-synapsetest/`, copies your `config.toml` into it and
-appends the plugin's key bindings and sidebar rows, trusts `claude` and
-`codex` for delivery, links the plugin into the sandbox registry, and
+appends the plugin's key bindings and sidebar rows, trusts `claude`, `codex`
+and `opencode` for delivery, links the plugin into the sandbox registry, and
 launches the session; the plugin's startup hook starts the notifier. Inside
 it, skip to step 4 below: open two panes, start agents, `prefix+t`.
 
@@ -31,7 +32,8 @@ run commands against the sandbox from outside it, `stop`, `delete`,
 `HERDR_TEAM_SANDBOX_SESSION` change the directory and session name.
 
 What the sandbox still shares with your real setup: the agents themselves
-and their dotfiles (`~/.claude`, `~/.codex`). Step 8 below edits
+and their dotfiles (`~/.claude`, `~/.codex`, OpenCode's state directory).
+Step 8 below edits
 `~/.claude/settings.json`; skip it in the sandbox or point it at rig-local
 files with `--settings`, `--hooks-dir`, and `--claude-dir`.
 
@@ -72,11 +74,12 @@ lists under `warnings` or `errors` first.
 
 A fresh session delivers nothing until a kind is trusted; this is the gate
 that protects you from the plugin typing into an agent kind that was never
-verified. Your rig runs verified Claude and Codex, so:
+verified. The live run verified the three supported kinds, so:
 
 ```bash
 herdr-synapse kinds trust claude
 herdr-synapse kinds trust codex
+herdr-synapse kinds trust opencode
 herdr-synapse kinds list
 ```
 
@@ -97,7 +100,7 @@ own bindings. The defaults never use `prefix+t/m/u/y/i/f`.
 
 ## 4. Make a team
 
-Open two fresh panes in a Space, start an agent in each (`claude`, `codex`,
+Open fresh panes in a Space, start agents (`claude`, `codex`, `opencode`,
 or `herdr agent start <name> --kind <kind> --pane <id>`), let them reach
 idle, then either:
 
@@ -137,13 +140,14 @@ shows `✓typed` or why not), `@@path` attaches a file to the post (type
 `/retract N`, `/mute name 10m`, `/peek name`, `/focus name`, `/charter`,
 `/charter set`, `/use team`, `/quit`. `/interrupt @name text` is an
 interrupt: urgent, and typed into that member's running turn when its kind
-allows it (Claude by default; `/interrupts claude,codex` widens it,
+allows it (Claude Code, Codex and OpenCode by default;
 `/interrupts off` stops it). Agents have the same with
 `herdr-synapse post --to <name> --interrupt`, once per teammate per 10 min.
 
 `prefix+i` opens the usage popup: every agent in the session grouped by the
 provider account it draws on, with session and weekly bars and reset times
-(Claude Code and Codex logins read live; `r` refreshes, `q` closes).
+(Claude Code and Codex logins read live; OpenCode depends on its provider and
+OpenCode Zen exposes billing rather than a quota; `r` refreshes, `q` closes).
 
 Ask a member to do something through the board, for example
 `@demo-worker post a one-line summary of the repo layout`, and watch:
@@ -157,9 +161,9 @@ idle, the member reads the board and replies, `board --receipts` shows
   model picker. That is the point. `!name text` is the exception you control:
   it types now, but a dialog, the model picker, or a draft still refuses it
   (`✗ not typed (dialog)`), and only `!!` types into a working member.
-- A teammate's `post --interrupt` types its notice into a *working* Claude
-  member (the same queue behaviour `!!` uses). For every other kind the same
-  post waits for idle unless you run `herdr-synapse interrupts claude,codex`.
+- A teammate's `post --interrupt` types its notice into a working Claude Code,
+  Codex or OpenCode member (the same queue behaviour `!!` uses). Other kinds
+  wait for idle unless you explicitly add them to `interrupts`.
 - `!name text` works only from the console pane. The compose popup answers
   `direct typing is console-only` and a shell pane `say_unverified`, because
   neither can prove it is you.
@@ -198,10 +202,13 @@ those entries.
 
 ## Known gaps
 
-- Only Claude and Codex have been verified end to end. Other kinds
-  (opencode, gemini, cursor-agent, kimi, agy) need one probe each:
+- Claude Code, Codex and OpenCode are verified end to end. Other kinds
+  (Gemini, Cursor Agent, Kimi, Antigravity and the rest) need one probe each:
   `herdr-synapse hooks probe <kind> --member <name>` runs one round trip and
   records the result.
+- Hooks exist only for Claude Code. Codex and OpenCode use typed briefings.
+- OpenCode 1.18.30 crashes when its full TUI starts in a very narrow terminal;
+  Synapse refuses clear before exit when the pane layout is under 38 columns.
 - The console opens as a split in the current tab, not as its own tab.
 - `herdr-synapse read <name>` shows only the visible screen of a member.
 - Codex under its default sandbox cannot reach the Herdr socket from a tool

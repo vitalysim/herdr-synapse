@@ -49,6 +49,10 @@ def codex_record(used, window=272_000, at="2026-09-08T10:00:00.000Z"):
     }}}
 
 
+def codex_turn_context(model="gpt-5.6-luna", effort="low"):
+    return {"type": "turn_context", "payload": {"model": model, "effort": effort}}
+
+
 def opencode_db_with(home: Path, session_value, rows):
     path = context.opencode_db(home)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -163,11 +167,20 @@ class CodexReaderTests(unittest.TestCase):
 
     def test_reads_the_context_not_the_cumulative_total_and_takes_the_window_from_the_file(self):
         write_jsonl(self.home / ".codex" / "sessions" / "2026" / "09" / "rollout-2026-09-08T10-00-00-01991-a.jsonl",
-                    [codex_record(20_000), codex_record(136_600)])
+                    [codex_record(20_000), codex_turn_context(), codex_record(136_600)])
         reading = context.read_member("codex", {"source": "herdr:codex", "value": "01991-a"}, home=self.home)
-        self.assertEqual((reading.used, reading.window), (136_600, 272_000))
+        self.assertEqual((reading.used, reading.window, reading.model), (136_600, 272_000, "gpt-5.6-luna"))
         self.assertEqual(round(reading.percent, 1), 50.2)
-        self.assertIsNone(reading.model)
+
+    def test_latest_thread_settings_model_wins_even_when_it_is_separate_from_usage(self):
+        settings = {"type": "event_msg", "payload": {"type": "thread_settings_applied", "thread_settings": {
+            "model": "gpt-5.6-sol", "reasoning_effort": "high",
+        }}}
+        write_jsonl(self.home / ".codex" / "sessions" / "2026" / "09" /
+                    "rollout-2026-09-08T10-00-00-settings.jsonl",
+                    [codex_turn_context("gpt-5.6-luna"), codex_record(30_000), settings])
+        reading = context.read_codex("settings", self.home)
+        self.assertEqual((reading.used, reading.window, reading.model), (30_000, 272_000, "gpt-5.6-sol"))
 
     def test_an_unknown_session_reads_nothing(self):
         self.assertIsNone(context.read_codex(None, self.home))
@@ -200,6 +213,29 @@ class OpencodeReaderTests(unittest.TestCase):
         self.assertEqual((reading.used, reading.window, reading.model), (110_800, 1_000_000, "glm-5.3"))
         self.assertEqual(round(reading.percent, 1), 11.1)
         self.assertIsNone(context.read_opencode("ses_other", self.home))
+
+    def test_live_wal_commits_are_visible_before_opencode_checkpoints_them(self):
+        path = context.opencode_db(self.home)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(os.fspath(path))
+        self.addCleanup(conn.close)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("CREATE TABLE message (id TEXT, session_id TEXT, time_created INTEGER, data TEXT)")
+        conn.execute("INSERT INTO message VALUES (?,?,?,?)", (
+            "old", "ses_wal", 1,
+            json.dumps({"role": "assistant", "modelID": "glm-5.3", "tokens": {"total": 22_000}}),
+        ))
+        conn.commit()
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        conn.execute("INSERT INTO message VALUES (?,?,?,?)", (
+            "summary", "ses_wal", 2,
+            json.dumps({"role": "assistant", "modelID": "glm-5.3", "summary": True,
+                        "tokens": {"total": 2_200}}),
+        ))
+        conn.commit()  # stays in the live WAL while this writer remains open
+
+        reading = context.read_opencode("ses_wal", self.home)
+        self.assertEqual((reading.used, reading.model), (2_200, "glm-5.3"))
 
     def test_configured_model_recovers_a_missing_provider_and_catalogue_changes_invalidate_cache(self):
         path = opencode_models_with(self.home, "opencode-go", "glm-5.3", 1_000_000)
@@ -457,7 +493,7 @@ class ControlCommandTests(unittest.TestCase):
         self.assertEqual(cmd_board.control_keystroke("claude", "clear"), "/clear")
         # Codex deliberately gets /new: its /clear also wipes the scrollback detection reads
         self.assertEqual(cmd_board.control_keystroke("codex", "clear"), "/new")
-        self.assertEqual(cmd_board.control_keystroke("opencode", "clear"), "/new")
+        self.assertEqual(cmd_board.control_keystroke("opencode", "clear"), "/exit")
         with self.assertRaises(HerdrTeamError) as raised:
             cmd_board.control_keystroke("gemini", "compact")
         self.assertEqual(raised.exception.code, "control_unsupported")
@@ -501,14 +537,14 @@ class ControlJobTests(unittest.TestCase):
         self.d.on_connected()
         self.team = self.d.teams["alpha"]
 
-    def control_record(self, member=TARGET, action="compact", verified=True, to=None, control=True, kind="direct"):
+    def control_record(self, member=TARGET, action="compact", verified=True, to=None, control=True, kind="direct", agent_kind="codex"):
         record = {
             "from": "human", "from_kind": "human", "from_terminal": "term_console",
             "origin": {"via": "console", "verified": verified}, "to": to if to is not None else [member],
             "kind": kind, "text": "{} {}".format(action, member),
         }
         if control:
-            record["control"] = {"action": action, "keystroke": cmd_board.control_keystroke("codex", action), "kind": "codex"}
+            record["control"] = {"action": action, "keystroke": cmd_board.control_keystroke(agent_kind, action), "kind": agent_kind}
         return store.BoardStore(self.ts.team).append(record)
 
     def job(self, member=TARGET, action="compact", seq=None):
@@ -623,6 +659,95 @@ class ControlJobTests(unittest.TestCase):
         self.assertEqual(len(cleared), 1)
         self.assertEqual(cleared[0]["requested_by"], "human")
         self.assertIsNone(self.team.rt(TARGET).control_pending)
+
+    def test_codex_new_is_bootstrapped_without_waiting_for_a_session_id_it_has_not_minted(self):
+        self.request(action="clear")
+        self.settle()
+        pending = self.team.pending[TARGET]
+        rt = self.team.rt(TARGET)
+        rt.context = {"used": 180_000, "window": 258_400, "percent": 69.7}
+        live = dict(self.d.agents["term_r1"], agent_status="idle", state_change_seq=int(pending.gate_seq or 0) + 1)
+        self.d.agents["term_r1"] = live
+        self.clock.advance(2)
+        self.d.evaluate_pending()
+
+        brief = self.team.pending[TARGET]
+        self.assertEqual(brief.kind, "brief")
+        self.assertTrue(rt.clear_bootstrap)
+        self.assertIsNone(rt.context)
+        self.assertEqual(len(self.records("context_cleared")), 1)
+        self.assertIsNone(rt.control_pending)
+
+        # The bootstrap briefing creates Codex's rollout/session. Reconciliation
+        # records that identity but neither erases nor duplicates the briefing.
+        brief.landed_ms = self.clock() * 1000
+        self.team.member(TARGET)["briefed_at"] = "2026-09-10T10:00:00.000Z"
+        self.team.member(TARGET)["briefing_seq"] = 17
+        self.d._apply_changes(self.team, [(TARGET, {
+            "generation": 2, "session": {"source": "herdr:codex", "agent": "codex", "kind": "id", "value": "s-2"},
+            "briefed_at": None,
+        })])
+        self.assertIs(self.team.pending[TARGET], brief)
+        self.assertFalse(rt.clear_bootstrap)
+        self.assertEqual(list(self.ts.team.jobs_dir.glob("*.json")), [])
+        self.assertEqual(len(self.records("context_cleared")), 1)
+        self.assertEqual(self.team.member(TARGET)["briefed_at"], "2026-09-10T10:00:00.000Z")
+        self.assertEqual(self.team.member(TARGET)["briefing_seq"], 17)
+
+    def test_opencode_clear_exits_and_starts_a_fresh_tui_before_selecting_its_variant(self):
+        member = self.team.member(TARGET)
+        member.update({"kind": "opencode", "model": "opencode/glm-5.3-flash", "effort": "high"})
+        self.api.set_response("pane.layout", {"type": "pane_layout", "layout": {
+            "workspace_id": "w2", "tab_id": "w2:t1", "zoomed": False,
+            "area": {"x": 0, "y": 0, "width": 120, "height": 40},
+            "focused_pane_id": "w2:p2", "panes": [
+                {"pane_id": "w2:p1", "focused": False,
+                 "rect": {"x": 0, "y": 0, "width": 41, "height": 40}},
+            ], "splits": [],
+        }})
+        self.api.set_response("pane.process_info", {
+            "type": "pane_process_info", "process_info": {
+                "pane_id": "w2:p1", "foreground_processes": [{
+                    "name": "opencode", "argv": ["opencode", "--session", "old", "-m", "old/model", "--pure", "--auto"],
+                }],
+            },
+        })
+        self.request(action="clear", agent_kind="opencode")
+        self.settle()
+        self.assertEqual(self.sent("pane.send_text"), [{"pane_id": "w2:p1", "text": "/exit"}])
+        rt = self.team.rt(TARGET)
+        self.assertEqual(rt.restart["action"], "clear")
+        self.assertEqual(rt.restart["argv"], ["opencode", "-m", "opencode/glm-5.3-flash", "--pure", "--auto"])
+        self.assertEqual(rt.restart["after"], ["/variants", "high"])
+
+        self.d._note_restart_done(self.team, TARGET, {}, self.clock() * 1000)
+        followup = self.team.pending[TARGET]
+        self.assertEqual((followup.kind, followup.lines), ("control", ["/variants", "high"]))
+        self.assertTrue(followup.control["brief_after"])
+        self.assertTrue(rt.clear_bootstrap)
+        self.assertEqual(len(self.records("context_cleared")), 1)
+
+    def test_opencode_clear_refuses_before_exit_when_the_pane_is_too_narrow(self):
+        member = self.team.member(TARGET)
+        member.update({"kind": "opencode", "model": "opencode/glm-5.3-flash", "effort": "high"})
+        self.api.set_response("pane.layout", {"type": "pane_layout", "layout": {
+            "workspace_id": "w2", "tab_id": "w2:t1", "zoomed": False,
+            "area": {"x": 0, "y": 0, "width": 120, "height": 40},
+            "focused_pane_id": "w2:p2", "panes": [
+                {"pane_id": "w2:p1", "focused": False,
+                 "rect": {"x": 0, "y": 0, "width": D.OPENCODE_FRESH_TUI_MIN_WIDTH - 1, "height": 40}},
+            ], "splits": [],
+        }})
+        self.request(action="clear", agent_kind="opencode")
+        self.settle()
+
+        rt = self.team.rt(TARGET)
+        self.assertIsNone(rt.restart)
+        self.assertIsNone(rt.control_pending)
+        self.assertNotIn(TARGET, self.team.pending)
+        self.assertEqual(self.sent("pane.send_text"), [])
+        refused = self.records("typed")
+        self.assertTrue(any("needs a wider pane" in record["text"] for record in refused), refused)
 
     def test_nothing_observed_within_the_bound_closes_the_job_rather_than_retrying(self):
         self.request()

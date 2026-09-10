@@ -250,6 +250,7 @@ LEGACY_SOCKET_METHODS_USED = (
     "agent.list", "agent.get", "agent.prompt", "agent.read", "agent.explain", "agent.rename", "agent.focus",
     "agent.view.set", "agent.view.clear",
     "pane.get", "pane.list", "pane.rename", "pane.close", "pane.report_metadata", "pane.process_info",
+    "pane.layout",
     "layout.apply", "plugin.list", "plugin.pane.open", "plugin.pane.focus", "popup.close", "notification.show",
 )
 CURRENT_ONLY_SOCKET_METHODS_USED = ("agent.prompt_if_idle",)
@@ -292,6 +293,7 @@ METHOD_RESULT_TYPES: Dict[str, Tuple[str, ...]] = {
     "pane.send_text": ("ok",),
     "pane.send_keys": ("ok",),
     "pane.process_info": ("pane_process_info",),
+    "pane.layout": ("pane_layout",),
     "layout.apply": ("layout_apply",),
     "plugin.list": ("plugin_list",),
     "plugin.pane.open": ("plugin_pane_opened", "ok"),  # popup placement answers a bare ok (plugins/panes.rs)
@@ -321,6 +323,7 @@ SAMPLE_PARAMS: Dict[str, Dict[str, Any]] = {
     "pane.close": {"pane_id": "w1:p1"},
     "pane.report_metadata": {"pane_id": "w2:p1", "source": "herdr-synapse:roster", "tokens": identity_tokens("alpha", "reviewer")},
     "pane.process_info": {"pane_id": "w2:p1"},
+    "pane.layout": {"pane_id": "w2:p1"},
     "pane.send_text": {"pane_id": "w2:p1", "text": "/compact"},
     "pane.send_keys": {"pane_id": "w2:p1", "keys": ["enter"]},
     "layout.apply": cmd_roster.build_layout_request("beta", [{"role": "reviewer", "name": "beta-reviewer", "kind": "codex"}, {"role": "worker", "name": "beta-worker", "kind": "claude", "cwd": "/tmp/work"}], "/tmp/state/teams/beta", "w9"),
@@ -371,6 +374,7 @@ def plugin_request_params() -> List[Tuple[str, str, Dict[str, Any]]]:
         ("daemon._clear_tokens roster / hooks._clear_tokens", "pane.report_metadata", {"pane_id": "w2:p1", "source": "herdr-synapse:roster", "tokens": identity_tokens(None, None)}),
         ("daemon._clear_tokens task", "pane.report_metadata", {"pane_id": "w2:p1", "source": "herdr-synapse:task", "tokens": {"team_task": None}}),
         ("identity._process_info / cmd_ui._foreground_is_shell", "pane.process_info", {"pane_id": "w2:p1"}),
+        ("daemon._pane_layout_width", "pane.layout", {"pane_id": "w2:p1"}),
         ("cmd_roster.build_layout_request", "layout.apply", SAMPLE_PARAMS["layout.apply"]),
         ("cmd_roster.build_layout_request no workspace", "layout.apply", cmd_roster.build_layout_request("beta", [{"role": "r", "name": "beta-r", "kind": "codex"}], "/tmp/state/teams/beta")),
         ("daemon.poll_registry / cmd_misc._plugin_state", "plugin.list", {}),

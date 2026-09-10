@@ -212,7 +212,7 @@ class TypedLabelTests(unittest.TestCase):
         cases = [
             ({"result": "typed", "reason": None}, (True, "typed", "✓typed", "+typed")),
             ({"result": "typed", "reason": "in_turn", "force_verified": True}, (True, "typed (in running turn)", "✓typed (in running turn)", "+typed (in running turn)")),
-            ({"result": "typed", "reason": "in_turn", "force_verified": False, "kind": "codex"}, (True, "typed (in running turn, unverified for codex)", "✓typed (in running turn, unverified for codex)", "+typed (in running turn, unverified for codex)")),
+            ({"result": "typed", "reason": "in_turn", "force_verified": False, "kind": "gemini"}, (True, "typed (in running turn, unverified for gemini)", "✓typed (in running turn, unverified for gemini)", "+typed (in running turn, unverified for gemini)")),
             ({"result": "typed", "reason": "dry"}, (True, "typed (dry run)", "✓typed (dry run)", "+typed (dry run)")),
             ({"result": "refused", "reason": "working"}, (False, "not typed (working)", "✗ not typed (working)", "x not typed (working)")),
             ({"result": "refused", "reason": "muted"}, (False, "not typed (muted)", "✗ not typed (muted)", "x not typed (muted)")),

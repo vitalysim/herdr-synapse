@@ -186,7 +186,7 @@ also completes names and files; in the `/` menu it executes the line as typed.
 | `/reply` | `N` | reply to post #N |
 | `/urgent` | `—` | nudge everyone, not just on their next read |
 | `/interrupt` | `@name text` | type into a working teammate's turn |
-| `/interrupts` | `[off\|on\|claude,codex] [--cooldown 10m]` | which kinds interrupts may reach |
+| `/interrupts` | `[off\|on\|kind,…] [--cooldown 10m]` | which kinds interrupts may reach |
 | `/ref` | `path` | attach a file by reference |
 | `/retract` | `N` | retract post #N |
 | `/mute` | `[name] [10m]` | stop nudging a member |
@@ -199,7 +199,7 @@ also completes names and files; in the `/` menu it executes the line as typed.
 | `/context` | `[name]` | how full each member's context window is |
 | `/compact` | `name` | ask a member to summarise its context |
 | `/clear` | `name` | throw away a member's context and brief it again |
-| `/model` | `name model[@effort] [--restart]` | set a member's model and effort (Claude live; others at resume, or --restart now) |
+| `/model` | `name model[@effort] [--restart]` | set model/effort (Claude and OpenCode effort can apply live; other changes at resume or --restart) |
 | `/team` | `other-team text` | post to a linked team (its manager is nudged) |
 | `/links` | `—` | which teams this team is linked to, and their state |
 | `/link` | `other-team` | link this team to another (both need a manager) |
