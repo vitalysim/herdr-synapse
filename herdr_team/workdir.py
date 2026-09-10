@@ -1,4 +1,4 @@
-"""The team's working directory inside the project: ``.herdr-team/<team>/``.
+"""The team's working directory inside the project: ``.herdr-synapse/<team>/``.
 
 Agents in one folder all read the same ``CLAUDE.md`` or ``AGENTS.md``, so
 nothing on disk tells them apart. This module is the agent-facing half of the
@@ -198,7 +198,7 @@ def paths_for(project_dir: str, team_name: str) -> Dict[str, Path]:
 
 
 def is_inside(candidate: Path, project_dir: Optional[str]) -> bool:
-    """True when ``candidate`` resolves to something inside ``<project>/.herdr-team/``.
+    """True when ``candidate`` resolves inside the current or legacy team folder.
 
     Both sides are resolved, because ``paths.check_not_symlink`` lstats only
     the final component: an intermediate symlink would otherwise walk a
@@ -530,7 +530,7 @@ def render(layout: Any, team_name: str, force: bool = False) -> Dict[str, Any]:
 
 
 def _existing_team_dirs(shared: Path, current: str) -> List[str]:
-    """Team subdirectories already in ``.herdr-team/``, so one .gitignore covers them all."""
+    """Team subdirectories share ``.herdr-synapse/``, so one .gitignore covers them all."""
     names = {current}
     try:
         for entry in shared.iterdir():
@@ -900,7 +900,7 @@ def status_summary(info: Dict[str, Any]) -> str:
 
 
 def refresh_gitignore(project_dir: str, team_name: str, force: bool = False) -> bool:
-    """Rewrite ``.herdr-team/.gitignore`` so it covers every team dir present."""
+    """Rewrite ``.herdr-synapse/.gitignore`` so it covers every team dir present."""
     targets = paths_for(project_dir, team_name)
     try:
         teams = _existing_team_dirs(targets["shared"], team_name)

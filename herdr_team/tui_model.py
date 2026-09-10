@@ -3941,13 +3941,13 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
     elif model.stage == "team_folder":
         lines.append("Team folder for {} (Enter sets it, Esc cancels)".format(model.folder_team))
         lines.append("  rules, one instructions file per member, and artifacts/ go in")
-        lines.append("  <dir>/.herdr-team/{}/".format(model.folder_team))
+        lines.append("  <dir>/.herdr-synapse/{}/".format(model.folder_team))
         lines.append(INPUT_PROMPT + model.input)
         has_input = True
     elif model.stage == "project":
         lines.append("Team folder for {} (Enter accepts, Tab skips, Esc back)".format(model.team_name))
         lines.append("  the team's rules, one instructions file per member, and artifacts/ go in")
-        lines.append("  <dir>/.herdr-team/{}/ ; leave empty for no folder".format(model.team_name))
+        lines.append("  <dir>/.herdr-synapse/{}/ ; leave empty for no folder".format(model.team_name))
         lines.append(INPUT_PROMPT + model.input)
         has_input = True
     elif model.stage == "members":

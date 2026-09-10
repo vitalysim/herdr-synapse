@@ -87,13 +87,13 @@ colour next to its members. Re-paste it after an upgrade if `herdr-synapse
 doctor` says your rows predate the colours.
 
 ```bash
-herdr-synapse keys print          # four [[keys.command]] entries: prefix+t team-up, prefix+m compose, prefix+u console, prefix+y view
+herdr-synapse keys print          # six entries: prefix+t/m/u/y/i/f for teams, compose, console, view, usage, knowledge
 herdr-synapse setup --print-config   # the required sidebar rows ($team_role, $team_task) and the optional block
 ```
 
 Paste both into `~/.config/herdr/config.toml`, then `herdr server
 reload-config`. `herdr-synapse keys check` confirms nothing collides with your
-own bindings. The defaults never use `prefix+t/m/u/y`.
+own bindings. The defaults never use `prefix+t/m/u/y/i/f`.
 
 ## 4. Make a team
 

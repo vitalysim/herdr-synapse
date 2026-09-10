@@ -1,11 +1,11 @@
 # Development
 
-Internals, conventions, and the status log for people changing the plugin. The user-facing overview is the [README](../README.md); the command contract is [cli.md](cli.md).
+Internals, conventions, and the status log for people changing the plugin. The user-facing overview is the [README](../README.md), the complete command and key inventory is [reference.md](reference.md), and the implementation contract is [cli.md](cli.md).
 
 ## Layout
 
 ```
-herdr-plugin.toml        manifest (plan section 10): startup, 6 actions, 3 event hooks, 3 panes
+herdr-plugin.toml        manifest (plan section 10): startup, 8 actions, 3 event hooks, 6 panes
 bin/herdr-synapse           sh launcher: HERDR_TEAM_PYTHON > python3 > /usr/bin/python3, refuses < 3.9
 bin/hook                 sh gate for manifest events: exit 0 in ~15 ms when daemon.json names a live pid
 console.sh               console pane wrapper: prints the relaunch hint and waits on failure
@@ -16,6 +16,7 @@ herdr_team/
   api.py                 NDJSON socket client + `herdr` subprocess wrappers (the only door to Herdr)
   store.py               the three locks, atomic writes, BoardStore, Cursors, RosterStore, BoardTailer
   cli.py                 argparse root, Command dataclass, registry, dispatch
+  reference_docs.py      generated command, action, key, and console sections of docs/reference.md
   cmd_*.py               command groups (board, roster, misc, hooks, skill, daemon, ui); each exports COMMANDS
   sanitize.py render.py identity.py roster.py charter.py     board and roster logic
   gate.py nudge.py ledger.py daemon.py                        notifier
@@ -23,7 +24,8 @@ herdr_team/
   tui_model.py console.py picker.py compose.py                UIs (curses console, picker, compose popups)
 hooks/claude/            the Claude Code hook shim (written by the hooks implementer)
 skills/herdr-synapse/SKILL.md   printed by `herdr-synapse --skill`
-docs/cli.md              command contract
+docs/reference.md        complete user-facing command and shortcut reference
+docs/cli.md              implementation and JSON command contract
 tests/                   unittest suite; tests/support.py has TempState, FakeHerdrServer, FakeApi
 ```
 
@@ -53,6 +55,7 @@ works) and records it as a `direct` post. `@@path` attaches a file to a post
 ```bash
 python3 -m unittest discover -s tests -v            # Homebrew python (3.14)
 /usr/bin/python3 -m unittest discover -s tests -v   # Apple python (3.9): both must pass
+python3 -m herdr_team.reference_docs --check
 ./bin/herdr-synapse --version
 ./bin/herdr-synapse --skill
 ./bin/herdr-synapse <command> --help

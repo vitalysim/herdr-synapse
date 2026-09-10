@@ -358,7 +358,7 @@ COMMANDS = [
     Command(
         name="project",
         help="show, set or clear the team's project directory",
-        description="The team's working directory lives at <project>/.herdr-team/<team>/. Setting it is human only and is what creates the folder.",
+        description="The team's working directory lives at <project>/.herdr-synapse/<team>/. Setting it is human only and is what creates the folder.",
         add_arguments=_add_project_arguments,
         run=_run_project,
     ),

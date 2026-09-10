@@ -344,6 +344,28 @@ class Cursors(unittest.TestCase):
     def tearDown(self):
         self.ts.cleanup()
 
+    def test_sandboxed_payload_copy_uses_the_current_plugin_directory(self):
+        work = self.ts.tmp / "member-work"
+        work.mkdir()
+        doc = store.read_json(self.ts.team.team_json)
+        doc["members"][0]["cwd"] = os.fspath(work)
+        store.write_json(self.ts.team.team_json, doc)
+        store.write_json(self.ts.session.kinds_json, {"codex": {"payload_readable": False}})
+        attachment = self.ts.tmp / "evidence.txt"
+        attachment.write_text("proof", encoding="utf-8")
+
+        code, posted, err = json_out(run_cli([
+            "--json", "--team", "alpha", "post", "see evidence",
+            "--to", "alpha-reviewer", "--attach", os.fspath(attachment),
+        ], self.ts.env, self.api))
+        self.assertEqual(code, 0, err)
+        code, _, err = json_out(run_cli(["--json", "board", "--new"], self.member_env, self.api))
+        self.assertEqual(code, 0, err)
+
+        copied = work / ".herdr-synapse" / Path(posted["attached"][0]).name
+        self.assertEqual(copied.read_text(encoding="utf-8"), "proof")
+        self.assertFalse((work / ".herdr-team").exists())
+
     def test_new_selects_mine_and_advances(self):
         code, payload, err = json_out(run_cli(["--json", "board", "--new"], self.member_env, self.api))
         self.assertEqual(code, 0, err)

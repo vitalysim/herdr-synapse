@@ -26,25 +26,32 @@ import os
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 #: How much of the end of a transcript to read. One assistant record with its
 #: usage block is a few hundred bytes; 256 KB is a wide margin for a long tool
 #: result sitting between us and the last one.
 TAIL_BYTES = 256 * 1024
 
-#: Context windows we cannot read from the file itself. A model that is not
-#: listed falls back to the smallest tier that fits what we observed, so a
-#: missing entry understates the window rather than inventing headroom.
-WINDOW_TIERS = (200_000, 400_000, 1_000_000)
-DEFAULT_WINDOW = 200_000
+#: Claude does not write the window beside ``message.usage``. Keep the
+#: families whose limits Anthropic publishes explicit: an unfamiliar future
+#: model stays unknown instead of silently inheriting an obsolete default.
+CLAUDE_1M_MODELS = (
+    "claude-fable-5-1", "claude-fable-5", "claude-mythos-5-1", "claude-mythos-5",
+    "claude-mythos-preview", "claude-opus-5", "claude-opus-4-8", "claude-opus-4-7",
+    "claude-opus-4-6", "claude-sonnet-5", "claude-sonnet-4-6",
+)
+CLAUDE_200K_MODELS = (
+    "claude-haiku-4-5", "claude-opus-4-5", "claude-opus-4-1", "claude-opus-4",
+    "claude-sonnet-4-5", "claude-sonnet-4", "claude-3-7-sonnet",
+    "claude-3-5-sonnet", "claude-3-5-haiku", "claude-3-opus", "claude-3-haiku",
+)
+CLAUDE_ALIAS_WINDOWS = {"fable": 1_000_000, "mythos": 1_000_000, "opus": 1_000_000,
+                        "sonnet": 1_000_000, "haiku": 200_000}
 
-MODEL_WINDOWS: Dict[str, int] = {
-    "claude-opus-5": 200_000,
-    "claude-sonnet-5": 200_000,
-    "claude-haiku-4-5": 200_000,
-    "claude-fable-5-1": 200_000,
-}
+#: ``~/.cache/opencode/models.json`` is several MB. Cache only the compact
+#: provider/model -> context projection, invalidated by the file identity.
+_OPENCODE_WINDOWS_CACHE: Dict[str, Tuple[int, int, Dict[Tuple[str, str], int]]] = {}
 
 KINDS = ("claude", "codex", "opencode")
 
@@ -54,21 +61,22 @@ class Reading:
     """One member's context, as read from its harness."""
 
     used: int
-    window: int
+    window: Optional[int]
     source: str  # the file we read it from
     model: Optional[str] = None
     at: Optional[str] = None  # timestamp carried by the record, when it has one
 
     @property
-    def percent(self) -> float:
-        if self.window <= 0:
-            return 0.0
+    def percent(self) -> Optional[float]:
+        if not isinstance(self.window, int) or self.window <= 0:
+            return None
         return max(0.0, min(100.0, (float(self.used) / float(self.window)) * 100.0))
 
     def to_json(self) -> Dict[str, Any]:
+        percent = self.percent
         return {
-            "used": int(self.used), "window": int(self.window),
-            "percent": round(self.percent, 1), "model": self.model,
+            "used": int(self.used), "window": int(self.window) if isinstance(self.window, int) else None,
+            "percent": round(percent, 1) if percent is not None else None, "model": self.model,
             "source": self.source, "at": self.at,
         }
 
@@ -87,20 +95,18 @@ def home_dir(env: Optional[Dict[str, str]] = None) -> Path:
     return Path.home()
 
 
-def window_for(model: Optional[str], used: int) -> int:
-    """The context window for ``model``, widened to fit what we already saw.
-
-    A session that is demonstrably carrying more than the table says is on a
-    larger variant (Claude's 1M mode, for one), so the tier is raised rather
-    than reporting an impossible number over 100%.
-    """
-    window = MODEL_WINDOWS.get(str(model or "").strip(), DEFAULT_WINDOW)
-    if used <= window:
-        return window
-    for tier in WINDOW_TIERS:
-        if used <= tier:
-            return tier
-    return used
+def claude_window_for(model: Optional[str]) -> Optional[int]:
+    """Published context size for a Claude model, or ``None`` when unknown."""
+    value = str(model or "").strip().lower().rsplit("/", 1)[-1]
+    if value in CLAUDE_ALIAS_WINDOWS:
+        return CLAUDE_ALIAS_WINDOWS[value]
+    for prefix in CLAUDE_1M_MODELS:
+        if value == prefix or value.startswith(prefix + "-"):
+            return 1_000_000
+    for prefix in CLAUDE_200K_MODELS:
+        if value == prefix or value.startswith(prefix + "-"):
+            return 200_000
+    return None
 
 
 def _tail_lines(path: Path, limit: int = TAIL_BYTES) -> List[str]:
@@ -138,7 +144,7 @@ def _records(path: Path) -> Iterator[Dict[str, Any]]:
 # per kind
 
 
-def read_claude(transcript: Optional[str]) -> Optional[Reading]:
+def read_claude(transcript: Optional[str], configured_model: Optional[str] = None) -> Optional[Reading]:
     """The newest assistant message's usage in a Claude Code transcript.
 
     ``cache_read_input_tokens`` dominates and is the bulk of the context, so a
@@ -164,7 +170,8 @@ def read_claude(transcript: Optional[str]) -> Optional[Reading]:
             continue
         model = message.get("model") if isinstance(message.get("model"), str) else None
         at = record.get("timestamp") if isinstance(record.get("timestamp"), str) else None
-        return Reading(used=used, window=window_for(model, used), source=os.fspath(path), model=model, at=at)
+        return Reading(used=used, window=claude_window_for(model or configured_model),
+                       source=os.fspath(path), model=model, at=at)
     return None
 
 
@@ -210,7 +217,7 @@ def read_codex(session_value: Optional[str], home: Optional[Path] = None) -> Opt
         if not isinstance(used, int) or used <= 0:
             continue
         window = info.get("model_context_window")
-        window = int(window) if isinstance(window, int) and window > 0 else window_for(None, used)
+        window = int(window) if isinstance(window, int) and not isinstance(window, bool) and window > 0 else None
         at = record.get("timestamp") if isinstance(record.get("timestamp"), str) else None
         return Reading(used=used, window=window, source=os.fspath(path), at=at)
     return None
@@ -220,7 +227,81 @@ def opencode_db(home: Optional[Path] = None) -> Path:
     return (home or Path.home()) / ".local" / "share" / "opencode" / "opencode.db"
 
 
-def read_opencode(session_value: Optional[str], home: Optional[Path] = None) -> Optional[Reading]:
+def opencode_models(home: Optional[Path] = None) -> Path:
+    return (home or Path.home()) / ".cache" / "opencode" / "models.json"
+
+
+def _opencode_windows(home: Optional[Path] = None) -> Dict[Tuple[str, str], int]:
+    """OpenCode's resolved model catalogue, projected and cached by file identity."""
+    path = opencode_models(home)
+    try:
+        stat = path.stat()
+    except OSError:
+        return {}
+    key = os.fspath(path)
+    cached = _OPENCODE_WINDOWS_CACHE.get(key)
+    if cached is not None and cached[0] == stat.st_mtime_ns and cached[1] == stat.st_size:
+        return cached[2]
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError):
+        return {}
+    windows: Dict[Tuple[str, str], int] = {}
+    if isinstance(raw, dict):
+        for provider_key, provider in raw.items():
+            if not isinstance(provider, dict):
+                continue
+            provider_id = provider.get("id") if isinstance(provider.get("id"), str) else provider_key
+            models = provider.get("models")
+            if not isinstance(provider_id, str) or not isinstance(models, dict):
+                continue
+            for model_key, model in models.items():
+                if not isinstance(model, dict):
+                    continue
+                limit = model.get("limit")
+                window = limit.get("context") if isinstance(limit, dict) else None
+                if not isinstance(window, int) or isinstance(window, bool) or window <= 0:
+                    continue
+                model_id = model.get("id") if isinstance(model.get("id"), str) else model_key
+                if isinstance(model_key, str):
+                    windows[(provider_id.lower(), model_key.lower())] = window
+                if isinstance(model_id, str):
+                    windows[(provider_id.lower(), model_id.lower())] = window
+    _OPENCODE_WINDOWS_CACHE[key] = (stat.st_mtime_ns, stat.st_size, windows)
+    return windows
+
+
+def opencode_window_for(provider: Optional[str], model: Optional[str], configured_model: Optional[str] = None,
+                        home: Optional[Path] = None) -> Optional[int]:
+    """Resolve the model's context from OpenCode's own local catalogue."""
+    observed = str(model or "").strip().lower()
+    provider_id = str(provider or "").strip().lower()
+    if "/" in observed:
+        embedded_provider, observed = observed.rsplit("/", 1)
+        provider_id = provider_id or embedded_provider
+
+    configured = str(configured_model or "").strip().lower()
+    configured_provider = ""
+    configured_id = configured
+    if "/" in configured:
+        configured_provider, configured_id = configured.rsplit("/", 1)
+    if not observed:
+        observed = configured_id
+    if not provider_id and configured_provider and configured_id == observed:
+        provider_id = configured_provider
+    if not observed:
+        return None
+
+    windows = _opencode_windows(home)
+    if provider_id:
+        return windows.get((provider_id, observed))
+    candidates = {window for (candidate_provider, candidate_model), window in windows.items()
+                  if candidate_provider and candidate_model == observed}
+    return next(iter(candidates)) if len(candidates) == 1 else None
+
+
+def read_opencode(session_value: Optional[str], home: Optional[Path] = None,
+                  configured_model: Optional[str] = None) -> Optional[Reading]:
     """The newest assistant message's ``tokens.total`` for this OpenCode session.
 
     The ``session`` row's own counters are lifetime totals, not context, so they
@@ -265,7 +346,9 @@ def read_opencode(session_value: Optional[str], home: Optional[Path] = None) -> 
         if not isinstance(used, int) or used <= 0:
             continue
         model = data.get("modelID") if isinstance(data.get("modelID"), str) else None
-        return Reading(used=used, window=window_for(model, used), source=os.fspath(path), model=model)
+        provider = data.get("providerID") if isinstance(data.get("providerID"), str) else None
+        return Reading(used=used, window=opencode_window_for(provider, model, configured_model, home),
+                       source=os.fspath(path), model=model)
     return None
 
 
@@ -273,7 +356,8 @@ def read_opencode(session_value: Optional[str], home: Optional[Path] = None) -> 
 # the one entry point
 
 
-def read_member(kind: Optional[str], session: Any, pane_record: Optional[Dict[str, Any]] = None, home: Optional[Path] = None) -> Optional[Reading]:
+def read_member(kind: Optional[str], session: Any, pane_record: Optional[Dict[str, Any]] = None,
+                home: Optional[Path] = None, configured_model: Optional[str] = None) -> Optional[Reading]:
     """One member's context reading, or None when this kind cannot be read.
 
     ``session`` is the member's recorded ``agent_session`` and ``pane_record``
@@ -285,14 +369,14 @@ def read_member(kind: Optional[str], session: Any, pane_record: Optional[Dict[st
     try:
         if kind == "claude":
             transcript = (pane_record or {}).get("transcript_path")
-            reading = read_claude(transcript if isinstance(transcript, str) else None)
+            reading = read_claude(transcript if isinstance(transcript, str) else None, configured_model)
             if reading is None and value:
-                reading = read_claude(_claude_transcript_by_id(str(value), home))
+                reading = read_claude(_claude_transcript_by_id(str(value), home), configured_model)
             return reading
         if kind == "codex":
             return read_codex(str(value) if value else None, home)
         if kind == "opencode":
-            return read_opencode(str(value) if value else None, home)
+            return read_opencode(str(value) if value else None, home, configured_model)
     except (OSError, ValueError):
         return None
     return None

@@ -17,7 +17,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from herdr_team import store
+from herdr_team import sanitize, store
 from herdr_team import usage
 from herdr_team import usage as _usage
 from herdr_team.cli import Command, api_for, emit, layout_for
@@ -250,6 +250,7 @@ def _run_context(args: argparse.Namespace) -> int:
     down the files are read directly here so the answer is never simply blank.
     """
     from herdr_team import context as _context
+    from herdr_team import models as _models
     from herdr_team import roster as _roster
     from herdr_team.cmd_board import daemon_status, load_doc, members_of, resolve_team
 
@@ -279,7 +280,9 @@ def _run_context(args: argparse.Namespace) -> int:
         reading = published.get(name)
         if not isinstance(reading, dict):
             record = _roster.read_pane_record(layout.session, member.get("terminal_id")) or {}
-            found = _context.read_member(member.get("kind"), member.get("session"), record, home=_context.home_dir(args.env))
+            configured_model = _models.effective_setting(doc.get("config"), member)[0]
+            found = _context.read_member(member.get("kind"), member.get("session"), record,
+                                         home=_context.home_dir(args.env), configured_model=configured_model)
             reading = found.to_json() if found is not None else None
         rows.append({"name": name, "kind": member.get("kind"), "context": reading})
     if args.member and not rows:
@@ -300,9 +303,16 @@ def render_context(payload: Dict[str, Any], width: int, ascii_only: bool) -> str
     lines = ["team {} context".format(payload.get("team"))]
     for row in rows:
         reading = row.get("context")
-        if not isinstance(reading, dict) or not isinstance(reading.get("percent"), (int, float)):
+        if not isinstance(reading, dict):
             lines.append("  {}  {}  unknown (no reader for this kind, or nothing written yet)".format(
                 str(row.get("name")).ljust(name_w), str(row.get("kind") or "?").ljust(kind_w)))
+            continue
+        if not isinstance(reading.get("percent"), (int, float)):
+            model_name = sanitize.headline(reading.get("model"), 80)
+            model = " ({})".format(model_name) if model_name else ""
+            lines.append("  {}  {}  {:>12} tokens  window unknown{}".format(
+                str(row.get("name")).ljust(name_w), str(row.get("kind") or "?").ljust(kind_w),
+                "{:,}".format(int(reading.get("used") or 0)), model))
             continue
         percent = float(reading["percent"])
         mark = {"critical": " !!", "warning": " !"}.get(_usage.severity_for(percent) or "", "")

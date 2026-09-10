@@ -213,7 +213,7 @@ def validate_refs(layout: Layout, team: str, refs: List[str], env: Optional[Dict
     team_paths = layout.team(team)
     team_root = canonicalize(team_paths.root)
     roots = safe_roots(roster_roots(layout, team), env)
-    # ``.herdr-team/`` is a dot-directory the plugin itself created, and
+    # ``.herdr-synapse/`` is a dot-directory the plugin itself created, and
     # ``artifacts/`` inside it is where members are told to put work products.
     # Refusing it would make the folder useless for the one thing it is for.
     # Decided on the *resolved* path: ``check_not_symlink`` lstats only the

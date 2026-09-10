@@ -548,6 +548,26 @@ class MemberCommands(unittest.TestCase):
             self.assertEqual(err["code"], "member_not_found")
             self.assertIn("alpha-reviewer", err["roster"])
 
+    def test_member_cannot_remove_or_rename_a_teammate(self):
+        with TempState() as ts:
+            api = live_api()
+            env = env_no_daemon(ts, HERDR_PANE_ID="w2:p2")
+            before = store.read_json(ts.team.team_json)
+
+            for argv in (
+                ["--json", "remove", "alpha", "alpha-reviewer"],
+                ["--json", "rename", "alpha-reviewer", "taken-over", "--team", "alpha"],
+            ):
+                code, _, err = json_out(run_cli(argv, env, api))
+                self.assertEqual(code, 1)
+                self.assertEqual(err["code"], "author_mismatch")
+
+            self.assertEqual(store.read_json(ts.team.team_json), before)
+            self.assertFalse(any(method == "agent.rename" for method, _ in api.calls))
+            events = [record.get("event") for record in store.BoardStore(ts.team).read()]
+            self.assertNotIn("renamed", events)
+            self.assertNotIn("member_gone", events)
+
     def test_leave_from_member_pane(self):
         with TempState() as ts:
             api = live_api()

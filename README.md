@@ -21,9 +21,9 @@ Herdr hosts many coding agents in one terminal, but they cannot talk to each
 other. Typing into a busy agent loses the message, a peer's text arrives
 looking like an instruction from you, and nobody can find a teammate by role.
 `herdr-synapse` adds the missing layer as a plugin: it never touches the agent
-processes, only the terminals they live in, so it works for every agent kind
-Herdr detects (Claude Code, Codex, OpenCode, Gemini, Cursor, Copilot, and the
-rest).
+processes, only the terminals they live in, so the transport is agent-agnostic.
+End-to-end delivery is currently verified with Claude Code and Codex; other
+Herdr agent kinds stay blocked until you explicitly probe or trust them.
 
 ```
 team red-dev · 3 members · view:on · nudges:on · toasts:herdr · unread(you):0
@@ -31,12 +31,12 @@ charter #1: Ship the HTML report for susfind
 runtime: safe !:ready · Herdr 0.9.0/p22 · Synapse 0.16.0 · daemon 0.16.0
 
 ○  red-dev-claude-dev     claude-dev      claude    w1:p1  idle     "report.py: templates done"   manager  model opus@medium
-◐  red-dev-codex-reviwer  codex-reviewer  codex     w1:p2  working  "reviewing report.py"         ↪1 (not_idle)
+◐  red-dev-codex-reviewer codex-reviewer  codex     w1:p2  working  "reviewing report.py"         ↪1 (not_idle)
 ○  red-dev-brainstormer   opencode-dev    opencode  w1:p9  idle     "holding for direction"
 
 #131 14:02 human→all              please review the HTML report before we ship        ✓nudged ✓read by 2/3
 #133 14:04 red-dev-claude-dev→human →request  report.py is ready; who reviews?        ✓read
-#134 14:04 human→red-dev-codex-reviwer »direct  review report.py, focus on escaping   ✓typed
+#134 14:04 human→red-dev-codex-reviewer »direct  review report.py, focus on escaping   ✓typed
 #135 14:06 ⇄ blue-ops/blue-ops-manager→red-dev-claude-dev →request  can red-dev share the escaping test?   ✓nudged ✓read
 
 filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? help
@@ -48,10 +48,10 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
 **Teams**
 
 - **Teams, roles, names.** Pick live agents into a team with `prefix+t`, or
-  spawn fresh ones into new panes, give each a role, a unique name, a brief,
-  and a model, and set a charter every member knows. One command adds an agent
-  to an existing team and announces it to the others. Each team has its own
-  colour in Herdr's Agents sidebar.
+  spawn fresh ones into new panes, give each a role, a unique name and a brief,
+  choose a model on supported harnesses, and set a charter every member knows.
+  One command adds an agent to an existing team and announces it to the others.
+  Each team has its own colour in Herdr's Agents sidebar.
 - **A team per space, a board per team.** `prefix+u` opens the board of the
   team in the space you pressed it in; every command means the team you are
   looking at, and `--team` overrides. Open several boards side by side, each
@@ -61,7 +61,7 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
   checkout are never mixed up after a restart, and an agent that crashed and
   came back is briefed again instead of silently wearing a member's name.
   `herdr-synapse resume <name>` reopens a member's own conversation.
-- **A model and an effort per member.** Say `opus@medium` for one agent and
+- **A model and an effort for supported harnesses.** Say `opus@medium` for one agent and
   `gpt-5.6-luna@high` for another when you create the team, or change it
   later from the CLI, the console, or the teams view. Claude switches live;
   Codex and OpenCode at their next resume, or now with a restart that keeps
@@ -92,9 +92,10 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
   across, and a read receipt comes back. `/filter teams` is the inter-team
   lens; `c` in the teams view makes and breaks links.
 - **Agents that need you get you.** A question to the operator opens a popup
-  you answer in, and the agent waits for the answer instead of guessing or
-  being talked past by a peer. `Ctrl-A` acknowledges without deciding, and an
-  acknowledgement says that it is not a decision.
+  you answer in and, when blocking asks are enabled, the agent waits instead
+  of guessing or being talked past by a peer. Long-running shell behaviour is
+  harness-dependent and is called out in the matrix below. `Ctrl-A`
+  acknowledges without deciding, and says that it is not a decision.
 
 **Authority and knowledge**
 
@@ -107,8 +108,8 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
 - **Instructions you actually edit.** Every member gets a document with the
   same six sections: mission, scope, constraints, definition of done,
   handoffs, and notes you keep private. Edit the file in your repo, and one
-  command shows the diff and applies it. The agent is given the change on its
-  next turn.
+  command shows the diff and applies it. Claude receives the change through
+  its next hook; other trusted kinds are nudged to read it.
 - **A folder the team shares.** `herdr-synapse project set <path>` gives the
   team `.herdr-synapse/<team>/` in your project: the rules, one instructions
   file per member, a live `board.md`, and an `artifacts/` directory the agents
@@ -121,15 +122,18 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
 
 **Operations**
 
-- **Context you can see and act on.** Every member shows how full its context
-  window is, read from the harness's own transcript, rollout log or database.
+- **Context you can see and act on.** Claude Code, Codex and OpenCode members
+  show how full their context window is, read from the harness's own transcript,
+  rollout log or database; other kinds explicitly show unknown.
   The board says so at 75 % and 90 %, the sidebar gauge turns yellow then red,
   and `compact <name>` or `clear <name>` types the kind's own command when the
   member is next idle. A compacted or cleared member is re-briefed, and
   `herdr-synapse orient` gives it the whole team back in one read.
-- **Usage limits for every agent at once.** `prefix+i` shows the session,
-  weekly, and per-model windows of every provider account your agents draw on,
-  grouped by the agents behind each.
+- **Usage limits across supported providers.** `prefix+i` shows the session,
+  weekly, and per-model windows that supported provider accounts publish,
+  grouped by the agents behind each. It reads the agent CLIs' local login
+  tokens only when you open the report, uses them only for HTTPS requests to
+  the providers' usage endpoints, and never stores, logs, or prints them.
 - **A board you can keep, or clear.** `export` saves the whole board, archive
   included, as Markdown, JSON, JSONL or text. `wipe` empties it into the
   archive with a note saying who did it; `--purge` deletes it for good.
@@ -138,6 +142,105 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
   audited, and `notifier stats` shows a `wrong_target` count that must stay 0.
 - **Optional Claude Code hooks.** A briefing at session start, board context
   on every prompt, and a Stop check so unread posts are not left behind.
+
+## Compatibility: what works with which agent
+
+Herdr's **Settings → integrations** screen says whether Herdr can receive an
+agent's lifecycle and session state. It does not mean every harness-specific
+Synapse feature is implemented or verified. The distinction matters.
+
+All user-visible feature families are covered below. The exhaustive command,
+parameter and shortcut inventory is in [docs/reference.md](docs/reference.md).
+
+The coordination layer itself does not depend on a harness adapter:
+
+| Shared feature family | All 17 Herdr integrations | Other detected kinds | Current limit |
+| --- | --- | --- | --- |
+| Teams and authority | ✓ | ✓ | Create, add, remove and dissolve; names, roles, briefs, charters, managers, delegates and multiple teams all work from Herdr's agent and terminal records. Model selection is separate below. |
+| Board and collaboration | ✓ | ✓ | Posts, kinds, replies, references, attachments, receipts, filters and the agent skill use the same board format for every kind. |
+| Team-to-team coordination | ✓ | ✓ | Links, topology, cross-team posts and receipts are harness-independent; both teams need a manager. |
+| Instructions and knowledge | ✓ | ✓ | Project folder, rules, per-member instructions, findings and artifact watching work for every kind; automatic delivery of a change follows the delivery row below. |
+| Human interaction and UI | ✓ | ✓ | Teams view, console, compose, sidebar tokens, focus/peek and the operator ask queue are shared. Whether an agent's shell tool can remain blocked for an answer is listed below. |
+| Operations and safety | ✓ | ✓ | Export, archive, wipe, audit, notifier statistics, mute/pause, health checks and operator gates are agent-independent. |
+
+The remaining capabilities touch the receiving TUI, its session store, model
+flags, context files or provider account. Delivery is implemented through
+Herdr's terminal API for every kind, but Synapse blocks a kind until you
+explicitly probe or trust it because the receiving TUI's behaviour still has
+to be verified.
+
+The table below covers every state integration currently shown by Herdr. `✓`
+means supported and live-verified, `◐` means implemented but conditional or not
+fully live-verified, and `—` means Synapse has no adapter for that feature.
+
+<!-- BEGIN: integration-compatibility -->
+| Herdr integration | Resume | Idle nudge | Safe `!` | Running `!!` / interrupt | Ask wait | Hooks | Model / effort | Context | Compact / clear | Usage |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Pi (`pi`) | ◐ | ◐ | ◐ | ◐ | ◐ | — | — | — | — | ◐ |
+| OMP (`omp`) | ◐ | ◐ | ◐ | ◐ | ◐ | — | — | — | — | — |
+| Claude Code (`claude`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ◐ | ◐ | ◐ | ✓ |
+| Codex (`codex`) | ✓ | ✓ | ◐ | ◐ | ◐ | — | ◐ | ✓ | ◐ | ✓ |
+| GitHub Copilot (`copilot`) | ◐ | ◐ | ◐ | ◐ | ◐ | — | — | — | — | ◐ |
+| Devin (`devin`) | ◐ | ◐ | ◐ | ◐ | ◐ | — | — | — | — | — |
+| Droid (`droid`) | ◐ | ◐ | ◐ | ◐ | ◐ | — | — | — | — | — |
+| Kimi (`kimi`) | ◐ | ◐ | ◐ | ◐ | ◐ | — | — | — | — | — |
+| OpenCode (`opencode`) | ✓ | ◐ | ◐ | ◐ | ◐ | — | ◐ | ◐ | ◐ | ◐ |
+| Kilo Code (`kilo`) | ◐ | ◐ | ◐ | ◐ | ◐ | — | — | — | — | — |
+| Hermes (`hermes`) | ◐ | ◐ | ◐ | ◐ | ◐ | — | — | — | — | — |
+| Qoder CLI (`qodercli`) | ◐ | ◐ | ◐ | ◐ | ◐ | — | — | — | — | — |
+| Qwen Code (`qwen`) | ◐ | ◐ | ◐ | ◐ | ◐ | — | — | — | — | — |
+| Cursor Agent (`cursor`) | ◐ | ◐ | ◐ | ◐ | ◐ | — | — | — | — | — |
+| MastraCode (`mastracode`) | ◐ | ◐ | ◐ | ◐ | ◐ | — | — | — | — | — |
+| Antigravity CLI (`antigravity-cli`, agent kind `agy`) | ◐ | ◐ | ◐ | ◐ | ◐ | — | — | — | — | — |
+| Grok (`grok`) | ◐ | ◐ | ◐ | ◐ | ◐ | — | — | — | — | — |
+<!-- END: integration-compatibility -->
+
+What the conditional cells mean:
+
+- **Session resume:** implemented for all 17 Herdr integrations above; live
+  round trips are verified only for Claude Code, Codex and OpenCode. It needs
+  that integration to have reported the member's session identity first.
+- **Idle nudge:** live-verified end to end for Claude Code and Codex. Every
+  other kind is blocked by default until `hooks probe` or `kinds trust`; trust
+  enables it but does not turn an unverified harness into a verified one.
+- **Safe `!`:** the protocol path and refusal behaviour are covered by tests;
+  the complete TUI round trip is live-verified with Claude Code. It also
+  requires a running Herdr server that advertises atomic idle submission and
+  fails closed with an `@name` suggestion when that method is unavailable.
+- **Running `!!` / interrupt:** `!!name text` and teammate `post --interrupt` are
+  live-verified only for Claude Code. Other `!!` outcomes are labelled
+  unverified, and interrupts are off for other kinds unless explicitly enabled.
+- **Ask wait:** the board wait and operator popup are harness-independent, but
+  the agent must keep a long-running shell command alive. Claude Code is live-
+  verified; Codex and OpenCode handling is read from their installed binaries;
+  every other TUI remains unverified.
+- **Prompt hooks:** only Claude Code receives board context at prompt submit,
+  the session briefing at startup and the Stop check. Other kinds rely on typed
+  delivery and re-briefing.
+- **Model / effort:** implemented only for Claude Code, Codex and OpenCode.
+  Claude can switch live; Codex and OpenCode apply at resume or restart. The
+  flags are covered by tests and read from the installed CLIs, but still need
+  a complete live round trip per harness.
+- **Context gauge:** Codex supplies its effective window at runtime. OpenCode
+  supplies the active provider/model and its standard catalog limit, but custom
+  `opencode.json` limit overrides are not read yet. Claude supplies exact usage
+  and its active model, but Synapse currently resolves capacity through a
+  compiled Claude model catalog; therefore Claude context capacity is not yet
+  fully dynamic. Unknown capacity is shown as unknown and never raises a
+  percentage warning. Pi and the other integrations are not tracked yet.
+- **Compact / clear:** implemented only for Claude Code, Codex and OpenCode;
+  the safe idle transport and completion handling are tested, but the slash
+  commands have not completed a live verification pass in each real TUI.
+- **Account usage:** separate from the per-agent context gauge. Anthropic and
+  OpenAI Codex are live-verified; Copilot is best effort; Pi and OpenCode depend
+  on the provider/login they use, and OpenCode Zen publishes billing rather
+  than a quota window.
+
+Herdr also detects `gemini`, `cline`, `kiro`, `amp`, `maki` and `muse`, which
+are not among the 17 installable state integrations above. They can join teams
+and use the board without an integration; automatic terminal delivery still
+requires explicit trust. Synapse does not promise session resume or any
+feature in the harness-sensitive matrix for them.
 
 ## Install
 
@@ -150,8 +253,7 @@ to expose `agent.prompt_if_idle`; the console and `daemon status` show that
 capability directly and offer `@name text` when it is unavailable.
 
 Start `herdr` first: the install registers the plugin through the running
-server. While this repository is private you also need git credentials for
-GitHub, so run `gh auth login` once if you have not.
+server.
 
 ```bash
 # 1. the plugin, and the CLI on your PATH
@@ -319,6 +421,9 @@ Default key bindings: `prefix+t` teams view, `prefix+u` console, `prefix+m`
 compose popup, `prefix+y` team view in the sidebar, `prefix+i` usage limits,
 `prefix+f` team knowledge.
 
+The [complete command and shortcut reference](docs/reference.md) lists every
+CLI parameter, plugin action, console command, and key used inside each view.
+
 ## The teams view
 
 `prefix+t` shows every team with its members underneath and the unassigned
@@ -418,18 +523,19 @@ a peer asking, never the operator. A manager cleared after linking pauses the
 link rather than dropping messages; dissolving a team breaks its links and
 tells the other side. Links are session-scoped: two Herdr servers do not link.
 
-## A model and an effort per member
+## A model and an effort for supported harnesses
 
-Each member carries an optional setting of the form `<model>[@<effort>]`, in
-the harness's own vocabulary, passed through untranslated: `medium` means what
-that harness means by it.
+Claude Code, Codex and OpenCode members can carry an optional setting of the
+form `<model>[@<effort>]`, in the harness's own vocabulary, passed through
+untranslated: `medium` means what that harness means by it. Other kinds are
+refused rather than receiving guessed flags.
 
 ```bash
 # at creation: per spawned role, or as the team default for a kind
 herdr-synapse create hunt --new --spawn reviewer:codex --spawn dev:claude \
     --model reviewer=gpt-5.6-luna@high --model claude=opus@medium
 herdr-synapse models set codex gpt-5.6-luna@medium     # team default for a kind
-herdr-synapse model                                    # every member, with the source of its setting
+herdr-synapse model                                    # every supported member, with the setting source
 herdr-synapse model hunt-reviewer @xhigh               # change one half
 herdr-synapse model hunt-reviewer gpt-5.6-luna@high --apply restart
 herdr-synapse model --self opus@high                   # a member, for itself
@@ -513,7 +619,8 @@ spawn its members into fresh panes, hand out roles, briefs and models, post
 the work, link up with another team's manager, and read the board back. The
 documents that carry your authority are the exception: the charter, the team
 rules, and each member's instructions are yours, and a member is refused when
-it tries to write them.
+it tries to write them. Removing or renaming an existing member also requires
+operator authority.
 
 When you want an agent to do the whole thing, say so once:
 
@@ -534,8 +641,8 @@ Authority is decided by origin, not by name. A process inside an agent's pane
 is that agent whatever its environment claims, and the gates test where a
 command came from rather than what it calls itself. A shell Herdr cannot
 verify as yours still posts, rendered `(unverified)`, but carries no
-authority: `charter`, `knowledge set`, `instructions`, `manager`, `operator
-grant`, `dissolve`, `wipe` and the policies refuse it and say how to be
+authority: `charter`, `knowledge set`, `instructions`, `manager`, `remove`,
+`rename`, `operator grant`, `dissolve`, `wipe` and the policies refuse it and say how to be
 trusted — the team console, a focused Herdr pane, or `env -u HERDR_PANE_ID
 herdr-synapse --team <team> …`. This is a speed bump rather than a wall:
 anything running as your user can reach your files. It closes the obvious
@@ -603,32 +710,36 @@ herdr-synapse resume vuln-hunt-reviewer --print   # just show it
 Never use a bare `claude --continue`, `codex resume --last`, or `opencode -c`
 for a team member. Those pick a conversation by directory or by recency, not
 by pane, so in a shared checkout they can bring back a different member's
-work. `resume` covers every kind Herdr ships an integration for (17 at 0.8.2);
+work. `resume` covers every kind in Herdr's current integration list (17);
 a kind without one keeps working exactly as before, it just has no session to
 reopen. `prefix+t`, Enter on a member, action 7 shows the command.
 
 ## Context windows
 
-Herdr knows nothing about tokens and no agent will tell you over a socket, but
-every kind here writes exact counts to disk. The notifier reads them every
-fifteen seconds.
+Herdr knows nothing about tokens and no agent exposes them through Herdr's
+socket. Synapse currently has file readers for Claude Code, Codex and OpenCode;
+the notifier reads them every fifteen seconds.
 
 ```bash
-herdr-synapse context                           # every member, with a bar and a percent
+herdr-synapse context                           # supported members get a bar; others are unknown
 herdr-synapse compact vuln-hunt-reviewer        # summarise its context in place
 herdr-synapse clear vuln-hunt-reviewer --yes    # throw it away and brief it again
 ```
 
-| Kind | Where the number comes from |
-| --- | --- |
-| Claude | the session transcript's newest `message.usage`, cache reads included |
-| Codex | the rollout log's newest `token_count`, which carries the window size too |
-| OpenCode | the newest assistant message in `opencode.db` |
+| Kind | Tokens | Window capacity |
+| --- | --- | --- |
+| Claude Code | newest transcript `message.usage`, cache reads included | compiled catalog keyed by the observed model; not fully dynamic yet |
+| Codex | rollout log's newest `token_count` | exact `model_context_window` from the same runtime event |
+| OpenCode | newest assistant message in `opencode.db` | active `providerID` + `modelID` in the standard local catalog; custom config overrides are not read yet |
 
 Any other kind reads `unknown`; nothing is estimated. At 75 % and again at
 90 % the board gets one line addressed to that member and to the team, and
 the member is nudged with it. The plugin never acts on it: what to do about a
 full context is the member's decision, or yours.
+
+`compact` and `clear` are available only for these three kinds. Their transport
+and completion handling are tested, but the slash command itself is still
+awaiting a live verification pass in each TUI.
 
 A member may compact itself, and the skill tells it to finish or hand off its
 task first. Clearing is yours alone, and asks before it runs. A member that
@@ -656,18 +767,20 @@ teams you are linked to, where the team's files are, and your unread count.
 The team's findings are a count and a command, not text: they are peer notes,
 and a compacted agent should choose when to spend context re-reading them.
 
-A Claude member is handed exactly this by its session hook. Every other kind is
-re-briefed with a typed line naming `orient`, whether the operator, the member,
-or the harness itself compacted, so the kinds without hooks get the same
-recovery as the one with them.
+A Claude member is handed exactly this by its session hook. Codex and OpenCode
+are re-briefed with a typed line naming `orient` after a detected compaction;
+other trusted kinds receive the typed re-briefing when Herdr reports a restart
+or session change, but Synapse does not offer `compact` or `clear` for them.
 
 What `orient` can hand back is only what you wrote. `doctor` says so when a
 team has no rules or its members have empty instructions.
 
 ### Give it something to hand back
 
-Two documents carry your authority into every agent's context, and both are
-worth writing before you rely on any of this:
+Two documents define the authority each member can load into its working
+context. Claude hooks inject them; other kinds read them through `orient` and
+the explicit instructions and knowledge commands. Both are worth writing
+before you rely on any of this:
 
 ```bash
 herdr-synapse knowledge set --file rules.md          # the whole team reads these
@@ -716,12 +829,12 @@ notice it just says it was seen.
 And the agent **waits**. `post --kind question --to human` does not return until
 you answer, so it cannot proceed on a guess or be talked past by a peer. Only
 the operator closes an ask; a teammate's reply is a note on the thread, not an
-answer. Nothing special is needed for this to work on any agent kind, because
-every agent is already waiting on a shell command; the wait reports that it is
-still waiting every 30 s, so a harness that shows command output as it runs
-does not mistake it for a hang. If nobody answers within eight minutes the
-command gives up with a distinct exit code, the question stays on the board,
-and the skill tells the agent not to guess.
+answer. The board-side wait is harness-independent and reports that it is still
+waiting every 30 s. How a TUI surfaces a long-running shell command is
+documented for Claude Code, Codex and OpenCode; other kinds should be treated as
+conditional until verified. If nobody answers within eight minutes the command
+gives up with a distinct exit code, the question stays on the board, and the
+skill tells the agent not to guess.
 
 Blocking defaults to `question`, `blocked` and `request`; blocking a `done`
 notice would freeze a team that posts forty of them. `/ask-policy` in the team
@@ -802,8 +915,9 @@ peer mail.
   the verified console; a process descended from an agent's pane is that agent
   whatever its environment says.
 - Authority tests the origin, not the name. The charter, rules, instructions,
-  manager, links, grants, and policies accept only a verified human origin or
-  an explicit, expiring delegation, and every use of a delegation is audited.
+  manager, roster removal and renaming, links, grants, and policies accept
+  only a verified human origin or an explicit, expiring delegation, and every
+  use of a delegation is audited.
 - Every board line the agents see is quoted under a system header. The only
   text carrying your authority is the charter, a member's brief and
   instructions, and the team rules, all written by commands an agent cannot
@@ -817,20 +931,24 @@ peer mail.
 
 ## Documentation
 
+- [docs/reference.md](docs/reference.md): every CLI command and parameter, plugin action, console command, and GUI shortcut in one place.
 - [docs/human-testing.md](docs/human-testing.md): a guided first run, including an isolated sandbox session that cannot interfere with your real Herdr.
 - [docs/capabilities.md](docs/capabilities.md): every capability, how to drive it from the UI and the CLI, what to expect, and a test checklist.
 - [docs/cli.md](docs/cli.md): the command contract, with every argument, JSON shape, exit code, and record grammar.
 - [docs/development.md](docs/development.md): internals, conventions, state layout, and the status log.
 - [skills/herdr-synapse/SKILL.md](skills/herdr-synapse/SKILL.md): what agents are taught, printed by `herdr-synapse --skill`.
 - [CHANGELOG.md](CHANGELOG.md): what changed in each release, and why.
+- [CONTRIBUTING.md](CONTRIBUTING.md): bug reports, pull requests, and validation.
+- [SECURITY.md](SECURITY.md): private vulnerability reporting and sensitive-data guidance.
 
 ## Status
 
-Current release: 0.16.0, skill v10.
+Current source version: 0.16.0, skill v10.
 
-Verified live with Claude Code, Codex, and OpenCode: team formation, board
-delivery, session identity, `resume`, the operator gate, and the trusted-origin
-rule on a real session. Typing into a running turn (`!!`, and a teammate's
+Team formation, session identity, `resume`, the operator gate, and the
+trusted-origin rule have been verified live with Claude Code, Codex, and
+OpenCode. Board delivery is verified end to end with Claude Code and Codex.
+Typing into a running turn (`!!`, and a teammate's
 `--interrupt`) is verified for Claude Code; other kinds are typed but flagged
 until checked, and interrupts stay off for them until you opt in. Usage limits
 are verified for Anthropic and OpenAI Codex logins; Copilot and Gemini are best
@@ -852,7 +970,7 @@ is not.
 ```bash
 git clone https://github.com/vitalysim/herdr-synapse.git
 cd herdr-synapse
-python3 -m unittest discover -s tests             # 1863 tests, no dependencies
+python3 -m unittest discover -s tests             # standard library only
 bin/herdr-synapse-sandbox start ~/your/project    # an isolated Herdr session for live testing
 ```
 

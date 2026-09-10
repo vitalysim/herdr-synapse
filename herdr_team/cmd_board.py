@@ -910,7 +910,7 @@ def resolve_files(layout: Layout, team_name: str, files: Sequence[str], doc: Opt
             raise HerdrTeamError("ref_invalid", "file does not exist under your directory or any member's: {}".format(raw), EXIT_REFUSED, {"ref": raw, "searched": [os.fspath(r) for r in roots]})
         project_dir = _workdir.project_dir_of(doc)
         if any(part.startswith(".") and part not in (".", "..") for part in source.resolve().parts[1:]) and not _workdir.is_inside(source, project_dir):
-            # The team's own ``.herdr-team/artifacts/`` is the exception: it is
+            # The team's own ``.herdr-synapse/artifacts/`` is the exception: it is
             # where members are told to leave work products, and it is ours.
             raise HerdrTeamError("ref_invalid", "file sits under a dot-directory (.ssh, .aws, .config ...): {}".format(raw), EXIT_REFUSED, {"ref": raw, "path": os.fspath(source)})
         try:
@@ -1411,7 +1411,7 @@ def compute_receipts(team: TeamPaths, doc: Dict[str, Any], records: List[Dict[st
 
 
 def copy_payloads_for_sandboxed(layout: Layout, team: TeamPaths, doc: Dict[str, Any], author: Author, records: List[Dict[str, Any]]) -> None:
-    """Plan 6.2: kinds with ``payload_readable:false`` get refs copied into ``<cwd>/.herdr-team/``."""
+    """Kinds with ``payload_readable:false`` get refs copied into ``<cwd>/.herdr-synapse/``."""
     kinds = store.read_json(layout.session.kinds_json)
     if not isinstance(kinds, dict) or not author.is_member:
         return
@@ -1422,7 +1422,7 @@ def copy_payloads_for_sandboxed(layout: Layout, team: TeamPaths, doc: Dict[str, 
     cwd = member.get("cwd")
     if not cwd:
         return
-    target = Path(cwd) / ".herdr-team"
+    target = Path(cwd) / _workdir.DIR_NAME
     for record in records:
         for ref in record.get("refs") or []:
             if not isinstance(ref, str) or not ref.startswith("payloads/"):
@@ -1734,7 +1734,7 @@ def _ref_entry(layout: Layout, team_name: str, team: TeamPaths, doc: Dict[str, A
         return entry
     if _hidden_parts(resolved, root) and not force and not _workdir.is_inside(resolved, _workdir.project_dir_of(doc)):
         # A cwd recorded as HOME after a restart is never a root; a dot-directory under a real root still is not cat-able by default.
-        # The team's own .herdr-team/ is the exception: the plugin created it and tells members to write there.
+        # The team's own .herdr-synapse/ is the exception: the plugin created it and tells members to write there.
         entry["skipped"] = "under a dot-directory (pass --force)"
         return entry
     raw = store.read_bytes(resolved, b"") or b""

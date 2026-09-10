@@ -3129,22 +3129,25 @@ class Daemon:
                 continue
             rt.context_read_ms = now
             record = roster.read_pane_record(self.session, str(terminal)) or {}
+            configured_model = _models.effective_setting(team.roster.get("config"), member)[0]
             try:
-                reading = _context.read_member(member.get("kind"), member.get("session"), record, home=_context.home_dir(self.env))
+                reading = _context.read_member(member.get("kind"), member.get("session"), record,
+                                               home=_context.home_dir(self.env), configured_model=configured_model)
             except Exception as err:  # noqa: BLE001 - a malformed transcript is not fatal
                 self.log("{}: cannot read {}'s context: {}".format(team.name, name, err))
                 continue
             if reading is None:
                 continue
             mtime = self._file_mtime(reading.source)
-            if mtime is not None and rt.context_mtime == mtime and rt.context is not None:
-                continue  # the harness has not written since we last looked
+            encoded = reading.to_json()
+            if mtime is not None and rt.context_mtime == mtime and rt.context == encoded:
+                continue  # neither the harness reading nor its resolved window changed
             rt.context_mtime = mtime
             previous = rt.context
             session_key = roster.session_key(member.get("session"))
             same_history = previous is not None and rt.context_session == session_key
             rt.context_session = session_key
-            rt.context = reading.to_json()
+            rt.context = encoded
             self.who_dirty = True
             open_control = rt.control_pending
             if isinstance(open_control, dict) and open_control.get("action") == "model" \
@@ -3226,9 +3229,10 @@ class Daemon:
         if not isinstance(pane_id, str) or not pane_id:
             return
         rt = team.rt(str(member.get("name")))
-        value = "{:.0f}%".format(reading.percent)
-        severity = _usage.severity_for(reading.percent)
-        stamp = "{}:{}".format(severity or _usage.NORMAL, value)
+        percent = reading.percent
+        value = "{:.0f}%".format(percent) if percent is not None else None
+        severity = _usage.severity_for(percent)
+        stamp = "{}:{}".format(severity or _usage.NORMAL, value or "unknown")
         unchanged = rt.context_stamp_value == stamp and rt.context_stamp_ms is not None and now - rt.context_stamp_ms < TASK_RESTAMP_S * 1000.0
         if unchanged:
             return

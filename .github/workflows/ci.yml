@@ -1,5 +1,8 @@
 name: ci
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -13,7 +16,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest, ubuntu-latest]
-        python: ["3.9", "3.12"]
+        python: ["3.9", "3.14"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -23,6 +26,7 @@ jobs:
         run: python -m unittest discover -s tests
       - name: Launcher and manifest sanity
         run: |
-          sh -n bin/herdr-synapse bin/hook bin/herdr-synapse-sandbox
+          sh -n bin/herdr-synapse bin/hook bin/herdr-synapse-sandbox console.sh
           ./bin/herdr-synapse --version
           ./bin/herdr-synapse --skill | head -n 3
+          python -m herdr_team.reference_docs --check

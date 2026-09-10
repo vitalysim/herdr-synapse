@@ -34,7 +34,7 @@ def write_jsonl(path: Path, records):
     return path
 
 
-def claude_record(used, model="claude-opus-5", at="2026-09-08T10:00:00.000Z"):
+def claude_record(used, model="claude-haiku-4-5", at="2026-09-08T10:00:00.000Z"):
     return {"type": "assistant", "timestamp": at, "message": {
         "model": model,
         "usage": {"input_tokens": 4, "cache_creation_input_tokens": 6, "cache_read_input_tokens": used - 20, "output_tokens": 10},
@@ -61,6 +61,15 @@ def opencode_db_with(home: Path, session_value, rows):
     return path
 
 
+def opencode_models_with(home: Path, provider, model, window):
+    path = context.opencode_models(home)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({provider: {"id": provider, "models": {
+        model: {"id": model, "limit": {"context": window, "output": 10_000}},
+    }}}), encoding="utf-8")
+    return path
+
+
 # --------------------------------------------------------------------------
 # the readers
 
@@ -72,17 +81,18 @@ class ReadingTests(unittest.TestCase):
         self.assertEqual(reading.to_json(), {
             "used": 94_000, "window": 200_000, "percent": 47.0, "model": "claude-opus-5",
             "source": "/t.jsonl", "at": "2026-09-08T10:00:00Z"})
-        # a window we failed to read is reported as 0%, never as a division error
-        self.assertEqual(context.Reading(used=10, window=0, source="x").percent, 0.0)
+        # A window we failed to resolve is explicit, never a made-up percentage.
+        unknown = context.Reading(used=10, window=None, source="x")
+        self.assertIsNone(unknown.percent)
+        self.assertIsNone(unknown.to_json()["window"])
+        self.assertIsNone(unknown.to_json()["percent"])
 
-    def test_window_widens_to_fit_what_was_actually_observed(self):
-        # a model in the table keeps its window
-        self.assertEqual(context.window_for("claude-opus-5", 10), 200_000)
-        # a model that is not in the table falls back to the smallest tier
-        self.assertEqual(context.window_for("something-new", 10), context.DEFAULT_WINDOW)
-        # a session demonstrably carrying more is on a larger variant, not over 100 %
-        self.assertEqual(context.window_for("claude-opus-5", 930_000), 1_000_000)
-        self.assertEqual(context.window_for(None, 2_000_000), 2_000_000)
+    def test_claude_window_is_selected_by_the_current_model(self):
+        self.assertEqual(context.claude_window_for("claude-opus-5"), 1_000_000)
+        self.assertEqual(context.claude_window_for("claude-sonnet-5-20260901"), 1_000_000)
+        self.assertEqual(context.claude_window_for("claude-haiku-4-5"), 200_000)
+        self.assertEqual(context.claude_window_for("opus"), 1_000_000)
+        self.assertIsNone(context.claude_window_for("something-new"))
 
 
 class ClaudeReaderTests(unittest.TestCase):
@@ -94,9 +104,19 @@ class ClaudeReaderTests(unittest.TestCase):
     def test_reads_the_newest_usage_including_the_cache_reads(self):
         path = write_jsonl(self.home / "t.jsonl", [claude_record(100_000), {"type": "user"}, claude_record(188_000)])
         reading = context.read_claude(os.fspath(path))
-        self.assertEqual((reading.used, reading.window, reading.model), (188_000, 200_000, "claude-opus-5"))
+        self.assertEqual((reading.used, reading.window, reading.model), (188_000, 200_000, "claude-haiku-4-5"))
         self.assertEqual(reading.source, os.fspath(path))
         self.assertEqual(round(reading.percent), 94)
+
+    def test_current_one_million_model_does_not_inherit_the_old_200k_default(self):
+        path = write_jsonl(self.home / "opus.jsonl", [claude_record(188_000, "claude-opus-5")])
+        reading = context.read_claude(os.fspath(path))
+        self.assertEqual((reading.window, round(reading.percent, 1)), (1_000_000, 18.8))
+
+    def test_configured_model_is_only_a_fallback_when_the_record_omits_it(self):
+        path = write_jsonl(self.home / "no-model.jsonl", [claude_record(100_000, None)])
+        reading = context.read_claude(os.fspath(path), configured_model="sonnet")
+        self.assertEqual((reading.model, reading.window, reading.percent), (None, 1_000_000, 10.0))
 
     def test_a_missing_truncated_or_usageless_file_reads_nothing_rather_than_guessing(self):
         self.assertIsNone(context.read_claude(None))
@@ -153,6 +173,15 @@ class CodexReaderTests(unittest.TestCase):
         self.assertIsNone(context.read_codex(None, self.home))
         self.assertIsNone(context.read_codex("nosuch", self.home))
 
+    def test_a_rollout_without_its_authoritative_window_does_not_guess(self):
+        record = codex_record(20_000)
+        del record["payload"]["info"]["model_context_window"]
+        write_jsonl(self.home / ".codex" / "sessions" / "2026" / "09" /
+                    "rollout-2026-09-08T10-00-00-no-window.jsonl", [record])
+        reading = context.read_codex("no-window", self.home)
+        self.assertIsNone(reading.window)
+        self.assertIsNone(reading.percent)
+
 
 class OpencodeReaderTests(unittest.TestCase):
     def setUp(self):
@@ -161,15 +190,31 @@ class OpencodeReaderTests(unittest.TestCase):
         self.home = Path(self.ts.tmp) / "harness-home"
 
     def test_newest_assistant_message_wins_and_user_rows_are_ignored(self):
+        opencode_models_with(self.home, "opencode-go", "glm-5.3", 1_000_000)
         opencode_db_with(self.home, "ses_1", [
-            {"role": "assistant", "modelID": "claude-sonnet-5", "tokens": {"total": 20_000}},
+            {"role": "assistant", "providerID": "opencode-go", "modelID": "glm-5.3", "tokens": {"total": 20_000}},
             {"role": "user", "tokens": {"total": 999_999}},
-            {"role": "assistant", "modelID": "claude-sonnet-5", "tokens": {"total": 110_800}},
+            {"role": "assistant", "providerID": "opencode-go", "modelID": "glm-5.3", "tokens": {"total": 110_800}},
         ])
         reading = context.read_member("opencode", {"source": "herdr:opencode", "value": "ses_1"}, home=self.home)
-        self.assertEqual((reading.used, reading.window), (110_800, 200_000))
-        self.assertEqual(round(reading.percent, 1), 55.4)
+        self.assertEqual((reading.used, reading.window, reading.model), (110_800, 1_000_000, "glm-5.3"))
+        self.assertEqual(round(reading.percent, 1), 11.1)
         self.assertIsNone(context.read_opencode("ses_other", self.home))
+
+    def test_configured_model_recovers_a_missing_provider_and_catalogue_changes_invalidate_cache(self):
+        path = opencode_models_with(self.home, "opencode-go", "glm-5.3", 1_000_000)
+        self.assertEqual(context.opencode_window_for(None, "glm-5.3", "opencode-go/glm-5.3", self.home), 1_000_000)
+        path.write_text(path.read_text(encoding="utf-8").replace("1000000", "200000"), encoding="utf-8")
+        self.assertEqual(context.opencode_window_for(None, "glm-5.3", "opencode-go/glm-5.3", self.home), 200_000)
+
+    def test_unknown_model_keeps_the_count_but_has_no_percentage(self):
+        opencode_db_with(self.home, "ses_unknown", [
+            {"role": "assistant", "providerID": "private", "modelID": "future", "tokens": {"total": 42_000}},
+        ])
+        reading = context.read_opencode("ses_unknown", self.home)
+        self.assertEqual((reading.used, reading.model), (42_000, "future"))
+        self.assertIsNone(reading.window)
+        self.assertIsNone(reading.percent)
 
     def test_no_database_reads_nothing(self):
         self.assertIsNone(context.read_opencode("ses_1", self.home))
@@ -234,6 +279,37 @@ class PollTests(unittest.TestCase):
         self.transcript(190_000, "crit.jsonl")
         self.poll()
         self.assertEqual(self.tokens()[-1]["tokens"], {"team_context": None, "team_context_warn": None, "team_context_crit": "95%"})
+
+    def test_an_unknown_window_clears_the_gauge_and_never_warns(self):
+        self.transcript(160_000)
+        self.poll()
+        self.assertEqual(len(self.records("context_high")), 1)
+        self.transcript(180_000, "future.jsonl")
+        path = self.home / "future.jsonl"
+        write_jsonl(path, [claude_record(180_000, "claude-future")])
+        self.poll()
+        self.assertIsNone(self.team.rt(MEMBER).context["percent"])
+        self.assertIsNone(self.team.rt(MEMBER).context_severity)
+        self.assertEqual(len(self.records("context_high")), 1)
+        self.assertEqual(self.tokens()[-1]["tokens"], {
+            "team_context": None, "team_context_warn": None, "team_context_crit": None})
+
+    def test_window_and_effective_model_changes_apply_even_when_the_source_mtime_does_not(self):
+        member = self.team.member(MEMBER)
+        member["model"] = "opus"
+        readings = [
+            context.Reading(used=100_000, window=200_000, source="/same"),
+            context.Reading(used=100_000, window=1_000_000, source="/same"),
+        ]
+        from unittest import mock
+
+        with mock.patch.object(D._context, "read_member", side_effect=readings) as read, \
+                mock.patch.object(self.d, "_file_mtime", return_value=1.0):
+            self.poll()
+            self.poll()
+        self.assertEqual(self.team.rt(MEMBER).context["window"], 1_000_000)
+        self.assertEqual(self.team.rt(MEMBER).context["percent"], 10.0)
+        self.assertEqual(read.call_args.kwargs["configured_model"], "opus")
 
     def test_a_crossing_is_said_once_and_a_fall_back_makes_it_news_again(self):
         self.transcript(100_000)
@@ -318,15 +394,33 @@ class ContextCommandTests(unittest.TestCase):
         code, _out, err = json_out(run_cli(["--json", "--team", "alpha", "context", "nobody"], self.ts.env, FakeApi()))
         self.assertEqual((code, err["code"]), (1, "member_not_found"))
 
+    def test_direct_reads_receive_each_members_effective_model(self):
+        doc = store.read_json(self.ts.team.team_json)
+        reviewer = next(member for member in doc["members"] if member.get("name") == TARGET)
+        reviewer["model"] = "gpt-5.6-luna"
+        store.write_json(self.ts.team.team_json, doc)
+        from unittest import mock
+
+        with mock.patch.object(context, "read_member", return_value=None) as read:
+            code, _out, _err = json_out(run_cli(["--json", "--team", "alpha", "context"], self.ts.env, FakeApi()))
+        self.assertEqual(code, 0)
+        codex_call = next(call for call in read.call_args_list if call.args[0] == "codex")
+        self.assertEqual(codex_call.kwargs["configured_model"], "gpt-5.6-luna")
+
     def test_human_text_names_what_it_could_not_read(self):
         payload = {"team": "alpha", "source": "files", "members": [
             {"name": "one", "kind": "claude", "context": {"used": 188_000, "window": 200_000, "percent": 94.0, "model": None, "source": "/t", "at": None}},
-            {"name": "two", "kind": "amp", "context": None}]}
+            {"name": "two", "kind": "amp", "context": None},
+            {"name": "three", "kind": "opencode", "context": {"used": 42_000, "window": None,
+                                                                    "percent": None, "model": "future",
+                                                                    "source": "/db", "at": None}}]}
         from herdr_team.cmd_usage import render_context
 
         text = render_context(payload, 100, True)
         self.assertIn("94", text)
         self.assertIn("unknown", text)
+        self.assertIn("42,000 tokens", text)
+        self.assertIn("window unknown (future)", text)
 
 
 # --------------------------------------------------------------------------

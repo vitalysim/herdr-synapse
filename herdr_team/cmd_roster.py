@@ -555,7 +555,7 @@ def _add_create_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--ref", action="append", default=[], metavar="PATH")
     parser.add_argument("--member", action="append", default=[], metavar="TARGET[:ROLE[:NAME]]")
     parser.add_argument("--brief", action="append", default=[], metavar="NAME=TEXT")
-    parser.add_argument("--project", metavar="PATH", help="the team's project directory; creates <path>/.herdr-team/<team>/")
+    parser.add_argument("--project", metavar="PATH", help="the team's project directory; creates <path>/.herdr-synapse/<team>/")
     parser.add_argument("--rules", metavar="TEXT", help="the team's DOs and DON'Ts (human only)")
     parser.add_argument("--rules-file", dest="rules_file", metavar="PATH", help="read the rules from a file (human only)")
     parser.add_argument("--instructions", action="append", default=[], metavar="NAME=TEXT", help="long-form instructions for one member, repeatable (human only)")
@@ -929,6 +929,7 @@ def _run_remove(args: argparse.Namespace) -> int:
     api = api_for(args, layout)
     team_name = _paths.validate_team_name(args.team_pos)
     author = _author(args, layout, api, team=team_name)
+    _human_only(layout, team_name, author, "remove")
     check_write_session(args, layout, team_name)
     result = _roster.Roster(layout, team_name).remove_member(api, args.name, keep_name=args.keep_name, reason="removed by {}".format(author.name), socket=os.fspath(layout.socket))
     payload = {"team": team_name, "removed": result["removed"], "tokens_cleared": bool(result["tokens_cleared"]), "name_cleared": bool(result["name_cleared"])}
@@ -1374,6 +1375,7 @@ def _run_rename(args: argparse.Namespace) -> int:
     author = _author(args, layout, api)
     team_name = resolve_team(args, layout, author)
     assert team_name is not None
+    _human_only(layout, team_name, author, "rename")
     check_write_session(args, layout, team_name)
     team = _roster.load_team(layout.team(team_name))
     member = team.find(args.old)
@@ -1798,7 +1800,7 @@ def _no_arguments(parser: argparse.ArgumentParser) -> None:
 COMMANDS: List[Command] = [
     Command("create", "form a team from live agents (--member/--from-workspace) or fresh panes (--new --spawn)", _add_create_arguments, _run_create),
     Command("add", "add one live agent to a team", _add_add_arguments, _run_add),
-    Command("remove", "remove a member (tokens and label cleared, tombstone kept)", _add_remove_arguments, _run_remove),
+    Command("remove", "remove a member (operator-authorized; tokens and label cleared, tombstone kept)", _add_remove_arguments, _run_remove),
     Command("leave", "leave your team (from a member pane)", _no_arguments, _run_leave),
     Command("bind", "re-attach a missing member to a live agent", _add_bind_arguments, _run_bind),
     Command("resume", "reopen a member's own harness session in this pane (human only)", _add_resume_arguments, _run_resume),
@@ -1807,7 +1809,7 @@ COMMANDS: List[Command] = [
     Command("dissolve", "archive a team and clear every member's tokens and labels", _add_dissolve_arguments, _run_dissolve),
     Command("use", "set the default team for human posts", _add_use_arguments, _run_use),
     Command("teams", "list the teams of this session (works offline)", _no_arguments, _run_teams),
-    Command("rename", "rename a member (agent rename + roster + board note)", _add_rename_arguments, _run_rename),
+    Command("rename", "rename a member (operator-authorized; agent rename + roster + board note)", _add_rename_arguments, _run_rename),
     Command("me", "who am I: name, role, charter, teammates, unread", _no_arguments, _run_me),
     Command("orient", "everything you need after losing your context: identity, charter, instructions, rules, teammates", _add_orient_arguments, _run_orient),
     Command("who", "the roster with live status (reads who.json)", _add_who_arguments, _run_who),

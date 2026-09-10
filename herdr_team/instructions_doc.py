@@ -13,7 +13,7 @@ Three forms of the same thing:
 - **the file the operator edits** (``document``): the stored form plus a
   title, the member's role, and one HTML-comment hint per section, so the
   structure explains itself inside the file. This is what is mirrored to
-  ``<project>/.herdr-team/<team>/members/<name>.md``.
+  ``<project>/.herdr-synapse/<team>/members/<name>.md``.
 - **what an agent sees** (``injected``): known sections in order, private
   ones dropped, comments dropped, empty sections omitted, every line escaped.
 

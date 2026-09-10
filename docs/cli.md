@@ -5,6 +5,9 @@ the inventory; this document fixes arguments, JSON output shapes, and error
 codes. When an implementer must deviate, change this file in the same
 change and say why in the commit message.
 
+For the expandable command inventory and every GUI shortcut, see the
+[command and shortcut reference](reference.md).
+
 Conventions used below:
 
 - `<team>` is optional wherever the team can be inferred, in this order:
@@ -45,7 +48,7 @@ Global flags are accepted before or after the command name.
 | `--session NAME` | Named session, mirrors `herdr --session`. `default` means the default session. |
 | `--socket PATH` | Socket override. Wins over `--session`, `HERDR_SOCKET_PATH`, `HERDR_SESSION`. |
 | `--session-mismatch-ok` | Allow a write (`post`, `retract`, `edit`, `task`, `ack`, `charter set|edit`, `brief --set`, `use`, `rename`, `remove`, `bind`, `dissolve`) to a team whose `team.json` socket differs from the resolved socket. Without it such a write is refused with `team_session_mismatch` (plan 12, RS-08) whenever the socket was resolved explicitly (`HERDR_SOCKET_PATH`, `HERDR_SESSION`, `--session`); `--socket` counts as consent; the default-socket fallback outside Herdr (`--team <path>`, nothing configured) is not checked so the offline append of HP-05 keeps working. `add` checks always (as before). Reads never check. |
-| `--version` | `herdr-synapse 0.1.3`; JSON `{"version","skill_version","plugin_id"}`. |
+| `--version` | `herdr-synapse 0.16.0`; JSON `{"version","skill_version","plugin_id"}`. |
 | `--skill` | Prints `skills/herdr-synapse/SKILL.md`; JSON `{"skill","skill_version"}`. |
 
 Environment the CLI reads: `HERDR_SOCKET_PATH`, `HERDR_SESSION`,
@@ -177,9 +180,10 @@ Same join routine for one member. Then posts an urgent `member_joined` system re
 (`member`, `role`, `member_kind` fields): the daemon nudges every other member to read it, and the newcomer
 gets the briefing instead. JSON `{"team","member":member,"renamed":bool,"notifier","briefing_job","joined_record":seq}`.
 
-### `remove <team> <name> [--keep-name]`
+### `remove <team> <name> [--keep-name]` (operator-authorized)
 
-Clears the three tokens and the pane label, marks the member `left`
+Requires a trusted human origin or an active operator delegation. Clears the
+three tokens and the pane label, marks the member `left`
 (tombstone kept for addressing history), posts `member_gone`. JSON
 `{"team","removed":"<name>","tokens_cleared":true,"name_cleared":bool}`.
 
@@ -276,9 +280,10 @@ Works offline. JSON:
 {"teams":[{"team":"vuln-hunt","members":3,"socket":"…","running":true,"default":true,"team_dir":"…"}],"session":"default"}
 ```
 
-### `rename <old> <new>`
+### `rename <old> <new>` (operator-authorized)
 
-`agent rename` plus roster update plus a board note; the old name resolves
+Requires a trusted human origin or an active operator delegation. `agent
+rename` plus roster update plus a board note; the old name resolves
 for 10 minutes. JSON `{"team","old","new"}`.
 
 ## 5. Charter and briefs (operator authority)
@@ -1024,13 +1029,18 @@ entrypoint (`not_a_plugin_pane` outside the popup unless `--force`).
 
 How full each member's context window is, read from the harness's own files:
 Claude's transcript (`message.usage`), Codex's rollout log (`token_count`,
-which carries the window size outright), OpenCode's `opencode.db`. Nothing is
-typed and nothing is asked of the agent. A kind with no reader is `unknown`
-and is never guessed at. The notifier polls the same readers every 15 s, so
-this prints the notifier's reading when it is running and reads the files
-itself when it is not (`"source":"who.json"` or `"files"`).
+which carries the window size outright), and OpenCode's `opencode.db` plus its
+cached provider/model catalogue. Claude resolves the observed model's published
+limit; OpenCode resolves `providerID` + `modelID`; the configured model is only
+a fallback when a record omits identity. Nothing is typed and nothing is asked
+of the agent. A kind with no reader is `unknown` and is never guessed at. The
+notifier polls the same readers every 15 s, so this prints the notifier's
+reading when it is running and reads the files itself when it is not
+(`"source":"who.json"` or `"files"`).
 
-JSON `{"team","source","members":[{"name","kind","context":{"used","window","percent","source","model","at"}|null}]}`.
+JSON `{"team","source","members":[{"name","kind","context":{"used","window":number|null,"percent":number|null,"source","model","at"}|null}]}`.
+When the token count exists but the model window is unknown, human output keeps
+the exact count and says `window unknown`; no percentage or warning is emitted.
 `who` carries the same reading as a `context 94%` tag, and the notifier
 publishes it as the `team_context` pane token (source
 `herdr-synapse:context`, TTL 2 min) so the Herdr sidebar can show it.
@@ -1321,7 +1331,7 @@ of failing, so the config blocks always print.
 
 ### `keys print` / `keys check`
 
-`print` → `{"snippet":"<toml>","keys":{"team-up":"prefix+t","compose":"prefix+m","console":"prefix+u","toggle-view":"prefix+y"}}`.
+`print` → `{"snippet":"<toml>","keys":{"team-up":"prefix+t","compose":"prefix+m","console":"prefix+u","toggle-view":"prefix+y","usage":"prefix+i","knowledge":"prefix+f"}}`.
 `check` runs `herdr config check` → `{"ok":bool,"collisions":[{"key","bound_to"}],"output":"…"}`.
 
 ### `skill install [--force]` / `skill check`

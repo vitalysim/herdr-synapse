@@ -5,7 +5,8 @@ CLI, what you should observe, and how to check it. Written for the first
 human test in a real session and verified line by line against the code on
 2026-09-05. The CLI contract with every JSON shape is `docs/cli.md`; the
 guided first run is `docs/human-testing.md`; what agents are taught is
-`skills/herdr-synapse/SKILL.md`.
+`skills/herdr-synapse/SKILL.md`; the complete command and key inventory is
+[`docs/reference.md`](reference.md).
 
 Conventions: "UI" means keys and panes inside Herdr (needs the key snippet
 from `herdr-synapse keys print` pasted into your config once). "CLI" means
@@ -41,8 +42,8 @@ holds `daemon.json`, `daemon.log`, `who.json`, `kinds.json`, `view.json`,
 | Post to a linked team | console `/team <other> text`, `@team:` in the mention menu | `post --to team:<other>` (the manager, the operator, or a delegate) |
 | Model and effort per member | picker: a fourth prompt per agent (after role, name, brief) when creating or adding, and member action `9` afterwards; console `/model <name> <setting> [--restart]` | `models set <kind> <setting>` (team default), `model <member> <setting> [--apply live\|next\|restart] [--self]`; `who`/`me` show it (section 5e) |
 | See who is on which team | `prefix+t`: teams with their agents underneath, then the agents in no team; Enter folds a team, `↑↓`/PgUp/PgDn move, the list scrolls | `who`, `teams` |
-| Manage one member | `prefix+t`, Enter on a member: a numbered menu with rename, change its goal, send the goal now, remove it (with or without keeping its Herdr agent name), and go to its pane. Rename and goal are pre-filled and validated before anything is written; remove asks `y` (Enter is deliberately not yes). A member whose agent is missing or unsettled refuses rename, send and focus, because its pane is stale | `rename`, `brief <name> --set`, `brief <name>`, `remove`, `focus` |
-| Remove, leave | `prefix+t` → Enter on the member → 4, or console `/remove name` (asks y/n) | `remove <team> <name> [--keep-name]` (clears tokens and label, clears the Herdr name unless `--keep-name`, keeps a tombstone); `leave` from the member's own pane |
+| Manage one member | `prefix+t`, Enter on a member: a numbered menu with rename, change its goal, send the goal now, remove it (with or without keeping its Herdr agent name), and go to its pane. Rename and goal are pre-filled and validated before anything is written; remove asks `y` (Enter is deliberately not yes). Rename and remove require operator authority. A member whose agent is missing or unsettled refuses rename, send and focus, because its pane is stale | `rename`, `brief <name> --set`, `brief <name>`, `remove`, `focus` |
+| Remove, leave | `prefix+t` → Enter on the member → 4, or console `/remove name` (asks y/n) | `remove <team> <name> [--keep-name]` requires the operator or a delegate (clears tokens and label, clears the Herdr name unless `--keep-name`, keeps a tombstone); `leave` remains available from the member's own pane |
 | Re-attach a missing member | | `bind <team> <name> <target>`: refuses a kind mismatch unless the member is `kind_changed`, refuses a terminal another team claims, bumps the generation, re-applies name, label, tokens, clears the stale label on the old pane, records the target's harness session, posts `member_restarted` |
 | Let an agent build and run teams | | `operator grant <name> [--ttl 2h]` (yours alone; a delegate cannot pass it on): that member may then write the charter, the rules, any member's instructions and the project folder. Every use is audited as `operator_action`, the grant is announced on the board, `who` tags the member, and `doctor` warns while it is live. `operator revoke <name>` ends it |
 | Reopen a member's own conversation | `prefix+t`, Enter on the member, 7: shows the command | `resume <name>` from a shell pane (human only): runs the command Herdr's own restore would use for the session the roster recorded, in the member's directory, replacing the shell; the notifier rebinds the member to that pane by the session. Covers all 17 sources Herdr ships an integration for (`docs/cli.md` section 4), pi and omp by absolute path rather than id. `--print` only shows it. Never `--continue`: that picks by directory or recency and can bring back another member's conversation |
@@ -664,13 +665,16 @@ is typed and nothing is asked of the agent.
 
 | Kind | Source | Tokens | Window |
 | --- | --- | --- | --- |
-| Claude | newest `message.usage` in the transcript the hook recorded, else the transcript named by the session id | exact, cache reads included | from a model table, widened when the reading exceeds it |
+| Claude | newest `message.usage` in the transcript the hook recorded, else the transcript named by the session id | exact, cache reads included | from the observed model's published limit; the configured model is a fallback when the record omits it |
 | Codex | newest `token_count` in `~/.codex/sessions/**/rollout-*-<id>.jsonl` | exact, `last_token_usage` (not the cumulative total) | exact, `model_context_window` |
-| OpenCode | newest assistant `message.data.tokens.total` in `opencode.db` | exact | from a model table |
+| OpenCode | newest assistant `message.data.tokens.total` in `opencode.db` | exact | `limit.context` for its `providerID` + `modelID` in OpenCode's cached model catalogue |
 
-Readers tail their files rather than parsing them (`TAIL_BYTES` 256 KB) and
-open SQLite through an immutable URI, because these files reach tens of
-megabytes on a working machine. A kind with no reader reports `unknown`.
+Readers tail their files rather than parsing them (`TAIL_BYTES` 256 KB), open
+SQLite through an immutable URI, and cache OpenCode's catalogue by mtime,
+because these files reach tens of megabytes on a working machine. A kind with
+no reader reports `unknown`. A readable token count whose model window cannot
+be resolved keeps the count but reports a null window and percentage; it never
+inherits 200k or raises a context warning from a guess.
 
 | Surface | What it shows |
 | --- | --- |
@@ -884,8 +888,8 @@ out (`outside` stays trusted; an unreachable server changes nothing).
 
 | Capability | How | Notes |
 | --- | --- | --- |
-| Key bindings | `herdr-synapse keys print` → paste → `herdr server reload-config`; `keys check` reports collisions | `prefix+t` teams, `prefix+m` compose, `prefix+u` console, `prefix+y` view toggle, `prefix+i` usage limits; all unbound in Herdr's defaults |
-| Plugin actions | `herdr plugin action invoke herdr-synapse.<team-up\|compose\|console\|who\|usage\|toggle-view\|daemon-start>` | same entrypoints as the keys |
+| Key bindings | `herdr-synapse keys print` → paste → `herdr server reload-config`; `keys check` reports collisions | `prefix+t` teams, `prefix+m` compose, `prefix+u` console, `prefix+y` view toggle, `prefix+i` usage limits, `prefix+f` knowledge; all unbound in Herdr's defaults |
+| Plugin actions | `herdr plugin action invoke herdr-synapse.<team-up\|compose\|console\|who\|usage\|knowledge\|toggle-view\|daemon-start>` | same entrypoints as the keys, plus the unbound `who` and `daemon-start` actions |
 | Usage limits | `prefix+i`, `herdr-synapse ui usage`, or `herdr-synapse usage [--json]` | the session, weekly, and per-model windows of every provider account the session's agents draw on (Anthropic, OpenAI Codex, GitHub Copilot, Google Gemini; OpenCode Zen listed as billed per token), grouped with the agents behind each, bars with `⚠`/`‼` at 75/90 %, reset times; the popup refreshes every minute, `r` now, `q` closes; kinds with no known source are listed as not tracked |
 | Sidebar rows | `herdr-synapse setup --print-config` → paste the required block → reload | `$team_role` and `$team_task` per member; the optional block switches status glyphs to symbols for every agent |
 | Team colours | automatic, after the sidebar block is pasted | each team holds one of six colour slots (`config.color_slot` in `team.json`, assigned by the notifier, lowest free slot first, colours repeat past six); its members are stamped with `team_c<slot>` carrying the team name, and the pasted row gives each slot its own colour, so the team name renders in the team's colour. Herdr colours a sidebar cell from a fixed `fg` in your config and cannot colour by a token's value, so this is what makes teams distinguishable. `doctor` warns when your config predates the colour cells |
@@ -1023,11 +1027,6 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
 
 ## 12. Not built or not verified yet
 
-- Removing a member is not human-only in the CLI (`remove` and `rename` have
-  no `require_human` guard, unlike `dissolve` and `brief --set`), so an agent
-  pane can remove or rename a teammate today. The skill forbids it and
-  nothing observed has done it, but it is not enforced; the picker adds no
-  authority, only a faster path for the operator.
 - Delivery verified end to end only for Claude and Codex. opencode, gemini,
   cursor-agent, kimi, agy need one `hooks probe` each (or `kinds trust`)
   before they receive nudges.
