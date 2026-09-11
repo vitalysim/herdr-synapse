@@ -118,6 +118,43 @@ def skeleton(mission: Optional[str] = None) -> Sections:
     return [(title, list(body) if title == "Mission" else []) for title in SECTIONS]
 
 
+def complete(sections: Sections, mission: Optional[str] = None) -> Sections:
+    """Add every missing standard section without discarding custom content.
+
+    The first occurrence of each known heading is placed in canonical order;
+    custom headings and duplicate known headings follow in their original
+    order. ``mission`` only fills an absent or empty Mission, so explicit
+    long-form instructions always win over the roster's short brief.
+    """
+    remaining = [(title, list(body)) for title, body in sections]
+    out: Sections = []
+    for wanted in SECTIONS:
+        found: Optional[Tuple[str, List[str]]] = None
+        for index, (title, body) in enumerate(remaining):
+            if title == wanted:
+                found = remaining.pop(index)
+                break
+        body = list(found[1]) if found is not None else []
+        if wanted == "Mission" and not _trimmed(body) and mission:
+            body = _trimmed(str(mission).splitlines())
+        out.append((wanted, body))
+    out.extend(remaining)
+    return out
+
+
+def mission_paragraph(sections: Sections) -> str:
+    """The first non-empty Mission paragraph, collapsed to one line."""
+    lines = section(sections, "Mission")
+    paragraph: List[str] = []
+    for line in lines:
+        if not line.strip():
+            if paragraph:
+                break
+            continue
+        paragraph.append(" ".join(line.split()))
+    return " ".join(part for part in paragraph if part).strip()
+
+
 def is_empty(sections: Sections) -> bool:
     return not any(body for _title, body in sections)
 

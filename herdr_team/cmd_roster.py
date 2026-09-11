@@ -34,6 +34,7 @@ from herdr_team import charter as _charter
 from herdr_team import cli as _cli
 from herdr_team import daemon as _daemon
 from herdr_team import identity as _identity
+from herdr_team import instructions_doc as _instructions_doc
 from herdr_team import operator as _operator
 from herdr_team import paths as _paths
 from herdr_team import render as _render
@@ -224,6 +225,45 @@ def _parse_brief_args(values: Optional[List[str]], flag: str = "--brief") -> Dic
     return out
 
 
+def _initial_member_documents(planned: Sequence[Tuple[str, str]], briefs: Dict[str, str], instructions: Dict[str, str]) -> Dict[str, str]:
+    """Validate every planned member's Mission and build its canonical document.
+
+    ``briefs`` is updated when explicit long-form instructions provide the
+    Mission: the first Mission paragraph becomes the short roster brief. This
+    runs during create's validation phase, before a team, pane, or member is
+    mutated.
+    """
+    for key, value in list(briefs.items()):
+        briefs[key] = _roster._sanitize_brief(value)
+    for key, value in list(instructions.items()):
+        instructions[key] = _charter.sanitize(value, _charter.MAX_INSTRUCTIONS_CHARS, code="instructions_too_long")
+
+    missing: List[str] = []
+    documents: Dict[str, str] = {}
+    for name, role in planned:
+        explicit = instructions.get(name)
+        sections = _instructions_doc.parse(explicit)
+        mission = _instructions_doc.mission_paragraph(sections)
+        brief = (briefs.get(name) or briefs.get(role) or "").strip()
+        if not brief and mission:
+            brief = _charter.brief_line(mission) or ""
+            briefs[name] = brief
+        if not brief and not mission:
+            missing.append(name)
+            continue
+        completed = _instructions_doc.complete(sections, mission=brief)
+        stored = _instructions_doc.to_text(completed)
+        documents[name] = _charter.sanitize(stored, _charter.MAX_INSTRUCTIONS_CHARS, code="instructions_too_long")
+    if missing:
+        raise HerdrTeamError(
+            "mission_required",
+            "Mission required for {} before they can join; pass --brief NAME=\"...\" or provide a non-empty ## Mission with --instructions".format(", ".join(missing)),
+            EXIT_REFUSED,
+            {"members": missing},
+        )
+    return documents
+
+
 # --------------------------------------------------------------------------
 # the batch join routine (create, add, --from-workspace, --new)
 
@@ -234,6 +274,8 @@ class _JoinSpec:
         self.role = role
         self.name = name
         self.brief = brief
+        #: Canonical six-section document prepared before any roster mutation.
+        self.initial_instructions: Optional[str] = None
         #: ``(model, effort)`` from ``create --model <name|role>=…``, recorded after the join.
         self.setting: Optional[Tuple[Optional[str], Optional[str]]] = None
         self.resolved: Optional[_roster.ResolvedTarget] = None
@@ -374,6 +416,8 @@ def perform_join(layout: Layout, api: Any, team: _roster.Team, spec: _JoinSpec, 
     saved, _prev = roster.add_member(member, steal=steal or previous_owner is not None, socket=os.fspath(layout.socket))
     team.members = saved.members
     team.revision = saved.revision
+    if spec.initial_instructions is not None:
+        _charter.initialize_instructions(layout, team.team, author, member.name, spec.initial_instructions)
     _roster.execute_token_commands(api, _roster.token_commands(member, team.team, color_slot=team.color_slot))
     # Join sets the member's cursor at the current max (plan 6.2); catch-up is board --last 30.
     try:
@@ -495,6 +539,9 @@ def _spawn_member(layout: Layout, api: Any, team: _roster.Team, team_paths: Team
     saved, _prev = roster.add_member(member, steal=args.steal, socket=os.fspath(layout.socket))
     team.members = saved.members
     team.revision = saved.revision
+    initial_instructions = leaf.get("initial_instructions")
+    if isinstance(initial_instructions, str):
+        _charter.initialize_instructions(layout, team.team, author, member.name, initial_instructions)
     out: Dict[str, Any] = {"member": _member_json(member, False), "job": None}
     try:
         started = _start_agent(api, name, kind, pane_id, args=_models.launch_args(kind, leaf.get("launch_model"), leaf.get("launch_effort")))
@@ -572,11 +619,11 @@ def _add_create_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--charter-file", dest="charter_file", metavar="PATH")
     parser.add_argument("--ref", action="append", default=[], metavar="PATH")
     parser.add_argument("--member", action="append", default=[], metavar="TARGET[:ROLE[:NAME]]")
-    parser.add_argument("--brief", action="append", default=[], metavar="NAME=TEXT")
+    parser.add_argument("--brief", action="append", default=[], metavar="NAME=TEXT", help="required Mission for a new member, keyed by final name or role; repeat for every member")
     parser.add_argument("--project", metavar="PATH", help="the team's project directory; creates <path>/.herdr-synapse/<team>/")
     parser.add_argument("--rules", metavar="TEXT", help="the team's DOs and DON'Ts (human only)")
     parser.add_argument("--rules-file", dest="rules_file", metavar="PATH", help="read the rules from a file (human only)")
-    parser.add_argument("--instructions", action="append", default=[], metavar="NAME=TEXT", help="long-form instructions for one member, repeatable (human only)")
+    parser.add_argument("--instructions", action="append", default=[], metavar="NAME=TEXT", help="long-form instructions for one member; a non-empty Mission can supply its required brief (human only)")
     parser.add_argument("--from-workspace", dest="from_workspace", metavar="ID")
     parser.add_argument("--names", choices=("prefixed", "plain"), default="prefixed")
     parser.add_argument("--rename", action="store_true", help="rename targets that already carry a name")
@@ -700,7 +747,6 @@ def _run_create(args: argparse.Namespace) -> int:
     if specs:
         validate_join_batch(shell, api, specs, names_plain, layout=layout, steal=args.steal)
         for spec in specs:
-            spec.brief = briefs.get(spec.final_name) or briefs.get(spec.final_role)
             override = model_members.pop(spec.final_name, None) or model_members.pop(spec.final_role, None)
             if override is not None:
                 # A live agent keeps its launch flags; the setting is recorded
@@ -712,6 +758,13 @@ def _run_create(args: argparse.Namespace) -> int:
         raise UsageError("--model names {}, which is not a member being added".format(", ".join(sorted(model_members))))
     for unknown in set(briefs) - {s.final_name for s in specs} - {s.final_role for s in specs} - {s["name"] for s in spawn} - {s["role"] for s in spawn}:
         raise HerdrTeamError("member_not_found", "--brief names {!r}, which is not being added".format(unknown), EXIT_REFUSED, {"name": unknown})
+    planned = [(s.final_name, s.final_role) for s in specs] + [(str(s["name"]), str(s["role"])) for s in spawn]
+    initial_documents = _initial_member_documents(planned, briefs, instructions)
+    for spec in specs:
+        spec.brief = briefs.get(spec.final_name) or briefs.get(spec.final_role)
+        spec.initial_instructions = initial_documents[spec.final_name]
+    for leaf in spawn:
+        leaf["initial_instructions"] = initial_documents[str(leaf["name"])]
 
     # Phase 2: writes.
     fresh = not existing_paths.team_json.is_file()
@@ -748,22 +801,9 @@ def _apply_workdir_setup(
         _charter.set_rules(layout, team_name, author, args.rules, args.rules_file)
 
     live = {str(m.get("name")) for m in members_out}
-    for name, text in (instructions or {}).items():
+    for name in (instructions or {}):
         if name not in live:
             out["warnings"].append("--instructions {}=…: no member of that name joined; skipped".format(name))
-            continue
-        _charter.set_instructions(layout, team_name, author, name, text, None, announce=False)
-
-    # Every member starts with a document rather than "none set": its Mission is
-    # the brief the operator already wrote, and the rest is the empty skeleton,
-    # which is what makes the structure obvious the first time anyone opens it.
-    named = set(instructions or {})
-    for member in members_of(load_doc(team_paths)):
-        name = str(member.get("name") or "")
-        brief = str(member.get("brief") or "").strip()
-        if not name or name in named or member.get("kind") == "human" or not brief:
-            continue
-        _charter.set_instructions(layout, team_name, author, name, brief, None, announce=False)
 
     if project_dir is not None:
         result = _workdir.render(layout, team_name)
@@ -886,7 +926,7 @@ def _add_add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("target")
     parser.add_argument("--role", metavar="ROLE")
     parser.add_argument("--as", dest="as_name", metavar="NAME")
-    parser.add_argument("--brief", metavar="TEXT")
+    parser.add_argument("--brief", metavar="TEXT", help="required Mission for the new member")
     parser.add_argument("--steal", action="store_true")
     parser.add_argument("--rename", action="store_true")
     parser.add_argument("--model", metavar="MODEL[@EFFORT]", help="record the member's model and effort (applies at its next resume; see herdr-synapse model)")
@@ -915,6 +955,10 @@ def _run_add(args: argparse.Namespace) -> int:
     _roster.check_session(layout, team, allow_mismatch=bool(getattr(args, "socket", None)))
     spec = _JoinSpec(args.target, args.role, args.as_name, args.brief)
     validate_join_batch(team, api, [spec], team.naming == "plain", layout=layout, steal=args.steal)
+    briefs = {spec.final_name: str(args.brief or "")}
+    initial = _initial_member_documents([(spec.final_name, spec.final_role)], briefs, {})
+    spec.brief = briefs[spec.final_name]
+    spec.initial_instructions = initial[spec.final_name]
     setting = _models.parse_setting(args.model) if getattr(args, "model", None) else (None, None)
     member, job = perform_join(layout, api, team, spec, args.steal, args.rename, env_of(args), author)
     if setting != (None, None):

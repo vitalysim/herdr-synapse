@@ -789,6 +789,9 @@ class PickerWizardTests(unittest.TestCase):
         picker_apply_key(model, "ENTER")
         picker_apply_key(model, "ENTER")  # empty line finishes
         self.assertEqual(model.charter, "Find the bug.\nReviewer owns review.")
+        self.assertEqual(model.stage, "rules")
+        type_line(model, "Never merge without review.")
+        picker_apply_key(model, "ALT_ENTER")
         self.assertEqual(model.stage, "project")
         picker_apply_key(model, "TAB")  # skip the team folder
         self.assertEqual((model.stage, model.member_index, model.member_field), ("members", 0, "role"))
@@ -814,7 +817,8 @@ class PickerWizardTests(unittest.TestCase):
         picker_apply_key(model, "ENTER")
         self.assertEqual(model.input, "vuln-hunt-reviewer")
         picker_apply_key(model, "ENTER")
-        picker_apply_key(model, "ENTER")  # skip brief
+        type_line(model, "Implement the approved patch.")
+        picker_apply_key(model, "ENTER")
         picker_apply_key(model, "ENTER")  # skip model: the harness default
         self.assertEqual(model.stage, "confirm")
         self.assertIn("model: gpt-5.6-luna@high", "\n".join(tui_model.picker_lines(model, 160, 24)))
@@ -828,14 +832,16 @@ class PickerWizardTests(unittest.TestCase):
         spec = intent.args
         self.assertEqual(spec["team"], "vuln-hunt")
         self.assertEqual(spec["charter"], "Find the bug.\nReviewer owns review.")
+        self.assertEqual(spec["rules"], "Never merge without review.")
         self.assertEqual([m["name"] for m in spec["members"]], ["vuln-hunt-codex-dev", "vuln-hunt-reviewer"])
         self.assertEqual([m["role"] for m in spec["members"]], ["codex-dev", "reviewer"])
         self.assertEqual(spec["members"][0]["brief"], "Review every patch.")
-        self.assertIsNone(spec["members"][1]["brief"])
+        self.assertEqual(spec["members"][1]["brief"], "Implement the approved patch.")
         self.assertTrue(spec["members"][1]["renamed"])  # alpha-reviewer -> vuln-hunt-reviewer
         self.assertFalse(spec["members"][0]["renamed"])
         argv = picker.create_args(spec)
         self.assertEqual(argv[:4], ["create", "vuln-hunt", "--charter", "Find the bug.\nReviewer owns review."])
+        self.assertEqual(argv[argv.index("--rules") + 1], "Never merge without review.")
         self.assertIn("w1:p3:codex-dev:vuln-hunt-codex-dev", argv)
         self.assertIn("vuln-hunt-codex-dev=Review every patch.", argv)
 
@@ -847,11 +853,13 @@ class PickerWizardTests(unittest.TestCase):
         picker_apply_key(model, "ENTER")
         picker_apply_key(model, "TAB")  # skip charter
         self.assertEqual(model.charter, "")
+        picker_apply_key(model, "TAB")  # skip team rules
         picker_apply_key(model, "TAB")  # skip the team folder
         picker_apply_key(model, "ENTER")  # role codex-dev
         self.assertEqual(model.input, "t-codex-dev")
         picker_apply_key(model, "ENTER")  # name
-        picker_apply_key(model, "ENTER")  # brief
+        type_line(model, "Review the first workstream.")
+        picker_apply_key(model, "ENTER")  # Mission / brief
         picker_apply_key(model, "ENTER")  # model
         picker_apply_key(model, "ENTER")  # role codex-dev for member 2
         self.assertEqual(model.input, "t-codex-dev-2")
@@ -875,11 +883,13 @@ class PickerWizardTests(unittest.TestCase):
         type_line(model, "beta")
         picker_apply_key(model, "ENTER")
         picker_apply_key(model, "TAB")  # skip charter
+        picker_apply_key(model, "TAB")  # skip team rules
         picker_apply_key(model, "TAB")  # skip the team folder
         picker_apply_key(model, "ENTER")
         type_line(model, "alpha-reviewer")
         picker_apply_key(model, "ENTER")
         self.assertEqual(model.member_field, "brief")
+        type_line(model, "Own this workstream.")
         picker_apply_key(model, "ENTER")
         picker_apply_key(model, "ENTER")  # model
         self.assertFalse(picker_apply_key(model, "ENTER").args["members"][0]["renamed"])
@@ -926,6 +936,9 @@ class PickerWizardTests(unittest.TestCase):
         picker_apply_key(model, "ENTER")
         model.charter_lines = []
         picker_apply_key(model, "TAB")
+        self.assertEqual(model.stage, "rules")
+        self.assertEqual(picker_apply_key(model, "CTRL_O").kind, "load_file")
+        picker_apply_key(model, "TAB")
         self.assertEqual(model.stage, "project")
         picker_apply_key(model, "TAB")
         self.assertEqual(model.stage, "members")
@@ -941,6 +954,7 @@ class PickerWizardTests(unittest.TestCase):
         picker_apply_key(model, "TAB")
         picker_apply_key(model, "ENTER")
         picker_apply_key(model, "ENTER")
+        type_line(model, "Test the patch.")
         picker_apply_key(model, "ENTER")
         picker_apply_key(model, "ENTER")  # model: the harness default
         self.assertEqual(model.stage, "confirm")
@@ -951,7 +965,7 @@ class PickerWizardTests(unittest.TestCase):
 
     def test_picker_lines_fit(self):
         model = picker_model()
-        for stage in ("select", "name", "charter", "project", "members", "confirm"):
+        for stage in ("select", "name", "charter", "rules", "project", "members", "confirm"):
             model.stage = stage
             if stage in ("members", "confirm"):
                 model.rows[1].selected = True
@@ -986,6 +1000,8 @@ class PickerRuntimeTests(unittest.TestCase):
             model = picker_model()
             picker.load_charter_file(model, os.fspath(path))
             self.assertEqual(model.charter_lines, ["line one", "line two"])
+            picker.load_rules_file(model, os.fspath(path))
+            self.assertEqual(model.rules_lines, ["line one", "line two"])
             picker.load_charter_file(model, os.fspath(ts.tmp / "missing.txt"))
             self.assertIn("cannot read", model.error)
             path.write_text("x" * 2100, encoding="utf-8")

@@ -717,7 +717,7 @@ class ControlJobTests(unittest.TestCase):
         self.assertEqual(self.sent("pane.send_text"), [{"pane_id": "w2:p1", "text": "/exit"}])
         rt = self.team.rt(TARGET)
         self.assertEqual(rt.restart["action"], "clear")
-        self.assertEqual(rt.restart["argv"], ["opencode", "-m", "opencode/glm-5.3-flash", "--pure", "--auto"])
+        self.assertEqual(rt.restart["argv"], ["opencode", "-m", "opencode/glm-5.3-flash", "--auto", "--pure"])
         self.assertEqual(rt.restart["after"], ["/variants", "high"])
 
         self.d._note_restart_done(self.team, TARGET, {}, self.clock() * 1000)

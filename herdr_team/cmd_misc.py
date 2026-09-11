@@ -541,7 +541,17 @@ def _run_doctor(args: argparse.Namespace) -> int:
             continue
         members = agent_members(doc)
         missing = len([m for m in members if m.get("status") not in ("active", "starting")])
-        teams.append({"team": name, "members": len(members), "missing": missing})
+        try:
+            knowledge = _workdir.status(layout, name)
+            missing_missions = list(knowledge.get("missing_missions") or [])
+            with_missions = int(knowledge.get("with_missions") or 0)
+        except (HerdrTeamError, OSError) as err:
+            missing_missions = []
+            with_missions = 0
+            warnings.append("team {} Mission check failed: {}".format(name, err))
+        teams.append({"team": name, "members": len(members), "missing": missing, "missions": with_missions, "missing_missions": missing_missions})
+        if missing_missions:
+            warnings.append("team {} has no Mission for: {}".format(name, ", ".join(missing_missions)))
         if doc.get("socket") and os.path.realpath(str(doc["socket"])) != os.fspath(layout.socket):
             warnings.append("team {} belongs to socket {}".format(name, doc["socket"]))
     console = read_console_json(layout.session)
@@ -572,7 +582,7 @@ def _run_doctor(args: argparse.Namespace) -> int:
         lines.append("toast delivery: {}{}".format(delivery, " (probe: {})".format(toast_probe["reason"]) if toast_probe.get("probed") else ""))
         lines.append("daemon: {}{}".format("alive" if daemon["alive"] else "down", " (pid {}, beat {}s ago)".format(daemon["pid"], daemon["beat_age_s"]) if daemon["alive"] else " ({})".format(daemon.get("reason"))))
         for t in teams:
-            lines.append("team {}: {} members, {} missing".format(t["team"], t["members"], t["missing"]))
+            lines.append("team {}: {} members, {} missing, {}/{} with Missions".format(t["team"], t["members"], t["missing"], t["missions"], t["members"]))
         lines.append("console: {}".format("open in {}".format(console.get("pane_id")) if console_open else "closed"))
         for w in warnings:
             lines.append("warning: {}".format(w))

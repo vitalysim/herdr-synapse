@@ -90,7 +90,7 @@ class DoctorTests(unittest.TestCase):
             self.assertIn("HERDR_TEAM_ALLOW_HERDR", payload["plugin"]["skipped"])
             self.assertEqual(payload["toast_delivery"], "terminal")
             self.assertFalse(payload["daemon"]["alive"])
-            self.assertEqual(payload["teams"], [{"team": "alpha", "members": 2, "missing": 0}])
+            self.assertEqual(payload["teams"], [{"team": "alpha", "members": 2, "missing": 0, "missions": 0, "missing_missions": ["alpha-reviewer", "alpha-worker"]}])
             self.assertEqual(payload["console"], {"open": False, "pane_id": None, "lifecycle": None})
             self.assertEqual(payload["toast_probe"], {"probed": False, "shown": False, "reason": None})
             self.assertTrue(any("unreachable" in w for w in payload["warnings"]))

@@ -1262,6 +1262,9 @@ class TeamState:
     paths: TeamPaths
     ledger: Ledger
     roster: Dict[str, Any] = field(default_factory=dict)
+    #: Roster revision whose generated creation documents were checked. A busy
+    #: team lock leaves this unset so the next scan retries the safe migration.
+    scaffold_repair_revision: Optional[int] = None
     tailer: Optional[store.BoardTailer] = None  # plan 6.3 contract, state in notifier/state.json
     watermark: int = 0
     pending: Dict[str, Pending] = field(default_factory=dict)
@@ -1914,6 +1917,13 @@ class Daemon:
     def _reload_roster(self, team: TeamState) -> None:
         doc = _load_roster_doc(team.paths)
         if doc is not None:
+            revision = int(doc.get("revision") or 0)
+            repair_result = _workdir.repair_creation_scaffolds(self.layout, team.name) if team.scaffold_repair_revision != revision else []
+            if repair_result is not None:
+                team.scaffold_repair_revision = revision
+            repaired = repair_result or []
+            if repaired:
+                self.log("team {} repaired generated member scaffolds: {}".format(team.name, ", ".join(repaired)))
             team.roster = doc
             self._reload_gate_config(team)
             self._assign_color_slot(team)

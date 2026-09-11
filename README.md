@@ -26,6 +26,9 @@ harness. The full core workflow is live-verified with Claude Code, Codex and
 OpenCode; other Herdr agent kinds stay blocked until you explicitly probe or
 trust them.
 
+> [!CAUTION]
+> Synapse-managed Claude Code, Codex and OpenCode launches run unrestricted by default: `--dangerously-skip-permissions`, `--dangerously-bypass-approvals-and-sandbox` and `--auto`, respectively. Fresh spawns, exact-session resumes, controlled model restarts and OpenCode clear restarts all carry that default, so these agents can execute commands and change files without approval prompts. Use trusted repositories or an external sandbox; unrestricted execution does not grant Synapse operator authority.
+
 ```
 team red-dev · 3 members · view:on · nudges:on · toasts:herdr · unread(you):0
 charter #1: Ship the HTML report for susfind
@@ -49,7 +52,7 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
 **Teams**
 
 - **Teams, roles, names.** Pick live agents into a team with `prefix+t`, or
-  spawn fresh ones into new panes, give each a role, a unique name and a brief,
+  spawn fresh ones into new panes, give each a role, a unique name and a required Mission,
   choose a model on supported harnesses, and set a charter every member knows.
   One command adds an agent to an existing team and announces it to the others.
   Herdr's Agents sidebar gives each team one of six stable colours (the palette
@@ -420,8 +423,8 @@ its context is not broken by the move.
 ## Quick start
 
 1. Open two panes and start two agents.
-2. `prefix+t`, Space on both, Enter, then a team name and a charter, and for
-   each agent a role, a name, a brief, and optionally a model (`opus@medium`;
+2. `prefix+t`, Space on both, Enter, then a team name, a charter, optional team rules and a team folder, and for
+   each agent a role, a name, a required Mission / brief, and optionally a model (`opus@medium`;
    Enter keeps the harness default). Each member is briefed once it is idle.
 3. `prefix+u` opens the console. Plain text posts to the whole team,
    `@name text` to one member, `!name text` types straight into one.
@@ -548,6 +551,7 @@ refused rather than receiving guessed flags.
 ```bash
 # at creation: per spawned role, or as the team default for a kind
 herdr-synapse create hunt --new --spawn reviewer:codex --spawn dev:claude \
+    --brief reviewer="Review every change and report regressions." --brief dev="Implement the requested change and run its tests." \
     --model reviewer=gpt-5.6-luna@high --model claude=opus@medium
 herdr-synapse models set codex gpt-5.6-luna@medium     # team default for a kind
 herdr-synapse model                                    # every supported member, with the setting source
@@ -558,19 +562,21 @@ herdr-synapse model --self opus@high                   # a member, for itself
 
 | Kind | At launch and on `resume` | While running | Effort words |
 | --- | --- | --- | --- |
-| Claude Code | `--model`, `--effort` | `/model` and `/effort` typed by the notifier when idle | `low medium high xhigh max` |
-| Codex | `-m`, `-c model_reasoning_effort` | picker only: applies at the next resume, or now with `--apply restart` | `minimal low medium high xhigh` |
-| OpenCode | `-m provider/model`; effort is selected with `/variants` after startup | effort switches live with `/variants`; model applies at the next resume or with `--apply restart` | provider-specific |
+| Claude Code | `--model`, `--effort`, `--dangerously-skip-permissions` | `/model` and `/effort` typed by the notifier when idle | `low medium high xhigh max` |
+| Codex | `-m`, `-c model_reasoning_effort`, `--dangerously-bypass-approvals-and-sandbox` | picker only: applies at the next resume, or now with `--apply restart` | `minimal low medium high xhigh` |
+| OpenCode | `-m provider/model`, `--auto`; effort is selected with `/variants` after startup | effort switches live with `/variants`; model applies at the next resume or with `--apply restart` | provider-specific |
 
 Resolution is the member's own setting, then the team default for its kind,
 then the harness default. The setting travels with the session: `resume`
 reopens the member with the same flags, and Herdr's `agent.start` receives
 them as arguments, never as a shell string.
 
+Every fresh spawn of these three harnesses carries its unrestricted flag even when no model is selected. `herdr-synapse resume`, controlled model restarts and OpenCode clear restarts rebuild the same default; an already-running agent added to a team keeps its current launch mode until a Synapse-managed resume or restart.
+
 `--apply restart` exits the agent cleanly and resumes its own session with the
 new flags; the member is never marked missing while that is in progress, and
 both the exit and the return are bounded. Controlled restarts preserve the
-harness's allowlisted policy flags, and Codex restarts suppress its update
+harness's allowlisted non-permission flags, rebuild the unrestricted default, and Codex restarts suppress its update
 picker so the requested model cannot be stranded behind a startup screen. Who
 may change a setting: the
 operator or a delegate for anyone, the team manager for anyone, and a member
@@ -594,14 +600,9 @@ them apart. Give the team a directory and it gets one:
   artifacts/           work products; git-ignored
 ```
 
-Each member's file has the same six sections, all optional, with a line of
-guidance in each: Mission, Scope, Constraints, Definition of done, Handoffs,
-and Notes, which stays private to you. Team creation fills Mission in from the
-brief, so nobody starts at "none set". Edit the file in your editor and the
-notifier leaves it alone and tells you; `herdr-synapse instructions <name>
---adopt` shows the diff and applies it. That confirm step is the whole
-security model: the folder is inside a checkout your agents can write to, so
-nothing there counts as your word until you say it does.
+Each member's file has the same six sections, with a line of guidance in each: Mission, Scope, Constraints, Definition of done, Handoffs, and Notes, which stays private to you. Mission is required when a member joins; the other five sections are optional. Team creation fills Mission from the required brief, or derives the short roster brief from an explicit `## Mission`, so nobody starts at "none set". `knowledge-status`, `doctor` and the teams view report any older or hand-edited member that has no Mission. Edit the file in your editor and the notifier leaves it alone and tells you; `herdr-synapse instructions <name> --adopt` shows the diff and applies it. That confirm step is the whole security model: the folder is inside a checkout your agents can write to, so nothing there counts as your word until you say it does.
+
+On daemon load or an explicit `project render`, Synapse completes only the exact revision-1 Mission-only scaffold written by the old creation path. It adds the five empty standard sections without changing the revision or posting to the board, and leaves edited, custom and later-revision documents untouched.
 
 | Command | What it does | Who |
 | --- | --- | --- |
@@ -953,6 +954,7 @@ peer mail.
 ## Documentation
 
 - [docs/reference.md](docs/reference.md): every CLI command and parameter, plugin action, console command, and GUI shortcut in one place.
+- [docs/use-cases.md](docs/use-cases.md): ready-to-adapt development, vulnerability-hunting, research, review-swarm, and linked-team recipes using mixed agent types.
 - [docs/human-testing.md](docs/human-testing.md): a guided first run, including an isolated sandbox session that cannot interfere with your real Herdr.
 - [docs/capabilities.md](docs/capabilities.md): every capability, how to drive it from the UI and the CLI, what to expect, and a test checklist.
 - [docs/cli.md](docs/cli.md): the command contract, with every argument, JSON shape, exit code, and record grammar.

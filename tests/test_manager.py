@@ -148,7 +148,7 @@ class CommandTests(unittest.TestCase):
         ts = TempState(write_team=False)
         self.addCleanup(ts.cleanup)
         code, out, err = json_out(run_cli(
-            ["--json", "create", "beta", "--member", "w5:p1:reviewer", "--member", "wA:p6:worker:bob", "--manager", "bob"],
+            ["--json", "create", "beta", "--member", "w5:p1:reviewer", "--member", "wA:p6:worker:bob", "--brief", "reviewer=Review every patch.", "--brief", "bob=Implement the patch.", "--manager", "bob"],
             env_no_daemon(ts), live_api()))
         self.assertEqual((code, (out or {}).get("manager")), (0, "bob"), err)
         team = ts.layout.team("beta")

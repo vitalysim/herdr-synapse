@@ -704,7 +704,7 @@ class SpawnLifecycleTests(unittest.TestCase):
             self.addCleanup(setattr, cmd_roster, "_monotonic", cmd_roster._monotonic)
             cmd_roster._sleep = clock.sleep
             cmd_roster._monotonic = clock
-            code, payload, err = json_out(run_cli(["--json", "create", "delta", "--new", "--workspace", "w9", "--spawn", "reviewer:codex", "--spawn", "worker:claude"], env, api))
+            code, payload, err = json_out(run_cli(["--json", "create", "delta", "--new", "--workspace", "w9", "--spawn", "reviewer:codex", "--spawn", "worker:claude", "--brief", "reviewer=Review the patch.", "--brief", "worker=Implement the patch."], env, api))
             self.assertEqual(code, 0, err)
             statuses = {m["name"]: m["status"] for m in payload["members"]}
             self.assertEqual(statuses, {"delta-reviewer": "active", "delta-worker": "failed"})

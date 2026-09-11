@@ -104,14 +104,9 @@ Open fresh panes in a Space, start agents (`claude`, `codex`, `opencode`,
 or `herdr agent start <name> --kind <kind> --pane <id>`), let them reach
 idle, then either:
 
-- **UI** (later, to add an agent to a team that exists: `prefix+t`, Space on
-  the new agent, Enter, then type `1` for `add it to team <t>` (the last
-  number creates a new team instead), then its role, name, and brief; the
-  confirm screen says `Add 1 agent to team <t>?`; afterwards every other
-  member is nudged that `<name> joined team <t>` and the newcomer is briefed)
-- **UI**: `prefix+t`, Space on the two rows, Enter, team name, charter, then
-  per member a role, a name, an optional brief, confirm; or
-- **CLI**: `herdr-synapse create demo --charter "Try the team board end to end" --member <pane1>:reviewer --member <pane2>:worker`.
+- **UI** (later, to add an agent to a team that exists): `prefix+t`, Space on the new agent, Enter, then type `1` for `add it to team <t>` (the last number creates a new team instead), then its role, name, and required Mission / brief; the confirm screen says `Add 1 agent to team <t>?`; afterwards every other member is nudged that `<name> joined team <t>` and the newcomer is briefed.
+- **UI**: `prefix+t`, Space on the two rows, Enter, team name, charter, optional team rules, team folder, then per member a role, a name, a required Mission / brief and an optional model; confirm.
+- **CLI**: `herdr-synapse create demo --charter "Try the team board end to end" --member <pane1>:reviewer --member <pane2>:worker --brief reviewer="Review the work." --brief worker="Implement the work."`.
 
 Each member gets a one-line briefing typed into its input box once it is
 idle, then reads the skill, the charter, and the board, and acknowledges.
@@ -211,7 +206,4 @@ those entries.
   Synapse refuses clear before exit when the pane layout is under 38 columns.
 - The console opens as a split in the current tab, not as its own tab.
 - `herdr-synapse read <name>` shows only the visible screen of a member.
-- Codex under its default sandbox cannot reach the Herdr socket from a tool
-  call and asks to rerun unsandboxed; approve read-only `herdr-synapse`
-  commands when it asks, or start it with an approval policy that allows
-  them.
+- Fresh Claude Code, Codex and OpenCode agents spawned by Synapse run unrestricted by default. A manually started agent added to a team keeps its existing permission mode until a Synapse-managed resume or restart.

@@ -124,7 +124,9 @@ the action number directly. `Esc` or `q` returns to the tree.
 | Existing-team chooser | Arrow keys or `j`/`k` move; number or `Enter` chooses; `Esc`/`q` returns. |
 | Text fields | Left/Right move; Home/End or `Ctrl+A`/`Ctrl+E` jump; Backspace/Delete edit; `Ctrl+U` clears; `Ctrl+K` deletes to the end; `Enter` accepts; `Esc` goes back. |
 | Charter | `Enter` adds a line; an empty line after content, `Alt+Enter`, or `Ctrl+D` finishes; `Tab` skips; `Ctrl+O` loads a file. |
+| Team rules | After the charter, the same multiline keys add optional DOs and DON'Ts; `Tab` skips; `Ctrl+O` loads a file. |
 | Project folder | `Enter` accepts the suggested or typed folder; `Tab` skips it. |
+| Member Mission / brief | Required for every selected member; empty `Enter` stays on the field and explains what is missing. |
 | Final confirmation | `Enter` creates the team or adds the selected agents; `Esc` returns. |
 
 Bracketed paste is accepted in text fields without treating pasted control

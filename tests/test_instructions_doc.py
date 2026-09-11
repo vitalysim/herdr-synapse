@@ -90,6 +90,14 @@ class DocumentTests(unittest.TestCase):
         added = _doc.with_section(sections, "Extras", ["x"])
         self.assertEqual(added[-1], ("Extras", ["x"]))
 
+    def test_complete_adds_the_standard_shape_without_losing_explicit_content(self):
+        sections = _doc.parse("## Scope\nOwns the parser\n\n## Mission\nReview every patch\n\nsecond paragraph\n\n## House style\nBe concise")
+        completed = _doc.complete(sections, mission="the short brief")
+        self.assertEqual([title for title, _body in completed[:6]], list(_doc.SECTIONS))
+        self.assertEqual(_doc.section(completed, "Mission"), ["Review every patch", "", "second paragraph"])
+        self.assertEqual(completed[-1], ("House style", ["Be concise"]))
+        self.assertEqual(_doc.mission_paragraph(completed), "Review every patch")
+
     def test_summary_names_the_first_public_line(self):
         self.assertEqual(_doc.summary(_doc.parse("## Notes\nprivate\n\n## Mission\nown it")), "mission: own it")
         self.assertEqual(_doc.summary([]), "no content yet")
@@ -274,7 +282,7 @@ class MirrorEditTests(unittest.TestCase):
         workdir.render(self.layout, self.team)
         info = workdir.status(self.layout, self.team)
         self.assertEqual(info["awaiting_adopt"], [self.member])
-        self.assertIn("with instructions", workdir.status_summary(info))
+        self.assertIn("with Missions", workdir.status_summary(info))
         self.assertIn("1 edit to adopt", workdir.status_summary(info))
         self.assertNotIn("briefed", workdir.status_summary(info))
 
@@ -519,10 +527,84 @@ class CreateAndAnnounceTests(unittest.TestCase):
                 ["--json", "add", ts.team_name, "w5:p1", "--role", "tester", "--as", "tess", "--brief", "Break the parser."],
                 env_no_daemon(ts), api))
             self.assertEqual(code, 0, err)
-            # ``add`` does not seed; ``create`` does, so drive the same helper directly
-            _charter.set_instructions(ts.layout, ts.team_name, human(), "tess", "Break the parser.", None, announce=False)
             sections = _charter.get_instructions_doc(ts.layout, ts.team_name, "tess")
             self.assertEqual(_doc.section(sections, "Mission"), ["Break the parser."])
+            self.assertEqual([title for title, _body in sections], list(_doc.SECTIONS))
+            member = next(m for m in roster.load_team(ts.team).members if m.name == "tess")
+            self.assertEqual(member.instructions_seq, 1)
+
+    def test_render_repairs_only_the_exact_generated_mission_only_signature(self):
+        with TempState() as ts:
+            member = next(m for m in roster.load_team(ts.team).members if not m.is_human)
+            _charter.set_brief(ts.layout, ts.team_name, human(), member.name, "Own the parser.")
+            _charter.set_instructions(ts.layout, ts.team_name, human(), member.name, "Own the parser.", None, announce=False)
+            before_revision = next(m for m in roster.load_team(ts.team).members if m.name == member.name).instructions_seq
+            result = workdir.render(ts.layout, ts.team_name)
+            self.assertEqual(result["repaired"], [member.name])
+            self.assertEqual([title for title, _body in _charter.get_instructions_doc(ts.layout, ts.team_name, member.name)], list(_doc.SECTIONS))
+            self.assertEqual(next(m for m in roster.load_team(ts.team).members if m.name == member.name).instructions_seq, before_revision)
+            self.assertEqual(workdir.render(ts.layout, ts.team_name)["repaired"], [])
+
+    def test_daemon_load_repairs_once_without_a_revision_or_board_record(self):
+        from test_daemon import make_daemon
+
+        with TempState() as ts:
+            member = next(m for m in roster.load_team(ts.team).members if not m.is_human)
+            _charter.set_brief(ts.layout, ts.team_name, human(), member.name, "Own the parser.")
+            _charter.set_instructions(ts.layout, ts.team_name, human(), member.name, "Own the parser.", None, announce=False)
+            revision = next(m for m in roster.load_team(ts.team).members if m.name == member.name).instructions_seq
+            board_seq = store.BoardStore(ts.team).max_seq()
+            daemon, _api, _clock = make_daemon(ts)
+            real_repair = workdir.repair_creation_scaffolds
+            with mock.patch("herdr_team.daemon._workdir.repair_creation_scaffolds", return_value=None):
+                daemon.scan_teams(force=True)
+            self.assertEqual([title for title, _body in _charter.get_instructions_doc(ts.layout, ts.team_name, member.name)], ["Mission"])
+            self.assertIsNone(daemon.teams[ts.team_name].scaffold_repair_revision)
+            with mock.patch("herdr_team.daemon._workdir.repair_creation_scaffolds", side_effect=real_repair) as repair:
+                daemon.scan_teams(force=True)
+            repair.assert_called_once()
+            self.assertEqual([title for title, _body in _charter.get_instructions_doc(ts.layout, ts.team_name, member.name)], list(_doc.SECTIONS))
+            self.assertEqual(next(m for m in roster.load_team(ts.team).members if m.name == member.name).instructions_seq, revision)
+            self.assertEqual(store.BoardStore(ts.team).max_seq(), board_seq)
+            with mock.patch("herdr_team.daemon._workdir.repair_creation_scaffolds") as repair:
+                daemon.scan_teams(force=True)
+            repair.assert_not_called()
+
+    def test_repair_preserves_an_unadopted_edit_in_the_project_mirror(self):
+        with TempState() as ts:
+            project = Path(tempfile.mkdtemp(prefix="ht-proj-"))
+            self.addCleanup(lambda: __import__("shutil").rmtree(project, ignore_errors=True))
+            member = next(m for m in roster.load_team(ts.team).members if not m.is_human)
+
+            def set_project(doc: roster.Team) -> None:
+                doc.config["project_dir"] = os.fspath(project)
+
+            roster.update_team(ts.team, set_project)
+            _charter.set_brief(ts.layout, ts.team_name, human(), member.name, "Own the parser.")
+            _charter.set_instructions(ts.layout, ts.team_name, human(), member.name, "Own the parser.", None, announce=False)
+            workdir.render(ts.layout, ts.team_name)
+            authoritative = ts.team.instructions(member.name)
+            authoritative.write_text(_doc.to_text([("Mission", ["Own the parser."])]), encoding="utf-8")
+            mirror = project / workdir.DIR_NAME / ts.team_name / "members" / (member.name + ".md")
+            edited = mirror.read_text(encoding="utf-8").replace("## Scope\n", "## Scope\nOperator edit awaiting adoption.\n", 1)
+            mirror.write_text(edited, encoding="utf-8")
+            result = workdir.render(ts.layout, ts.team_name)
+            self.assertEqual(result["repaired"], [member.name])
+            self.assertIn(os.fspath(mirror), result["awaiting_adopt"])
+            self.assertEqual(mirror.read_text(encoding="utf-8"), edited)
+
+    def test_repair_preserves_a_custom_or_later_revision_document(self):
+        with TempState() as ts:
+            member = next(m for m in roster.load_team(ts.team).members if not m.is_human)
+            _charter.set_brief(ts.layout, ts.team_name, human(), member.name, "Own the parser.")
+            _charter.set_instructions(ts.layout, ts.team_name, human(), member.name, "## Mission\nOwn the parser.\n\n## House style\nKeep this", None, announce=False)
+            with mock.patch("herdr_team.workdir.store.team_lock") as team_lock:
+                self.assertEqual(workdir.repair_creation_scaffolds(ts.layout, ts.team_name), [])
+            team_lock.assert_not_called()
+            self.assertIn("House style", _charter.get_instructions(ts.layout, ts.team_name, member.name) or "")
+            _charter.set_instructions(ts.layout, ts.team_name, human(), member.name, "Own the parser.", None, announce=False)
+            self.assertEqual(workdir.repair_creation_scaffolds(ts.layout, ts.team_name), [])
+            self.assertEqual(next(m for m in roster.load_team(ts.team).members if m.name == member.name).instructions_seq, 2)
 
     def test_setting_a_folder_tells_the_team_where_it_is(self):
         from test_cmd_board import pane_api

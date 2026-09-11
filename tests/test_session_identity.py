@@ -499,12 +499,12 @@ class ResumeCommandTests(unittest.TestCase):
     def test_print_shows_the_exact_command(self):
         code, payload, err = json_out(run_cli(["--json", "--team", "alpha", "resume", "alpha-reviewer", "--print"], env_no_daemon(self.ts), live_api()))
         self.assertEqual(code, 0, err)
-        self.assertEqual(payload["argv"], ["codex", "resume", "0199-reviewer"])
-        self.assertEqual(payload["command"], "codex resume 0199-reviewer")
+        self.assertEqual(payload["argv"], ["codex", "resume", "0199-reviewer", "--dangerously-bypass-approvals-and-sandbox"])
+        self.assertEqual(payload["command"], "codex resume 0199-reviewer --dangerously-bypass-approvals-and-sandbox")
         self.assertEqual(payload["cwd"], os.fspath(self.ts.tmp))
         code, out, err = run_cli(["--team", "alpha", "resume", "alpha-reviewer", "--print"], env_no_daemon(self.ts), live_api())
         self.assertEqual(code, 0, err)
-        self.assertTrue(out.startswith("codex resume 0199-reviewer  # in "), out)
+        self.assertTrue(out.startswith("codex resume 0199-reviewer --dangerously-bypass-approvals-and-sandbox  # in "), out)
 
     def test_refusals(self):
         api = live_api()
@@ -520,7 +520,7 @@ class ResumeCommandTests(unittest.TestCase):
         # outside Herdr the harness could not report its session for a pane
         code, _, err = json_out(run_cli(["--json", "--team", "alpha", "resume", "alpha-reviewer"], env_no_daemon(self.ts), api))
         self.assertEqual((code, err["code"]), (1, "outside_herdr"))
-        self.assertEqual(err["command"], "codex resume 0199-reviewer")
+        self.assertEqual(err["command"], "codex resume 0199-reviewer --dangerously-bypass-approvals-and-sandbox")
         # a pane that already hosts an agent is not the human's shell, so it cannot resume anyone
         with mock.patch.object(cmd_roster.shutil, "which", return_value="/usr/bin/codex"):
             code, err = error_of(run_cli(["--json", "--team", "alpha", "resume", "alpha-reviewer"], env_no_daemon(self.ts, HERDR_PANE_ID="w5:p1"), api))
@@ -548,9 +548,9 @@ class ResumeCommandTests(unittest.TestCase):
                 mock.patch("os.chdir", lambda path: chdirs.append(path)):
             code, out, err = run_cli(["--team", "alpha", "resume", "alpha-reviewer"], env_no_daemon(self.ts, HERDR_PANE_ID="w3:p1"), live_api())
         self.assertEqual(code, 0, err)
-        self.assertEqual(calls, [("codex", ["codex", "resume", "0199-reviewer"])])
+        self.assertEqual(calls, [("codex", ["codex", "resume", "0199-reviewer", "--dangerously-bypass-approvals-and-sandbox"])])
         self.assertEqual(chdirs, [os.fspath(self.ts.tmp)])
-        self.assertIn("resuming alpha-reviewer in w3:p1: codex resume 0199-reviewer", err)
+        self.assertIn("resuming alpha-reviewer in w3:p1: codex resume 0199-reviewer --dangerously-bypass-approvals-and-sandbox", err)
         audits = store.read_jsonl(self.ts.team.audit_jsonl) if hasattr(store, "read_jsonl") and hasattr(self.ts.team, "audit_jsonl") else None
         if audits is not None:
             self.assertTrue(any(a.get("event") == "resume" for a in audits), audits)

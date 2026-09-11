@@ -86,6 +86,7 @@ REQUEST_KINDS = ("request", "question", "blocked", "handoff")
 
 MAX_TEXT_CHARS = 2000
 MAX_CHARTER_CHARS = 2000
+MAX_RULES_CHARS = 4000
 MAX_BRIEF_CHARS = 300
 #: What ``brief --set`` stores (``charter.MAX_BRIEF_TOTAL_CHARS``); only the first ``MAX_BRIEF_CHARS``
 #: reach the briefing line, so the picker's goal editor uses this cap or a longer CLI-set brief
@@ -2356,9 +2357,10 @@ class PickerModel:
     rows: List[PickerRow]
     cursor: int = 0
     scope_workspace: Optional[str] = None
-    stage: str = "select"  # select | topology | target | name | charter | project | members | confirm
+    stage: str = "select"  # select | topology | target | name | charter | rules | project | members | confirm
     team_name: str = ""
     charter: str = ""
+    rules: str = ""
     #: The team's project directory; "" means the team gets no working folder.
     project: str = ""
     #: ``workdir.status`` per existing team, for the tree's folder column (filled by the runtime).
@@ -2387,6 +2389,7 @@ class PickerModel:
     input: str = ""
     cursor_pos: int = 0
     charter_lines: List[str] = field(default_factory=list)
+    rules_lines: List[str] = field(default_factory=list)
     member_index: int = 0
     member_field: str = "role"  # role | name | brief | model
     status: Optional[str] = None
@@ -2795,7 +2798,7 @@ def create_spec(model: PickerModel) -> Dict[str, Any]:
                 "renamed": bool(row.name and row.name != row.member_name),
             }
         )
-    return {"team": model.team_name, "charter": model.charter or None, "project": model.project or None,
+    return {"team": model.team_name, "charter": model.charter or None, "rules": model.rules or None, "project": model.project or None,
             "naming": "prefixed", "members": members, "mode": model.mode}
 
 
@@ -2870,6 +2873,8 @@ def picker_apply_key(model: PickerModel, key: str) -> Optional[Intent]:
         return _target_key(model, key)
     if model.stage == "name":
         return _name_key(model, key)
+    if model.stage == "rules":
+        return _rules_key(model, key)
     if model.stage == "project":
         return _project_key(model, key)
     if model.stage == "team_folder":
@@ -3062,9 +3067,12 @@ def folder_summary(info: Dict[str, Any]) -> str:
     if info.get("issues"):
         return str(info["issues"][0])
     total = len(info.get("members") or [])
-    out = "{} rules, {}/{} with instructions, {} finding{}".format(
-        "has" if info.get("rules") else "no", info.get("with_instructions", 0), total,
+    out = "{} rules, {}/{} with Missions, {} finding{}".format(
+        "has" if info.get("rules") else "no", info.get("with_missions", 0), total,
         info.get("findings", 0), "" if info.get("findings") == 1 else "s")
+    missing = info.get("missing_missions") or []
+    if missing:
+        out += ", Mission missing: {}".format(", ".join(str(name) for name in missing))
     waiting = info.get("awaiting_adopt") or []
     if waiting:
         out += ", {} edit{} to adopt".format(len(waiting), "" if len(waiting) == 1 else "s")
@@ -3231,6 +3239,8 @@ def _enter_add_mode(model: PickerModel, team: str) -> None:
     model.mode = "add"
     model.charter = ""
     model.charter_lines = []
+    model.rules = ""
+    model.rules_lines = []
     model.error = None
     model.status = "adding {} agent{} to team {}; its charter is kept".format(count, "" if count == 1 else "s", team)
     model.stage = "members"
@@ -3336,6 +3346,47 @@ def _finish_charter(model: PickerModel) -> Optional[Intent]:
         return None
     model.charter = text
     model.error = None
+    model.stage = "rules"
+    model.rules_lines = model.rules.split("\n") if model.rules else []
+    _set_input(model, "")
+    return None
+
+
+def _rules_key(model: PickerModel, key: str) -> Optional[Intent]:
+    view = _TextView(model)
+    if key == "ESC":
+        model.stage = "charter"
+        model.error = None
+        _set_input(model, "")
+        return None
+    if key == "CTRL_O":
+        return Intent("load_file")
+    if key == "TAB":
+        model.rules = ""
+        model.rules_lines = []
+        return _finish_rules(model)
+    if key == "ENTER" and not model.paste_mode:
+        if model.input == "" and model.rules_lines:
+            return _finish_rules(model)
+        model.rules_lines.append(model.input)
+        _set_input(model, "")
+        return None
+    if key in ("ALT_ENTER", "CTRL_D"):
+        if model.input:
+            model.rules_lines.append(model.input)
+            _set_input(model, "")
+        return _finish_rules(model)
+    edit_key(view, key)
+    return None
+
+
+def _finish_rules(model: PickerModel) -> Optional[Intent]:
+    text = "\n".join(model.rules_lines).strip()
+    if len(text) > MAX_RULES_CHARS:
+        model.error = "rules are {} chars; max {}".format(len(text), MAX_RULES_CHARS)
+        return None
+    model.rules = text
+    model.error = None
     model.stage = "project"
     _set_input(model, suggested_project_dir(model))
     return None
@@ -3365,7 +3416,7 @@ def suggested_project_dir(model: PickerModel) -> str:
 
 def _project_key(model: PickerModel, key: str) -> Optional[Intent]:
     if key == "ESC":
-        model.stage = "charter"
+        model.stage = "rules"
         model.error = None
         _set_input(model, "")
         return None
@@ -3440,6 +3491,9 @@ def _members_key(model: PickerModel, key: str) -> Optional[Intent]:
             row.member_name = name
             model.member_field = "brief"
         elif model.member_field == "brief":
+            if not value:
+                model.error = "Mission / brief is required before this member can join"
+                return None
             if len(value) > MAX_BRIEF_CHARS:
                 model.error = "brief is {} chars; max {}".format(len(value), MAX_BRIEF_CHARS)
                 return None
@@ -3465,7 +3519,7 @@ def _members_key(model: PickerModel, key: str) -> Optional[Intent]:
     return None
 
 
-PICKER_TEXT_STAGES = ("name", "charter", "members", "rename", "goal", "model")
+PICKER_TEXT_STAGES = ("name", "charter", "rules", "members", "rename", "goal", "model")
 
 #: The member action menu, in the order it is shown. ``{team}`` is filled in per member.
 ACTION_OPTIONS = (
@@ -3715,6 +3769,10 @@ def _team_header(model: PickerModel, node: PickerNode, width: int) -> str:
             text += "  " + ("[no folder]" if model.ascii_only else "▫ no folder")
         elif info.get("issues"):
             text += "  " + ("[!]" if model.ascii_only else "⚠")
+        missing = info.get("missing_missions") or []
+        if missing:
+            label = "Mission missing: {}".format(", ".join(str(name) for name in missing))
+            text += "  " + ("[! {}]".format(label) if model.ascii_only else "⚠ " + label)
     if degrade_level(width) < 2:
         manager = model.managers.get(node.team)
         text += "  " + (("manager: " + str(manager)) if manager else "no manager")
@@ -3820,9 +3878,11 @@ def _tree_detail(model: PickerModel, nodes: List[PickerNode]) -> str:
             return "Enter adds the selected agents to {}".format(node.team)
         info = model.folders.get(node.team)
         if info is not None and not info.get("project_dir"):
-            return "{} has no team folder (no shared rules or per-member instructions) · f creates one · x dissolves it".format(node.team)
+            missing = info.get("missing_missions") or []
+            mission = " · Mission missing: {}".format(", ".join(str(name) for name in missing)) if missing else ""
+            return "f creates one for {} · x dissolves it · no shared rules or member documents{}".format(node.team, mission)
         if info is not None:
-            return "Enter folds {} · folder: {} · f changes it · x dissolves it".format(node.team, folder_summary(info))
+            return "Enter folds {} · f changes its folder · x dissolves it · folder: {}".format(node.team, folder_summary(info))
         return "Enter folds {} open or shut · x dissolves it".format(node.team)
     if node.kind == "member":
         goal = str((node.member or {}).get("brief") or "")
@@ -3938,6 +3998,12 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
             lines.append("  " + line)
         lines.append(INPUT_PROMPT + model.input)
         has_input = True
+    elif model.stage == "rules":
+        lines.append("Team rules for {} (Enter adds a line, empty line or Alt+Enter finishes, Tab skips, Ctrl-O loads a file)".format(model.team_name))
+        for line in model.rules_lines:
+            lines.append("  " + line)
+        lines.append(INPUT_PROMPT + model.input)
+        has_input = True
     elif model.stage == "team_folder":
         lines.append("Team folder for {} (Enter sets it, Esc cancels)".format(model.folder_team))
         lines.append("  rules, one instructions file per member, and artifacts/ go in")
@@ -3956,7 +4022,7 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
         joining = " (adding to team {})".format(model.team_name) if model.mode == "add" else ""
         lines.append("Member {}/{}: {} {} {}{}".format(model.member_index + 1, len(rows), row.pane_id, row.kind or "?", row.name or "(unnamed)", joining))
         lines.append("Enter accepts the value shown, Ctrl-U clears it, Esc goes back")
-        prompt = {"role": "role", "name": "name", "brief": "brief for {} (optional)".format(row.member_name or "this member"),
+        prompt = {"role": "role", "name": "name", "brief": "Mission / brief for {} (required)".format(row.member_name or "this member"),
                   "model": "model@effort for {} (optional, e.g. opus@medium or @high; Enter keeps the harness default)".format(row.member_name or "this member")}[model.member_field]
         lines.append(prompt + ":")
         lines.append(INPUT_PROMPT + model.input)
@@ -3969,6 +4035,7 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
         else:
             lines.append("Create team {}? (Enter creates, Esc back)".format(model.team_name))
             lines.append("charter: {}".format(headline(model.charter, 60) if model.charter else "(none, set later with charter set)"))
+            lines.append("rules: {}".format(headline(model.rules, 60) if model.rules else "(none, set later with knowledge set)"))
         for row in selected_rows(model):
             lines.append("  {:<8} {:<10} {:<14} {}{}{}".format(row.pane_id, row.kind or "?", row.role, row.member_name,
                                                               "  brief: " + headline(row.brief, 30) if row.brief else "", "  model: " + row.setting if row.setting else ""))

@@ -431,6 +431,67 @@ def member_body(team_name: str, name: str, role: str, brief: Optional[str], inst
     return _doc.document(name, team_name, role, sections, adopt_command=adopt_command(name), note=note)
 
 
+def repair_creation_scaffolds(layout: Any, team_name: str) -> Optional[List[str]]:
+    """Complete only the exact Mission-only documents produced by the creation bug.
+
+    Revision 1 plus byte-for-byte generated storage plus a Mission equal to the
+    stored brief is the migration signature. Anything edited, custom, later,
+    missing, or belonging to an inactive member is left alone. The semantic
+    instructions do not change, so this intentionally does not bump a revision
+    or post to the board. ``None`` means the lock was busy and a daemon caller
+    should retry on its next scan.
+    """
+    from . import roster as _roster
+
+    team_paths = layout.team(team_name)
+    repaired: List[str] = []
+    doc = _roster.load_team(team_paths)
+
+    def candidate(member: Any) -> bool:
+        return bool(not member.is_human and member.status == "active" and member.instructions_seq == 1 and str(member.brief or "").strip())
+
+    def has_exact_bug_signature(member: Any) -> bool:
+        if not candidate(member):
+            return False
+        brief = str(member.brief or "").strip()
+        try:
+            raw = team_paths.instructions(member.name).read_text(encoding="utf-8")
+        except (FileNotFoundError, OSError):
+            return False
+        sections = _doc.parse(raw)
+        return bool(
+            len(sections) == 1
+            and sections[0][0] == "Mission"
+            and _doc.mission_paragraph(sections)
+            and raw == _doc.to_text(sections)
+            and "\n".join(sections[0][1]).strip() == brief
+        )
+
+    # Most teams already have complete documents. Check their exact bytes
+    # without taking the team lock so a daemon scan does not contend with
+    # ordinary board and roster writes merely to discover there is no repair.
+    if not any(has_exact_bug_signature(member) for member in doc.members):
+        return repaired
+    try:
+        lock = store.team_lock(team_paths)
+        lock.acquire()
+    except HerdrTeamError as err:
+        if err.code == "board_locked":
+            return None
+        raise
+    try:
+        doc = _roster.load_team(team_paths)
+        for member in doc.members:
+            if not has_exact_bug_signature(member):
+                continue
+            target = team_paths.instructions(member.name)
+            store.atomic_write(target, _doc.to_text(_doc.skeleton(str(member.brief or "").strip())).encode("utf-8"))
+            repaired.append(member.name)
+    finally:
+        lock.release()
+    return repaired
+
+
 def render(layout: Any, team_name: str, force: bool = False) -> Dict[str, Any]:
     """Regenerate every mirrored file for one team. Returns what changed.
 
@@ -443,9 +504,10 @@ def render(layout: Any, team_name: str, force: bool = False) -> Dict[str, Any]:
     from . import roster as _roster
 
     team_paths = layout.team(team_name)
+    repaired = repair_creation_scaffolds(layout, team_name) or []
     doc = _roster.load_team(team_paths)
     project = project_dir_of(doc.to_json())
-    result: Dict[str, Any] = {"project_dir": project, "written": [], "skipped": [], "drifted": [], "awaiting_adopt": []}
+    result: Dict[str, Any] = {"project_dir": project, "written": [], "skipped": [], "drifted": [], "awaiting_adopt": [], "repaired": repaired}
     if not project:
         result["reason"] = "no project directory; set one with herdr-synapse project set <path>"
         return result
@@ -821,8 +883,9 @@ def status(layout: Any, team_name: str) -> Dict[str, Any]:
         if member.is_human or member.status == "left":
             continue
         text = _charter.get_instructions(layout, team_name, member.name) or ""
+        mission = bool(_doc.mission_paragraph(_doc.parse(text)))
         members.append({"name": member.name, "role": member.role or "", "kind": member.kind or "",
-                        "instructions": bool(text), "chars": len(text),
+                        "instructions": bool(text), "mission": mission, "chars": len(text),
                         "stale": _charter.instructions_stale(member),
                         "edited": _member_file_edited(team_paths, project, team_name, member.name, state) if project else False})
     out: Dict[str, Any] = {
@@ -836,6 +899,8 @@ def status(layout: Any, team_name: str) -> Dict[str, Any]:
         "last_finding": findings[-1] if findings else None,
         "members": members,
         "with_instructions": sum(1 for m in members if m["instructions"]),
+        "with_missions": sum(1 for m in members if m["mission"]),
+        "missing_missions": [m["name"] for m in members if not m["mission"]],
         "artifacts": 0,
         "issues": [],
         "awaiting_adopt": [],
@@ -875,17 +940,16 @@ def _member_file_edited(team_paths: Any, project: str, team_name: str, name: str
 
 def status_summary(info: Dict[str, Any]) -> str:
     """One short line for a list: what this team's knowledge base amounts to."""
+    total = len(info.get("members") or [])
+    mission_status = "{}/{} with Missions".format(info.get("with_missions", 0), total)
     if not info.get("project_dir"):
-        return "no folder"
+        return "no folder, " + mission_status
     if info.get("issues"):
         return info["issues"][0]
     if not info.get("exists"):
         return "folder not created yet"
     parts = ["rules" if info.get("rules") else "no rules"]
-    total = len(info.get("members") or [])
-    # "briefed" means something else on this roster (a member that received its
-    # briefing); this counter is about who has an instructions document.
-    parts.append("{}/{} with instructions".format(info.get("with_instructions", 0), total))
+    parts.append(mission_status)
     parts.append("{} finding{}".format(info.get("findings", 0), "" if info.get("findings") == 1 else "s"))
     if info.get("artifacts"):
         parts.append("{} artifact{}".format(info["artifacts"], "" if info["artifacts"] == 1 else "s"))

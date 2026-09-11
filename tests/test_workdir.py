@@ -867,7 +867,7 @@ class CreateSetupTests(unittest.TestCase):
 
             api.set_response("agent.get", agent_get)
         return run_cli(
-            ["create", "alpha", "--member", "w2:p1:reviewer", "--member", "w2:p2:worker"] + list(extra),
+            ["create", "alpha", "--member", "w2:p1:reviewer", "--member", "w2:p2:worker", "--brief", "reviewer=Review the work.", "--brief", "worker=Implement the work."] + list(extra),
             env if env is not None else self.state.env, api,
         )
 
@@ -943,6 +943,7 @@ class PickerProjectStageTests(unittest.TestCase):
             picker_apply_key(model, ch)
         picker_apply_key(model, "ENTER")          # name -> charter
         picker_apply_key(model, "TAB")            # skip the charter
+        picker_apply_key(model, "TAB")            # skip team rules
         return model
 
     def test_the_stage_prefills_the_directory_the_agents_share(self):
@@ -983,12 +984,15 @@ class PickerProjectStageTests(unittest.TestCase):
         model = self.drive_to_project(self.model(cwd=Path("/nonexistent/nowhere")))
         self.assertEqual(model.input, "")
 
-    def test_esc_goes_back_to_the_charter_and_members_comes_back_here(self):
+    def test_esc_goes_back_through_rules_and_members_comes_back_here(self):
         from herdr_team.tui_model import picker_apply_key
 
         model = self.drive_to_project(self.model())
         picker_apply_key(model, "ESC")
+        self.assertEqual(model.stage, "rules")
+        picker_apply_key(model, "ESC")
         self.assertEqual(model.stage, "charter")
+        picker_apply_key(model, "TAB")
         picker_apply_key(model, "TAB")
         picker_apply_key(model, "TAB")
         self.assertEqual(model.stage, "members")
@@ -1066,7 +1070,7 @@ class StatusTests(unittest.TestCase):
         info = workdir.status(self.layout, self.team)
         self.assertIsNone(info["project_dir"])
         self.assertFalse(info["exists"])
-        self.assertEqual(workdir.status_summary(info), "no folder")
+        self.assertEqual(workdir.status_summary(info), "no folder, 0/2 with Missions")
 
     def test_a_configured_team_reports_what_it_has(self):
         self.set_project()
@@ -1202,6 +1206,27 @@ class TreeFolderTests(unittest.TestCase):
         model = self.team_node(self.model({"alpha": {"team": "alpha", "project_dir": None, "members": [], "issues": []}}))
         text = "\n".join(picker_lines(model, 100, 24))
         self.assertIn("f creates one", text)
+
+    def test_missing_missions_are_visible_without_hiding_team_actions(self):
+        from herdr_team.tui_model import picker_lines
+
+        info = {"team": "alpha", "project_dir": "/tmp", "members": [{"name": "alpha-reviewer"}], "rules": True, "with_missions": 0, "missing_missions": ["alpha-reviewer"], "findings": 0, "issues": []}
+        model = self.team_node(self.model({"alpha": info}))
+        text = "\n".join(picker_lines(model, 120, 24))
+        self.assertIn("Mission missing: alpha-reviewer", text)
+        self.assertIn("0/1 with Missions", text)
+        self.assertIn("f changes its folder", text)
+        self.assertIn("x dissolves it", text)
+
+    def test_missing_mission_is_marked_on_a_team_without_a_folder(self):
+        from herdr_team.tui_model import picker_lines
+
+        info = {"team": "alpha", "project_dir": None, "members": [{"name": "alpha-reviewer"}], "with_missions": 0, "missing_missions": ["alpha-reviewer"], "issues": []}
+        model = self.team_node(self.model({"alpha": info}))
+        text = "\n".join(picker_lines(model, 120, 24))
+        self.assertIn("Mission missing: alpha-reviewer", text)
+        self.assertIn("f creates one", text)
+        self.assertIn("x dissolves it", text)
 
     def test_f_opens_the_folder_prompt_prefilled_with_the_shared_directory(self):
         from herdr_team.tui_model import picker_apply_key

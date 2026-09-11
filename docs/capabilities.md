@@ -32,11 +32,11 @@ holds `daemon.json`, `daemon.log`, `who.json`, `kinds.json`, `view.json`,
 
 | Capability | UI | CLI |
 | --- | --- | --- |
-| Create from live agents | `prefix+t` picker (section 7) | `herdr-synapse create <team> --member <pane\|name>[:<role>[:<name>]] … [--charter "…"\|--charter-file p] [--ref p] [--brief NAME=TEXT]… [--names plain] [--rename] [--reuse] [--use]` |
+| Create from live agents | `prefix+t` picker (section 7); after the charter it offers optional team rules and a team folder, then requires a Mission / brief for every member | `herdr-synapse create <team> --member <pane\|name>[:<role>[:<name>]] … --brief NAME\|ROLE=MISSION … [--charter "…"\|--charter-file p] [--ref p] [--names plain] [--rename] [--reuse] [--use]`; an explicit non-empty Mission in `--instructions FINAL-NAME=TEXT` may supply and derive the brief instead |
 | Create from every agent in a Space | picker: `w` then `a` | `create <team> --from-workspace <ws-id>`: waits up to 60 s for agents still launching and warns about the rest |
-| Add agents to an existing team | picker: select the agents, Enter; when teams exist a numbered choice follows (`1  add it to team <t>  (N members)`, last number `create a new team`; type the number or move with the arrows); adding skips the charter stage, asks role, name, and brief per agent, and confirms with `Add N agents to team <t>?`; every other member is nudged with a `member_joined` record and the newcomer is briefed. A kind that is not trusted yet (`kinds list`) is flagged on the confirm screen and by `add` (`kind_trusted: false`, a warning): nothing is typed into it until `herdr-synapse kinds trust <kind>` | `herdr-synapse add <team> <pane\|name> [--role <r>] [--as <name>] [--brief "…"]`, one per agent; each new member is briefed once idle |
-| Create from scratch | | `create <team> --new [--workspace ID] --spawn <role>:<kind>[:<cwd>] … [--model <role\|kind>=<model>[@<effort>]] …` lays out the panes and starts the agents with their model and effort flags (section 5e) |
-| Add a member later | | `add <team> <pane\|name> [--role r] [--as name] [--brief TEXT] [--rename] [--steal] [--model <setting>]` |
+| Add agents to an existing team | picker: select the agents, Enter; when teams exist a numbered choice follows (`1  add it to team <t>  (N members)`, last number `create a new team`; type the number or move with the arrows); adding skips the charter stage, asks role, name, and required Mission / brief per agent, and confirms with `Add N agents to team <t>?`; every other member is nudged with a `member_joined` record and the newcomer is briefed. A kind that is not trusted yet (`kinds list`) is flagged on the confirm screen and by `add` (`kind_trusted: false`, a warning): nothing is typed into it until `herdr-synapse kinds trust <kind>` | `herdr-synapse add <team> <pane\|name> [--role <r>] [--as <name>] --brief "<Mission>"`, one per agent; each new member is briefed once idle |
+| Create from scratch | | `create <team> --new [--workspace ID] --spawn <role>:<kind>[:<cwd>] … --brief <role\|name>=<Mission> … [--model <role\|kind>=<model>[@<effort>]] …` lays out the panes and starts the agents with their model and effort flags (section 5e) |
+| Add a member later | | `add <team> <pane\|name> [--role r] [--as name] --brief MISSION [--rename] [--steal] [--model <setting>]` |
 | Link two teams through their managers | picker: `c` on a team row (Enter links or breaks; a team with no manager is refused with the reason); console `/link`, `/unlink`, `/links` | `link <team> <other> [--note]`, `unlink`, `links [--all]` (section 5f) |
 | Clear a board | console `/wipe [--purge] [reason]` (y/n first) | `wipe [--yes] [--purge] [--reason]`: every post moves to `archive/` (seqs and cursors kept; `board --since 1` reads it), or is deleted for good with `--purge`; operator only |
 | Post to a linked team | console `/team <other> text`, `@team:` in the mention menu | `post --to team:<other>` (the manager, the operator, or a delegate) |
@@ -86,7 +86,7 @@ agent pane every write is refused `author_mismatch` and audited.
 | Read | console header line `charter #<seq>: <headline>`; `/charter` opens a box | `herdr-synapse charter` |
 | Change | console `/charter set [--urgent] text` | `charter set "…" \| --file p [--ref p]… [--urgent]`; `charter edit` opens `$VISUAL`, then `$EDITOR`, then `vi` (needs a TTY; a failing editor leaves the charter unchanged) |
 | History | | `charter history` |
-| Role brief per member | picker asks per member, optional | `create --brief NAME=TEXT` (name or role as the key, repeatable); `add … --brief TEXT`; `brief <name> --set "…"` later |
+| Mission and role brief per member | picker requires it per member | `create --brief NAME\|ROLE=TEXT` (repeatable); `add … --brief TEXT`; an explicit `## Mission` in `create --instructions` can derive it; `brief <name> --set "…"` changes the roster summary later |
 
 What members see: the charter headline in their briefing line, the full
 text with `herdr-synapse charter`, and charter plus their own brief in
@@ -107,7 +107,7 @@ on disk tells them apart. Three additions close that:
 | Capability | CLI | Who |
 | --- | --- | --- |
 | Choose where the folder goes | `project set <path>`, `project clear`, `project render`; `create --project`; a `prefix+t` wizard stage that prefills the shared directory | human only |
-| See what every team has | `knowledge-status`, the `prefix+f` popup, and a per-team marker in the `prefix+t` tree | anyone |
+| See what every team has | `knowledge-status`, the `prefix+f` popup, and a per-team marker in the `prefix+t` tree; all report how many members have Missions and name missing ones | anyone |
 | Set it all up at creation | `create --project … --rules … --instructions NAME=TEXT` | human only |
 | The member's own instructions document | `instructions <name> --set "…" \| --file p \| --edit \| --adopt \| --discard \| --clear`, or edit `members/<name>.md` and adopt it | human to write, anyone to read |
 | Team rules, the DOs and DON'Ts | `knowledge set "…" \| --file p`, `knowledge clear` | human only |
@@ -597,24 +597,27 @@ Each member carries an optional model and reasoning effort, `<model>[@<effort>]`
 resolved member override → team default for the kind (`config.models`) →
 harness default. The vocabulary is the harness's own and is passed through
 untranslated. What each installed harness accepts (checked against the
-binaries and then live-verified on 2026-09-10):
+binaries and then live-verified on 2026-09-11):
 
 | Kind | At launch (and on `resume`) | Live | Effort words |
 | --- | --- | --- | --- |
-| Claude Code 2.1.267 | `--model <alias\|name>`, `--effort <e>`; `claude --resume <id> …` | `/model <m>` and `/effort <e>` both take an argument: the notifier types them | `low medium high xhigh max` |
-| Codex 0.153.4 | `-m <model>`, `-c model_reasoning_effort="<e>"`; on `codex resume <id>` too | `/model` is a picker: no keystroke. `--apply restart` exits (`/quit`) and resumes with the flags | `minimal low medium high xhigh` |
-| OpenCode 1.18.30 | `-m provider/model`; `--session <id>` too; effort is selected after startup | `/variants` accepts the effort selection live; a model change uses `/exit` and a controlled restart | provider-specific; any token |
+| Claude Code 2.1.268 | `--model <alias\|name>`, `--effort <e>`, `--dangerously-skip-permissions`; `claude --resume <id> …` | `/model <m>` and `/effort <e>` both take an argument: the notifier types them | `low medium high xhigh max` |
+| Codex 0.153.4 | `-m <model>`, `-c model_reasoning_effort="<e>"`, `--dangerously-bypass-approvals-and-sandbox`; on `codex resume <id>` too | `/model` is a picker: no keystroke. `--apply restart` exits (`/quit`) and resumes with the flags | `minimal low medium high xhigh` |
+| OpenCode 1.18.30 | `-m provider/model`, `--auto`; `--session <id>` too; effort is selected after startup | `/variants` accepts the effort selection live; a model change uses `/exit` and a controlled restart | provider-specific; any token |
 
 Herdr's `agent.start` hands `args` to the binary verbatim
 (`herdr agent start NAME --kind K --pane P -- ARG…`), so every flag above is
 argv, never a shell string.
 
+**Unrestricted by default.** Every Synapse-managed fresh launch of Claude Code, Codex or OpenCode carries the unrestricted flag in the table. Synapse rebuilds the same default on `resume`, controlled model restart and OpenCode clear/restart; a live agent added to a team keeps its current launch mode until one of those Synapse-managed starts. Conflicting approval, permission and sandbox selectors from a previous process are not carried into a restart, while unrelated allowlisted flags still are. This execution mode does not turn an agent into the Synapse operator: charter, roster and other privileged changes still pass the process-tree authority gate.
+
 **Verified live:** Claude changed model and effort inside the running TUI;
 Codex restarted its exact session with the requested model and effort; OpenCode
 changed effort through `/variants`, then restarted the exact session for a
 model change and re-applied the effort. Controlled restarts validate the exact
-returning record and argv, preserve allowlisted policy flags, and disable the
-Codex startup update picker for that restart.
+returning record and argv, preserve allowlisted non-permission flags, rebuild
+the unrestricted default, and disable the Codex startup update picker for that
+restart.
 
 **Changing it while the agent runs.** A change is recorded on the roster and
 announced (`model_changed`, the member nudged). Claude: a control job types
@@ -1037,9 +1040,7 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
   workflow. Other kinds, including Gemini, Cursor Agent, Kimi and Antigravity,
   need `hooks probe` or `kinds trust` before terminal delivery and remain
   conditional rather than fully supported.
-- Codex under its default sandbox cannot reach the Herdr socket from a tool
-  call and asks to rerun unsandboxed; approve its read-only `herdr-synapse`
-  commands or start it with an approval policy that allows them.
+- Synapse-managed Claude Code, Codex and OpenCode starts are unrestricted by default. Agents already running when they join a team retain their current launch mode until a Synapse-managed resume or restart.
 - Hooks exist for Claude only. Codex and OpenCode use the typed briefing path.
 - `!!name text` and `post --interrupt` are live-verified for all three supported
   harnesses. Other kinds still carry `unverified for <kind>` and are excluded
@@ -1055,9 +1056,7 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
 - No shared task list with claiming; no cross-session or cross-machine
   teams; no Windows.
 - The console opens as a split in the current tab, not its own tab.
-- Restarting the Herdr server restores a Claude pane with `claude --resume`
-  and drops its launch flags (model, permissions, allowed tools), so hooks
-  and cheap models configured on the command line are lost on restart.
+- Herdr's own automatic server restoration still rebuilds a bare harness resume command and drops launch flags. Use `herdr-synapse resume <name>` when the unrestricted/model flags must be rebuilt; changing Herdr's global restore behavior is outside the plugin boundary.
 
 ## 13. Test checklist
 
@@ -1067,7 +1066,7 @@ Each row: do this, expect that.
 | --- | --- | --- |
 | C1 | `herdr-synapse doctor` after linking and `daemon-start` | daemon alive, your socket, slug `default`, no errors |
 | C2 | trust `claude`, `codex` and `opencode`; `kinds list` | all three rows are in the `delivers` column with `trusted` in the flags (`--json`: `delivers: true, trusted: true`) |
-| C3 | two fresh idle agents; `prefix+t`; Space on both; Enter; team name; charter; per member role, name, brief (fields are prefilled: Ctrl-U clears before typing, Enter accepts the default); confirm | `who` lists both with roles; `herdr agent list` shows names and tokens; `herdr pane list` shows labels `team:<t>/<role>` |
+| C3 | two fresh idle agents; `prefix+t`; Space on both; Enter; team name; charter; optional rules; folder; per member role, name, required Mission / brief (fields are prefilled except Mission: Ctrl-U clears before typing, Enter accepts a shown default); confirm | `who` lists both with roles; `herdr agent list` shows names and tokens; `herdr pane list` shows labels `team:<t>/<role>`; each authoritative member document has all six standard sections |
 | C4 | wait about a minute; `who` | the `unbriefed` tag disappears from both rows once the briefing lines landed; each screen shows the `[herdr-team briefing]` lines and the agent running `herdr-synapse ack` (otherwise one re-brief after 90 s, then a `<name> unbriefed` toast) |
 | C5 | ask a member "what is this team for and what is your role" | it answers from `charter` and `me` with the right names |
 | C6 | `herdr-synapse post "hello team"` from a shell pane | `board --last 1`: from `human`, to `all`, no `(unverified)`; every member shows `↪1` and is nudged once idle (an agent's post to `all` nudges nobody) |

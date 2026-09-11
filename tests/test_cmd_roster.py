@@ -9,7 +9,7 @@ import subprocess
 import unittest
 from unittest import mock
 
-from herdr_team import SKILL_VERSION, cli, paths, store
+from herdr_team import SKILL_VERSION, cli, instructions_doc as _instructions_doc, paths, store
 from herdr_team import cmd_roster
 from support import FakeApi, FakeError, TempState, fake_agent, identity_tokens
 
@@ -95,7 +95,7 @@ class CreateFromLive(unittest.TestCase):
         with TempState(write_team=False) as ts:
             api = live_api()
             env = env_no_daemon(ts)
-            code, payload, err = json_out(run_cli(["--json", "create", "beta", "--member", "w5:p1:reviewer", "--member", "wA:p6:worker:bob", "--charter", "Fix the bug.", "--brief", "bob=Own the patch."], env, api))
+            code, payload, err = json_out(run_cli(["--json", "create", "beta", "--member", "w5:p1:reviewer", "--member", "wA:p6:worker:bob", "--charter", "Fix the bug.", "--brief", "reviewer=Review the patch.", "--brief", "bob=Own the patch."], env, api))
             self.assertEqual(code, 0, err)
             self.assertEqual(payload["team"], "beta")
             self.assertTrue(payload["created"])
@@ -121,6 +121,8 @@ class CreateFromLive(unittest.TestCase):
             doc = store.read_json(team.team_json)
             names = {m["name"]: m for m in doc["members"]}
             self.assertEqual(names["bob"]["brief"], "Own the patch.")
+            self.assertEqual(names["beta-reviewer"]["instructions_seq"], 1)
+            self.assertIn("## Definition of done", team.instructions("beta-reviewer").read_text(encoding="utf-8"))
             self.assertEqual(names["bob"]["label"], "team:beta/worker")
             self.assertEqual(doc["charter"]["seq"], 1)
             self.assertEqual(len(os.listdir(team.jobs_dir)), 2)
@@ -155,6 +157,62 @@ class CreateFromLive(unittest.TestCase):
                 self.assertFalse(any(m in ("agent.rename", "pane.rename", "pane.report_metadata") for m, _ in api.calls[calls_before:]), argv)
             self.assertEqual(ts.session.list_teams(), [])
 
+    def test_a_missing_mission_is_refused_before_create_or_add_mutates_anything(self):
+        with TempState(write_team=False) as ts:
+            api = live_api()
+            env = env_no_daemon(ts)
+            code, _, err = json_out(run_cli(["--json", "create", "beta", "--member", "w5:p1:reviewer"], env, api))
+            self.assertEqual((code, err["code"], err["members"]), (1, "mission_required", ["beta-reviewer"]))
+            self.assertFalse(ts.session.team("beta").root.exists())
+            self.assertFalse(any(method in ("agent.rename", "pane.rename", "pane.report_metadata") for method, _params in api.calls))
+        with TempState() as ts:
+            before = store.read_json(ts.team.team_json)
+            code, _, err = json_out(run_cli(["--json", "add", "alpha", "w5:p1", "--role", "tester", "--as", "tess"], env_no_daemon(ts), live_api()))
+            self.assertEqual((code, err["code"], err["members"]), (1, "mission_required", ["tess"]))
+            self.assertEqual(store.read_json(ts.team.team_json), before)
+
+    def test_new_and_reuse_require_every_mission_before_layout_or_roster_mutation(self):
+        with TempState(write_team=False) as ts:
+            api = live_api()
+            code, _, err = json_out(run_cli(["--json", "create", "beta", "--new", "--spawn", "lead:claude", "--spawn", "reviewer:codex"], env_no_daemon(ts), api))
+            self.assertEqual((code, err["code"], err["members"]), (1, "mission_required", ["beta-lead", "beta-reviewer"]))
+            self.assertFalse(ts.session.team("beta").root.exists())
+            self.assertFalse(any(method == "layout.apply" for method, _params in api.calls))
+        with TempState() as ts:
+            api = live_api()
+            before = store.read_json(ts.team.team_json)
+            code, _, err = json_out(run_cli(["--json", "create", "alpha", "--reuse", "--member", "w5:p1:tester:tess"], env_no_daemon(ts), api))
+            self.assertEqual((code, err["code"], err["members"]), (1, "mission_required", ["tess"]))
+            self.assertEqual(store.read_json(ts.team.team_json), before)
+            self.assertFalse(any(method in ("agent.rename", "pane.rename", "pane.report_metadata") for method, _params in api.calls))
+
+    def test_structured_instructions_supply_the_mission_and_keep_the_full_shape(self):
+        with TempState(write_team=False) as ts:
+            text = "## Scope\nReview only\n\n## Mission\nReview every patch.\n\nExplain risky changes.\n\n## House style\nBe concise"
+            code, _, err = json_out(run_cli(["--json", "create", "beta", "--member", "w5:p1:reviewer", "--instructions", "beta-reviewer=" + text], env_no_daemon(ts), live_api()))
+            self.assertEqual(code, 0, err)
+            team = ts.session.team("beta")
+            saved = store.read_json(team.team_json)
+            member = next(row for row in saved["members"] if row["name"] == "beta-reviewer")
+            self.assertEqual(member["brief"], "Review every patch.")
+            stored = team.instructions("beta-reviewer").read_text(encoding="utf-8")
+            for title in ("Mission", "Scope", "Constraints", "Definition of done", "Handoffs", "Notes", "House style"):
+                self.assertIn("## " + title, stored)
+            self.assertIn("Explain risky changes.", stored)
+
+    def test_explicit_mission_wins_while_the_supplied_brief_stays_the_roster_summary(self):
+        with TempState(write_team=False) as ts:
+            text = "## Mission\nPerform the detailed independent review.\n\n## Scope\nOnly changed files."
+            code, _, err = json_out(run_cli(["--json", "create", "beta", "--member", "w5:p1:reviewer", "--brief", "reviewer=Review the patch.", "--instructions", "beta-reviewer=" + text], env_no_daemon(ts), live_api()))
+            self.assertEqual(code, 0, err)
+            team = ts.session.team("beta")
+            saved = store.read_json(team.team_json)
+            member = next(row for row in saved["members"] if row["name"] == "beta-reviewer")
+            self.assertEqual(member["brief"], "Review the patch.")
+            sections = _instructions_doc.parse(team.instructions("beta-reviewer").read_text(encoding="utf-8"))
+            self.assertEqual(_instructions_doc.section(sections, "Mission"), ["Perform the detailed independent review."])
+            self.assertEqual(_instructions_doc.section(sections, "Scope"), ["Only changed files."])
+
     def test_member_claimed_leaves_no_team_and_steal_moves(self):
         with TempState() as ts:
             api = live_api()
@@ -164,7 +222,7 @@ class CreateFromLive(unittest.TestCase):
             self.assertEqual(err["code"], "member_claimed")
             self.assertEqual(err["owner_team"], "alpha")
             self.assertFalse(ts.session.team("beta").root.exists())
-            code, payload, err = json_out(run_cli(["--json", "create", "beta", "--member", "w2:p1:lead", "--steal"], env, api))
+            code, payload, err = json_out(run_cli(["--json", "create", "beta", "--member", "w2:p1:lead", "--brief", "lead=Lead the team.", "--steal"], env, api))
             self.assertEqual(code, 0, err)
             alpha = store.read_json(ts.team.team_json)
             reviewer = [m for m in alpha["members"] if m["name"] == "alpha-reviewer"][0]
@@ -179,7 +237,7 @@ class CreateFromLive(unittest.TestCase):
             code, _, err = json_out(run_cli(["--json", "create", "alpha", "--member", "w5:p1:tester"], env, api))
             self.assertEqual(code, 1)
             self.assertEqual(err["code"], "team_exists")
-            code, payload, err = json_out(run_cli(["--json", "create", "alpha", "--member", "w5:p1:tester", "--reuse"], env, api))
+            code, payload, err = json_out(run_cli(["--json", "create", "alpha", "--member", "w5:p1:tester", "--brief", "tester=Test the patch.", "--reuse"], env, api))
             self.assertEqual(code, 0, err)
             self.assertEqual(payload["members"][0]["name"], "alpha-tester")
             self.assertEqual(len([m for m in store.read_json(ts.team.team_json)["members"] if m["status"] == "active"]), 4)
@@ -194,7 +252,7 @@ class CreateFromLive(unittest.TestCase):
             self.addCleanup(setattr, cmd_roster, "FROM_WORKSPACE_SETTLE_S", cmd_roster.FROM_WORKSPACE_SETTLE_S)
             cmd_roster._sleep = sleeps.append
             cmd_roster.FROM_WORKSPACE_SETTLE_S = 0.0  # one listing, no wait
-            code, payload, err = json_out(run_cli(["--json", "create", "five", "--from-workspace", "w5"], env, api))
+            code, payload, err = json_out(run_cli(["--json", "create", "five", "--from-workspace", "w5", "--brief", "codex=Review the patch.", "--brief", "claude=Implement the patch."], env, api))
             self.assertEqual(code, 0, err)
             self.assertEqual([m["pane_id"] for m in payload["members"]], ["w5:p1", "w5:p2"])
             self.assertEqual([m["role"] for m in payload["members"]], ["codex", "claude"])
@@ -227,7 +285,7 @@ class CreateFromLive(unittest.TestCase):
             api.set_response("agent.rename", strict_rename)
             self.addCleanup(setattr, cmd_roster, "FROM_WORKSPACE_SETTLE_S", cmd_roster.FROM_WORKSPACE_SETTLE_S)
             cmd_roster.FROM_WORKSPACE_SETTLE_S = 0.0
-            code, payload, err = json_out(run_cli(["--json", "create", "six", "--from-workspace", "w6"], env, api))
+            code, payload, err = json_out(run_cli(["--json", "create", "six", "--from-workspace", "w6", "--brief", "codex=Review the patch."], env, api))
             self.assertEqual(code, 0, err)
             self.assertEqual(sorted((m["pane_id"], m["name"]) for m in payload["members"]), [("w6:p1", "six-codex"), ("w6:p2", "six-codex-2")])
             renames = [(p["target"], p["name"]) for m, p in api.calls if m == "agent.rename"]
@@ -241,7 +299,7 @@ class CreateFromLive(unittest.TestCase):
             api = live_api(rows)
             env = env_no_daemon(ts)
             cmd_roster.FROM_WORKSPACE_SETTLE_S = 0.0
-            code, payload, err = json_out(run_cli(["--json", "create", "six", "--from-workspace", "w6"], env, api))
+            code, payload, err = json_out(run_cli(["--json", "create", "six", "--from-workspace", "w6", "--brief", "codex=Review the patch."], env, api))
             self.assertEqual(code, 0, err)
             self.assertEqual(sorted((m["pane_id"], m["name"], m["renamed"]) for m in payload["members"]), [("w6:p1", "six-codex-2", False), ("w6:p2", "six-codex", True)])
 
@@ -259,7 +317,7 @@ class CreateFromLive(unittest.TestCase):
             self.assertFalse(ts.session.team("six").root.exists())
             self.assertFalse(any(m in ("agent.rename", "pane.rename", "pane.report_metadata") for m, _ in api.calls))
             # One explicit name that another batch target vacates is fine: bob moves to carol first.
-            code, payload, err = json_out(run_cli(["--json", "create", "six", "--member", "w6:p1:a:bob", "--member", "w6:p2:b:carol"], env, api))
+            code, payload, err = json_out(run_cli(["--json", "create", "six", "--member", "w6:p1:a:bob", "--member", "w6:p2:b:carol", "--brief", "bob=Own A.", "--brief", "carol=Own B."], env, api))
             self.assertEqual(code, 0, err)
             renames = [(p["target"], p["name"]) for m, p in api.calls if m == "agent.rename"]
             self.assertEqual(renames, [("w6:p2", "carol"), ("w6:p1", "bob")])
@@ -295,7 +353,7 @@ class CreateFromLive(unittest.TestCase):
         with TempState(write_team=False) as ts:
             api = live_api()
             env = env_no_daemon(ts)
-            code, payload, err = json_out(run_cli(["--json", "create", "beta", "--names", "plain", "--member", "w5:p1:reviewer", "--member", "w5:p2:worker"], env, api))
+            code, payload, err = json_out(run_cli(["--json", "create", "beta", "--names", "plain", "--member", "w5:p1:reviewer", "--member", "w5:p2:worker", "--brief", "reviewer=Review the patch.", "--brief", "worker=Implement the patch."], env, api))
             self.assertEqual(code, 0, err)
             self.assertEqual([m["name"] for m in payload["members"]], ["reviewer", "worker"])
             self.assertEqual(store.read_json(ts.session.team("beta").team_json)["naming"], "plain")
@@ -308,12 +366,12 @@ class CreateFromLive(unittest.TestCase):
             api = live_api()
             env = env_no_daemon(ts)
             store.write_json(ts.session.console_json, {"default_team": "alpha"})
-            code, payload, err = json_out(run_cli(["--json", "create", "beta", "--member", "w5:p1:reviewer"], env, api))
+            code, payload, err = json_out(run_cli(["--json", "create", "beta", "--member", "w5:p1:reviewer", "--brief", "reviewer=Review the patch."], env, api))
             self.assertEqual(code, 0, err)
             self.assertFalse(payload["default_team"])
             self.assertIn("default team stays 'alpha'", err)
             self.assertEqual(store.read_json(ts.session.console_json)["default_team"], "alpha")
-            code, payload, _ = json_out(run_cli(["--json", "create", "gamma", "--member", "w5:p2:worker", "--use"], env, api))
+            code, payload, _ = json_out(run_cli(["--json", "create", "gamma", "--member", "w5:p2:worker", "--brief", "worker=Implement the patch.", "--use"], env, api))
             self.assertTrue(payload["default_team"])
             self.assertEqual(store.read_json(ts.session.console_json)["default_team"], "gamma")
 
@@ -381,11 +439,14 @@ class CreateNew(unittest.TestCase):
 
             api.set_response("layout.apply", layout_apply)
             api.set_cli(["agent", "start"], 0, "{}", "")
-            code, payload, err = json_out(run_cli(["--json", "create", "delta", "--new", "--workspace", "w9", "--spawn", "reviewer:codex", "--spawn", "worker:claude:/tmp/work"], env, api))
+            code, payload, err = json_out(run_cli(["--json", "create", "delta", "--new", "--workspace", "w9", "--spawn", "reviewer:codex", "--spawn", "worker:claude:/tmp/work", "--brief", "reviewer=Review the patch.", "--brief", "worker=Implement the patch."], env, api))
             self.assertEqual(code, 0, err)
             self.assertEqual([m["name"] for m in payload["members"]], ["delta-reviewer", "delta-worker"])
             self.assertTrue(all(m["managed"] for m in payload["members"]))
-            self.assertEqual(api.runs, [["agent", "start", "delta-reviewer", "--kind", "codex", "--pane", "w9:p1", "--timeout", "60000"], ["agent", "start", "delta-worker", "--kind", "claude", "--pane", "w9:p2", "--timeout", "60000"]])
+            self.assertEqual(api.runs, [
+                ["agent", "start", "delta-reviewer", "--kind", "codex", "--pane", "w9:p1", "--timeout", "60000", "--", "--dangerously-bypass-approvals-and-sandbox"],
+                ["agent", "start", "delta-worker", "--kind", "claude", "--pane", "w9:p2", "--timeout", "60000", "--", "--dangerously-skip-permissions"],
+            ])
             request = [p for m, p in api.calls if m == "layout.apply"][0]
             self.assertEqual(request["workspace_id"], "w9")
             self.assertEqual(request["root"]["second"]["cwd"], "/tmp/work")
@@ -493,7 +554,7 @@ class StartAgent(unittest.TestCase):
             self.addCleanup(setattr, cmd_roster, "_monotonic", cmd_roster._monotonic)
             cmd_roster._sleep = lambda _s: None
             cmd_roster._monotonic = monotonic
-            code, payload, err = json_out(run_cli(["--json", "create", "delta", "--new", "--workspace", "w9", "--spawn", "reviewer:codex"], env, api))
+            code, payload, err = json_out(run_cli(["--json", "create", "delta", "--new", "--workspace", "w9", "--spawn", "reviewer:codex", "--brief", "reviewer=Review the patch."], env, api))
             self.assertEqual(code, 0, err)
             member = payload["members"][0]
             self.assertEqual(member["status"], "failed")

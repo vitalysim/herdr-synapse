@@ -4,7 +4,7 @@ Pure and I/O-free. Everything is argv, never a shell string, because Herdr's
 ``agent.start`` hands ``args`` to the binary verbatim and ``resume`` execs.
 
 What the three supported harnesses accept (verified on the installed
-binaries, most recently 2026-09-10):
+binaries, most recently 2026-09-11):
 
 - **Claude Code** ``--model <alias|name>`` and ``--effort low|medium|high|xhigh|max``
   at launch and on ``--resume``; ``/model <m>`` and ``/effort <e>`` typed live.
@@ -15,6 +15,12 @@ binaries, most recently 2026-09-10):
   The full TUI does *not* accept ``--variant`` (that flag belongs to
   ``opencode run``); select provider-specific effort through its native
   ``/variants`` dialog by typing the exact variant and pressing Enter.
+
+Every Synapse-managed launch of these three kinds is unrestricted by default:
+Claude gets ``--dangerously-skip-permissions``, Codex gets
+``--dangerously-bypass-approvals-and-sandbox``, and OpenCode gets ``--auto``.
+The same flags are rebuilt on exact-session resume, controlled model restart,
+and OpenCode clear/restart instead of depending on a previous process argv.
 
 The vocabulary is the harness's own, passed through untranslated: ``medium``
 means whatever the harness means by it. A kind not listed here cannot carry a
@@ -37,6 +43,15 @@ EFFORTS: Dict[str, Optional[Tuple[str, ...]]] = {
     "opencode": None,
 }
 
+#: Full-auto execution is the plugin default for every fully supported kind.
+#: Keep the spelling aligned with the installed harness CLIs; these are argv
+#: elements passed directly to Herdr, never shell fragments.
+UNRESTRICTED_ARGS: Dict[str, Tuple[str, ...]] = {
+    "claude": ("--dangerously-skip-permissions",),
+    "codex": ("--dangerously-bypass-approvals-and-sandbox",),
+    "opencode": ("--auto",),
+}
+
 #: What ends the harness cleanly, so the notifier can resume it with new flags.
 EXIT_KEYSTROKE: Dict[str, str] = {"claude": "/exit", "codex": "/quit", "opencode": "/exit"}
 
@@ -46,25 +61,16 @@ CLAUDE_ALIASES: Tuple[str, ...] = ("opus", "sonnet", "haiku", "fable")
 MAX_TOKEN_CHARS = 80
 _TOKEN_OK = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/:")
 
-# Runtime policy switches worth carrying across a model-change restart. This
-# is deliberately an allowlist: copying an arbitrary process argv into the
-# board could persist secrets supplied through unrelated CLI options.
+# Non-permission runtime switches worth carrying across a model-change restart.
+# Permission, approval and sandbox selectors are deliberately absent: every
+# supported kind is rebuilt with UNRESTRICTED_ARGS. This remains an allowlist
+# because copying an arbitrary process argv into the board could persist
+# secrets supplied through unrelated CLI options.
 _PRESERVED_FLAGS: Dict[str, Dict[str, int]] = {
     "claude": {
-        "--allow-dangerously-skip-permissions": 0,
-        "--dangerously-skip-permissions": 0,
-        "--permission-mode": 1,
-        "--restricted": 0,
-        "--safe": 0,
         "--settings": 1,
     },
     "codex": {
-        "-a": 1,
-        "--ask-for-approval": 1,
-        "-s": 1,
-        "--sandbox": 1,
-        "--approve-for-me": 0,
-        "--dangerously-bypass-approvals-and-sandbox": 0,
         "--dangerously-bypass-hook-trust": 0,
         "--strict-config": 0,
         "--oss": 0,
@@ -80,7 +86,6 @@ _PRESERVED_FLAGS: Dict[str, Dict[str, int]] = {
     "opencode": {
         "--pure": 0,
         "--agent": 1,
-        "--auto": 0,
         "--mini": 0,
         "--no-replay": 0,
         "--replay-limit": 1,
@@ -146,7 +151,7 @@ def validate(kind: Any, model: Optional[str], effort: Optional[str]) -> None:
 
 
 def launch_args(kind: Any, model: Optional[str], effort: Optional[str]) -> List[str]:
-    """The flags to append to the harness's own argv for this setting (empty when nothing is set)."""
+    """The model flags and unrestricted default appended to a supported harness argv."""
     validate(kind, model, effort)
     key = str(kind or "").strip()
     out: List[str] = []
@@ -163,6 +168,7 @@ def launch_args(kind: Any, model: Optional[str], effort: Optional[str]) -> List[
     elif key == "opencode":
         if model:
             out += ["-m", model]
+    out += UNRESTRICTED_ARGS.get(key, ())
     return out
 
 

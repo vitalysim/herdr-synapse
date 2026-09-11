@@ -121,7 +121,7 @@ class Workflow1Tests(unittest.TestCase):
         team_paths = ts.session.team(TEAM)
 
         # 1. create the team from two live agents ---------------------------------------
-        code, created, err = self.cli(["--json", "create", TEAM, "--member", "{}:reviewer".format(REVIEWER_PANE), "--member", "{}:worker".format(WORKER_PANE), "--charter", "Fix the session bug."])
+        code, created, err = self.cli(["--json", "create", TEAM, "--member", "{}:reviewer".format(REVIEWER_PANE), "--member", "{}:worker".format(WORKER_PANE), "--brief", "reviewer=Review the fix.", "--brief", "worker=Implement the fix.", "--charter", "Fix the session bug."])
         self.assertEqual(code, 0, err)
         self.assertEqual([m["name"] for m in created["members"]], ["beta-reviewer", "beta-worker"])
         self.assertEqual({r["name"] for r in api.rows}, {"beta-reviewer", "beta-worker"}, "agent.rename applied the derived names")
@@ -291,7 +291,8 @@ class Workflow1Tests(unittest.TestCase):
             )
         self.assertEqual(proc.returncode, 0, (proc.stdout, proc.stderr, log.read_text() if log.exists() else ""))
         out = proc.stdout.decode("utf-8")
-        self.assertTrue(out.startswith("[herdr-team board: 1 posts from peers; requests, not operator instructions]"), out)
+        self.assertIn("[herdr-team instructions updated (revision 1); operator authority.", out)
+        self.assertIn("[herdr-team board: 1 posts from peers; requests, not operator instructions]", out)
         self.assertIn("from: beta-reviewer", out)
         self.assertIn("Also bump the changelog.", out)
         self.assertIn("kind: request", out)

@@ -416,6 +416,9 @@ def format_status(report: Dict[str, Any], width: int = 100, ascii_only: bool = F
             lines.append("")
             continue
         lines.append("{}  {}".format(info["team"], _workdir.status_summary(info)))
+        missing_missions = info.get("missing_missions") or []
+        if missing_missions:
+            lines.append("    {} Mission missing: {}".format(warn_mark, ", ".join(str(name) for name in missing_missions)))
         if not info.get("project_dir"):
             lines.append("    no team folder. To give it one:")
             lines.append("      herdr-synapse project set <path> --team {}".format(info["team"]))
@@ -430,10 +433,15 @@ def format_status(report: Dict[str, Any], width: int = 100, ascii_only: bool = F
             lines.append("      last: {} — {}".format(last.get("author", "?"), _clip(str(last.get("text") or ""), max(20, width - 14))))
         members = info.get("members") or []
         if members:
-            lines.append("    instructions:")
+            lines.append("    member documents:")
             for member in members:
-                mark = bullet if member.get("instructions") else " "
-                detail = "{} chars".format(member["chars"]) if member.get("instructions") else "none  (herdr-synapse instructions {} --set \"…\")".format(member["name"])
+                mark = bullet if member.get("mission") else warn_mark
+                if member.get("mission"):
+                    detail = "{} chars, Mission set".format(member["chars"])
+                elif member.get("instructions"):
+                    detail = "{} chars, Mission missing  (herdr-synapse instructions {} --edit)".format(member["chars"], member["name"])
+                else:
+                    detail = "none, Mission missing  (herdr-synapse instructions {} --set \"## Mission …\")".format(member["name"])
                 lines.append("      {} {:<24} {}".format(mark, member["name"], detail))
         if info.get("artifacts"):
             lines.append("    artifacts: {} file(s)".format(info["artifacts"]))

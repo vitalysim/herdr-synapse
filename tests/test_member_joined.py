@@ -15,7 +15,7 @@ class MemberJoinedTests(unittest.TestCase):
         with TempState() as ts:
             api = live_api()
             env = env_no_daemon(ts)
-            code, payload, err = json_out(run_cli(["--json", "add", "alpha", "w5:p1", "--role", "tester", "--as", "tess"], env, api))
+            code, payload, err = json_out(run_cli(["--json", "add", "alpha", "w5:p1", "--role", "tester", "--as", "tess", "--brief", "Test the patch."], env, api))
             self.assertEqual(code, 0, err)
             record = store.BoardStore(ts.team).get(payload["joined_record"])
             self.assertEqual((record["from"], record["kind"], record["event"], record["to"], record["urgent"]), ("system", "system", "member_joined", ["all"], True))
@@ -24,14 +24,14 @@ class MemberJoinedTests(unittest.TestCase):
 
     def test_add_warns_when_the_kind_is_not_trusted_for_delivery(self):
         with TempState() as ts:
-            code, payload, err = json_out(run_cli(["--json", "add", "alpha", "w5:p1", "--role", "tester", "--as", "tess"], env_no_daemon(ts), live_api()))
+            code, payload, err = json_out(run_cli(["--json", "add", "alpha", "w5:p1", "--role", "tester", "--as", "tess", "--brief", "Test the patch."], env_no_daemon(ts), live_api()))
             self.assertEqual(code, 0, err)
             self.assertFalse(payload["kind_trusted"])
             self.assertIn("not trusted for delivery yet", err)
             self.assertIn("herdr-synapse kinds trust codex", err)
         with TempState() as ts:
             store.write_json(ts.session.kinds_json, {"codex": {"trusted": True}})
-            code, payload, err = json_out(run_cli(["--json", "add", "alpha", "w5:p1", "--role", "tester", "--as", "tess"], env_no_daemon(ts), live_api()))
+            code, payload, err = json_out(run_cli(["--json", "add", "alpha", "w5:p1", "--role", "tester", "--as", "tess", "--brief", "Test the patch."], env_no_daemon(ts), live_api()))
             self.assertEqual(code, 0, err)
             self.assertTrue(payload["kind_trusted"])
             self.assertNotIn("not trusted", str(err))

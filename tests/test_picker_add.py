@@ -65,7 +65,6 @@ class PickerAddModeTests(unittest.TestCase):
         member = spec["members"][0]
         self.assertEqual(member["target"], "w1:p3")
         self.assertEqual(picker.add_args(spec, member), ["add", "alpha", "w1:p3", "--role", member["role"], "--as", member["name"], "--brief", "Review every patch."])
-        self.assertEqual(picker.add_args(spec, dict(member, brief=None))[-2:], ["--as", member["name"]])
 
     def test_escape_and_the_create_choice_reach_the_name_stage(self):
         model = self.model()
@@ -123,7 +122,7 @@ class PickerAddModeTests(unittest.TestCase):
         self.assertEqual(lines[2], "name:")
         self.assertTrue(lines[3].startswith(tui_model.INPUT_PROMPT + "alpha-tester"))
         picker_apply_key(model, "ENTER")
-        self.assertEqual(tui_model.picker_lines(model, 100, 24)[2], "brief for alpha-tester (optional):")
+        self.assertEqual(tui_model.picker_lines(model, 100, 24)[2], "Mission / brief for alpha-tester (required):")
         # a short popup keeps the input line and its message on screen
         short = tui_model.picker_lines(model, 100, 3)
         self.assertEqual(len(short), 3)
@@ -159,8 +158,11 @@ class PickerAddModeTests(unittest.TestCase):
             model = self.model()
             model.trusted_kinds = trusted
             picker_apply_key(model, "1")
-            for _ in range(4):
-                picker_apply_key(model, "ENTER")  # role, name, brief, model defaults
+            picker_apply_key(model, "ENTER")
+            picker_apply_key(model, "ENTER")
+            type_line(model, "Review this work.")
+            picker_apply_key(model, "ENTER")
+            picker_apply_key(model, "ENTER")
             self.assertEqual(model.stage, "confirm")
             return "\n".join(tui_model.picker_lines(model, 120, 24))
 
@@ -185,7 +187,7 @@ class PickerAddModeTests(unittest.TestCase):
             return 0, {"team": "alpha", "member": {"name": args[args.index("--as") + 1]}, "briefing_job": "j1"}, None
 
         spec = {"team": "alpha", "mode": "add", "members": [
-            {"target": "w1:p3", "role": "tester", "name": "alpha-tester", "brief": None},
+            {"target": "w1:p3", "role": "tester", "name": "alpha-tester", "brief": "Test the patch."},
             {"target": "w9:p9", "role": "x", "name": "alpha-x", "brief": "b"},
         ]}
         original = console.run_cli
@@ -196,7 +198,7 @@ class PickerAddModeTests(unittest.TestCase):
                 rc = picker.execute_create(spec, {})
             self.assertEqual(rc, 1)
             self.assertEqual(calls, [
-                ["add", "alpha", "w1:p3", "--role", "tester", "--as", "alpha-tester"],
+                ["add", "alpha", "w1:p3", "--role", "tester", "--as", "alpha-tester", "--brief", "Test the patch."],
                 ["add", "alpha", "w9:p9", "--role", "x", "--as", "alpha-x", "--brief", "b"],
             ])
             error = json.loads(err.getvalue())

@@ -1,7 +1,7 @@
 """Model and reasoning effort per member (0.14.0). Every test here fails against 0.13.0.
 
 The harness facts these encode were read from the installed binaries
-(``herdr_team/models.py`` docstring); the live round trips are pinned below
+(``herdr_team/models.py`` docstring, refreshed 2026-09-11); the live round trips are pinned below
 and covered by the disposable live compatibility run.
 """
 from __future__ import annotations
@@ -59,12 +59,19 @@ class SettingTests(unittest.TestCase):
                 models.parse_setting(bad)
 
     def test_launch_args_are_the_harness_own_flags(self):
-        self.assertEqual(models.launch_args("claude", "opus", "medium"), ["--model", "opus", "--effort", "medium"])
-        self.assertEqual(models.launch_args("claude", None, "max"), ["--effort", "max"])
+        self.assertEqual(set(models.UNRESTRICTED_ARGS), set(models.KINDS))
+        self.assertEqual(models.launch_args("claude", None, None), ["--dangerously-skip-permissions"])
+        self.assertEqual(models.launch_args("codex", None, None), ["--dangerously-bypass-approvals-and-sandbox"])
+        self.assertEqual(models.launch_args("opencode", None, None), ["--auto"])
+        self.assertEqual(models.launch_args("claude", "opus", "medium"),
+                         ["--model", "opus", "--effort", "medium", "--dangerously-skip-permissions"])
+        self.assertEqual(models.launch_args("claude", None, "max"), ["--effort", "max", "--dangerously-skip-permissions"])
         # Codex's -c value is TOML: the quotes are part of the argument, not of a shell
-        self.assertEqual(models.launch_args("codex", "gpt-5.6-luna", "high"), ["-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"'])
-        self.assertEqual(models.launch_args("opencode", "opencode/claude-opus-4-8", "max"), ["-m", "opencode/claude-opus-4-8"])
-        self.assertEqual(models.launch_args("codex", None, None), [])
+        self.assertEqual(models.launch_args("codex", "gpt-5.6-luna", "high"),
+                         ["-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"', "--dangerously-bypass-approvals-and-sandbox"])
+        self.assertEqual(models.launch_args("opencode", "opencode/claude-opus-4-8", "max"),
+                         ["-m", "opencode/claude-opus-4-8", "--auto"])
+        self.assertEqual(models.launch_args("gemini", None, None), [])
 
     def test_an_unsupported_kind_and_an_unknown_effort_are_refused_by_name(self):
         with self.assertRaises(HerdrTeamError) as caught:
@@ -81,13 +88,14 @@ class SettingTests(unittest.TestCase):
 
     def test_resume_argv_appends_the_flags_to_the_recorded_resume(self):
         self.assertEqual(models.resume_argv("codex", sess("0199"), "gpt-5.6-luna", "high"),
-                         ["codex", "resume", "0199", "-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"'])
+                         ["codex", "resume", "0199", "-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"',
+                          "--dangerously-bypass-approvals-and-sandbox"])
         self.assertEqual(models.resume_argv("claude", sess("abc", "herdr:claude", "claude"), "opus", "medium"),
-                         ["claude", "--resume", "abc", "--model", "opus", "--effort", "medium"])
+                         ["claude", "--resume", "abc", "--model", "opus", "--effort", "medium", "--dangerously-skip-permissions"])
         self.assertEqual(models.resume_argv("opencode", sess("s1", "herdr:opencode", "opencode"), "opencode/big-pickle", None),
-                         ["opencode", "--session", "s1", "-m", "opencode/big-pickle"])
+                         ["opencode", "--session", "s1", "-m", "opencode/big-pickle", "--auto"])
         self.assertEqual(models.resume_argv("opencode", sess("s1", "herdr:opencode", "opencode"), "opencode/big-pickle", "high"),
-                         ["opencode", "--session", "s1", "-m", "opencode/big-pickle"])
+                         ["opencode", "--session", "s1", "-m", "opencode/big-pickle", "--auto"])
 
     def test_restart_argv_preserves_only_allowlisted_runtime_policy(self):
         current = [
@@ -98,18 +106,18 @@ class SettingTests(unittest.TestCase):
         self.assertEqual(models.foreground_argv("codex", [{"name": "codex", "argv": current}]), current)
         self.assertEqual(
             models.preserved_launch_args("codex", current),
-            ["-a", "never", "-s=danger-full-access", "--search"],
+            ["--search"],
         )
         self.assertEqual(
             models.restart_argv("codex", sess("0199"), "gpt-5.6-luna", "high", current),
             ["codex", "resume", "0199", "-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"',
-             "-c", "check_for_update_on_startup=false", "-a", "never", "-s=danger-full-access", "--search"],
+             "--dangerously-bypass-approvals-and-sandbox", "-c", "check_for_update_on_startup=false", "--search"],
         )
         self.assertIsNone(models.foreground_argv("codex", [{"name": "zsh", "argv": ["-zsh"]}]))
         self.assertEqual(
             models.fresh_argv("opencode", "opencode/glm-5.3-flash", "high",
                               ["opencode", "--session", "old", "-m", "old/model", "--pure", "--auto"]),
-            ["opencode", "-m", "opencode/glm-5.3-flash", "--pure", "--auto"],
+            ["opencode", "-m", "opencode/glm-5.3-flash", "--auto", "--pure"],
         )
 
     def test_native_live_commands_are_exact_per_harness(self):
@@ -190,14 +198,17 @@ class SpawnTests(unittest.TestCase):
             code, payload, err = json_out(run_cli([
                 "--json", "create", "delta", "--new", "--workspace", "w9",
                 "--spawn", "reviewer:codex", "--spawn", "worker:claude",
+                "--brief", "reviewer=Review every patch.", "--brief", "worker=Implement the patch.",
                 "--model", "reviewer=gpt-5.6-luna@high", "--model", "claude=opus@medium",
             ], env_no_daemon(ts), api))
             self.assertEqual(code, 0, err)
             starts = [argv for argv in api.runs if argv[:2] == ["agent", "start"]]
             self.assertEqual(len(starts), 2, starts)
             by_name = {argv[2]: argv for argv in starts}
-            self.assertEqual(by_name["delta-reviewer"][by_name["delta-reviewer"].index("--") + 1:], ["-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"'])
-            self.assertEqual(by_name["delta-worker"][by_name["delta-worker"].index("--") + 1:], ["--model", "opus", "--effort", "medium"])
+            self.assertEqual(by_name["delta-reviewer"][by_name["delta-reviewer"].index("--") + 1:],
+                             ["-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"', "--dangerously-bypass-approvals-and-sandbox"])
+            self.assertEqual(by_name["delta-worker"][by_name["delta-worker"].index("--") + 1:],
+                             ["--model", "opus", "--effort", "medium", "--dangerously-skip-permissions"])
             doc = store.read_json(ts.session.team("delta").team_json)
             self.assertEqual(doc["config"]["models"], {"claude": {"model": "opus", "effort": "medium"}})
             rows = {m["name"]: m for m in doc["members"]}
@@ -225,11 +236,11 @@ class SpawnTests(unittest.TestCase):
             api.set_cli_result(["agent", "start"], self.STARTED_OPENCODE, request_id="cli:agent:start")
             code, payload, err = json_out(run_cli([
                 "--json", "create", "delta", "--new", "--workspace", "w9",
-                "--spawn", "builder:opencode", "--model", "builder=opencode/glm-5.3-flash@high",
+                "--spawn", "builder:opencode", "--brief", "builder=Build the feature.", "--model", "builder=opencode/glm-5.3-flash@high",
             ], env_no_daemon(ts), api))
             self.assertEqual(code, 0, err)
             start = next(argv for argv in api.runs if argv[:2] == ["agent", "start"])
-            self.assertEqual(start[start.index("--") + 1:], ["-m", "opencode/glm-5.3-flash"])
+            self.assertEqual(start[start.index("--") + 1:], ["-m", "opencode/glm-5.3-flash", "--auto"])
             jobs = [store.read_json(path) for path in ts.session.team("delta").jobs_dir.glob("*.json")]
             self.assertEqual(len(jobs), 1)
             self.assertEqual((jobs[0]["kind"], jobs[0]["action"]), ("control", "model"))
@@ -241,7 +252,7 @@ class SpawnTests(unittest.TestCase):
     def test_add_records_a_setting_for_a_live_agent(self):
         with TempState() as ts:
             api = live_api([fake_agent("w5:p1", "term_5", "claude", None)])
-            code, payload, err = json_out(run_cli(["--json", "add", "alpha", "w5:p1", "--role", "qa", "--model", "opus@high"], env_no_daemon(ts), api))
+            code, payload, err = json_out(run_cli(["--json", "add", "alpha", "w5:p1", "--role", "qa", "--brief", "Test the patch.", "--model", "opus@high"], env_no_daemon(ts), api))
             self.assertEqual(code, 0, err)
             doc = store.read_json(ts.team.team_json)
             row = next(m for m in doc["members"] if m["role"] == "qa")
@@ -253,7 +264,8 @@ class SpawnTests(unittest.TestCase):
             set_config(ts, models={"codex": {"model": "gpt-5.6-sol", "effort": "medium"}})
             code, payload, err = json_out(run_cli(["--json", "--team", "alpha", "resume", MEMBER, "--print"], env_no_daemon(ts), live_api()))
             self.assertEqual(code, 0, err)
-            self.assertEqual(payload["argv"], ["codex", "resume", "0199-reviewer", "-m", "gpt-5.6-sol", "-c", 'model_reasoning_effort="xhigh"'])
+            self.assertEqual(payload["argv"], ["codex", "resume", "0199-reviewer", "-m", "gpt-5.6-sol", "-c", 'model_reasoning_effort="xhigh"',
+                                                "--dangerously-bypass-approvals-and-sandbox"])
             self.assertEqual(payload["setting"], "gpt-5.6-sol@xhigh")
 
 
@@ -328,13 +340,13 @@ class ModelCommandTests(unittest.TestCase):
         control = payload["control"]
         self.assertEqual((control["action"], control["exit"]), ("restart", "/quit"))
         self.assertEqual(control["argv"], ["codex", "resume", "0199-reviewer", "-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"',
-                                                   "-c", "check_for_update_on_startup=false"])
+                                                   "--dangerously-bypass-approvals-and-sandbox", "-c", "check_for_update_on_startup=false"])
         self.assertEqual(control["after"], [])
         record = next(r for r in store.BoardStore(self.ts.team).read() if r.get("seq") == payload["record_seq"])
         self.assertEqual((record["kind"], record["to"], record["control"]["action"]), ("direct", [MEMBER], "restart"))
         self.assertEqual(len(list(self.ts.team.jobs_dir.glob("*.json"))), 1)
 
-    def test_restart_preserves_the_live_codex_approval_and_sandbox_policy(self):
+    def test_restart_replaces_live_codex_permission_policy_with_the_unrestricted_default(self):
         from test_cmd_board import write_live_daemon
 
         write_live_daemon(self.ts)
@@ -346,11 +358,11 @@ class ModelCommandTests(unittest.TestCase):
         }]))
         code, payload, err = self.model([MEMBER, "gpt-5.6-luna@high", "--apply", "restart"], api=api)
         self.assertEqual(code, 0, err)
-        self.assertEqual(payload["control"]["preserved"], ["-a", "never", "-s", "danger-full-access"])
+        self.assertEqual(payload["control"]["preserved"], [])
         self.assertEqual(
             payload["control"]["argv"],
             ["codex", "resume", "0199-reviewer", "-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"',
-             "-c", "check_for_update_on_startup=false", "-a", "never", "-s", "danger-full-access"],
+             "--dangerously-bypass-approvals-and-sandbox", "-c", "check_for_update_on_startup=false"],
         )
 
     def test_opencode_restart_uses_its_tui_for_the_variant_not_the_run_only_flag(self):
@@ -360,7 +372,7 @@ class ModelCommandTests(unittest.TestCase):
         write_live_daemon(self.ts)
         code, payload, err = self.model([MEMBER, "opencode/glm-5.3-flash@high", "--apply", "restart"])
         self.assertEqual(code, 0, err)
-        self.assertEqual(payload["control"]["argv"], ["opencode", "--session", "oc-1", "-m", "opencode/glm-5.3-flash"])
+        self.assertEqual(payload["control"]["argv"], ["opencode", "--session", "oc-1", "-m", "opencode/glm-5.3-flash", "--auto"])
         self.assertEqual(payload["control"]["after"], ["/variants", "high"])
 
     def test_live_on_claude_types_model_then_effort(self):
@@ -523,7 +535,7 @@ class LiveModelJobTests(ControlRig):
 
 class RestartJobTests(ControlRig):
     ARGV = ["codex", "resume", "0199-reviewer", "-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"',
-            "-c", "check_for_update_on_startup=false"]
+            "--dangerously-bypass-approvals-and-sandbox", "-c", "check_for_update_on_startup=false"]
     STARTED = {"type": "agent_started", "agent": fake_agent("w2:p1", "term_r1", "codex", MEMBER, launch_pending=False), "argv": ["codex"]}
 
     def setUp(self):
@@ -751,6 +763,8 @@ class PickerCreateTests(unittest.TestCase):
         type_line(model, "Find the bug.")
         tui_model.picker_apply_key(model, "ENTER")
         tui_model.picker_apply_key(model, "ENTER")          # an empty line finishes the charter
+        self.assertEqual(model.stage, "rules")
+        tui_model.picker_apply_key(model, "TAB")            # no team rules
         self.assertEqual(model.stage, "project")
         tui_model.picker_apply_key(model, "TAB")            # no folder
         self.assertEqual(model.stage, "members")
@@ -760,14 +774,18 @@ class PickerCreateTests(unittest.TestCase):
 
         model = picker_model([], focused=None)
         self.walk_to_members(model)
-        for _ in range(3):
-            tui_model.picker_apply_key(model, "ENTER")      # role, name, brief
+        tui_model.picker_apply_key(model, "ENTER")          # role
+        tui_model.picker_apply_key(model, "ENTER")          # name
+        type_line(model, "Review this work.")
+        tui_model.picker_apply_key(model, "ENTER")          # Mission / brief
         self.assertEqual(model.member_field, "model")
         self.assertIn("model@effort", "\n".join(tui_model.picker_lines(model, 100, 24)))
         type_line(model, "@high")
         tui_model.picker_apply_key(model, "ENTER")
         # the first row keeps @high; every further row keeps the default
         while model.stage == "members":
+            if model.member_field == "brief":
+                type_line(model, "Own this workstream.")
             tui_model.picker_apply_key(model, "ENTER")
         self.assertEqual(model.stage, "confirm")
         intent = tui_model.picker_apply_key(model, "ENTER")
@@ -786,8 +804,10 @@ class PickerCreateTests(unittest.TestCase):
 
         model = picker_model([], focused=None)
         self.walk_to_members(model)
-        for _ in range(3):
-            tui_model.picker_apply_key(model, "ENTER")
+        tui_model.picker_apply_key(model, "ENTER")
+        tui_model.picker_apply_key(model, "ENTER")
+        type_line(model, "Review this work.")
+        tui_model.picker_apply_key(model, "ENTER")
         row = tui_model.selected_rows(model)[0]
         bad = "@max" if row.kind == "codex" else "@minimal"
         type_line(model, bad)
@@ -802,7 +822,7 @@ class CreateLiveMemberSettingTests(unittest.TestCase):
     def test_it_is_recorded_and_a_wrong_name_is_a_usage_error(self):
         with TempState(write_team=False) as ts:
             api = live_api()
-            code, payload, err = json_out(run_cli(["--json", "create", "beta", "--member", "w5:p1:reviewer", "--model", "reviewer=@high"], env_no_daemon(ts), api))
+            code, payload, err = json_out(run_cli(["--json", "create", "beta", "--member", "w5:p1:reviewer", "--brief", "reviewer=Review every patch.", "--model", "reviewer=@high"], env_no_daemon(ts), api))
             self.assertEqual(code, 0, err)
             row = next(m for m in store.read_json(ts.session.team("beta").team_json)["members"] if m["role"] == "reviewer")
             self.assertEqual((row.get("model"), row.get("effort")), (None, "high"))

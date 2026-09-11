@@ -110,10 +110,10 @@ is recorded in `post` output and in records' `from` / `origin`:
 
 ```
 create <team> [--charter "<text>" | --charter-file <path>] [--ref <path>]…
-       --member <target>[:<role>[:<name>]]… [--brief <name>="<text>"]…
+       --member <target>[:<role>[:<name>]]… --brief <name|role>="<Mission>"…
        [--from-workspace <id>] [--names plain] [--rename] [--steal] [--reuse]
 create <team> --new [--workspace] [--charter …] --spawn <role>:<kind>[:<cwd>]… [--names plain]
-       [--model <role|kind>=<model>[@<effort>]]…
+       --brief <name|role>="<Mission>"… [--model <role|kind>=<model>[@<effort>]]…
 ```
 
 - `--model`: `role=` or `name=` sets that member's own model and effort —
@@ -124,8 +124,11 @@ create <team> --new [--workspace] [--charter …] --spawn <role>:<kind>[:<cwd>]�
   flags is refused (`model_unsupported`) before anything is written; a key
   that names nobody being added is a usage error. See section 9c.
 
+- Every `--new --spawn` launch of Claude Code, Codex or OpenCode is unrestricted by default: Synapse appends `--dangerously-skip-permissions`, `--dangerously-bypass-approvals-and-sandbox` or `--auto`, respectively. A live `--member` is not restarted and therefore keeps its current mode.
+
 - `<target>`: pane id or live agent name. Role defaults to the kind label.
   Name defaults to `<team>-<role>` (`--names plain` uses `<role>`).
+- Every new member needs a non-empty Mission before any roster, pane or layout mutation. Supply it with repeatable `--brief <name|role>="<text>"`, or supply long-form `--instructions <final-name>="<structured document with a non-empty Mission>"`; when only long-form instructions are supplied, the first Mission paragraph becomes the short roster brief. New documents always contain Mission, Scope, Constraints, Definition of done, Handoffs and Notes, while explicit content and custom headings are preserved. A missing Mission is `mission_required` with all missing member names.
 - Plan 5.5 (role defaults to the kind label) and plan 12 (a role equal to a
   kind label is refused) are resolved thus: a kind label is an acceptable
   role only under prefixed naming, where the member name stays
@@ -141,7 +144,8 @@ create <team> --new [--workspace] [--charter …] --spawn <role>:<kind>[:<cwd>]�
   cross-check, `agent_target_ambiguous`, `launch_pending`), claim check
   (`member_claimed` unless `--steal`), `agent rename` unless already named
   and `--rename` absent, `pane rename team:<team>/<role>`, append to the
-  roster, stamp tokens, `ensure_daemon()`, enqueue the briefing job.
+  roster, store its six-section Mission document as revision 1, stamp tokens,
+  enqueue the briefing job, then ensure the notifier is running.
 - `--new`: one `layout.apply` over the socket, then `agent start` per leaf.
 - Sets `default_team` when it is the only team; asks (or refuses without
   `--use`) when a second team would change it.
@@ -157,7 +161,7 @@ JSON:
 Errors: `team_name_invalid`, `team_exists` (unless `--reuse`), `role_invalid`,
 `name_invalid`, `name_reserved`, `agent_name_taken` (details `candidates`),
 `member_claimed` (details `owner_team`), `agent_not_found`, `not_an_agent`,
-`launch_pending`, `charter_too_long`, `server_not_running` (3).
+`launch_pending`, `mission_required`, `charter_too_long`, `server_not_running` (3).
 
 `create` also takes the working-directory setup, so a team can be complete in
 one command (all four are human only):
@@ -174,9 +178,9 @@ rather than failing the create. When `--project` is not given and the members
 share one existing directory, `create` prints that directory and the exact
 `project set` command; it never acts on the suggestion itself.
 
-### `add <team> <target> [--role <r>] [--as <name>] [--brief "<text>"] [--steal]`
+### `add <team> <target> [--role <r>] [--as <name>] --brief "<Mission>" [--steal]`
 
-Same join routine for one member. Then posts an urgent `member_joined` system record to `all`
+Same join routine for one member. `--brief` is required and the member's canonical six-section document is stored before its briefing job is made visible. Then posts an urgent `member_joined` system record to `all`
 (`member`, `role`, `member_kind` fields): the daemon nudges every other member to read it, and the newcomer
 gets the briefing instead. JSON `{"team","member":member,"renamed":bool,"notifier","briefing_job","joined_record":seq}`.
 
@@ -396,13 +400,13 @@ The member's own standing orders: a structured document, up to 4000
 characters. Reading is open to anyone; every write is human only. Exactly one
 mode per call; two are a usage error.
 
-The document has six known sections, all optional: `Mission`, `Scope`,
+The document has six known sections: `Mission`, `Scope`,
 `Constraints`, `Definition of done`, `Handoffs`, and `Notes`, which is private
 and never sent to the agent. A heading the plugin does not know is kept in
 place. Guidance for each section rides in HTML comments, which are invisible in
 rendered Markdown and never injected. Plain text with no headings becomes the
 `Mission`, so `--set "one sentence"` behaves as it always did, and a pre-0.6
-instructions file needs no migration.
+instructions file needs no migration. Mission is required when a member is created or added; the other sections remain optional during creation and later edits.
 
 The authoritative copy lives in the team state dir, which no agent can reach
 through the project checkout. When the team has a project directory the
@@ -470,7 +474,7 @@ Shows the team's project directory and the folder inside it, or `none`.
 ### `project set <path>` (human only)
 
 Also available at team creation as `create --project <path>`, and as a stage
-in the `prefix+t` wizard, which prefills the directory the selected agents
+in the `prefix+t` wizard after the optional team-rules stage, which prefills the directory the selected agents
 already share (Tab skips it). Records the directory and creates `<path>/.herdr-synapse/<team>/`. This is the
 consent gate: the plugin never infers a project directory and never writes
 into a repository until a human runs this. The path must be an existing

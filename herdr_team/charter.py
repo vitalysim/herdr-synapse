@@ -493,6 +493,34 @@ def set_instructions(layout: Layout, team: str, author: Author, member_name: str
     return {"team": team, "member": member.name, "chars": len(stored), "path": os.fspath(target), "record_seq": seq, "instructions_seq": revision}
 
 
+def initialize_instructions(layout: Layout, team: str, author: Author, member_name: str, text: str) -> Dict[str, Any]:
+    """Store a new member's required Mission document before it is briefed.
+
+    This is not a general write route: creation already accepted the member's
+    brief from ``author``, and this function only materializes that same input
+    as revision 1. Later changes still go through ``set_instructions`` and its
+    operator-authority check.
+    """
+    body = sanitize(str(text or ""), MAX_INSTRUCTIONS_CHARS, code="instructions_too_long")
+    sections = _doc.parse(body)
+    if not _doc.mission_paragraph(sections):
+        raise HerdrTeamError("mission_required", "{} needs a non-empty Mission before it can join team {}".format(member_name, team), EXIT_REFUSED, {"team": team, "members": [member_name]})
+    team_paths = layout.team(team)
+    doc = _roster.load_team(team_paths)
+    member = doc.find(member_name)
+    if member is None or member.is_human or member.status == "left":
+        raise HerdrTeamError("member_not_found", "{!r} is not an agent member of team {!r}".format(member_name, team), EXIT_REFUSED, {"name": member_name, "team": team, "roster": doc.names()})
+    if instructions_seq(member) != 0:
+        raise HerdrTeamError("instructions_exist", "{} already has an instructions document".format(member.name), EXIT_REFUSED, {"team": team, "member": member.name, "instructions_seq": instructions_seq(member)})
+    stored = _doc.to_text(sections)
+    ensure_team_dirs(team_paths)
+    target = team_paths.instructions(member.name)
+    store.atomic_write(target, stored.encode("utf-8"))
+    revision = _bump_member_counter(team_paths, member.name, "instructions_seq")
+    audit(layout, team, "instructions_initialized", author, {"member": member.name, "chars": len(stored), "instructions_seq": revision})
+    return {"team": team, "member": member.name, "chars": len(stored), "path": os.fspath(target), "record_seq": None, "instructions_seq": revision}
+
+
 def _bump_member_counter(team_paths: TeamPaths, member_name: str, field: str) -> int:
     """Increment one monotonic counter on a member and return its new value."""
     seen: List[int] = []

@@ -214,11 +214,28 @@ def load_charter_file(model: PickerModel, path: str) -> None:
     model.status = "loaded {} ({} lines)".format(path, len(model.charter_lines))
 
 
+def load_rules_file(model: PickerModel, path: str) -> None:
+    try:
+        with open(os.path.expanduser(path), "r", encoding="utf-8") as handle:
+            text = handle.read(tui_model.MAX_RULES_CHARS + 1)
+    except OSError as err:
+        model.error = "cannot read {}: {}".format(path, err)
+        return
+    if len(text) > tui_model.MAX_RULES_CHARS:
+        model.error = "rules file exceeds {} chars".format(tui_model.MAX_RULES_CHARS)
+        return
+    model.rules_lines = text.rstrip("\n").split("\n") if text.strip() else []
+    model.error = None
+    model.status = "loaded {} ({} lines)".format(path, len(model.rules_lines))
+
+
 def create_args(spec: Dict[str, Any]) -> List[str]:
     """``herdr-synapse create`` argv for a picker spec."""
     args: List[str] = ["create", str(spec["team"])]
     if spec.get("charter"):
         args += ["--charter", str(spec["charter"])]
+    if spec.get("rules"):
+        args += ["--rules", str(spec["rules"])]
     if spec.get("project"):
         args += ["--project", str(spec["project"])]
     for member in spec.get("members") or []:
@@ -277,7 +294,10 @@ def _loop(stdscr: Any, model: PickerModel, api: Any, layout: Optional[Layout], e
             last_key = time.monotonic()
             if pending_path is not None:
                 if key == "ENTER":
-                    load_charter_file(model, pending_path)
+                    if model.stage == "rules":
+                        load_rules_file(model, pending_path)
+                    else:
+                        load_charter_file(model, pending_path)
                     pending_path = None
                 elif key in ("ESC", "CTRL_C"):
                     pending_path = None
