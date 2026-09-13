@@ -375,7 +375,7 @@ def extract_file_tokens(line: str) -> Tuple[str, List[str]]:
 
 @dataclass
 class SaySpec:
-    """A parsed ``!member text`` / ``!!member text`` line: type ``text`` into ``member`` now (``!!`` forces)."""
+    """A parsed ``!member text`` / ``!!member|all text`` line: type ``text`` now (``!!`` forces)."""
 
     member: str
     text: str
@@ -391,7 +391,7 @@ def parse_bang(line: str) -> Tuple[Optional[SaySpec], Optional[str]]:
     stripped = line.strip()
     if not stripped.startswith("!"):
         return None, None
-    usage = "usage: !name text or !!name text ({})".format(BANG_HINT)
+    usage = "usage: !name text, !!name text, or !!all text ({})".format(BANG_HINT)
     match = _BANG_RE.match(stripped)
     if match is None:
         return None, usage
@@ -401,7 +401,9 @@ def parse_bang(line: str) -> Tuple[Optional[SaySpec], Optional[str]]:
     text = parts[1].strip() if len(parts) > 1 else ""
     if name.startswith("role:"):
         return None, "!{} types into one member, not a role (post to the role with @{} text)".format(name, name)
-    if name in RESERVED_NAMES:
+    if name == "all" and sigil != "!!":
+        return None, "!all does not broadcast direct typing; use !!all <text>, or post with /all <text>"
+    if name in RESERVED_NAMES and not (name == "all" and sigil == "!!"):
         return None, "!{} is not a member; the sign types into one agent (post with @{} text)".format(name, name)
     if not MEMBER_NAME_RE.match(name):
         return None, "invalid member name {} ({})".format(name, usage)
@@ -1520,14 +1522,16 @@ def mention_sigil(model: Any) -> str:
     return ctx[3] if ctx is not None else "@"
 
 
-def mention_candidates(members: Iterable[Dict[str, Any]], prefix: str = "", members_only: bool = False, links: Optional[Iterable[Dict[str, Any]]] = None) -> List[Dict[str, str]]:
+def mention_candidates(members: Iterable[Dict[str, Any]], prefix: str = "", members_only: bool = False, links: Optional[Iterable[Dict[str, Any]]] = None,
+                       force_all: bool = False) -> List[Dict[str, str]]:
     """Menu rows for ``@<prefix>``: members, then ``role:<r>`` groups, then ``all`` and ``human``.
 
     Matching is case-insensitive; a prefix match on the inserted text sorts
     before a substring match on the name or role, so ``@rev`` finds
     ``red-dev-codex-reviewer`` through its role even though the name does not
-    start with it. ``members_only`` (the ``!`` menu) drops the group rows: a
-    line can only be typed into one agent.
+    start with it. ``members_only`` (the ``!`` menu) drops the group rows.
+    ``force_all`` adds the one deliberate exception used by the ``!!`` menu:
+    ``!!all`` fans out into independently verified direct deliveries.
     """
     needle = prefix.lower()
     rows: List[Tuple[int, int, Dict[str, str]]] = []
@@ -1546,6 +1550,11 @@ def mention_candidates(members: Iterable[Dict[str, Any]], prefix: str = "", memb
         if rank is not None:
             rows.append((rank, order, {"insert": name, "label": label}))
         order += 1
+    if members_only and force_all:
+        rank = _mention_rank(needle, "all", "")
+        if rank is not None:
+            rows.append((rank, order, {"insert": "all", "label": "all  every agent (forced direct typing)"}))
+            order += 1
     if not members_only:
         for role, count in roles.items():
             insert = "role:" + role
@@ -1623,7 +1632,13 @@ def mention_menu(model: Any) -> List[Dict[str, str]]:
         return slash_candidates(ctx[2], allowed) if getattr(model, "slash_menu", True) else []
     if ctx[3] != "@" and not getattr(model, "bang_menu", True):
         return []  # the compose popup refuses ! lines, so it does not offer names for them
-    return mention_candidates(model.members, ctx[2], members_only=ctx[3] != "@", links=getattr(model, "links", None))
+    return mention_candidates(
+        model.members,
+        ctx[2],
+        members_only=ctx[3] != "@",
+        links=getattr(model, "links", None),
+        force_all=ctx[3] == "!!",
+    )
 
 
 def mention_lines(model: Any, width: int, ascii_only: bool = False) -> List[str]:
@@ -1932,7 +1947,7 @@ def _parse_slash(head: str, rest: str, default_team: str) -> Intent:
 
 HELP_TEXT = (
     "? or /help opens the full list | @ opens the name list (↑/↓ move, Tab or Enter picks, Esc hides) | "
-    "!name text types only if that member stays idle (!!name explicitly permits working; ! lists members) | @@path attaches a file (@@ lists files) | "
+    "!name text types only if that member stays idle (!!name permits working; !!all targets every agent) | @@path attaches a file (@@ lists files) | "
     "@name text | @role:r text | /all text | /human text | /kind k | /reply N | /urgent | /interrupt | /ref path | "
     "/retract N | /mute [name] [10m] | /unmute [name] | /pause | /nudge name [--force] | /focus name | "
     "/peek name | /who | /context [name] | /compact name | /clear name | /filter [name] | /as label | /use team | /charter [set [--urgent] text] | /remove name | /export | /quit"
@@ -1943,9 +1958,9 @@ HELP_LINES = (
     "post:      text (whole team)   @name text (one member)   @role:r text (a role)   /human text (yourself)",
     "           /kind k  /reply N  /urgent (nudges everyone)  /ref path  @@path attaches a file (@@ lists files)",
     "type now:  !name text types only if that same member is still idle at atomic submission",
-    "           !!name explicitly permits working or muted; ! lists members; every attempt is recorded",
+    "           !!name permits working or muted; !!all sends to every agent; every attempt is recorded",
     "           a line that begins with ! never posts by itself; to post one, write /all !text",
-    "menus:     / commands   @ names   @@ files   ! members   (up/down move, Tab picks, Esc hides)",
+    "menus:     / commands   @ names   @@ files   ! members   !! members + all   (up/down move, Tab picks, Esc hides)",
     "board:     /retract N   /filter [all|to me|requests|human|system]   Tab cycles   /who",
     "members:   /peek name   /focus name   /nudge name [--force]   /remove name   /asks",
     "context:   /context [name]   /compact name   /clear name (throws it away, asks)   /ask-policy",
@@ -2061,7 +2076,7 @@ def _after_parse(model: ConsoleModel, intent: Intent) -> Intent:
         # The roster is checked here so a typo is an error before the CLI runs; a still-empty roster defers to the CLI.
         known = agent_member_names(model.members)
         member = str(intent.args.get("member"))
-        if known and member not in known:
+        if known and member not in known and not (member == "all" and bool(intent.args.get("force"))):
             message = "no member {} ({})".format(member, BANG_HINT)
             model.status = "error: {}".format(message)
             return Intent("error", {"message": message})

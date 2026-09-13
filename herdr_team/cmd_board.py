@@ -1644,6 +1644,17 @@ def wait_for_typed(team: TeamPaths, seq: int, timeout_s: float, poll_s: float = 
 
 
 def say_human_text(payload: Dict[str, Any]) -> str:
+    deliveries = payload.get("deliveries")
+    if isinstance(deliveries, list):
+        lines = []
+        for delivery in deliveries:
+            if not isinstance(delivery, dict):
+                continue
+            single = dict(payload)
+            single.pop("deliveries", None)
+            single.update(delivery)
+            lines.append(say_human_text(single))
+        return "all {} agents:\n{}".format(len(lines), "\n".join(lines))
     seq, name = payload["seq"], payload["member"]
     outcome = payload.get("outcome")
     if not outcome:
@@ -1670,9 +1681,9 @@ def say_human_text(payload: Dict[str, Any]) -> str:
 
 
 def _add_say_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("member", help="one agent member (human only; type it from the team console)")
+    parser.add_argument("member", help="one agent member, or all with --force (human only; type it from the team console)")
     parser.add_argument("text", help="one line typed into the member's input box as-is (<= 500 chars)")
-    parser.add_argument("--force", action="store_true", help="also type into a working or muted member and allow control words like /clear (the console's !!name)")
+    parser.add_argument("--force", action="store_true", help="also type into a working or muted member, allow control words like /clear, and enable the all target (the console's !!name or !!all)")
     wait = parser.add_mutually_exclusive_group()
     wait.add_argument("--wait", dest="wait", action="store_true", default=True, help="wait for the daemon's typed outcome (default)")
     wait.add_argument("--no-wait", dest="wait", action="store_false", help="return as soon as the record and the job are written")
@@ -1683,25 +1694,63 @@ def _run_say(args: argparse.Namespace) -> int:
     # require_server: identity needs pane.get; with Herdr down the user must see server_not_running, not say_unverified.
     layout, api, author, team_name, team, doc = _open_team(args, require_server=True, write=True)
     require_say_author(layout, team_name, author)
-    member = member_or_raise(doc, args.member, team_name)
-    name = str(member["name"])
-    kind = str(member.get("kind") or "")
-    if not (bool(member.get("verified_kind")) or _roster.kind_trusted(store.read_json(layout.session.kinds_json, default=None), kind)):
-        raise HerdrTeamError("kind_unverified", "{} is a {} agent and that kind is not trusted for delivery yet; run: herdr-synapse kinds trust {}".format(name, kind, kind), EXIT_REFUSED, {"member": name, "kind": kind})
+    if args.member == "all" and not bool(args.force):
+        raise HerdrTeamError(
+            "member_not_found",
+            "'all' is available for direct typing only with --force (console: !!all <text>)",
+            EXIT_REFUSED,
+            {"name": "all", "roster": [member.get("name") for member in agent_members(doc)], "hint": "pass --force, or use !!all <text> in the team console"},
+        )
+    broadcast = args.member == "all" and bool(args.force)
+    if broadcast:
+        members = agent_members(doc)
+        if not members:
+            raise HerdrTeamError("member_not_found", "{!r} has no current agent members".format(team_name), EXIT_REFUSED, {"name": "all", "roster": []})
+    else:
+        members = [member_or_raise(doc, args.member, team_name)]
+    trusted_kinds = store.read_json(layout.session.kinds_json, default=None)
+    for member in members:
+        name = str(member["name"])
+        kind = str(member.get("kind") or "")
+        if not (bool(member.get("verified_kind")) or _roster.kind_trusted(trusted_kinds, kind)):
+            raise HerdrTeamError("kind_unverified", "{} is a {} agent and that kind is not trusted for delivery yet; run: herdr-synapse kinds trust {}".format(name, kind, kind), EXIT_REFUSED, {"member": name, "kind": kind})
     text = prepare_say_text(args.text, args.force)
     require_daemon(layout.session)
-    record = build_record(author, [name], "direct", text, urgent=False, socket_path=os.fspath(layout.socket), from_gen=member_generation(doc, author))
-    record["force"] = bool(args.force)
-    seq = board_append(team, record)
-    job = enqueue_job(team, "say", name, author, force=args.force, extra={"seq": seq})
-    outcome_record = wait_for_typed(team, seq, args.timeout) if args.wait else None
-    if args.wait and outcome_record is None:
-        raise HerdrTeamError("say_timeout", "#{} was recorded and job {} queued for {}, but no typed outcome arrived within {:g}s (see herdr-synapse notifier stats)".format(seq, job, name, args.timeout), EXIT_REFUSED, {"seq": seq, "job": job, "member": name, "timeout_s": args.timeout})
-    payload: Dict[str, Any] = {
-        "seq": seq, "team": team_name, "member": name, "job": job, "force": bool(args.force), "text": text,
-        "author": {"name": author.name, "via": author.via, "verified": bool(author.verified)},
-        "waited": bool(args.wait), "outcome": say_outcome_of(outcome_record) if outcome_record else None,
-    }
+    deliveries: List[Dict[str, Any]] = []
+    for member in members:
+        name = str(member["name"])
+        record = build_record(author, [name], "direct", text, urgent=False, socket_path=os.fspath(layout.socket), from_gen=member_generation(doc, author))
+        record["force"] = bool(args.force)
+        seq = board_append(team, record)
+        job = enqueue_job(team, "say", name, author, force=args.force, extra={"seq": seq})
+        deliveries.append({"seq": seq, "member": name, "job": job, "outcome": None})
+    if args.wait:
+        deadline = time.monotonic() + max(0.0, args.timeout)
+        for delivery in deliveries:
+            remaining = max(0.0, deadline - time.monotonic())
+            outcome_record = wait_for_typed(team, delivery["seq"], remaining)
+            if outcome_record is not None:
+                delivery["outcome"] = say_outcome_of(outcome_record)
+        pending = [delivery for delivery in deliveries if delivery["outcome"] is None]
+        if pending:
+            if not broadcast:
+                delivery = pending[0]
+                raise HerdrTeamError("say_timeout", "#{} was recorded and job {} queued for {}, but no typed outcome arrived within {:g}s (see herdr-synapse notifier stats)".format(delivery["seq"], delivery["job"], delivery["member"], args.timeout), EXIT_REFUSED, {"seq": delivery["seq"], "job": delivery["job"], "member": delivery["member"], "timeout_s": args.timeout})
+            names = [str(delivery["member"]) for delivery in pending]
+            raise HerdrTeamError("say_timeout", "direct typing to {} of {} agents had no outcome within {:g}s: {} (see herdr-synapse notifier stats)".format(len(pending), len(deliveries), args.timeout, ", ".join(names)), EXIT_REFUSED, {"member": "all", "members": names, "timeout_s": args.timeout, "deliveries": deliveries})
+    author_payload = {"name": author.name, "via": author.via, "verified": bool(author.verified)}
+    if broadcast:
+        payload = {
+            "team": team_name, "member": "all", "deliveries": deliveries, "force": True, "text": text,
+            "author": author_payload, "waited": bool(args.wait),
+        }
+    else:
+        delivery = deliveries[0]
+        payload = {
+            "seq": delivery["seq"], "team": team_name, "member": delivery["member"], "job": delivery["job"],
+            "force": bool(args.force), "text": text, "author": author_payload,
+            "waited": bool(args.wait), "outcome": delivery["outcome"],
+        }
     return emit(args, payload, lambda: say_human_text(payload))
 
 
@@ -2154,5 +2203,5 @@ COMMANDS: List[Command] = [
     Command("wipe", "empty the board: every post moves to the archive (--purge deletes it all); operator only, asks first", _add_wipe_arguments, _run_wipe),
     Command("compact", "ask the notifier to compact a member's context (operator, or --self)", _add_control_arguments, _run_compact),
     Command("clear", "ask the notifier to clear a member's context (operator only)", _add_control_arguments, _run_clear),
-    Command("say", "type one line into a member's input box now (human only, from the team console)", _add_say_arguments, _run_say),
+    Command("say", "type one line into a member, or every member with --force (human only, from the team console)", _add_say_arguments, _run_say),
 ]

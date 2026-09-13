@@ -255,6 +255,34 @@ class SayCommandTests(unittest.TestCase):
                 code, _, err = self.say(target, "x")
                 self.assertEqual((code, err["code"]), (1, "member_not_found"))
                 self.assertEqual("hint" in err, hinted)
+                if target == "all":
+                    self.assertIn("!!all", err["hint"])
+        self.assert_nothing_written()
+
+    def test_force_all_writes_one_direct_record_and_job_per_agent(self):
+        write_live_daemon(self.ts)
+        code, payload, err = self.say("all", "finish your current task", "--force", "--no-wait")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(sorted(payload), ["author", "deliveries", "force", "member", "team", "text", "waited"])
+        self.assertEqual((payload["member"], payload["force"], payload["waited"]), ("all", True, False))
+        deliveries = payload["deliveries"]
+        self.assertEqual([delivery["member"] for delivery in deliveries], ["alpha-reviewer", "alpha-worker"])
+        self.assertTrue(all(delivery["outcome"] is None for delivery in deliveries))
+        records = self.records()
+        self.assertEqual([record["to"] for record in records], [["alpha-reviewer"], ["alpha-worker"]])
+        self.assertTrue(all(record["kind"] == "direct" and record["force"] for record in records))
+        jobs = [store.read_json(self.ts.team.jobs_dir / name) for name in self.jobs()]
+        self.assertEqual(sorted((job["member"], job["seq"], job["force"]) for job in jobs), [
+            ("alpha-reviewer", deliveries[0]["seq"], True),
+            ("alpha-worker", deliveries[1]["seq"], True),
+        ])
+        self.assertTrue(all("text" not in job for job in jobs))
+
+    def test_force_all_validates_every_kind_before_writing(self):
+        store.write_json(self.ts.session.kinds_json, {"codex": {"trusted": True}})
+        write_live_daemon(self.ts)
+        code, _, err = self.say("all", "finish", "--force", "--no-wait")
+        self.assertEqual((code, err["code"], err["member"], err["kind"]), (1, "kind_unverified", "alpha-worker", "claude"))
         self.assert_nothing_written()
 
     def test_untrusted_kind_is_refused(self):
@@ -295,6 +323,32 @@ class SayCommandTests(unittest.TestCase):
         self.assertEqual(code, 0, err)
         self.assertTrue(payload["waited"])
         self.assertEqual((payload["outcome"]["result"], payload["outcome"]["reason"], payload["outcome"]["seq"]), ("typed", None, 2))
+
+    def test_force_all_waits_for_every_outcome_under_one_deadline(self):
+        write_live_daemon(self.ts)
+
+        def outcomes():
+            typed_record(self.ts, 1, "typed", "in_turn", member="alpha-reviewer")
+            typed_record(self.ts, 2, "refused", "dialog", member="alpha-worker")
+
+        timer = threading.Timer(0.3, outcomes)
+        timer.start()
+        self.addCleanup(timer.cancel)
+        code, payload, err = self.say("all", "finish", "--force", "--timeout", "3")
+        self.assertEqual(code, 0, err)
+        self.assertTrue(payload["waited"])
+        self.assertEqual([(delivery["member"], delivery["outcome"]["result"], delivery["outcome"]["reason"]) for delivery in payload["deliveries"]], [
+            ("alpha-reviewer", "typed", "in_turn"),
+            ("alpha-worker", "refused", "dialog"),
+        ])
+
+    def test_force_all_timeout_names_every_pending_member(self):
+        write_live_daemon(self.ts)
+        code, _, err = self.say("all", "finish", "--force", "--timeout", "0.1")
+        self.assertEqual((code, err["code"], err["member"]), (1, "say_timeout", "all"))
+        self.assertEqual(err["members"], ["alpha-reviewer", "alpha-worker"])
+        self.assertEqual(len(err["deliveries"]), 2)
+        self.assertEqual((len(self.records()), len(self.jobs())), (2, 2))
 
     def test_wait_timeout_reports_seq_and_job(self):
         write_live_daemon(self.ts)

@@ -38,6 +38,7 @@ class BangParsingTests(unittest.TestCase):
         cases = [
             ("!alpha-worker fix the test", {"member": "alpha-worker", "text": "fix the test", "force": False, "team": "alpha"}),
             ("!!alpha-worker stop, fix the test", {"member": "alpha-worker", "text": "stop, fix the test", "force": True, "team": "alpha"}),
+            ("!!all stop and summarize", {"member": "all", "text": "stop and summarize", "force": True, "team": "alpha"}),
             ("  !alpha-worker  two  spaces ", {"member": "alpha-worker", "text": "two  spaces", "force": False, "team": "alpha"}),
             ("!alpha-worker @foo look at this", {"member": "alpha-worker", "text": "@foo look at this", "force": False, "team": "alpha"}),
             ("!alpha-worker /compact", {"member": "alpha-worker", "text": "/compact", "force": False, "team": "alpha"}),
@@ -61,7 +62,7 @@ class BangParsingTests(unittest.TestCase):
         self.assertIn(tm.BANG_HINT, tm.parse_input_line("!!! urgent", "alpha").args["message"])
         self.assertTrue(tm.parse_input_line("!alpha-worker", "alpha").args["message"].startswith("usage: !alpha-worker <text>"))
         self.assertIn("one member, not a role", tm.parse_input_line("!role:qa x", "alpha").args["message"])
-        self.assertIn("not a member", tm.parse_input_line("!all x", "alpha").args["message"])
+        self.assertIn("use !!all", tm.parse_input_line("!all x", "alpha").args["message"])
         self.assertIn("one line", tm.parse_bang("!a b\nc")[1])
         self.assertEqual(tm.parse_bang("hello"), (None, None))
         self.assertEqual(tm.parse_bang("!!a b c"), (tm.SaySpec("a", "b c", True), None))
@@ -75,6 +76,7 @@ class BangParsingTests(unittest.TestCase):
     def test_help_mentions_the_sign(self):
         self.assertIn("!name text", tm.HELP_TEXT)
         self.assertIn("!!name", tm.HELP_TEXT)
+        self.assertIn("!!all", tm.HELP_TEXT)
 
 
 class ApplySayTests(unittest.TestCase):
@@ -88,6 +90,11 @@ class ApplySayTests(unittest.TestCase):
         drive(model, "!!red-dev-tester go")
         intent = tm.apply_key(model, "ENTER")
         self.assertEqual((intent.kind, intent.args["force"]), ("say", True))
+        self.assertIsNone(model.pending_confirm)
+
+        drive(model, "!!all finish your current task")
+        intent = tm.apply_key(model, "ENTER")
+        self.assertEqual((intent.kind, intent.args["member"], intent.args["force"]), ("say", "all", True))
         self.assertIsNone(model.pending_confirm)
 
     def test_unknown_or_left_member_is_an_error_with_the_hint(self):
@@ -121,12 +128,13 @@ class BangMenuTests(unittest.TestCase):
             with self.subTest(text):
                 self.assertIsNone(tm.mention_context(text, len(text)))
 
-    def test_members_only_drops_roles_all_and_human(self):
+    def test_members_only_drops_groups_but_force_all_adds_the_broadcast(self):
         rows = tm.mention_candidates(MEMBERS, "", members_only=True)
         self.assertEqual([r["insert"] for r in rows], ["red-dev-claude-dev", "red-dev-codex-reviewer", "red-dev-tester"])
         rows = tm.mention_candidates(MEMBERS, "rev", members_only=True)
         self.assertEqual([r["insert"] for r in rows], ["red-dev-codex-reviewer", "red-dev-tester"])
         self.assertEqual(tm.mention_candidates(MEMBERS, "al", members_only=True), [])
+        self.assertEqual([r["insert"] for r in tm.mention_candidates(MEMBERS, "al", members_only=True, force_all=True)], ["all"])
         self.assertTrue(any(r["insert"] == "all" for r in tm.mention_candidates(MEMBERS, "al")))
 
     def test_bang_opens_a_members_only_menu_and_tab_keeps_the_sigil(self):
@@ -145,6 +153,12 @@ class BangMenuTests(unittest.TestCase):
         type_keys(model, "stop")
         intent = tm.apply_key(model, "ENTER")
         self.assertEqual((intent.kind, intent.args["force"], intent.args["text"], intent.args["member"]), ("say", True, "stop", "red-dev-codex-reviewer"))
+
+        model = console_model()
+        type_keys(model, "!!al")
+        self.assertEqual([r["insert"] for r in tm.mention_menu(model)], ["all"])
+        tm.apply_key(model, "TAB")
+        self.assertEqual(model.input, "!!all ")
 
     def test_enter_without_text_accepts_the_completion_then_errors(self):
         model = console_model()
@@ -339,6 +353,24 @@ class ConsoleRuntimeSayTests(unittest.TestCase):
             calls.clear()
             model = self.run_with_cli(ts, fake_run_cli, Intent("say", {"member": "alpha-worker", "text": "-v please", "force": False, "team": "alpha"}))
             self.assertEqual(calls, [["--team", "alpha", "say", "--no-wait", "--", "alpha-worker", "-v please"]])
+
+    def test_say_all_watches_every_fanned_out_delivery(self):
+        with TempState() as ts:
+            calls: List[List[str]] = []
+
+            def fake_run_cli(args, env, timeout=0.0):
+                calls.append(list(args))
+                return 0, {"team": "alpha", "member": "all", "deliveries": [
+                    {"member": "alpha-reviewer", "seq": 12, "job": "j1", "outcome": None},
+                    {"member": "alpha-worker", "seq": 13, "job": "j2", "outcome": None},
+                ]}, None
+
+            intent = Intent("say", {"member": "all", "text": "finish", "force": True, "team": "alpha"})
+            model = self.run_with_cli(ts, fake_run_cli, intent)
+            self.assertEqual(calls, [["--team", "alpha", "say", "--no-wait", "--force", "--", "all", "finish"]])
+            self.assertEqual(model.status, "typing into all 2 agents… #12, #13")
+            self.assertEqual(model.watching_say[12][0], "alpha-reviewer")
+            self.assertEqual(model.watching_say[13][0], "alpha-worker")
 
     def test_refusals_map_to_status_hints(self):
         with TempState() as ts:

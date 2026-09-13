@@ -588,6 +588,20 @@ def execute_intent(intent: Intent, model: ConsoleModel, state: ConsoleState, api
         rc, out, err = run_cli(say_args(intent, team), env)
         if err:
             model.status = say_failure_status(err, member)
+        elif isinstance(out, dict) and isinstance(out.get("deliveries"), list):
+            sent = time.monotonic()
+            watched = []
+            for delivery in out["deliveries"]:
+                if not isinstance(delivery, dict) or not isinstance(delivery.get("seq"), int):
+                    continue
+                target = str(delivery.get("member") or "?")
+                model.watching_say[delivery["seq"]] = (target, sent)
+                watched.append(delivery["seq"])
+            if watched:
+                dots = "..." if model.ascii_only else "…"
+                model.status = "typing into all {} agents{} {}".format(len(watched), dots, ", ".join("#{}".format(seq) for seq in watched))
+            else:
+                model.status = "say exited {}".format(rc)
         elif isinstance(out, dict) and isinstance(out.get("seq"), int):
             model.status = "typing into {}{} #{}".format(member, "..." if model.ascii_only else "…", out["seq"])
             model.watching_say[out["seq"]] = (member, time.monotonic())
