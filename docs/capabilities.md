@@ -41,7 +41,7 @@ holds `daemon.json`, `daemon.log`, `who.json`, `kinds.json`, `view.json`,
 | Clear a board | console `/wipe [--purge] [reason]` (y/n first) | `wipe [--yes] [--purge] [--reason]`: every post moves to `archive/` (seqs and cursors kept; `board --since 1` reads it), or is deleted for good with `--purge`; operator only |
 | Post to a linked team | console `/team <other> text`, `@team:` in the mention menu | `post --to team:<other>` (the manager, the operator, or a delegate) |
 | Model and effort per member | picker: a fourth prompt per agent (after role, name, brief) when creating or adding, and member action `9` afterwards; console `/model <name> <setting> [--restart]` | `models set <kind> <setting>` (team default), `model <member> <setting> [--apply live\|next\|restart] [--self]`; `who`/`me` show it (section 5e) |
-| See who is on which team | `prefix+t`: teams with their agents underneath, then the agents in no team; Enter folds a team, `↑↓`/PgUp/PgDn move, the list scrolls | `who`, `teams` |
+| See who is on which team | `prefix+t`: teams with their agents underneath, then the agents in no team grouped by Herdr tab label and stable tab ID; every candidate keeps its pane ID visible; `g` verifies and focuses the highlighted agent's pane; Enter folds a team or an unselected tab, `↑↓`/PgUp/PgDn move, the list scrolls | `who`, `teams` |
 | Manage one member | `prefix+t`, Enter on a member: a numbered menu with rename, change its goal, send the goal now, remove it (with or without keeping its Herdr agent name), and go to its pane. Rename and goal are pre-filled and validated before anything is written; remove asks `y` (Enter is deliberately not yes). Rename and remove require operator authority. A member whose agent is missing or unsettled refuses rename, send and focus, because its pane is stale | `rename`, `brief <name> --set`, `brief <name>`, `remove`, `focus` |
 | Remove, leave | `prefix+t` → Enter on the member → 4, or console `/remove name` (asks y/n) | `remove <team> <name> [--keep-name]` requires the operator or a delegate (clears tokens and label, clears the Herdr name unless `--keep-name`, keeps a tombstone); `leave` remains available from the member's own pane |
 | Re-attach a missing member | | `bind <team> <name> <target>`: refuses a kind mismatch unless the member is `kind_changed`, refuses a terminal another team claims, bumps the generation, re-applies name, label, tokens, clears the stale label on the old pane, records the target's harness session, posts `member_restarted` |
@@ -431,7 +431,7 @@ what was actually sent: intents, results, per-kind clean-landing rate,
 | `herdr-synapse nudge <name> [--force]` | evaluate now; builds pending work from unread human/member-authored messages (to it or to all) if none is pending; system and delivery history is never converted to mail; terminal automatic deliveries are skipped unless `--force`, which also marks the work urgent and skips the done-hold and interval, never the dialog, draft, or focus checks |
 | `herdr-synapse mute <name> \| --all [--for 10m\|2h\|1d\|N]`, `unmute <name> \| --all`, `pause` | silence nudges (gate 2) and the Claude Stop hook; posts still land and **toasts are not muted** |
 | `herdr-synapse focus <name>` | focus the member's pane through the daemon |
-| `herdr-synapse say <name> "<text>" [--force]` (console: `!name text`, `!!name text`) | type one line into the member's input box now, with operator authority, recorded as a `direct` board record; plain `!` atomically requires the inspected terminal to remain idle through submission, while `--force`/`!!` deliberately permits a running turn; dialogs, permission prompts, overlays, and drafts refuse both; the outcome is a `typed` record and a feed tag (`✓typed`, `✗ not typed (working)`, …); human only, from the focused console only |
+| `herdr-synapse say <name\|all> "<text>" [--force]` (console: `!name text`, `!!name text`, `!!all text`) | type one line into one member, or with forced `all` into every current agent, with operator authority; each target is a separate `direct` board record and job; plain `!` atomically requires the inspected terminal to remain idle through submission, while `--force`/`!!` deliberately permits a running turn; dialogs, permission prompts, overlays, and drafts still refuse; every target gets a `typed` outcome and feed tag (`✓typed`, `✗ not typed (working)`, …); human only, from the focused console only |
 | `herdr-synapse post --to <name> --interrupt "<text>"` (console: `/interrupt @name text`) | urgent, and when the recipient's kind is in `config.gate.interrupt_kinds` (default `claude`, `codex`, `opencode`) and the sender is out of its cooldown for that teammate (10 min), the daemon types the nudge into the recipient's *running turn* instead of waiting for idle: `[herdr-team interrupt] <sender> could not wait: 1 urgent board post for <name> (seq N). Run: herdr-synapse board --new [nK]`. Dialog, overlay, draft, focus, and rate-limit gates still hold it; otherwise it is an ordinary urgent nudge. The feed shows `⚡INTERRUPT` on the post and `⚡interrupted` once typed; `who` shows `⚡armed`, `⚡cooldown`, or `⚡kind_not_allowed` next to `↪N`. Named recipients only; a member's repeat inside the cooldown is `interrupt_cooldown` at the CLI; the human has no cooldown |
 | `herdr-synapse interrupts [show\|off\|on\|<kind>,<kind>] [--cooldown 10m]` (console: `/interrupts …`) | show or set the team's interrupt kinds and cooldown (`config.gate`); changing them is human only |
 | `herdr-synapse read <name>` | the member's visible screen; `--lines` is refused for every member because scrolling an alternate screen types into it |
@@ -773,8 +773,10 @@ a popup on the roster box.
   the line only if Herdr atomically confirms that the inspected terminal is
   still idle (a `direct` record; the member is not nudged and does not see it
   as mail); `!!name text` deliberately uses the unrestricted path and also
-  types into a member that is working or muted. Typing `!` at the start of
-  the line opens the same list with members only. Every line that starts
+  types into a member that is working or muted; `!!all text` fans that path
+  out as a separate recorded delivery for every current agent. Typing `!` at
+  the start of the line opens the same list with members only; `!!` adds the
+  `all` choice. Every line that starts
   with `!` is such an attempt and never becomes a post: a wrong name is an
   error, and text that should start with `!` is posted as `/all !text` or
   `@name !text`. The entry shows `… typing`, then `✓typed`, `✓typed (in
@@ -998,7 +1000,8 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
   that are in a team roster. `herdr-synapse notifier stats` reports
   `wrong_target`; it must stay 0. The one exception to *waiting for idle* is
   `say`: the human, verified at the focused console, asks the daemon to type
-  one recorded line now (`!name text`). Herdr validates the terminal identity,
+  one recorded line now (`!name text`), or independently for every current
+  agent (`!!all text`). Herdr validates the terminal identity,
   idle state, and observed state sequence in the same app turn that queues
   the line, so a member that starts work between the daemon's read and the
   submit is refused rather than interrupted. The daemon probes the running
@@ -1017,7 +1020,8 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
 - Nothing is typed while a member is working, blocked, in a menu, has a
   draft, or is the pane you are looking at (until the 5 min focus hold
   expires and its screen has been still for 3 s). Two things type into a
-  *working* member: your own `!!name text`, and a teammate's `post
+  *working* member: your own `!!name text` (including each delivery expanded
+  from `!!all text`), and a teammate's `post
   --interrupt` when the team allows it for that kind (`interrupt_kinds`,
   default Claude Code, Codex and OpenCode), at most once per sender and
   teammate per 10 min,
@@ -1042,9 +1046,10 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
   conditional rather than fully supported.
 - Synapse-managed Claude Code, Codex and OpenCode starts are unrestricted by default. Agents already running when they join a team retain their current launch mode until a Synapse-managed resume or restart.
 - Hooks exist for Claude only. Codex and OpenCode use the typed briefing path.
-- `!!name text` and `post --interrupt` are live-verified for all three supported
-  harnesses. Other kinds still carry `unverified for <kind>` and are excluded
-  from the default interrupt set.
+- `!!name text`, the per-agent `!!all text` fan-out, and `post --interrupt`
+  are live-verified for all three supported harnesses. Other kinds still
+  carry `unverified for <kind>` and are excluded from the default interrupt
+  set.
 - Compact and clear are live-verified for all three supported harnesses.
   OpenCode 1.18.30 cannot safely start its full TUI in a very narrow terminal,
   so clear refuses before `/exit` below the 38-column layout guard.
@@ -1097,3 +1102,4 @@ Each row: do this, expect that.
 | C31 | inspect the console header and run `herdr-synapse daemon status`; then try `!<member> x` against a server without `agent.prompt_if_idle` | both surfaces show Herdr/protocol/plugin/daemon versions and `safe !` as ready, unavailable, or unknown; without the method nothing is typed, the outcome is `capability_unavailable`, and the status offers `@<member>` or explicit `!!<member>` |
 | C32 | run `herdr-synapse update` from a managed install, then from a local link | the managed checkout is reinstalled; the local checkout is only re-registered and its files remain untouched; both refresh the CLI link and skill, replace the notifier, and report all steps in one result |
 | C33 | for Claude Code, Codex and OpenCode, change model/effort, inspect `context`, run `compact`, then `clear` | each harness reports the requested setting and exact context window; compact drops carried tokens and re-briefs once; clear changes session/generation and re-briefs once; an OpenCode pane below the safe-width guard refuses clear before exiting |
+| C34 | with at least two supported agents in one team, type `!!all summarize your current task`; then inspect the board and each pane | the `!!` menu offers `all`; the console watches one seq per agent; each target has its own `direct` record and `typed` outcome; the line reaches working or muted agents, runtime dialog/draft/blocker/occupant checks still refuse per target, and an untrusted target kind refuses the whole fan-out before anything is written |

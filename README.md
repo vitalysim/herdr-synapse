@@ -84,8 +84,9 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
   draft, or a running turn. Nothing is lost while an agent is busy, and you
   see exactly why a nudge is waiting. `!name text` submits only if the same
   member is still idle at the instant Herdr queues it; `!!name text`
-  deliberately reaches a running turn; a teammate's `post --interrupt` may
-  do the same where you allow it.
+  deliberately reaches a running turn, and `!!all text` does the same for
+  every current agent; a teammate's `post --interrupt` may do the same where
+  you allow it.
 - **A manager, when you want one.** Mark one member and the others are told it
   coordinates: `who` tags it, every briefing names it, the teams view marks it
   with `★`, and the skill tells members to take its assignments as the plan
@@ -221,9 +222,10 @@ What the conditional cells mean:
   harnesses. It also requires a running Herdr server that advertises atomic
   idle submission and fails closed with an `@name` suggestion when that method
   is unavailable.
-- **Running `!!` / interrupt:** `!!name text` and teammate `post --interrupt` are
-  live-verified for all three supported harnesses, in both directions. Other
-  kinds are labelled unverified and remain off unless explicitly enabled.
+- **Running `!!` / interrupt:** `!!name text`, its per-agent `!!all text`
+  fan-out, and teammate `post --interrupt` are live-verified for all three
+  supported harnesses, in both directions. Other kinds are labelled
+  unverified and remain off unless explicitly enabled.
 - **Ask wait:** the board wait and operator popup are harness-independent, but
   the agent must keep a long-running shell command alive. The complete wait,
   answer and unblock round trip is live-verified for all three supported
@@ -274,45 +276,54 @@ Start `herdr` first: the install registers the plugin through the running
 server.
 
 ```bash
-# 1. the plugin, and the CLI on your PATH
-herdr plugin install vitalysim/herdr-synapse                                      # checks out under ~/.config/herdr/plugins/github/
-~/.config/herdr/plugins/github/herdr-synapse-*/bin/herdr-synapse install-cli --yes   # symlinks herdr-synapse into ~/.local/bin
+# 1. Install the plugin and place its CLI on your PATH.
+herdr plugin install vitalysim/herdr-synapse
+~/.config/herdr/plugins/github/herdr-synapse-*/bin/herdr-synapse install-cli --yes
 
-# 2. the notifier (the startup hook only fires on a server start, so start it once by hand)
+# 2. Start the notifier once; future Herdr starts launch it automatically.
 herdr-synapse daemon start
 
-# 3. teach your agents the board commands
+# 3. Install the Synapse operating skill for your agents.
 herdr-synapse skill install
 
-# 4. REQUIRED: allow delivery, once per Herdr session, for every kind you use
+# 4. Trust each terminal UI you use (required once per Herdr session).
 herdr-synapse kinds trust claude
 herdr-synapse kinds trust codex
 herdr-synapse kinds trust opencode
 
-# 5. Claude Code only: hooks, so a Claude member sees the board on every prompt
+# 5. Add the richer lifecycle integration for Claude Code.
 herdr-synapse hooks install claude
 ```
 
-**Step 4 is not optional.** Until a kind is trusted the notifier types nothing
-into it: members of that kind join, appear in `who`, and are never briefed and
-never nudged. The symptom is a team that looks fine and never talks, and the
-reason is one line per member in the notifier log:
+### Why these setup commands are separate
+
+| Command | Requirement | What it enables |
+| --- | --- | --- |
+| `herdr-synapse skill install` | Required for autonomous agent collaboration | Installs the bundled Synapse operating guide where supported agents can discover it, so they know how to identify themselves, read and acknowledge the board, post updates, answer teammates, and recover after context loss. |
+| `herdr-synapse kinds trust claude` | Required once per Herdr session when Claude Code members receive terminal delivery | Opens the notifier's explicit trust gate for the `claude` terminal UI. |
+| `herdr-synapse kinds trust codex` | Required once per Herdr session when Codex members receive terminal delivery | Opens the same trust gate for the `codex` terminal UI. |
+| `herdr-synapse kinds trust opencode` | Required once per Herdr session when OpenCode members receive terminal delivery | Opens the same trust gate for the `opencode` terminal UI. |
+| `herdr-synapse hooks install claude` | Recommended for Claude Code only | Adds session-start briefings, board context at prompt submission, and an end-of-turn unread-post check. Codex and OpenCode use the skill and notifier instead; they do not have Synapse hooks. |
+
+Kind trust is intentionally session-local: run only the lines for agent kinds
+you use. Until a kind is trusted, its members can join and appear in `who`, but
+the notifier will not type briefings, nudges, direct messages, or control
+commands into that terminal UI. A team that appears healthy but never reaches
+an agent will show `kind_unverified` in the notifier log, for example:
 
 ```
 clickhouse-hunt: claude-hunter-research held: kind_unverified
 ```
 
-`herdr-synapse kinds list` shows what is trusted. Trusting a kind is the one
-deliberate step in the whole install: it says you have checked what typing into
-that kind actually does.
+`herdr-synapse kinds list` shows the current trust state. Trusting a kind is a
+deliberate acknowledgement that you have checked how that terminal UI handles
+programmatic input.
 
-**Step 5 matters more than "optional" suggests.** Without the hooks a Claude
-member only sees the board when the notifier types a nudge into it. With them
-it also gets the unread posts at the top of every prompt, a briefing at session
-start, and a check at the end of a turn. One catch: `hooks install` switches
-those members to `delivery: "hooks"`, which raises the idle-stability window
-from 2 s to 15 s before a nudge may be typed. To keep the hooks without that,
-set it back per team:
+Claude hooks are optional because the notifier can deliver without them, but
+they provide the most complete Claude experience. Installing them switches
+Claude members to `delivery: "hooks"`, which raises the idle-stability window
+from 2 s to 15 s before a nudge may be typed. To keep the hooks with a shorter
+window, override it per team:
 
 ```jsonc
 // team.json -> config
@@ -427,7 +438,8 @@ its context is not broken by the move.
    each agent a role, a name, a required Mission / brief, and optionally a model (`opus@medium`;
    Enter keeps the harness default). Each member is briefed once it is idle.
 3. `prefix+u` opens the console. Plain text posts to the whole team,
-   `@name text` to one member, `!name text` types straight into one.
+   `@name text` to one member, `!name text` types straight into one, and
+   `!!all text` attempts forced direct typing for every current agent.
 4. Ask for something: `@red-dev-claude-dev post a summary of the repo layout`.
    The member is nudged when idle, reads the board, and replies; the feed
    shows `✓nudged` and `✓read`.
@@ -444,14 +456,13 @@ CLI parameter, plugin action, console command, and key used inside each view.
 
 ## The teams view
 
-`prefix+t` shows every team with its members underneath and the unassigned
-agents below. Each team header names its manager and the teams it is linked
-to; each manager row is marked `★`.
+`prefix+t` shows every team with its members underneath and the unassigned agents below, grouped by their Herdr tab name and stable tab ID so duplicate names remain easy to locate. Each tab group is collapsible and each agent row keeps its pane ID visible. Each team header names its manager and the teams it is linked to; each manager row is marked `★`.
 
 | Key | What it does |
 | --- | --- |
-| Enter | on a member: the action menu below; on picked agents: start the team wizard; on a team with agents picked: add them to it |
-| Space, `a` | pick an unassigned agent; `a` picks or clears them all; on a team row Space folds it |
+| Enter | on a member: the action menu below; on a tab without picked agents: fold it; on picked agents: start the team wizard; on a team with agents picked: add them to it |
+| Space, `a` | pick an unassigned agent; `a` picks or clears them all; on a tab or team row Space folds it |
+| `g` | verify and focus the highlighted agent's pane, then close the Teams view |
 | `b` | open that team's board |
 | `c` | connect that team to another, or break the link |
 | `v` | open the scrollable ASCII topology of teams, managers and links |
@@ -482,6 +493,7 @@ to the tree; arrows and PgUp/PgDn scroll, and `r` refreshes live state.
 | `@@path text` | attaches a file; `@@` opens a finder over the agents' project |
 | `!name text` | typed only if that same member is still idle when Herdr atomically submits it; recorded as a `direct` post |
 | `!!name text` | also while the member works or is muted; never into a dialog or a draft |
+| `!!all text` | attempts the same forced direct delivery independently for every current agent; each gets its own recorded outcome |
 | `/interrupt @name text` | urgent, and typed into the member's running turn when its kind allows it |
 | `/interrupts off`, `/interrupts claude,codex,opencode --cooldown 5m` | which kinds interrupts may reach mid-turn, and how often |
 | `/nudge name`, `/mute name 10m`, `/pause`, `/focus name`, `/peek name` | delivery and pane controls |
@@ -925,8 +937,8 @@ peer mail.
   that are in a team roster. `herdr-synapse notifier stats` shows
   `wrong_target`, which must stay 0.
 - Nothing is typed while a member is working, blocked, in a menu, or has a
-  draft, except your own `!!name text` and an interrupt you have allowed for
-  that kind.
+  draft, except your own `!!name text` (including the per-agent `!!all`
+  fan-out) and an interrupt you have allowed for that kind.
 - The single-bang idle check and terminal write are one Herdr operation. A
   state or occupant change refuses the line. Synapse probes the running
   server, not its version string; without the atomic method `!` reports the

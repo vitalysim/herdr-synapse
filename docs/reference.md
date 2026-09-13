@@ -60,8 +60,7 @@ shortcuts are conveniences; every action remains available through
 ## Teams view
 
 Open it with `prefix+t`, `herdr-synapse ui picker`, or the
-`herdr-synapse.team-up` action. It shows every team, its manager and members,
-team-to-team links, and unassigned agents.
+`herdr-synapse.team-up` action. It shows every team, its manager and members, team-to-team links, and unassigned agents grouped under their Herdr tab label and stable tab ID. Every agent row still shows its pane ID, and the ID disambiguates tabs that share a label.
 
 ### Team tree
 
@@ -70,10 +69,11 @@ team-to-team links, and unassigned agents.
 | `Up` / `k`, `Down` / `j` | Move one row. |
 | `PageUp`, `PageDown` | Move one visible page. |
 | `Home`, `End` | Move to the first or last row. |
-| `Left` / `h`, `Right` / `l` | Collapse or expand a team; Left on a member returns to its team row. |
-| `Space` | Select an unassigned agent, or fold/unfold a team or section. |
+| `Left` / `h`, `Right` / `l` | Collapse or expand a team or tab; Left on a member returns to its team row, and Left on an unassigned agent returns to its tab row. |
+| `Space` | Select an unassigned agent, or fold/unfold a team, tab, or section. |
 | `a` | Select all visible unassigned agents, or clear the selection. |
-| `Enter` | Open a member's actions; fold a team; add selected agents to a team; or advance the create-team wizard. |
+| `Enter` | Open a member's actions; fold a team or a tab when nothing is selected; add selected agents to a team; or advance the create-team wizard. |
+| `g` | Verify and focus the highlighted agent's pane, then close the Teams view. Works for team members and unassigned agents. |
 | `b` | Open the highlighted team's board in its own console. |
 | `c` | Choose another team to link or unlink through their managers. |
 | `v` | Open the ASCII organization topology. |
@@ -173,6 +173,7 @@ also completes names and files; in the `/` menu it executes the line as typed.
 | `@@path text` | Attach a file; bare `@@` opens the file finder. |
 | `!name text` | Type only if that member is still idle at atomic submission; every attempt is recorded. |
 | `!!name text` | Also permit typing while the member is working or muted, but never into a dialog or existing draft. |
+| `!!all text` | Attempt that forced direct delivery separately for every current agent; each target gets its own record and outcome. |
 | `/all !text` | Post literal text beginning with `!` instead of treating it as direct typing. |
 
 ### Console slash commands
@@ -557,7 +558,7 @@ herdr-synapse clear [-h] [--json] [--team NAME|PATH] [--session NAME] [--socket 
 </details>
 
 <details>
-<summary><code>say</code> — type one line into a member&#x27;s input box now (human only, from the team console)</summary>
+<summary><code>say</code> — type one line into a member, or every member with --force (human only, from the team console)</summary>
 
 ```text
 herdr-synapse say [-h] [--json] [--team NAME|PATH] [--session NAME] [--socket PATH] [--session-mismatch-ok] [--force] [--wait | --no-wait] [--timeout S] member text

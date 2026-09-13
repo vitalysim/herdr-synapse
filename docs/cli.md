@@ -794,15 +794,16 @@ otherwise never produce one and be re-briefed after 90 s (sandbox, 2026-09-05).
 Records the member's cursor at the current max and `charter_seq_acked`.
 JSON `{"team","member","cursor":59,"charter_seq_acked":3}`.
 
-### `say <member> "<text>" [--force] [--wait | --no-wait] [--timeout S]`
+### `say <member|all> "<text>" [--force] [--wait | --no-wait] [--timeout S]`
 
 ```
-say <member> "<text>" [--force] [--wait | --no-wait] [--timeout S]
+say <member|all> "<text>" [--force] [--wait | --no-wait] [--timeout S]
 ```
 
 Type one line into a member's input box right now, with operator authority,
 and record it on the board. The console's `!<member> <text>` runs this;
-`!!<member> <text>` adds `--force`.
+`!!<member> <text>` adds `--force`, and `!!all <text>` runs the forced form
+for every current agent.
 
 - Human only, and only from the verified team console: the author must be
   `console`, verified, with confirmed pane ancestry. A member pane or a hook
@@ -811,9 +812,13 @@ and record it on the board. The console's `!<member> <text>` runs this;
   cannot be confirmed is `say_unverified` (1). Both are audited. A shell pane
   is refused on purpose: any agent can open a pane around a command and
   mint a verified shell author that way.
-- One agent member; `all`, `human`, `me`, and `role:<r>` are
-  `member_not_found` (1) with a hint. The member's kind must be trusted
-  (`kinds trust <kind>`), else `kind_unverified` (1).
+- One agent member by default. `all` is accepted only with `--force`
+  (console: `!!all`); it is expanded into a separate direct record and job
+  for every current non-human member. Every target kind is validated before
+  anything is written, so one untrusted kind refuses the whole fan-out.
+  `human`, `me`, and `role:<r>` are `member_not_found` (1) with a hint. A
+  member's kind must be trusted (`kinds trust <kind>`), else
+  `kind_unverified` (1).
 - Text: sanitized like a post, then tabs become spaces. A newline is
   `say_multiline` (1), more than 500 characters is `say_too_long` (1), the
   marker check is `echo_rejected` (4) and a secret is `secret_detected` (1);
@@ -821,9 +826,11 @@ and record it on the board. The console's `!<member> <text>` runs this;
   /login /resume exit quit` is `say_control_command` (1) unless `--force`.
 - Needs the daemon: `daemon_down` (5) before anything is written. Then a
   `direct` record (`from: human`, `to: [<member>]`, `kind: direct`, extra
-  `force`) is appended and a `say` job carrying only its seq is queued. The
-  daemon types the record's text as-is (never a job payload, never a
-  `[herdr-team` header) after checking that the record is the console's own.
+  `force`) is appended and a `say` job carrying only its seq is queued. For
+  `all`, this pair is repeated once per target; there is never a
+  group-addressed direct record. The daemon types each record's text as-is
+  (never a job payload, never a `[herdr-team` header) after checking that the
+  record is the console's own and is addressed to exactly that member.
 - Without `--force`, the daemon sends `agent.prompt_if_idle` with the terminal
   identity and state sequence returned by `agent.get`. Herdr checks both and
   the idle state in the same app turn that queues the input. A concurrent
@@ -855,10 +862,11 @@ and record it on the board. The console's `!<member> <text>` runs this;
   there). Typing into a running turn is verified for Claude Code, Codex and
   OpenCode; for other kinds `force_verified` is false and `detail` says so.
 - `--wait` (default) polls for that record up to `--timeout` (10 s) and
-  returns it as `outcome`; a refused or failed outcome is still exit 0.
-  No record in time is `say_timeout` (1) with `seq` and `job`. `--no-wait`
-  returns `outcome: null`; the console uses it and reads the outcome from
-  the board tail.
+  returns it as `outcome`; a refused or failed outcome is still exit 0. An
+  `all` fan-out shares one deadline and returns an outcome in each delivery.
+  No record in time is `say_timeout` (1) with the pending target details.
+  `--no-wait` returns `outcome: null`; the console uses it and reads every
+  outcome from the board tail.
 - Neither record is mail: a member's `board --new`, `--peek`, `--to me`,
   unread count, Claude Stop hook, and prompt context never include them, and
   they never nudge. `board`, `board --kind direct`, `show`, and `--thread
@@ -867,6 +875,8 @@ and record it on the board. The console's `!<member> <text>` runs this;
   `retract_invalid`, 1): send a correction with another `!` line.
 
 JSON `{"seq":12,"team":"alpha","member":"alpha-worker","job":"3f9a1c0b2d","force":false,"text":"stop and summarize","author":{"name":"human","via":"console","verified":true},"waited":true,"outcome":{"seq":13,"result":"typed","reason":null,"detail":null,"elapsed_ms":812}}`.
+
+Forced `all` JSON uses the same per-target fields under `deliveries`: `{"team":"alpha","member":"all","force":true,"text":"stop and summarize","author":{"name":"human","via":"console","verified":true},"waited":false,"deliveries":[{"member":"alpha-reviewer","seq":12,"job":"3f9a1c0b2d","outcome":null},{"member":"alpha-worker","seq":13,"job":"4a0b2d6e8f","outcome":null}]}`.
 
 ### `inbox --human [--last N] [--since <seq>]`
 
@@ -927,7 +937,7 @@ ingests the note. Console: `/wipe [--purge] [reason]`, y/n first.
 | `unmute <name> \| --all` | | same shape |
 | `pause` | alias `mute --all` | same shape |
 | `focus <name>` | enqueue `agent.focus` on the member's current pane | `{"team","member","job"}` |
-| `say <name> "<text>" [--force]` | write a `direct` record and enqueue a type-now job (section 7); the daemon types it without waiting for idle and confirms it on the next agent poll | `{"team","member","seq","job","outcome"}` |
+| `say <name\|all> "<text>" [--force]` | write a `direct` record and enqueue a type-now job (section 7); `all` requires `--force` and creates one independently verified delivery per current agent | one target: `{"team","member","seq","job","outcome"}`; all: `{"team","member":"all","deliveries":[…]}` |
 | `interrupts [show\|off\|on\|<kind>[,<kind>]] [--cooldown 10m]` | show or set `config.gate.interrupt_kinds` (the kinds a teammate's `post --interrupt` may be typed into mid-turn; `on` restores `claude,codex,opencode`) and `interrupt_cooldown_ms`; the daemon reloads within 2 s; a change is human only (`author_mismatch`) | `{"team","kinds","cooldown_ms","default_kinds","changed"}` |
 | `compact <name> \| --self [--reason TEXT]` | write a `direct` record carrying a `control` block and enqueue a control job; the daemon types the kind's compact command once the member is idle (section 9a) | `{"team","member","action","keystroke","kind","record_seq","job","requested"}` |
 | `clear <name> --yes [--reason TEXT]` | the same, for the kind's clear command; operator only, and it asks before it runs | same shape |
@@ -1401,9 +1411,9 @@ together with the pane entrypoints below.
 
 `ui picker` is the team manager. Its first screen is a tree: every team in
 the session with its agent members underneath (the `human` member and `left`
-tombstones are never listed), then the agents that belong to no team. Member
+tombstones are never listed), then the agents that belong to no team grouped by the label and stable ID returned by `tab.list`. Each candidate row keeps its pane ID visible; the detail line spells out its pane and tab, `g` verifies that the pane still hosts the same terminal and focuses it, Enter or Space folds a tab group, and Left on a candidate returns to its tab header. Member
 rows are rendered by the same `who` renderer the console uses, plus the
-role; live status comes from `agent.list`, and headlines, holds and mutes
+role; live status and tab identity come from `agent.list`, tab labels come from one `tab.list` request per refresh, and headlines, holds and mutes
 from `who.json` when the notifier is running. Enter folds a team, Space
 picks an unassigned agent, and the list scrolls with the cursor.
 

@@ -249,6 +249,7 @@ LEGACY_SOCKET_METHODS_USED = (
     "ping", "events.subscribe",
     "agent.list", "agent.get", "agent.prompt", "agent.read", "agent.explain", "agent.rename", "agent.focus",
     "agent.view.set", "agent.view.clear",
+    "tab.list",
     "pane.get", "pane.list", "pane.rename", "pane.close", "pane.report_metadata", "pane.process_info",
     "pane.layout",
     "layout.apply", "plugin.list", "plugin.pane.open", "plugin.pane.focus", "popup.close", "notification.show",
@@ -281,6 +282,7 @@ METHOD_RESULT_TYPES: Dict[str, Tuple[str, ...]] = {
     "agent.start": ("agent_started",),
     "agent.view.set": ("agent_view",),
     "agent.view.clear": ("agent_view",),
+    "tab.list": ("tab_list",),
     "pane.get": ("pane_info",),
     "pane.list": ("pane_list",),
     "pane.rename": ("pane_info",),              # handle_pane_rename -> ResponseResult::PaneInfo
@@ -317,6 +319,7 @@ SAMPLE_PARAMS: Dict[str, Dict[str, Any]] = {
     "agent.start": {"name": "beta-worker", "kind": "codex", "pane_id": "w9:p1", "timeout_ms": 30000},
     "agent.view.set": cmd_misc.view_request(["alpha"]),
     "agent.view.clear": {"source": "plugin:herdr-synapse"},
+    "tab.list": {},
     "pane.get": {"pane_id": "w2:p1"},
     "pane.list": {},
     "pane.rename": {"pane_id": "w2:p1", "label": "team:alpha/reviewer"},

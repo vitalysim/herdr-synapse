@@ -112,7 +112,7 @@ Each member gets a one-line briefing typed into its input box once it is
 idle, then reads the skill, the charter, and the board, and acknowledges.
 `herdr-synapse who` shows `briefed` for each within about a minute.
 
-Reopen `prefix+t` afterwards and it shows the team with its agents under it.
+Reopen `prefix+t` afterwards and it shows the team with its agents under it. Start unassigned agents in at least two named Herdr tabs and verify the remaining candidates are ordered under collapsible tab headers that show both the tab label and stable tab ID; every agent row must still show its pane ID. Rename two tabs to the same label and verify their IDs keep the groups distinguishable. Highlight an agent, confirm the detail line names its pane and tab, press `g`, and verify Herdr focuses that exact pane and closes the Teams view without selecting or modifying the agent.
 Enter on a member opens its actions: rename it, change its goal, send that
 goal to it, remove it from the team, or jump to its pane. Changing a goal
 only writes it to the roster; the agent sees it when you choose "send the
@@ -128,8 +128,9 @@ prefix+u                            # the console: charter, roster, live board t
 
 In the console: plain text goes to the whole team, `@name text` to one
 member (that member is nudged once idle), `!name text` straight into that
-member's input box right now (`!!name text` even while it works; the entry
-shows `✓typed` or why not), `@@path` attaches a file to the post (type
+member's input box right now (`!!name text` even while it works; `!!all text`
+fans out into one recorded attempt per current agent; each entry shows
+`✓typed` or why not), `@@path` attaches a file to the post (type
 `@@` for a file list), `?` on an empty line shows every command, `@role:worker text` to a role,
 `/human` to yourself, `/urgent` before text nudges everyone, `/reply N`,
 `/retract N`, `/mute name 10m`, `/peek name`, `/focus name`, `/charter`,
@@ -162,6 +163,10 @@ idle, the member reads the board and replies, `board --receipts` shows
 - `!name text` works only from the console pane. The compose popup answers
   `direct typing is console-only` and a shell pane `say_unverified`, because
   neither can prove it is you.
+- `!!all text` is the explicit multi-agent form. Plain `!all` is refused. The
+  fan-out validates every agent kind before writing, then the existing
+  dialog, draft, blocker, terminal identity, and in-flight checks apply to
+  each target independently.
 - Your posts to the whole team nudge every member once each is idle. An
   agent's post to the whole team is not nudged; members see it on their next
   board read (Claude with hooks sees it on its next turn) unless it is `/urgent`.

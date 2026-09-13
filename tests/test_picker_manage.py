@@ -37,7 +37,9 @@ class TreeShapeTests(unittest.TestCase):
             ("member", "member:alpha/alpha-reviewer"),
             ("member", "member:alpha/alpha-worker"),
             ("section", "section:unassigned"),
+            ("tab", "tab:w1:t1"),
             ("agent", "pane:w1:p2"),
+            ("tab", "tab:w1:t2"),
             ("agent", "pane:w1:p3"),
             ("agent", "pane:w1:p10"),
         ])
@@ -50,9 +52,11 @@ class TreeShapeTests(unittest.TestCase):
         names = [n.label for n in tui_model.picker_tree(model) if n.kind == "member"]
         self.assertEqual(names, ["alpha-reviewer", "alpha-worker"])
 
-    def test_with_no_team_the_tree_is_the_flat_agent_list_it_always_was(self):
+    def test_with_no_team_agents_are_grouped_by_tab(self):
         model = picker_model(focused=None)
-        self.assertEqual([n.kind for n in tui_model.picker_tree(model)], ["agent"] * 5)
+        self.assertEqual([n.kind for n in tui_model.picker_tree(model)], [
+            "tab", "agent", "tab", "agent", "agent", "tab", "agent", "agent",
+        ])
 
     def test_collapsing_a_team_hides_its_members_but_keeps_the_header(self):
         model = picker_model(ALPHA, focused=None)
@@ -111,6 +115,22 @@ class TreeKeyTests(unittest.TestCase):
         picker_apply_key(model, "ENTER")
         self.assertEqual([r.pane_id for r in tui_model.selected_rows(model)], ["w1:p3"])
         self.assertEqual(model.stage, "name")
+
+    def test_g_locates_an_agent_pane_without_selecting_it(self):
+        model = picker_model(ALPHA, focused=None)
+        self.assertTrue(tui_model.focus_node(model, "pane:w1:p3"))
+        intent = picker_apply_key(model, "g")
+        self.assertEqual(intent, Intent("agent_focus", {
+            "pane_id": "w1:p3", "terminal_id": "term_a", "member": "w1:p3",
+        }))
+        self.assertEqual(tui_model.selected_rows(model), [])
+        detail = tui_model._tree_detail(model, tui_model.picker_tree(model))
+        self.assertIn("pane w1:p3 in tab review", detail)
+        self.assertIn("g goes there", detail)
+
+        self.assertTrue(tui_model.focus_node(model, "tab:w1:t2"))
+        self.assertIsNone(picker_apply_key(model, "g"))
+        self.assertIn("cursor on an agent", model.error)
 
     def test_paste_in_the_tree_never_fires_keys(self):
         model = picker_model(ALPHA, focused=None)
@@ -237,7 +257,7 @@ class ActionMenuTests(unittest.TestCase):
         model = picker_model(ALPHA, focused=None)
         lines = tui_model.picker_lines(model, 42, 24)
         flattened = " ".join(line.strip() for line in lines)
-        for action in ("Enter acts", "Space picks", "b board", "c connect", "v map", "f folder", "x dissolve", "w scope", "a all", "r refresh", "Esc quit"):
+        for action in ("Enter acts", "Space picks", "g go to pane", "b board", "c connect", "v map", "f folder", "x dissolve", "w scope", "a all", "r refresh", "Esc quit"):
             self.assertIn(action, flattened)
         self.assertTrue(all(tui_model.display_width(line) <= 42 for line in lines))
 
@@ -412,6 +432,26 @@ class ExecuteActionTests(unittest.TestCase):
             intent = Intent("member_focus", {"team": "alpha", "member": "alpha-worker", "terminal_id": "term_w1"})
             _model, _calls, keep_open = self.run_action(ts, intent, out={"job": "j1"})
             self.assertFalse(keep_open)
+
+    def test_direct_agent_focus_verifies_the_terminal_then_closes(self):
+        api = FakeApi()
+        api.set_response("agent.focus", {"type": "agent_info", "agent": {"terminal_id": "term_r1", "pane_id": "w2:p1"}})
+        model = picker_model(ALPHA, focused=None)
+        intent = Intent("agent_focus", {"pane_id": "w2:p1", "terminal_id": "term_r1", "member": "alpha-reviewer"})
+        self.assertFalse(picker.execute_action(intent, model, api, None, {}))
+        self.assertEqual(api.calls, [
+            ("agent.get", {"target": "w2:p1"}),
+            ("agent.focus", {"target": "w2:p1"}),
+        ])
+
+    def test_direct_agent_focus_refuses_a_recycled_pane(self):
+        api = FakeApi()
+        api.set_response("agent.get", {"type": "agent_info", "agent": {"terminal_id": "term_replacement"}})
+        model = picker_model(ALPHA, focused=None)
+        intent = Intent("agent_focus", {"pane_id": "w2:p1", "terminal_id": "term_r1", "member": "alpha-reviewer"})
+        self.assertTrue(picker.execute_action(intent, model, api, None, {}))
+        self.assertEqual(api.calls, [("agent.get", {"target": "w2:p1"})])
+        self.assertIn("changed while this was open", model.error)
 
     def test_an_error_keeps_the_text_stage_so_it_can_be_corrected(self):
         with TempState() as ts:

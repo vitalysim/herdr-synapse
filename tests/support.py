@@ -229,6 +229,10 @@ def canned_responses() -> Dict[str, Any]:
         "agent.start": lambda params: {"type": "agent_started", "agent": fake_agent(str(params["pane_id"]), "term_started", str(params["kind"]), str(params["name"]), launch_pending=False, interactive_ready=True), "argv": [str(params["kind"])] + list(params.get("args") or [])},
         "agent.view.set": lambda params: {"type": "agent_view", "active": True, "source": params.get("source"), "label": params.get("label")},
         "agent.view.clear": {"type": "agent_view", "active": False, "source": None, "label": None},
+        "tab.list": {"type": "tab_list", "tabs": [
+            {"tab_id": "w2:t1", "workspace_id": "w2", "number": 1, "label": "agents", "focused": False, "pane_count": 2, "agent_status": "working"},
+            {"tab_id": "wA:t1", "workspace_id": "wA", "number": 1, "label": "research", "focused": True, "pane_count": 1, "agent_status": "idle"},
+        ]},
         "pane.get": _pane_get,
         "pane.list": lambda params: {"type": "pane_list", "panes": [dict(p) for p in FAKE_PANES if not params.get("workspace_id") or p["workspace_id"] == params["workspace_id"]]},
         "pane.rename": lambda params: {"type": "pane_info", "pane": dict(_pane_get(params)["pane"], label=params.get("label"))},

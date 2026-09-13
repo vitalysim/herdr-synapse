@@ -650,16 +650,24 @@ class RenderConsoleTests(unittest.TestCase):
 def agent_rows() -> List[Dict[str, Any]]:
     return [
         fake_agent("w2:p2", "term_w1", "claude", "alpha-worker", status="working"),
-        fake_agent("w1:p3", "term_a", "codex", None),
+        fake_agent("w1:p3", "term_a", "codex", None, tab_id="w1:t2"),
         fake_agent("w2:p1", "term_r1", "codex", "alpha-reviewer"),
-        fake_agent("w1:p10", "term_b", "claude", None, launch_pending=True),
+        fake_agent("w1:p10", "term_b", "claude", None, launch_pending=True, tab_id="w1:t2"),
         fake_agent("w1:p2", "term_c", "gemini", "gem", status="blocked"),
         fake_agent("w3:p1", "term_shell", None, None),  # a shell pane: never listed
     ]
 
 
+def tab_rows() -> List[Dict[str, Any]]:
+    return [
+        {"tab_id": "w2:t1", "workspace_id": "w2", "number": 1, "label": "operations", "focused": False, "pane_count": 2, "agent_status": "working"},
+        {"tab_id": "w1:t2", "workspace_id": "w1", "number": 2, "label": "review", "focused": False, "pane_count": 2, "agent_status": "idle"},
+        {"tab_id": "w1:t1", "workspace_id": "w1", "number": 1, "label": "build", "focused": True, "pane_count": 1, "agent_status": "blocked"},
+    ]
+
+
 def picker_model(rosters: Optional[Dict[str, List[Dict[str, Any]]]] = None, focused: Optional[str] = "w1") -> PickerModel:
-    rows = picker_rows_from_agent_list(agent_rows(), focused)
+    rows = picker_rows_from_agent_list(agent_rows(), focused, tab_rows())
     tui_model.mark_claimed(rows, rosters or {})
     model = PickerModel(rows=rows, focused_workspace=focused)
     model.live_names = {"alpha-worker", "alpha-reviewer", "gem"}
@@ -679,15 +687,19 @@ def type_line(model: PickerModel, text: str) -> None:
 
 class PickerRowTests(unittest.TestCase):
     def test_rows_sorted_and_shell_panes_omitted(self):
-        rows = picker_rows_from_agent_list(agent_rows(), "w1")
+        rows = picker_rows_from_agent_list(agent_rows(), "w1", tab_rows())
         self.assertEqual([r.pane_id for r in rows], ["w1:p2", "w1:p3", "w1:p10", "w2:p1", "w2:p2"])
+        self.assertEqual([(r.tab_id, r.tab_label) for r in rows], [
+            ("w1:t1", "build"), ("w1:t2", "review"), ("w1:t2", "review"),
+            ("w2:t1", "operations"), ("w2:t1", "operations"),
+        ])
         self.assertTrue(rows[2].launch_pending)
         self.assertFalse(tui_model.selectable(rows[2]))
         self.assertFalse(tui_model.selectable(rows[0]))  # blocked
         self.assertTrue(tui_model.selectable(rows[1]))
 
     def test_claimed_rows_by_terminal_then_pane(self):
-        rows = picker_rows_from_agent_list(agent_rows(), None)
+        rows = picker_rows_from_agent_list(agent_rows(), None, tab_rows())
         tui_model.mark_claimed(rows, {"alpha": [dict(m) for m in FAKE_MEMBERS], "beta": [{"name": "left", "status": "left", "terminal_id": "term_a"}]})
         claimed = {r.pane_id: r.claimed_by for r in rows}
         self.assertEqual(claimed["w2:p1"], "alpha")
@@ -704,17 +716,15 @@ class PickerRowTests(unittest.TestCase):
         self.assertEqual([r.pane_id for r in tui_model.selected_rows(model)], ["w1:p3"])  # blocked and launching skipped
         picker_apply_key(model, "a")
         self.assertEqual(tui_model.selected_rows(model), [])
-        picker_apply_key(model, "DOWN")
-        picker_apply_key(model, "DOWN")
+        self.assertTrue(tui_model.focus_node(model, "pane:w1:p10"))
         picker_apply_key(model, " ")
         self.assertIn("launching", model.error)
-        picker_apply_key(model, "UP")
-        picker_apply_key(model, "UP")
+        self.assertTrue(tui_model.focus_node(model, "pane:w1:p2"))
         picker_apply_key(model, " ")
         self.assertIn("blocked", model.error)
         picker_apply_key(model, "w")
         self.assertIsNone(model.scope_workspace)
-        self.assertEqual(model.cursor, 0)
+        self.assertEqual(tui_model.node_at(model).key, "pane:w1:p2")
         self.assertEqual(picker_apply_key(model, "ESC").kind, "quit")
         self.assertEqual(picker_apply_key(model, "CTRL_C").kind, "quit")
         self.assertEqual(picker_apply_key(model, "r").kind, "refresh")
@@ -733,6 +743,28 @@ class PickerRowTests(unittest.TestCase):
         picker_apply_key(model, " ")
         self.assertIn("alpha-reviewer is in team alpha; Enter opens its actions", model.error)
         self.assertEqual(tui_model.selected_rows(model), [])
+
+    def test_unassigned_agents_are_grouped_under_named_tabs(self):
+        model = picker_model(focused=None)
+        self.assertEqual([(node.kind, node.key, node.label) for node in tui_model.picker_tree(model)], [
+            ("tab", "tab:w1:t1", "build"),
+            ("agent", "pane:w1:p2", "gem"),
+            ("tab", "tab:w1:t2", "review"),
+            ("agent", "pane:w1:p3", "w1:p3"),
+            ("agent", "pane:w1:p10", "w1:p10"),
+            ("tab", "tab:w2:t1", "operations"),
+            ("agent", "pane:w2:p1", "alpha-reviewer"),
+            ("agent", "pane:w2:p2", "alpha-worker"),
+        ])
+        self.assertTrue(tui_model.focus_node(model, "tab:w1:t2"))
+        picker_apply_key(model, "ENTER")
+        self.assertEqual(model.collapsed_tabs, {"w1:t2"})
+        self.assertNotIn("pane:w1:p3", [node.key for node in tui_model.picker_tree(model)])
+        picker_apply_key(model, "RIGHT")
+        self.assertEqual(model.collapsed_tabs, set())
+        self.assertTrue(tui_model.focus_node(model, "pane:w1:p3"))
+        picker_apply_key(model, "LEFT")
+        self.assertEqual(tui_model.node_at(model).key, "tab:w1:t2")
 
 
 class NameSuggestionTests(unittest.TestCase):
@@ -775,6 +807,7 @@ class PickerWizardTests(unittest.TestCase):
 
     def test_full_wizard_to_create_spec(self):
         model = picker_model(focused=None)
+        self.assertTrue(tui_model.focus_node(model, "pane:w1:p2"))
         self.assertIsNone(picker_apply_key(model, "ENTER"))
         self.assertIn("select at least one", model.error)
         self.select(model, "w1:p3", "w2:p1")
@@ -980,15 +1013,31 @@ class PickerRuntimeTests(unittest.TestCase):
         with TempState() as ts:
             api = FakeApi()
             api.set_response("agent.list", {"type": "agent_list", "agents": agent_rows()})
+            api.set_response("tab.list", {"type": "tab_list", "tabs": tab_rows()})
             model = picker.build_model(api, {"focused_pane_id": "w2:p2"}, ts.layout)
             self.assertEqual(model.focused_workspace, "w2")
             self.assertEqual(model.scope_workspace, "w2")
             self.assertEqual(model.existing_teams, ["alpha"])
             self.assertIn("alpha-worker", model.live_names)
             self.assertEqual({r.pane_id: r.claimed_by for r in model.rows}["w2:p1"], "alpha")
+            self.assertEqual({r.tab_id: r.tab_label for r in model.rows}["w2:t1"], "operations")
+            self.assertEqual([method for method, _params in api.calls], ["agent.list", "tab.list"])
             model.rows[0].selected = True
+            model.collapsed_tabs.add("w2:t1")
             picker.refresh_rows(model, api, ts.layout)
             self.assertEqual(len(model.rows), 5)
+            self.assertEqual(model.collapsed_tabs, {"w2:t1"})
+            self.assertEqual([method for method, _params in api.calls], ["agent.list", "tab.list", "agent.list", "tab.list"])
+
+    def test_build_model_falls_back_to_tab_ids_when_tab_list_is_unavailable(self):
+        with TempState() as ts:
+            api = FakeApi()
+            api.set_response("agent.list", {"type": "agent_list", "agents": agent_rows()})
+            model = picker.build_model(api, {}, ts.layout)
+            tabs = [node for node in tui_model.picker_tree(model) if node.kind == "tab"]
+            self.assertEqual([(node.tab_id, node.label) for node in tabs], [
+                ("w1:t1", "w1:t1"), ("w1:t2", "w1:t2"),
+            ])
 
     def test_load_context_and_charter_file(self):
         env = {"HERDR_PLUGIN_CONTEXT_JSON": "{bad json", "HERDR_WORKSPACE_ID": "w9", "HERDR_PANE_ID": "w9:p1"}

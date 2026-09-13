@@ -2351,10 +2351,15 @@ def box(lines: List[str], width: int, title: Optional[str] = None) -> List[str]:
 class PickerRow:
     pane_id: str
     workspace_id: str
+    tab_id: str
     kind: Optional[str]
     name: Optional[str]
     agent_status: str
     launch_pending: bool
+    #: Human-facing label from ``tab.list``; ``""`` falls back to ``tab_id``.
+    tab_label: str = ""
+    #: Stable tab number from ``tab.list``; None when that optional lookup failed.
+    tab_number: Optional[int] = None
     selected: bool = False
     role: str = ""
     member_name: str = ""
@@ -2418,6 +2423,8 @@ class PickerModel:
     who_members: Dict[str, Dict[str, Dict[str, Any]]] = field(default_factory=dict)
     #: Team names folded away in the tree.
     collapsed: Set[str] = field(default_factory=set)
+    #: Tab ids folded away in the unassigned-agent part of the tree.
+    collapsed_tabs: Set[str] = field(default_factory=set)
     ascii_only: bool = False
     #: First visible tree row; owned by ``picker_lines`` the way ``feed_window`` owns the console scroll.
     top: int = 0
@@ -2480,26 +2487,46 @@ def _pane_sort_key(pane_id: str) -> Tuple[int, str]:
     return _id_sort_key(tail)
 
 
-def picker_rows_from_agent_list(agents: List[Dict[str, Any]], focused_workspace: Optional[str]) -> List[PickerRow]:
-    """Sorted by workspace then pane; ``launch_pending`` rows greyed (not selectable)."""
+def picker_rows_from_agent_list(
+    agents: List[Dict[str, Any]],
+    focused_workspace: Optional[str],
+    tabs: Optional[List[Dict[str, Any]]] = None,
+) -> List[PickerRow]:
+    """Sorted by workspace, tab, then pane; ``launch_pending`` rows are not selectable."""
+    tab_info = {
+        str(tab.get("tab_id")): tab
+        for tab in (tabs or [])
+        if isinstance(tab, dict) and tab.get("tab_id")
+    }
     rows: List[PickerRow] = []
     for agent in agents:
         if not agent.get("agent") and not agent.get("launch_pending"):
             continue  # a pane without a detected agent is never listed
         pane_id = str(agent.get("pane_id") or "")
+        tab_id = str(agent.get("tab_id") or "")
+        tab = tab_info.get(tab_id) or {}
+        number = tab.get("number")
         rows.append(
             PickerRow(
                 pane_id=pane_id,
                 workspace_id=str(agent.get("workspace_id") or pane_id.split(":")[0]),
+                tab_id=tab_id,
                 kind=agent.get("agent"),
                 name=agent.get("name"),
                 agent_status=str(agent.get("agent_status") or "unknown"),
                 launch_pending=bool(agent.get("launch_pending")),
+                tab_label=headline(str(tab.get("label") or ""), 80),
+                tab_number=number if isinstance(number, int) and not isinstance(number, bool) else None,
                 terminal_id=str(agent.get("terminal_id") or ""),
                 cwd=str(agent.get("cwd") or ""),
             )
         )
-    rows.sort(key=lambda r: (_id_sort_key(r.workspace_id), _pane_sort_key(r.pane_id)))
+    rows.sort(key=lambda r: (
+        _id_sort_key(r.workspace_id),
+        r.tab_number if r.tab_number is not None else _id_sort_key(r.tab_id)[0],
+        r.tab_id,
+        _pane_sort_key(r.pane_id),
+    ))
     return rows
 
 
@@ -2521,12 +2548,14 @@ def mark_claimed(rows: List[PickerRow], rosters: Dict[str, List[Dict[str, Any]]]
 
 @dataclass
 class PickerNode:
-    """One line of the team tree: a team header, one of its members, the unassigned header, or an agent."""
+    """One line of the team tree: a team/member, section, tab, or unassigned agent."""
 
-    kind: str  # team | member | section | agent
+    kind: str  # team | member | section | tab | agent
     key: str
     team: str = ""
+    tab_id: str = ""
     label: str = ""
+    count: int = 0
     member: Optional[Dict[str, Any]] = None
     row: Optional[PickerRow] = None
 
@@ -2581,11 +2610,11 @@ def live_rows_by_id(rows: List[PickerRow]) -> Tuple[Dict[str, PickerRow], Dict[s
 
 
 def picker_tree(model: PickerModel) -> List[PickerNode]:
-    """Teams with their members, then the agents that belong to no team.
+    """Teams with their members, then unassigned agents grouped by Herdr tab.
 
-    With no team at all the tree is exactly today's flat agent list, so a
-    first run looks unchanged. ``left`` tombstones and the ``human`` member
-    are never listed: no action applies to either.
+    ``left`` tombstones and the ``human`` member are never listed: no action
+    applies to either. Tab headers use the human label when ``tab.list`` was
+    available and retain the stable id so duplicate labels stay unambiguous.
     """
     nodes: List[PickerNode] = []
     by_terminal, by_pane = live_rows_by_id(model.rows)
@@ -2610,8 +2639,17 @@ def picker_tree(model: PickerModel) -> List[PickerNode]:
     free = [r for r in visible_rows(model) if not r.claimed_by]
     if model.rosters:
         nodes.append(PickerNode(kind="section", key="section:unassigned", label="not in a team"))
+    groups: Dict[str, List[PickerRow]] = {}
     for row in free:
-        nodes.append(PickerNode(kind="agent", key="pane:" + row.pane_id, label=row.name or row.pane_id, row=row))
+        tab_id = row.tab_id or "{}:tab?".format(row.workspace_id or "unknown")
+        groups.setdefault(tab_id, []).append(row)
+    for tab_id, rows in groups.items():
+        label = next((row.tab_label for row in rows if row.tab_label), "") or tab_id
+        nodes.append(PickerNode(kind="tab", key="tab:" + tab_id, tab_id=tab_id, label=label, count=len(rows)))
+        if tab_id in model.collapsed_tabs:
+            continue
+        for row in rows:
+            nodes.append(PickerNode(kind="agent", key="pane:" + row.pane_id, tab_id=tab_id, label=row.name or row.pane_id, row=row))
     return nodes
 
 
@@ -2971,6 +3009,15 @@ def _select_key(model: PickerModel, key: str) -> Optional[Intent]:
         return None
     if node is None:
         return None
+    if key == "g":
+        if node.kind not in ("member", "agent") or node.row is None:
+            model.error = "put the cursor on an agent to go to its pane"
+            return None
+        return Intent("agent_focus", {
+            "pane_id": node.row.pane_id,
+            "terminal_id": node.row.terminal_id,
+            "member": node.label,
+        })
     if key == "b":
         # Open that team's board. A session may have one console per team, so
         # this adds a board rather than switching an existing one.
@@ -3022,13 +3069,19 @@ def _select_key(model: PickerModel, key: str) -> Optional[Intent]:
             focus_node(model, "team:" + node.team)
         elif node.kind == "team":
             model.collapsed.add(node.team)
+        elif node.kind == "agent":
+            focus_node(model, "tab:" + node.tab_id)
+        elif node.kind == "tab":
+            model.collapsed_tabs.add(node.tab_id)
         return None
     if key in ("RIGHT", "l"):
         if node.kind == "team":
             model.collapsed.discard(node.team)
+        elif node.kind == "tab":
+            model.collapsed_tabs.discard(node.tab_id)
         return None
     if key in (" ", "SPACE"):
-        if node.kind in ("team", "section"):
+        if node.kind in ("team", "section", "tab"):
             return _toggle_collapse(model, node)
         if node.kind == "member":
             model.error = "{} is in team {}; Enter opens its actions".format(node.label, node.team)
@@ -3043,6 +3096,10 @@ def _select_key(model: PickerModel, key: str) -> Optional[Intent]:
                 return None
             return _toggle_collapse(model, node)
         if node.kind == "section":
+            return _toggle_collapse(model, node)
+        if node.kind == "tab":
+            if selected_rows(model):
+                return _advance_from_select(model)
             return _toggle_collapse(model, node)
         if node.kind == "agent" and node.row is not None and not selected_rows(model) and selectable(node.row):
             node.row.selected = True  # Enter on a single agent means "this one"
@@ -3195,6 +3252,11 @@ def _toggle_collapse(model: PickerModel, node: PickerNode) -> None:
             model.collapsed.discard(node.team)
         else:
             model.collapsed.add(node.team)
+    elif node.kind == "tab":
+        if node.tab_id in model.collapsed_tabs:
+            model.collapsed_tabs.discard(node.tab_id)
+        else:
+            model.collapsed_tabs.add(node.tab_id)
     else:  # the unassigned section folds every team away, or brings them all back
         if model.collapsed >= set(model.rosters):
             model.collapsed.clear()
@@ -3800,6 +3862,22 @@ def _team_header(model: PickerModel, node: PickerNode, width: int) -> str:
     return text
 
 
+def _tab_header(model: PickerModel, node: PickerNode) -> str:
+    """One unassigned-agent group, named by Herdr and disambiguated by stable id."""
+    if model.ascii_only:
+        glyph = "+" if node.tab_id in model.collapsed_tabs else "-"
+    else:
+        glyph = "▸" if node.tab_id in model.collapsed_tabs else "▾"
+    label = headline(node.label, 80) or node.tab_id
+    return "{} tab {}  ({} · {} agent{})".format(
+        glyph,
+        label,
+        node.tab_id,
+        node.count,
+        "" if node.count == 1 else "s",
+    )
+
+
 def _topology_lines(model: PickerModel, width: int, height: int) -> List[str]:
     """A scrollable ASCII map of every team and manager-to-manager link."""
     teams = len(model.rosters)
@@ -3841,7 +3919,7 @@ def _tree_lines(model: PickerModel, width: int, height: int) -> List[str]:
     if model.scope_workspace:
         scope = "  unassigned: {}".format(model.scope_workspace)
     picked = len(selected_rows(model))
-    keys = "Enter acts | Space picks | b board | c connect | v map | f folder | x dissolve | w scope | a all | r refresh | Esc quit"
+    keys = "Enter acts | Space picks | g go to pane | b board | c connect | v map | f folder | x dissolve | w scope | a all | r refresh | Esc quit"
     head = "{} team{} · {} agent{}{}".format(teams, "" if teams == 1 else "s", agents, "" if agents == 1 else "s", scope)
     if picked:
         head += " · {} selected".format(picked)
@@ -3860,8 +3938,10 @@ def _tree_lines(model: PickerModel, width: int, height: int) -> List[str]:
         elif node.kind == "member":
             lines.append(truncate_columns(pointer + "  " + roster_line(node.member or {}, max(20, width - 4), model.ascii_only, None, None, show_role=True), width))
         elif node.kind == "section":
-            free = len([n for n in nodes if n.kind == "agent"])
+            free = len([r for r in visible_rows(model) if not r.claimed_by])
             lines.append(truncate_columns("{}{} ({})".format(pointer, node.label, free), width))
+        elif node.kind == "tab":
+            lines.append(truncate_columns(pointer + "  " + _tab_header(model, node), width))
         else:
             row = node.row
             mark = "[x]" if row is not None and row.selected else "[ ]"
@@ -3901,9 +3981,19 @@ def _tree_detail(model: PickerModel, nodes: List[PickerNode]) -> str:
         return "Enter folds {} open or shut · x dissolves it".format(node.team)
     if node.kind == "member":
         goal = str((node.member or {}).get("brief") or "")
-        return "Enter opens actions for {} · goal: {}".format(node.label, headline(goal, 40) if goal else "(none yet)")
+        location = " · g goes to pane {}".format(node.row.pane_id) if node.row is not None else ""
+        return "Enter opens actions for {}{} · goal: {}".format(node.label, location, headline(goal, 40) if goal else "(none yet)")
     if node.kind == "section":
         return "agents that belong to no team; Space picks them, Enter continues"
+    if node.kind == "tab":
+        if selected_rows(model):
+            return "Enter continues with the agents you picked · Space folds tab {}".format(node.label)
+        action = "expands" if node.tab_id in model.collapsed_tabs else "folds"
+        return "Enter {} tab {} · Left/Right folds or expands it".format(action, node.label)
+    row = node.row
+    if row is not None:
+        tab = row.tab_label or row.tab_id or "unknown"
+        return "pane {} in tab {} · g goes there · Space picks it, Enter continues".format(row.pane_id, tab)
     return "Space picks it, Enter continues with the agents you picked"
 
 

@@ -1,8 +1,8 @@
 """The team-up popup (curses), plan 5.5 and 11.
 
-``agent list`` rows sorted by workspace then pane, greyed when
-``launch_pending``; Space toggles, ``w`` scopes to the current workspace,
-``a`` selects all; then team name, charter (multi-line, ``Ctrl-O`` loads a
+``agent list`` rows grouped by the names from ``tab.list`` and sorted by
+workspace, tab, then pane, greyed when ``launch_pending``; Space toggles, ``w`` scopes to the current workspace,
+``a`` selects all, ``g`` focuses the highlighted agent's pane; then team name, charter (multi-line, ``Ctrl-O`` loads a
 file), per member role, name, and brief; confirm screen; the popup exits
 and the action performs create, rename, label, tokens, briefing jobs, view.
 When teams exist, a target stage follows the selection: a numbered list of
@@ -11,7 +11,7 @@ and joins the selected agents through one ``herdr-synapse add`` each.
 Esc and Ctrl-C exit; 10 min idle watchdog; refreshes on ``who.json``.
 
 The state machine lives in ``tui_model`` (``PickerModel``,
-``picker_apply_key``); this module reads ``agent.list`` once through
+``picker_apply_key``); this module reads ``agent.list`` and ``tab.list`` once through
 ``api`` (plus on ``r``), marks agents already in a roster from the session's
 ``team.json`` files, runs the curses loop, and finally executes the
 ``create`` spec through the ``herdr-synapse`` CLI so the join routine runs in
@@ -76,6 +76,16 @@ def fetch_agents(api: Any) -> List[Dict[str, Any]]:
     return [a for a in (agents or []) if isinstance(a, dict)]
 
 
+def fetch_tabs(api: Any) -> List[Dict[str, Any]]:
+    """All Herdr tabs for picker labels; an older/unavailable method degrades to stable tab ids."""
+    try:
+        result = api.request("tab.list", {})
+    except HerdrTeamError:
+        return []
+    tabs = result.get("tabs") if isinstance(result, dict) else None
+    return [tab for tab in (tabs or []) if isinstance(tab, dict)]
+
+
 def _folder_status(layout: Optional[Layout], teams: List[str]) -> Dict[str, Dict[str, Any]]:
     """``workdir.status`` per team, for the tree. A broken team is skipped, never fatal."""
     from herdr_team import workdir as _workdir
@@ -95,7 +105,7 @@ def build_model(api: Any, context: Dict[str, Any], layout: Optional[Layout] = No
     """Rows from ``agent.list``, claimed rows from the session rosters, scope from the context."""
     agents = fetch_agents(api)
     focused = context.get("workspace_id") or (context.get("focused_pane_id") or "").split(":")[0] or None
-    rows = tui_model.picker_rows_from_agent_list(agents, focused)
+    rows = tui_model.picker_rows_from_agent_list(agents, focused, fetch_tabs(api) if agents else [])
     teams = session_teams(layout)
     rosters = {name: [m for m in doc["members"] if isinstance(m, dict)] for name, doc in teams.items()}
     tui_model.mark_claimed(rows, rosters)
@@ -172,6 +182,7 @@ def refresh_rows(model: PickerModel, api: Any, layout: Optional[Layout]) -> None
     model.links = fresh.links
     model.managers = fresh.managers
     model.collapsed &= set(model.rosters)
+    model.collapsed_tabs &= {row.tab_id or "{}:tab?".format(row.workspace_id or "unknown") for row in model.rows}
     if not tui_model.focus_node(model, keep_key):
         model.cursor = min(model.cursor, max(0, len(tui_model.picker_tree(model)) - 1))
 
@@ -323,7 +334,7 @@ def _loop(stdscr: Any, model: PickerModel, api: Any, layout: Optional[Layout], e
                 continue
             if intent.kind in ACTION_INTENTS:
                 if not actions:
-                    model.error = "--dry-run: member actions are disabled"
+                    model.error = "--dry-run: picker actions are disabled"
                     continue
                 # ``run_cli`` blocks for up to ACTION_TIMEOUT_S with no redraw, so say what is happening
                 # before it starts, and drop whatever was typed into the frozen popup afterwards.
@@ -356,12 +367,13 @@ def run(layout: Layout, api: Any, env: Dict[str, str], actions: bool = True) -> 
 
 
 #: Member actions the tree can run while the popup stays open.
-ACTION_INTENTS = ("member_rename", "member_goal", "member_send_goal", "member_remove", "member_focus", "member_resume", "member_manager", "member_model", "team_folder_set", "team_board_open", "team_dissolve", "team_link")
+ACTION_INTENTS = ("agent_focus", "member_rename", "member_goal", "member_send_goal", "member_remove", "member_focus", "member_resume", "member_manager", "member_model", "team_folder_set", "team_board_open", "team_dissolve", "team_link")
 #: ``remove`` and ``rename`` do several socket round trips plus a lock wait; the console's 20 s is too
 #: tight for them, and a timeout kills the CLI mid-change (M8 review).
 ACTION_TIMEOUT_S = 45.0
 
 ACTION_LABELS = {
+    "agent_focus": "going to {member}",
     "member_rename": "renaming {member}",
     "member_goal": "saving the goal for {member}",
     "member_send_goal": "sending the goal to {member}",
@@ -514,6 +526,23 @@ def member_still_matches(layout: Optional[Layout], intent: Any) -> bool:
 def execute_action(intent: Any, model: PickerModel, api: Any, layout: Optional[Layout], env: Dict[str, str]) -> bool:
     """Run one member action through the CLI. Returns False when the popup should close."""
     from herdr_team.console import run_cli
+
+    if intent.kind == "agent_focus":
+        pane_id = str(intent.args.get("pane_id") or "")
+        expected_terminal = str(intent.args.get("terminal_id") or "")
+        try:
+            found = api.request("agent.get", {"target": pane_id})
+            agent = found.get("agent") if isinstance(found, dict) else None
+            if not isinstance(agent, dict) or (expected_terminal and str(agent.get("terminal_id") or "") != expected_terminal):
+                model.error = "{} changed while this was open; press r to refresh".format(pane_id)
+                return True
+            api.request("agent.focus", {"target": pane_id})
+        except HerdrTeamError as err_obj:
+            model.error = "cannot focus {}: {}".format(pane_id, err_obj.message)
+            return True
+        model.error = None
+        model.status = "focused {}".format(pane_id)
+        return False
 
     if not member_still_matches(layout, intent):
         model.error = "{} changed while this was open; press r to refresh".format(intent.args.get("member"))
