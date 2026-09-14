@@ -9,6 +9,8 @@ meets your real one.
 
 ## The easiest way: the sandbox launcher
 
+For team recovery in an existing test session, close the team's agent panes while keeping its saved team, open a shell tab, press `Ctrl+B`, `T`, highlight the team and press `s`. Expect a new named tab, saved roles/manager/settings, exact conversation resumption when a session was recorded, and fresh starts otherwise. Repeat restore to check that existing panes are skipped. A login or first-use folder-trust prompt should appear as a per-member failure with its pane preserved; other agents should still start. Partial results wrap and scroll; `g` opens the restored tab and `Esc` returns to the team tree.
+
 The plugin runs on the Herdr you already have installed (0.8.2); the fork
 only holds its source. To try it without touching your real session at all,
 use the sandbox: a named Herdr session with its own config directory, its own

@@ -31,6 +31,7 @@ import signal
 import sys
 import threading
 import time
+from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -428,6 +429,24 @@ def _reconcile_gone(layout: Layout, api: Any, teams: Dict[str, Dict[str, Any]], 
 
 
 def _reconcile_detected(layout: Layout, api: Any, teams: Dict[str, Dict[str, Any]], pane_id: str, agent: Optional[Dict[str, Any]], code: Optional[str], out: Dict[str, Any], say: Any) -> None:
+    # The no-daemon hook path observes the same restoration reservation as the notifier.
+    with ExitStack() as stack:
+        skipped = set()
+        current = dict(teams)
+        for name in sorted(teams):
+            path = layout.team(name).root / "restore.lock"
+            if not path.exists():
+                continue
+            lock = store.FileLock(path, timeout=0)
+            if not lock.try_acquire():
+                skipped.add(name)
+                continue
+            stack.callback(lock.release)
+            current[name] = _load_doc(layout.team(name)) or teams[name]
+        _reconcile_available(layout, api, current, pane_id, agent, code, out, say, skipped)
+
+
+def _reconcile_available(layout: Layout, api: Any, teams: Dict[str, Dict[str, Any]], pane_id: str, agent: Optional[Dict[str, Any]], code: Optional[str], out: Dict[str, Any], say: Any, skipped: Any) -> None:
     """``pane.agent_detected``: bind by harness session, else terminal id, else label, pane id + kind, exact name; re-apply the name.
 
     A terminal that reports a different harness session than its member
@@ -446,6 +465,8 @@ def _reconcile_detected(layout: Layout, api: Any, teams: Dict[str, Dict[str, Any
         # The agent was released (or the pane hosts a shell): members on that pane are missing.
         say("agent.get {} -> {}; members on the pane become missing".format(pane_id, code))
         for team_name, doc in teams.items():
+            if team_name in skipped:
+                continue
             updates: Dict[str, Dict[str, Any]] = {}
             for member in _members_on_pane(doc, pane_id):
                 if member.get("status") in ("active", "starting"):
@@ -464,6 +485,8 @@ def _reconcile_detected(layout: Layout, api: Any, teams: Dict[str, Dict[str, Any
     pane_label: Optional[str] = None
     pane_fetched = False
     for team_name, doc in teams.items():
+        if team_name in skipped:
+            continue
         member = _member_by_session(doc, live_session)
         how = "session"
         if member is not None and member.get("terminal_id") != terminal_id and _claimed_elsewhere(teams, team_name, terminal_id):

@@ -280,8 +280,18 @@ def _loop(stdscr: Any, model: PickerModel, api: Any, layout: Optional[Layout], e
     enable_bracketed_paste()
     last_key = time.monotonic()
     pending_path: Optional[str] = None
+    restore = None
     try:
         while True:
+            if restore is not None:
+                result = restore.result()
+                if result is None:
+                    model.status = restore.progress()
+                else:
+                    restore.close()
+                    restore = None
+                    if finish_restore(model, api, layout, result):
+                        return None
             height, width = stdscr.getmaxyx()
             lines = tui_model.picker_lines(model, width, height)
             cursor = tui_model.picker_cursor(model, lines, width)
@@ -298,11 +308,14 @@ def _loop(stdscr: Any, model: PickerModel, api: Any, layout: Optional[Layout], e
             stdscr.timeout(int(TICK_S * 1000))
             key = read_key(stdscr, int(TICK_S * 1000))
             if key is None:
-                if time.monotonic() - last_key > IDLE_WATCHDOG_S:
+                if restore is None and time.monotonic() - last_key > IDLE_WATCHDOG_S:
                     return None
                 refresh_status_from_who(model, layout)
                 continue
             last_key = time.monotonic()
+            if restore is not None and key not in ("UP", "DOWN", "PGUP", "PGDN", "HOME", "END"):
+                model.error = "restore is running; you can scroll while agents start"
+                continue
             if pending_path is not None:
                 if key == "ENTER":
                     if model.stage == "rules":
@@ -332,6 +345,22 @@ def _loop(stdscr: Any, model: PickerModel, api: Any, layout: Optional[Layout], e
             if intent.kind == "load_file":
                 pending_path = ""
                 continue
+            if intent.kind == "team_restore":
+                if not actions:
+                    model.error = "--dry-run: picker actions are disabled"
+                    continue
+                from herdr_team.restore_ui import RestoreProcess
+                try:
+                    restore = RestoreProcess(str(intent.args["team"]), intent.args.get("workspace"), dict(env or {}))
+                    model.error = None
+                    model.restore_pane = None
+                except OSError as err:
+                    model.error = "cannot start restore: {}".format(err)
+                continue
+            if intent.kind == "restore_focus":
+                if actions and focus_restored_pane(model, api):
+                    return None
+                continue
             if intent.kind in ACTION_INTENTS:
                 if not actions:
                     model.error = "--dry-run: picker actions are disabled"
@@ -354,6 +383,8 @@ def _loop(stdscr: Any, model: PickerModel, api: Any, layout: Optional[Layout], e
             if intent.kind == "create":
                 return intent.args
     finally:
+        if restore is not None:
+            restore.close()
         disable_bracketed_paste()
 
 
@@ -502,6 +533,50 @@ def action_success_status(intent: Any, out: Any) -> str:
         kept = " (its Herdr agent name was kept)" if args.get("keep_name") else ""
         return "{} removed from {}{}".format(member, args.get("team"), kept)
     return "focusing {}".format(member)
+
+
+def focus_restored_pane(model: PickerModel, api: Any) -> bool:
+    try:
+        if model.restore_pane:
+            pane = api.request("pane.get", {"pane_id": model.restore_pane}).get("pane")
+            if not pane or pane.get("terminal_id") != model.restore_terminal:
+                model.error = "restored pane changed; press r to refresh"
+                return False
+            api.request("pane.focus", {"pane_id": model.restore_pane})
+            return True
+    except HerdrTeamError as err:
+        model.error = "cannot focus restored pane: {}".format(err.message)
+    return False
+
+
+def finish_restore(model: PickerModel, api: Any, layout: Optional[Layout], result: Dict[str, Any]) -> bool:
+    model.restore_team = result.get("team")
+    counts = result.get("counts") or {}
+    model.status = "restore: " + ", ".join("{} {}".format(counts.get(k, 0), k) for k in ("resumed", "fresh", "skipped", "failed"))
+    targets = [m for m in result.get("members", []) if m.get("terminal_id") and m.get("pane_id") and m.get("status") in ("resumed", "fresh", "failed")]
+    if targets:
+        model.restore_team = result.get("team")
+        model.restore_pane = targets[0]["pane_id"]
+        model.restore_terminal = targets[0]["terminal_id"]
+    try:
+        refresh_rows(model, api, layout)
+    except HerdrTeamError as err:
+        model.error = "restore finished; refresh failed: {}".format(err.message)
+        return False
+    failures = ["{}: {}".format(m["name"], m.get("reason", "failed")) for m in result.get("members", []) if m.get("status") == "failed"]
+    if result.get("exit_code") or failures:
+        model.restore_results = ["{}: {}{}".format(m["name"], m["status"], " — " + m["reason"] if m.get("reason") else "") for m in result.get("members", [])]
+        if result.get("error"):
+            model.restore_results.append(str(result["error"]))
+        model.restore_top = 0
+        model.stage = "restore_results"
+        model.error = None
+        return False
+    model.error = None
+    if targets:
+        return focus_restored_pane(model, api)
+    model.status = "team is already running" if counts.get("skipped") else "no agent members to restore"
+    return False
 
 
 def member_still_matches(layout: Optional[Layout], intent: Any) -> bool:

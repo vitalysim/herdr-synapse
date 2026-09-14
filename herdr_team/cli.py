@@ -32,6 +32,7 @@ PROG = "herdr-synapse"
 
 COMMAND_MODULES: Tuple[str, ...] = (
     "herdr_team.cmd_roster",
+    "herdr_team.cmd_restore",
     "herdr_team.cmd_board",
     "herdr_team.cmd_misc",
     "herdr_team.cmd_update",

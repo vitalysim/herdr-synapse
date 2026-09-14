@@ -2622,6 +2622,19 @@ class Daemon:
         return True
 
     def _apply_changes(self, team: TeamState, changes: List[Tuple[str, Dict[str, Any]]]) -> None:
+        # Team restore owns identity until its launches settle. Never wait in a tick.
+        path = team.paths.root / "restore.lock"
+        lock = store.FileLock(path, timeout=0) if path.exists() else None
+        if lock is not None and not lock.try_acquire():
+            self.reconcile_due = True
+            return
+        try:
+            self._apply_available_changes(team, changes)
+        finally:
+            if lock is not None:
+                lock.release()
+
+    def _apply_available_changes(self, team: TeamState, changes: List[Tuple[str, Dict[str, Any]]]) -> None:
         # Codex only reports the new ``/new`` session after the bootstrap
         # briefing has begun. If that briefing already landed, retain its
         # stamp instead of letting the late session report erase it.
@@ -2637,11 +2650,18 @@ class Daemon:
                 update["briefing_seq"] = current.get("briefing_seq")
 
         def mutate(doc: Dict[str, Any]) -> None:
+            accepted = []
             for name, update in changes:
                 for member in doc.get("members", []):
                     if isinstance(member, dict) and member.get("name") == name:
+                        expected = team.member(name) or {}
+                        if any(member.get(key) != expected.get(key) for key in ("terminal_id", "generation", "status")):
+                            self.reconcile_due = True
+                            break  # A restore completed after this tick took its snapshot.
                         member.update(update)
+                        accepted.append((name, update))
                         break
+            changes[:] = accepted
 
         before = {str(m.get("name")): m.get("session") for m in team.members() if isinstance(m, dict)}
         doc = update_roster(team.paths, mutate)

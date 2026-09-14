@@ -8,6 +8,14 @@ change and say why in the commit message.
 For the expandable command inventory and every GUI shortcut, see the
 [command and shortcut reference](reference.md).
 
+## Restore a saved team
+
+`herdr-synapse restore <team> [--workspace ID] [--dry-run]` restores missing members into a new `team:<name>` tab in the current workspace. Teams larger than 24 restored members use additional numbered tabs. The command requires human/operator authority and an existing team in the selected Herdr session.
+
+Recorded conversations resume by exact ID using the member's effective model/effort configuration. Members without a conversation ID start fresh with their saved instructions and briefing. Already-running agents and members whose reserved pane still exists are skipped. Missing executables/directories, conflicting names, unsupported conversation references and startup failures are reported per member; eligible members continue. Failed panes remain available for inspection, and repeated calls do not duplicate them. Board history, read cursors, manager assignment, team links and member documents are preserved.
+
+`--dry-run` performs read-only preflight and returns `{team, dry_run: true, members}`. Execution returns `{team, tabs, members, counts}`, where `counts` contains `resumed`, `fresh`, `skipped` and `failed`. Each member includes `name`, `kind`, `role`, `status`, and, when applicable, its `mode`, `pane_id`, `terminal_id`, launch arguments and failure `reason`. Progress goes to stderr; `--json` keeps stdout to one result object. Exit 0 means no member failed; exit 1 means partial or complete member failure. An overlapping restore is refused with `restore_busy` (exit 5). A recorded session failing to resume never silently falls back to a new conversation.
+
 Conventions used below:
 
 - `<team>` is optional wherever the team can be inferred, in this order:

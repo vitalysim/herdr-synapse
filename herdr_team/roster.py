@@ -1758,7 +1758,7 @@ class Roster:
         result = self.remove_member(api, member_name, keep_name=False, reason="left", socket=socket)
         return {"team": self.name, "left": result["removed"]}
 
-    def bind(self, api: Any, name: str, target: ResolvedTarget, socket: Optional[str] = None) -> Dict[str, Any]:
+    def bind(self, api: Any, name: str, target: ResolvedTarget, socket: Optional[str] = None, expected_terminal: Optional[str] = None, expected_generation: Optional[int] = None) -> Dict[str, Any]:
         """Re-attach a ``missing``/``unbound``/``kind_changed`` member to a live agent: ``generation + 1``."""
         previous_terminal: List[Optional[str]] = []
         previous_pane: List[Optional[str]] = []
@@ -1767,6 +1767,10 @@ class Roster:
             member = team.find(name)
             if member is None or member.is_human:
                 raise HerdrTeamError("member_not_found", "{!r} is not in team {!r}".format(name, team.team), EXIT_REFUSED, {"name": name, "team": team.team, "roster": team.names()})
+            if expected_terminal is not None and (member.status == "left" or member.terminal_id != expected_terminal):
+                raise HerdrTeamError("member_changed", "{} changed during restore".format(name), EXIT_REFUSED)
+            if expected_generation is not None and member.generation != expected_generation:
+                raise HerdrTeamError("member_changed", "{} rebound during restore".format(name), EXIT_REFUSED)
             if target.kind and target.kind != member.kind and member.status != "kind_changed":
                 raise HerdrTeamError("kind_mismatch", "{} is a {} agent, member {!r} is {}".format(target.pane_id, target.kind, name, member.kind), EXIT_REFUSED, {"name": name, "kind": member.kind, "live_kind": target.kind})
             previous_terminal.append(member.terminal_id)

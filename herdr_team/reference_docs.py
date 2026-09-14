@@ -38,6 +38,7 @@ SECTION_MARKERS = {
 
 MODULE_TITLES = {
     "herdr_team.cmd_roster": "Teams and members",
+    "herdr_team.cmd_restore": "Team restoration",
     "herdr_team.cmd_board": "Board, messages, and delivery",
     "herdr_team.cmd_misc": "Setup, controls, and maintenance",
     "herdr_team.cmd_update": "Plugin updates",

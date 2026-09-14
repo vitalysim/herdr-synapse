@@ -22,8 +22,8 @@ class ReferenceDocsTests(unittest.TestCase):
 
     def test_every_cli_command_appears_once(self):
         commands = load_commands()
-        self.assertEqual(len(commands), 74)
-        self.assertEqual(len([command for command in commands if not command.hidden]), 66)
+        self.assertEqual(len(commands), 75)
+        self.assertEqual(len([command for command in commands if not command.hidden]), 67)
         self.assertEqual(len([command for command in commands if command.hidden]), 8)
         section = self._section("cli")
         for command in commands:

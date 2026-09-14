@@ -1,5 +1,7 @@
 # herdr-synapse capabilities reference
 
+Team restoration: in `Ctrl+B`, `T`, highlight a saved team and press `s`, or run `herdr-synapse restore <team>`. Missing agents reopen in a new named tab using their saved conversations, or start fresh when no conversation ID exists. Roles, manager, settings, instructions, board history and team links are retained. Running/reserved panes are skipped; startup failures remain available to inspect. See [the command contract](cli.md#restore-a-saved-team) for preflight and partial-result behavior.
+
 Everything the plugin can do, how to drive it from the Herdr UI and from the
 CLI, what you should observe, and how to check it. Written for the first
 human test in a real session and verified line by line against the code on

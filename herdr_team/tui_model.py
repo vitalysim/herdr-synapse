@@ -2404,6 +2404,11 @@ class PickerModel:
     trusted_kinds: Optional[Set[str]] = None
     # -- extra state owned by this module
     focused_workspace: Optional[str] = None
+    restore_pane: Optional[str] = None
+    restore_terminal: Optional[str] = None
+    restore_team: Optional[str] = None
+    restore_results: List[str] = field(default_factory=list)
+    restore_top: int = 0
     live_names: Set[str] = field(default_factory=set)
     existing_teams: List[str] = field(default_factory=list)
     input: str = ""
@@ -2914,6 +2919,21 @@ def picker_apply_key(model: PickerModel, key: str) -> Optional[Intent]:
         return _select_key(model, key)
     if model.stage == "topology":
         return _topology_key(model, key)
+    if model.stage == "restore_results":
+        if key in ("ESC", "q", "ENTER"):
+            model.stage = "select"
+            model.error = None
+        elif key == "g" and model.restore_pane:
+            return Intent("restore_focus", {"pane_id": model.restore_pane})
+        elif key in ("UP", "k", "PGUP"):
+            model.restore_top = max(0, model.restore_top - (model.page_rows if key == "PGUP" else 1))
+        elif key in ("DOWN", "j", "PGDN"):
+            model.restore_top += model.page_rows if key == "PGDN" else 1
+        elif key == "HOME":
+            model.restore_top = 0
+        elif key == "END":
+            model.restore_top = 1 << 30
+        return None
     if model.stage == "actions":
         return _actions_key(model, key)
     if model.stage == "rename":
@@ -3009,6 +3029,13 @@ def _select_key(model: PickerModel, key: str) -> Optional[Intent]:
         return None
     if node is None:
         return None
+    if key == "s":
+        if node.kind != "team":
+            model.error = "put the cursor on a team to restore it"
+            return None
+        return Intent("team_restore", {"team": node.team, "workspace": model.focused_workspace})
+    if key == "g" and node.kind == "team" and node.team == model.restore_team and model.restore_pane:
+        return Intent("restore_focus", {"pane_id": model.restore_pane})
     if key == "g":
         if node.kind not in ("member", "agent") or node.row is None:
             model.error = "put the cursor on an agent to go to its pane"
@@ -3919,7 +3946,7 @@ def _tree_lines(model: PickerModel, width: int, height: int) -> List[str]:
     if model.scope_workspace:
         scope = "  unassigned: {}".format(model.scope_workspace)
     picked = len(selected_rows(model))
-    keys = "Enter acts | Space picks | g go to pane | b board | c connect | v map | f folder | x dissolve | w scope | a all | r refresh | Esc quit"
+    keys = "Enter acts | Space picks | s restore team | g go to pane | b board | c connect | v map | f folder | x dissolve | w scope | a all | r refresh | Esc quit"
     head = "{} team{} · {} agent{}{}".format(teams, "" if teams == 1 else "s", agents, "" if agents == 1 else "s", scope)
     if picked:
         head += " · {} selected".format(picked)
@@ -3975,10 +4002,10 @@ def _tree_detail(model: PickerModel, nodes: List[PickerNode]) -> str:
         if info is not None and not info.get("project_dir"):
             missing = info.get("missing_missions") or []
             mission = " · Mission missing: {}".format(", ".join(str(name) for name in missing)) if missing else ""
-            return "f creates one for {} · x dissolves it · no shared rules or member documents{}".format(node.team, mission)
+            return "f creates one for {} · s restores agents · x dissolves it · no shared rules or member documents{}".format(node.team, mission)
         if info is not None:
-            return "Enter folds {} · f changes its folder · x dissolves it · folder: {}".format(node.team, folder_summary(info))
-        return "Enter folds {} open or shut · x dissolves it".format(node.team)
+            return "s restores agents · Enter folds {} · f changes its folder · x dissolves it · folder: {}".format(node.team, folder_summary(info))
+        return "Enter folds {} · s restores missing agents · x dissolves it".format(node.team)
     if node.kind == "member":
         goal = str((node.member or {}).get("brief") or "")
         location = " · g goes to pane {}".format(node.row.pane_id) if node.row is not None else ""
@@ -4005,6 +4032,15 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
         lines.extend(_tree_lines(model, width, height))
     elif model.stage == "topology":
         lines.extend(_topology_lines(model, width, height))
+    elif model.stage == "restore_results":
+        header = _picker_heading("Restore {}".format(model.restore_team or "team"), "g go to tab | Esc tree | Up/Down scroll | PgUp/PgDn page", width)
+        body = [line for result in model.restore_results for line in _wrap_picker_text(result, width)]
+        capacity = max(1, height - len(header) - 1 - int(bool(model.error or model.status)))
+        model.page_rows = capacity
+        model.restore_top = min(max(0, model.restore_top), max(0, len(body) - capacity))
+        lines.extend(header)
+        lines.extend(body[model.restore_top:model.restore_top + capacity])
+        lines.append(truncate_columns("rows {}-{}/{}".format(model.restore_top + 1, min(len(body), model.restore_top + capacity), len(body)), width))
     elif model.stage == "actions":
         member = action_member(model)
         if member is None:

@@ -464,12 +464,15 @@ CLI parameter, plugin action, console command, and key used inside each view.
 | Space, `a` | pick an unassigned agent; `a` picks or clears them all; on a tab or team row Space folds it |
 | `g` | verify and focus the highlighted agent's pane, then close the Teams view |
 | `b` | open that team's board |
+| `s` | restore that team's missing agents into a new named tab |
 | `c` | connect that team to another, or break the link |
 | `v` | open the scrollable ASCII topology of teams, managers and links |
 | `f` | set that team's project folder |
 | `x` | dissolve that team (asks first) |
 | `w` | show unassigned agents from this space only, or from every space |
 | `r`, Esc | refresh, close |
+
+Closed your agents? Open a shell tab, press `Ctrl+B`, `T`, highlight the saved team and press `s`. Synapse creates a new `team:<name>` tab with panes for missing members, resumes their recorded conversations when available, and starts fresh when no conversation ID was saved. Names, roles, manager assignment, model/effort settings, instructions, board history and team links are preserved. Agents already running or with a reserved pane are skipped. Startup failures stay visible for inspection; after partial recovery, `g` on a team opens the restored tab. This restores saved teams in the same Herdr session; dissolved teams are archived and are not restored here.
 
 Enter on a member offers, without closing the popup: rename it, change its
 goal, send that goal to it now, remove it (keeping or clearing its Herdr
