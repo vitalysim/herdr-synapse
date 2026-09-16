@@ -984,6 +984,8 @@ def style_attr(style: str, members: List[Dict[str, Any]], has_colors: bool) -> i
         return curses.A_BOLD
     if style == tui_model.STYLE_MANAGER:
         return pair("yellow") | curses.A_BOLD
+    if style == tui_model.STYLE_LINK:
+        return pair("magenta") | curses.A_BOLD
     if style == tui_model.STYLE_SYSTEM or style == tui_model.STYLE_DIM:
         return curses.A_DIM
     if style == tui_model.STYLE_WARNING:

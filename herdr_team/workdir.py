@@ -46,7 +46,7 @@ from . import paths as _paths
 WORKDIR_VERSION = 2
 
 #: What every generated file starts with. Its absence means the file is not ours.
-MARKER_TEXT = "herdr-synapse:workdir v{} generated file, edits are overwritten".format(WORKDIR_VERSION)
+MARKER_TEXT = "herdr-synapse:workdir v{} managed file; check project sync mode before editing".format(WORKDIR_VERSION)
 #: Markdown files get an HTML comment so the marker does not render.
 MARKER = "<!-- {} -->".format(MARKER_TEXT)
 #: ``.gitignore`` has no HTML comments: an ``<!-- ... -->`` line there is a *pattern*.
@@ -340,10 +340,12 @@ README_BODY = """# herdr-synapse
 
 This folder belongs to herdr-synapse. One subdirectory per team.
 
-- `<team>/knowledge.md` — the team's rules and the findings its members
-  recorded. Read it. It is a mirror: edit it and your edit is overwritten.
-  Change the rules with `herdr-synapse knowledge set` (operator only) and add a
-  finding with `herdr-synapse knowledge add "..."`.
+- `<team>/knowledge.md` — team rules and attributed findings. With automatic
+  document sync, edit only the Rules section; Findings stay generated.
+  `herdr-synapse project` shows the mode; `project sync auto|manual` changes it.
+  Auto mode trusts writers of the project documents. In manual mode, change
+  rules with `knowledge set` and adopt member edits with `instructions --adopt`.
+  Add a finding with `herdr-synapse knowledge add "..."`.
 - `<team>/members/<name>.md` — what that member in particular is here to do,
   which is how agents sharing this folder are told apart.
 - `<team>/artifacts/` — yours. Put work products here and reference them from
@@ -403,7 +405,7 @@ def adopt_command(name: str) -> str:
     return "herdr-synapse instructions {} --adopt".format(name)
 
 
-def member_body(team_name: str, name: str, role: str, brief: Optional[str], instructions: Optional[str], left_for: Optional[str] = None, left: bool = False) -> str:
+def member_body(team_name: str, name: str, role: str, brief: Optional[str], instructions: Optional[str], left_for: Optional[str] = None, left: bool = False, auto_sync: bool = False) -> str:
     """One member's instructions document, or its tombstone once the member is gone.
 
     The document is the operator's to edit: unlike every other mirror, an edit
@@ -428,7 +430,9 @@ def member_body(team_name: str, name: str, role: str, brief: Optional[str], inst
         "",
         "---",
     ]
-    return _doc.document(name, team_name, role, sections, adopt_command=adopt_command(name), note=note)
+    if auto_sync:
+        note.insert(0, "<!-- Saved edits sync automatically. Project-document writers are trusted. Private Notes are not sent to agents. -->")
+    return _doc.document(name, team_name, role, sections, adopt_command=None if auto_sync else adopt_command(name), note=note)
 
 
 def repair_creation_scaffolds(layout: Any, team_name: str) -> Optional[List[str]]:
@@ -493,6 +497,12 @@ def repair_creation_scaffolds(layout: Any, team_name: str) -> Optional[List[str]
 
 
 def render(layout: Any, team_name: str, force: bool = False) -> Dict[str, Any]:
+    from .document_sync import document_lock
+    with document_lock(layout.team(team_name)):
+        return _render_locked(layout, team_name, force)
+
+
+def _render_locked(layout: Any, team_name: str, force: bool = False) -> Dict[str, Any]:
     """Regenerate every mirrored file for one team. Returns what changed.
 
     Best effort by design: this runs from commands whose real job is something
@@ -502,6 +512,7 @@ def render(layout: Any, team_name: str, force: bool = False) -> Dict[str, Any]:
     """
     from . import charter as _charter
     from . import roster as _roster
+    from . import document_sync as sync
 
     team_paths = layout.team(team_name)
     repaired = repair_creation_scaffolds(layout, team_name) or []
@@ -530,7 +541,7 @@ def render(layout: Any, team_name: str, force: bool = False) -> Dict[str, Any]:
         instructions = _charter.get_instructions(layout, team_name, member.name)
         plan.append((
             targets["members"] / (_paths._safe_stem(member.name, "name") + ".md"),
-            member_body(team_name, member.name, member.role or "", member.brief, instructions, left=member.status == "left"),
+            member_body(team_name, member.name, member.role or "", member.brief, instructions, left=member.status == "left", auto_sync=sync.enabled(doc)),
             EDITABLE,
         ))
         # A rename leaves a file behind under the old name. It is never deleted:
@@ -560,9 +571,18 @@ def render(layout: Any, team_name: str, force: bool = False) -> Dict[str, Any]:
         return result
 
     state = mirror_state(team_paths)
+    sync_state = sync.load(team_paths)
+    old_sync_state = repr(sync_state)
+    auto_sync = sync.enabled(doc)
+    sync_names = {m.name for m in doc.members if not m.is_human and m.status in ("active", "starting")}
     state_changed = False
     for path, body, kind in plan:
-        if kind == EDITABLE and not force and edited(path, state.get(path.name)):
+        sync_document = auto_sync and (path == targets["knowledge"] or (kind == EDITABLE and path.stem in sync_names))
+        sync_name = None if path == targets["knowledge"] else path.stem
+        if sync_document and not force and sync.protect(layout, team_name, sync_name, path, marker_for(path) + "\n" + body, sync_state):
+            result.setdefault("sync_pending", []).append(os.fspath(path))
+            continue
+        if kind == EDITABLE and not sync_document and not force and edited(path, state.get(path.name)):
             # The operator's own document. Overwriting it here is what made the
             # file uneditable; it waits for ``instructions --adopt`` instead,
             # which is also the step that confers authority on the edit, since
@@ -575,6 +595,8 @@ def render(layout: Any, team_name: str, force: bool = False) -> Dict[str, Any]:
             wrote = write_generated(path, body, force=force)
             if wrote:
                 result["written"].append(os.fspath(path))
+            if sync_document:
+                sync_state[os.fspath(path)] = sync.baseline(layout, team_name, sync_name, path.read_text(encoding="utf-8"))
             if kind == EDITABLE and (wrote or path.name not in state):
                 try:
                     state[path.name] = digest(path.read_text(encoding="utf-8"))
@@ -588,6 +610,8 @@ def render(layout: Any, team_name: str, force: bool = False) -> Dict[str, Any]:
             result.setdefault("errors", []).append("{}: {}".format(path, err))
     if state_changed:
         save_mirror_state(team_paths, state)
+    if repr(sync_state) != old_sync_state:
+        store.write_json(sync.state_path(team_paths), sync_state)
     return result
 
 

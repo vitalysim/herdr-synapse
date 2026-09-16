@@ -98,7 +98,14 @@ def _brief(book: roster.Roster, item: Dict[str, Any], author: Any) -> None:
 
 
 def _launch(book: roster.Roster, api: Any, item: Dict[str, Any], author: Any) -> None:
-    started = commands._start_agent(api, item["name"], item["kind"], item["pane_id"], args=item["argv"][1:])
+    from . import session_names
+    args, naming = item["argv"][1:], None
+    if item["mode"] == "fresh":
+        try:
+            args, naming = session_names.prepare(item["kind"], item["name"], args)
+        except (OSError, HerdrTeamError) as err:
+            item["naming_warning"] = str(err)
+    started = commands._start_agent(api, item["name"], item["kind"], item["pane_id"], args=args)
     if started.get("terminal_id") and started["terminal_id"] != item["terminal_id"]:
         def moved(team: roster.Team) -> None:
             member = team.find(item["name"])
@@ -118,6 +125,11 @@ def _launch(book: roster.Roster, api: Any, item: Dict[str, Any], author: Any) ->
     if item["mode"] == "resumed" and resolved.agent_session and not roster.same_session_value(item["expected_session"], resolved.agent_session):
         raise HerdrTeamError("session_mismatch", "agent reported a different conversation; inspect its pane", EXIT_REFUSED)
     book.bind(api, item["name"], resolved, socket=os.fspath(book.layout.socket), expected_terminal=item["terminal_id"], expected_generation=item["expected_generation"])
+    if naming is not None:
+        try:
+            session_names.arm(book.paths, book.load().find(item["name"]), naming, resolved.agent_session)
+        except (OSError, HerdrTeamError) as err:
+            item["naming_warning"] = str(err)
     _brief(book, item, author)
     item["status"] = item["mode"]
 

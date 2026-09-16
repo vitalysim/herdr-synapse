@@ -278,7 +278,12 @@ def _run_context(args: argparse.Namespace) -> int:
         if args.member and name != args.member:
             continue
         reading = published.get(name)
-        if not isinstance(reading, dict):
+        if member.get("kind") == "pi":
+            from . import pi_support
+
+            data = pi_support.read_snapshot(layout.session, member)
+            reading = pi_support.reading(data).to_json() if data else None
+        elif not isinstance(reading, dict):
             record = _roster.read_pane_record(layout.session, member.get("terminal_id")) or {}
             configured_model = _models.effective_setting(doc.get("config"), member)[0]
             found = _context.read_member(member.get("kind"), member.get("session"), record,
@@ -310,12 +315,16 @@ def render_context(payload: Dict[str, Any], width: int, ascii_only: bool) -> str
         if not isinstance(reading.get("percent"), (int, float)):
             model_name = sanitize.headline(reading.get("model"), 80)
             model = " ({})".format(model_name) if model_name else ""
-            lines.append("  {}  {}  {:>12} tokens  window unknown{}".format(
+            window = "{:,}".format(reading["window"]) if isinstance(reading.get("window"), int) else "unknown"
+            used = "{:,}".format(reading["used"]) if isinstance(reading.get("used"), int) else "unknown"
+            lines.append("  {}  {}  {:>12} tokens  window {}{}".format(
                 str(row.get("name")).ljust(name_w), str(row.get("kind") or "?").ljust(kind_w),
-                "{:,}".format(int(reading.get("used") or 0)), model))
+                used, window, model))
             continue
         percent = float(reading["percent"])
         mark = {"critical": " !!", "warning": " !"}.get(_usage.severity_for(percent) or "", "")
+        if reading.get("estimated"):
+            mark += " (estimated)"
         lines.append("  {}  {}  {} {:>3.0f}%  {:>12} / {:<12}{}".format(
             str(row.get("name")).ljust(name_w), str(row.get("kind") or "?").ljust(kind_w),
             _usage.bar(percent, cells, ascii_only), percent,

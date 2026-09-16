@@ -1946,6 +1946,7 @@ CONTROL_KEYSTROKES: Dict[str, Dict[str, str]] = {
     "claude": {"compact": "/compact", "clear": "/clear"},
     "codex": {"compact": "/compact", "clear": "/new"},
     "opencode": {"compact": "/compact", "clear": "/exit"},
+    "pi": {"compact": "/compact", "clear": "/new"},
 }
 CONTROL_ACTIONS = ("compact", "clear")
 

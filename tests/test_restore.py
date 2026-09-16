@@ -221,6 +221,13 @@ class RestoreTests(unittest.TestCase):
         self.assertEqual((code, out["counts"]["failed"]), (1, 2))
         self.assertEqual(self.api.rows, [])
 
+    def test_optional_naming_failure_does_not_fail_started_members(self):
+        with mock.patch("herdr_team.session_names.arm", side_effect=HerdrTeamError("lock_timeout", "busy", 1)):
+            code, out, err = self.run_restore()
+        self.assertEqual((code, out["counts"]["fresh"]), (0, 2), err)
+        self.assertTrue(all(m.status == "active" for m in roster.load_team(self.ts.team).members if not m.is_human))
+        self.assertEqual(len(list(self.ts.team.jobs_dir.glob("*.json"))), 2)
+
     def test_close_every_agent_then_restore_again_uses_new_identity(self):
         code, out, err = self.run_restore()
         self.assertEqual(code, 0, err)

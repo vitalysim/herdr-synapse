@@ -496,6 +496,13 @@ def _run_doctor(args: argparse.Namespace) -> int:
         warnings.append(line)
     for line in teams_with_nothing_to_restore(layout):
         warnings.append(line)
+    from . import pi_support
+
+    for team_name in layout.session.list_teams():
+        doc = store.read_json(layout.session.team(team_name).team_json, default={})
+        for member in doc.get("members", []):
+            if member.get("kind") == "pi" and member.get("status") == "active" and pi_support.read_snapshot(layout.session, member) is None:
+                warnings.append("{}: Pi runtime report missing/stale; install Herdr's Pi integration, run `herdr-synapse hooks install pi`, then /reload in Pi".format(member.get("name")))
     for grant in _operator.active_all(layout.session):
         # Authority nobody remembers granting is the failure mode worth naming.
         warnings.append("{} acts with your authority in team {} ({}); revoke: herdr-synapse operator revoke {} --team {}".format(

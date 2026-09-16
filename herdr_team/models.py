@@ -3,8 +3,8 @@
 Pure and I/O-free. Everything is argv, never a shell string, because Herdr's
 ``agent.start`` hands ``args`` to the binary verbatim and ``resume`` execs.
 
-What the three supported harnesses accept (verified on the installed
-binaries, most recently 2026-09-11):
+What the supported harnesses accept (verified on the installed
+binaries, most recently 2026-09-16):
 
 - **Claude Code** ``--model <alias|name>`` and ``--effort low|medium|high|xhigh|max``
   at launch and on ``--resume``; ``/model <m>`` and ``/effort <e>`` typed live.
@@ -15,12 +15,17 @@ binaries, most recently 2026-09-11):
   The full TUI does *not* accept ``--variant`` (that flag belongs to
   ``opencode run``); select provider-specific effort through its native
   ``/variants`` dialog by typing the exact variant and pressing Enter.
+- **Pi** ``--model provider/id`` and ``--thinking <level>`` on fresh starts
+  and exact-path resumes. Model changes use the controlled restart path.
 
-Every Synapse-managed launch of these three kinds is unrestricted by default:
+Synapse-managed Claude Code, Codex and OpenCode launches are unrestricted by default:
 Claude gets ``--dangerously-skip-permissions``, Codex gets
 ``--dangerously-bypass-approvals-and-sandbox``, and OpenCode gets ``--auto``.
 The same flags are rebuilt on exact-session resume, controlled model restart,
 and OpenCode clear/restart instead of depending on a previous process argv.
+
+Pi has no built-in tool permission prompts; ``--approve`` trusts project
+resources for this run without changing global trust decisions.
 
 The vocabulary is the harness's own, passed through untranslated: ``medium``
 means whatever the harness means by it. A kind not listed here cannot carry a
@@ -33,7 +38,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from herdr_team.errors import EXIT_REFUSED, HerdrTeamError, UsageError
 
-KINDS: Tuple[str, ...] = ("claude", "codex", "opencode")
+KINDS: Tuple[str, ...] = ("claude", "codex", "opencode", "pi")
 
 #: Effort words each harness understands. ``None`` means provider-specific:
 #: any token is accepted and passed through.
@@ -41,6 +46,7 @@ EFFORTS: Dict[str, Optional[Tuple[str, ...]]] = {
     "claude": ("low", "medium", "high", "xhigh", "max"),
     "codex": ("minimal", "low", "medium", "high", "xhigh"),
     "opencode": None,
+    "pi": ("off", "minimal", "low", "medium", "high", "xhigh", "max"),
 }
 
 #: Full-auto execution is the plugin default for every fully supported kind.
@@ -50,10 +56,12 @@ UNRESTRICTED_ARGS: Dict[str, Tuple[str, ...]] = {
     "claude": ("--dangerously-skip-permissions",),
     "codex": ("--dangerously-bypass-approvals-and-sandbox",),
     "opencode": ("--auto",),
+    # Pi has no built-in tool approval gate; this trusts project resources for this run only.
+    "pi": ("--approve",),
 }
 
 #: What ends the harness cleanly, so the notifier can resume it with new flags.
-EXIT_KEYSTROKE: Dict[str, str] = {"claude": "/exit", "codex": "/quit", "opencode": "/exit"}
+EXIT_KEYSTROKE: Dict[str, str] = {"claude": "/exit", "codex": "/quit", "opencode": "/exit", "pi": "/quit"}
 
 #: Claude's short aliases, for matching a request against the transcript's full name.
 CLAUDE_ALIASES: Tuple[str, ...] = ("opus", "sonnet", "haiku", "fable")
@@ -67,6 +75,12 @@ _TOKEN_OK = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234
 # because copying an arbitrary process argv into the board could persist
 # secrets supplied through unrelated CLI options.
 _PRESERVED_FLAGS: Dict[str, Dict[str, int]] = {
+    "pi": {
+        "--session-dir": 1, "--extension": 1, "-e": 1, "--no-extensions": 0,
+        "--skill": 1, "--no-skills": 0, "--tools": 1, "--exclude-tools": 1,
+        "--no-tools": 0, "--no-builtin-tools": 0, "--tui-mode": 1,
+        "--offline": 0, "--no-context-files": 0,
+    },
     "claude": {
         "--settings": 1,
     },
@@ -168,6 +182,11 @@ def launch_args(kind: Any, model: Optional[str], effort: Optional[str]) -> List[
     elif key == "opencode":
         if model:
             out += ["-m", model]
+    elif key == "pi":
+        if model:
+            out += ["--model", model]
+        if effort:
+            out += ["--thinking", effort]
     out += UNRESTRICTED_ARGS.get(key, ())
     return out
 
@@ -176,6 +195,9 @@ def resume_argv(kind: Any, session: Any, model: Optional[str], effort: Optional[
     """``roster.resume_argv(session)`` with the setting's flags appended."""
     from herdr_team import roster as _roster
 
+    if kind == "pi" and (not isinstance(session, dict) or session.get("kind") != "path"
+                         or not os.path.isabs(str(session.get("value") or ""))):
+        raise HerdrTeamError("resume_unsupported", "Pi requires its recorded absolute session path", EXIT_REFUSED)
     return list(_roster.resume_argv(session)) + launch_args(kind, model, effort)
 
 
@@ -196,6 +218,8 @@ def foreground_argv(kind: Any, processes: Any) -> Optional[List[str]]:
         name = str(process.get("name") or "").lower()
         if head == key or name == key:
             return list(argv)
+        if key == "pi" and head in ("node", "bun") and len(argv) > 1 and "pi-coding-agent/" in argv[1]:
+            return ["pi"] + list(argv[2:])
     return None
 
 
@@ -318,6 +342,8 @@ def observed_matches(kind: Any, requested: Optional[str], observed: Optional[str
         return have.startswith(want)
     if key == "opencode":
         return want.rsplit("/", 1)[-1] == have.rsplit("/", 1)[-1]
+    if key == "pi":
+        return "/" not in want and want == have.split("/", 1)[-1]
     return False
 
 

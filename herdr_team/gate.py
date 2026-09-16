@@ -53,7 +53,7 @@ NUDGE_FOCUSED_VALUES = ("never", "always")
 #: Kinds whose running turn a teammate's ``post --interrupt`` may be typed into. Claude Code, Codex,
 #: and OpenCode all accept the line inside the active turn (verified live on 2026-09-10).
 #: ``team.json`` ``config.gate.interrupt_kinds`` narrows/widens it or, empty, turns interrupts off.
-INTERRUPT_KINDS = ("claude", "codex", "opencode")
+INTERRUPT_KINDS = ("claude", "codex", "opencode", "pi")
 #: One interrupt per sender and target inside this window; a second one is an ordinary urgent nudge.
 INTERRUPT_COOLDOWN_MS = 600000
 HOLD_REEVAL_MS = 5000
@@ -507,7 +507,7 @@ def is_horizontal_rule(line: str) -> bool:
 
 
 def is_codex_prompt_line(line: str) -> bool:
-    return line == "›" or line.startswith("› ")
+    return line == "›" or line.startswith("› ") or (line.startswith("›") and _codex_empty_placeholder(line[1:]))
 
 
 #: Placeholder text Codex 0.153 paints on an empty prompt line ("› Ask Codex to do anything"); it is
@@ -516,12 +516,20 @@ def is_codex_prompt_line(line: str) -> bool:
 CODEX_PROMPT_PLACEHOLDERS = ("Ask Codex to do anything",)
 
 
+def _codex_empty_placeholder(text: str) -> bool:
+    # Codex 0.154's animation paints Braille around (not within) its empty
+    # placeholder. Only normalize those margins when the entire known label
+    # matches. Braille-only input and actual drafts remain untouched.
+    decoration = " \t" + "".join(chr(n) for n in range(0x2800, 0x2900))
+    return text.strip(decoration) in CODEX_PROMPT_PLACEHOLDERS
+
+
 def codex_prompt_draft(line: str) -> str:
     """The draft on a Codex prompt line, ``""`` for the bare marker or a known placeholder."""
     if line == "›":
         return ""
-    draft = line[2:].strip()
-    return "" if draft in CODEX_PROMPT_PLACEHOLDERS else draft
+    draft = line[1:].strip()
+    return "" if _codex_empty_placeholder(draft) else draft
 
 
 def after_last_horizontal_rule(text: Optional[str]) -> str:
@@ -615,6 +623,32 @@ def dialog_line(detection_text: Optional[str], kind: str) -> Optional[str]:
 
 def prompt_line_text(detection_text: Optional[str], kind: str) -> Optional[str]:
     """The draft on the prompt line, ``""`` when empty, None when no prompt line is visible."""
+    if kind == "pi":
+        # Pi 0.85.1: editor between horizontal rules, then cwd and usage/model
+        # footer. An absent/hidden editor is unknown, never an empty composer.
+        lines = split_lines(detection_text)
+        if any("Compacting context..." in line for line in lines[-12:]):
+            return None  # Manual compaction need not emit an agent_start event.
+        bottom_rules = [i for i, line in enumerate(lines) if re.fullmatch(r"\s*─{8,}\s*", line)]
+        if not bottom_rules:
+            return None
+        bottom = bottom_rules[-1]
+        tops = [i for i, line in enumerate(lines[:bottom])
+                if re.fullmatch(r"\s*(?:─{8,}|── [\u2800-\u28ff] Working ─{8,})\s*", line)]
+        if len(tops) != 1:
+            # A pasted rule can look like another editor border. Never discard
+            # the draft above it and mistakenly authorize an empty composer.
+            return None
+        top = tops[-1]
+        footer_lines = lines[bottom + 1:bottom + 4]
+        footer = " ".join(footer_lines)
+        # Narrow panes truncate before the context/model suffix. The native
+        # usage prefix is still visible, below the editor (not transcript text).
+        truncated_usage = any(re.match(r"\s*(?:[↑↓RW]\d[\d.km]*|\$\d+\.\d+)\s", line)
+                              and line.rstrip().endswith(("...", "…")) for line in footer_lines)
+        if not re.search(r"(?:\d(?:\.\d+)?%|\?)/", footer) and not truncated_usage:
+            return None
+        return "\n".join(lines[top + 1:bottom]).strip()
     if detection_text is None:
         return None
     if kind == "claude":
@@ -828,6 +862,8 @@ def evaluate(snapshot: MemberSnapshot, pending: PendingWork, now_ms: float, glob
         draft = prompt_line_text(snapshot.detection_text, snapshot.kind)
     else:
         draft = None
+    if snapshot.kind == "pi" and snapshot.detection_text is not None and draft is None:
+        return hold(9, HOLD_DRAFT_PRESENT, "Pi editor is not visible")
     if draft is not None and draft.strip():
         preview = draft.strip().splitlines()[0][:40]
         return hold(9, HOLD_DRAFT_PRESENT, preview)

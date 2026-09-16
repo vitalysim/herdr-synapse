@@ -342,6 +342,15 @@ class PromptLineTests(unittest.TestCase):
         self.assertEqual(prompt_line_text("output\n> \n", "gemini"), "")
         self.assertIsNone(prompt_line_text("output\nplain last line\n", "gemini"))
 
+    def test_codex_animated_placeholder(self):
+        for line in ("› Ask Codex to do anything⡀        ⠈    ⠁ ",
+                     "›⠁Ask Codex to do anything⡀     ⠈  ⠐", "› ⠈ Ask Codex to do anything ⠂"):
+            with self.subTest(line=line):
+                self.assertEqual(prompt_line_text(line, "codex"), "")
+        for text in ("⠁⠂", "שלום ⠈", "Ask Codex to do anything about tests⠁", "Ask ⠁Codex to do anything"):
+            self.assertEqual(prompt_line_text("› " + text, "codex"), text)
+        self.assertIsNone(prompt_line_text("›⠁custom", "codex"))
+
 
 class FocusPolicyTests(unittest.TestCase):
     def test_focused_holds_until_max_hold(self):

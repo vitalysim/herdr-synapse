@@ -8,6 +8,18 @@ change and say why in the commit message.
 For the expandable command inventory and every GUI shortcut, see the
 [command and shortcut reference](reference.md).
 
+## Pi integration
+
+Pi 0.85.1 uses the existing team commands with kind `pi`. Setup requires Herdr's Pi state integration, `skill install`, `hooks install pi`, and session-local `kinds trust pi`. Existing Pi processes need `/reload` after extension installation. Pi's Synapse extension is telemetry-only: prompt/stop hooks remain Claude-only, and Pi delivery stays `nudge`.
+
+`hooks install|check|uninstall pi` manages only `<PI_CODING_AGENT_DIR or ~/.pi/agent>/extensions/herdr-synapse.ts`. Install and uninstall support `--dry-run`. Foreign files and symlinks are refused. Check returns a nonzero exit code when the managed extension is missing or outdated; it does not change delivery configuration.
+
+Pi accepts model defaults/member overrides as `provider/model@thinking`, using native `--model` and `--thinking` flags. Thinking levels are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`, subject to the actual model's capabilities. Use `--apply restart` to change a running member; success requires a new runtime report matching the requested setting and original native conversation. Managed resumes require the recorded absolute session path. Fresh starts receive `--name <member>`; resumed titles are preserved. Managed starts and resumes use run-scoped `--approve` without changing global project trust.
+
+Pi context JSON can contain `used: null`, `percent: null`, and `estimated: true`; `window` is the active model's runtime limit, not a hardcoded default. Stale or identity-mismatched telemetry is ignored. Compact uses `/compact`; clear uses `/new`. A compact failure is recorded as a failed `typed` outcome, not as successful compaction. `!!` and interrupt deliveries use native steering semantics; typed means submitted, not that the agent has already acted on it.
+
+`pi-report` is an internal, bounded JSON-stdin telemetry receiver. It verifies the live Herdr pane, terminal, Pi kind, and exact native session before writing its private snapshot. It cannot post messages, change authority, or authorize terminal delivery.
+
 ## Restore a saved team
 
 `herdr-synapse restore <team> [--workspace ID] [--dry-run]` restores missing members into a new `team:<name>` tab in the current workspace. Teams larger than 24 restored members use additional numbered tabs. The command requires human/operator authority and an existing team in the selected Herdr session.
@@ -127,7 +139,7 @@ create <team> --new [--workspace] [--charter …] --spawn <role>:<kind>[:<cwd>]�
 - `--model`: `role=` or `name=` sets that member's own model and effort —
   with `--new --spawn` the agent starts with the flags; with `--member` (a
   live agent) the setting is recorded and applies at its next resume (live
-  for Claude through `model`). `kind=` (`claude`, `codex`, `opencode`) sets
+  for Claude through `model`). `kind=` (`claude`, `codex`, `opencode`, `pi`) sets
   the team default for the kind (`config.models`). A kind with no verified
   flags is refused (`model_unsupported`) before anything is written; a key
   that names nobody being added is a usage error. See section 9c.
@@ -236,7 +248,7 @@ Herdr ships:
 | `herdr:copilot` | `copilot --resume=<id>` | `herdr:mastracode` | `mastracode --thread <id>` |
 | `herdr:cursor` | `cursor-agent --resume <id>` | `herdr:omp` | `omp --resume=<path\|id>` |
 | `herdr:devin` | `devin --resume <id>` | `herdr:opencode` | `opencode --session <id>` |
-| `herdr:droid` | `droid --resume <id>` | `herdr:pi` | `pi --session <path\|id>` |
+| `herdr:droid` | `droid --resume <id>` | `herdr:pi` | `pi --session <absolute-path>` |
 | `herdr:grok` | `grok --resume <id>` | `herdr:qodercli` | `qodercli --resume <id>` |
 | `herdr:hermes` | `hermes --resume <id>` | `herdr:qwen` | `qwen --resume <id>` |
 | `herdr:antigravity_cli` | `agy --conversation <id>` | | |
@@ -428,12 +440,7 @@ document is mirrored to `members/<name>.md`.
 | `--discard` | throw that edit away and restore the file from the authoritative copy |
 | `--clear` | remove the document |
 
-`--adopt` is what makes an edit the operator's word. The project folder is
-inside a checkout the agents can write to and the plugin cannot tell whose
-editor saved the file, so an edited `members/<name>.md` is **kept, not
-imported**: the notifier stops overwriting it, posts one `instructions_edited`
-record to you naming the adopt command, and waits. Until you adopt, nothing
-from that file reaches any agent.
+In manual sync mode, edited member files are preserved until `--adopt` shows the diff and imports them. In auto mode, settled edits are imported and the affected member is notified at its next safe opportunity. Auto mode trusts everyone who can write these project documents; editor identity cannot be inferred. Private Notes remain excluded from agent context.
 
 Every write bumps the member's `instructions_seq` and appends an
 `instructions_updated` record addressed to **the member and to `all`**, so the
@@ -504,8 +511,17 @@ removed or renamed. Those get a tombstone written over their file instead.
 
 ### `project render [--force]`
 
-Regenerates the mirror. Runs automatically after a roster change and after
-any write to the knowledge base or a member's instructions.
+Regenerates the mirror. Runs automatically after a roster change and after writes to rules or member instructions. Pending auto-sync edits and conflicts are preserved unless an operator explicitly forces regeneration.
+
+### `project sync auto|manual`
+
+Choose whether saved member documents and the Rules section of `knowledge.md` are imported automatically. New teams default to `auto`; existing teams stay `manual` until an operator enables it. `project` shows the mode; `--json project` also reports per-file pending hashes and errors. Auto mode trusts project-document writers, not just the human editor, and imports are audited as `file-sync`. It grants no additional CLI authority.
+
+The notifier waits for two unchanged scans at least two seconds apart before importing. Member changes notify that member; shared-rule changes notify each active agent. Delivery waits for a safe composer, while existing revision acknowledgements show whether the agent has read the update. Findings remain generated and attributed: edit only the Rules section and use `knowledge add` for findings. Conflicting CLI/file edits, malformed files, symlinks, and edited findings are preserved and reported to the operator. Deleting a file does not clear instructions. Reconcile conflicts with the stored text before saving again, or use the explicit discard/render controls after saving any edits you want to keep.
+
+### Native conversation names
+
+Fresh CLI-created Claude Code, Codex, OpenCode and Pi sessions use the full member name as their native conversation title. Claude and Pi receive `--name`; Codex receives `/rename` through its idle composer before briefing; OpenCode updates the exact reported session through its managed loopback server. Resuming a conversation preserves its existing title. Naming failures are reported without preventing team operation, and ambiguous Codex command submissions are not blindly replayed.
 
 ### `knowledge-status`
 
@@ -652,7 +668,7 @@ post "<text>" [--to <name>[,<name>…] | all | human | role:<r>] [--kind note|re
 - `--interrupt` (implies `--urgent`) marks a post that could not wait. The
   notifier may type its nudge into the recipient's *running turn* when the
   recipient's kind is in `config.gate.interrupt_kinds` (default `claude`,
-  `codex`, `opencode`, all live-verified to accept a line mid-turn) and the
+  `codex`, `opencode`, `pi`, all live-verified to accept a line mid-turn) and the
   sender has not interrupted that teammate inside `interrupt_cooldown_ms`
   (default 10 min); otherwise it is an ordinary urgent nudge, delivered once
   idle. The typed line is the `[herdr-team interrupt] <sender> could not
@@ -867,8 +883,7 @@ for every current agent.
   `member_not_found`, `kind_unverified`; `failed`
   carries `hung`, `transient`, or `unconfirmed` (still idle 5 s after typing
   with the text gone from the prompt line; `not_submitted` when it is still
-  there). Typing into a running turn is verified for Claude Code, Codex and
-  OpenCode; for other kinds `force_verified` is false and `detail` says so.
+  there). Typing into a running turn is verified for Claude Code, Codex, OpenCode and Pi; for other kinds `force_verified` is false and `detail` says so. Pi processes native steering at the next steering boundary.
 - `--wait` (default) polls for that record up to `--timeout` (10 s) and
   returns it as `outcome`; a refused or failed outcome is still exit 0. An
   `all` fan-out shares one deadline and returns an outcome in each delivery.
@@ -946,7 +961,7 @@ ingests the note. Console: `/wipe [--purge] [reason]`, y/n first.
 | `pause` | alias `mute --all` | same shape |
 | `focus <name>` | enqueue `agent.focus` on the member's current pane | `{"team","member","job"}` |
 | `say <name\|all> "<text>" [--force]` | write a `direct` record and enqueue a type-now job (section 7); `all` requires `--force` and creates one independently verified delivery per current agent | one target: `{"team","member","seq","job","outcome"}`; all: `{"team","member":"all","deliveries":[…]}` |
-| `interrupts [show\|off\|on\|<kind>[,<kind>]] [--cooldown 10m]` | show or set `config.gate.interrupt_kinds` (the kinds a teammate's `post --interrupt` may be typed into mid-turn; `on` restores `claude,codex,opencode`) and `interrupt_cooldown_ms`; the daemon reloads within 2 s; a change is human only (`author_mismatch`) | `{"team","kinds","cooldown_ms","default_kinds","changed"}` |
+| `interrupts [show\|off\|on\|<kind>[,<kind>]] [--cooldown 10m]` | show or set `config.gate.interrupt_kinds` (the kinds a teammate's `post --interrupt` may be typed into mid-turn; `on` restores `claude,codex,opencode,pi`) and `interrupt_cooldown_ms`; the daemon reloads within 2 s; a change is human only (`author_mismatch`) | `{"team","kinds","cooldown_ms","default_kinds","changed"}` |
 | `compact <name> \| --self [--reason TEXT]` | write a `direct` record carrying a `control` block and enqueue a control job; the daemon types the kind's compact command once the member is idle (section 9a) | `{"team","member","action","keystroke","kind","record_seq","job","requested"}` |
 | `clear <name> --yes [--reason TEXT]` | the same, for the kind's clear command; operator only, and it asks before it runs | same shape |
 | `read <name> [--lines N]` | `agent read --source visible` directly; `--lines` is refused for every member (`lines_refused`, exit 1), because scrolling an idle alternate screen types keys into the agent and only the daemon may type into a member | `{"team","member","pane_id","lines":[…]}` |
@@ -1052,7 +1067,7 @@ entrypoint (`not_a_plugin_pane` outside the popup unless `--force`).
 How full each member's context window is, read from the harness's own files:
 Claude's transcript (`message.usage`), Codex's rollout log (`token_count`,
 which carries the window size outright), and OpenCode's `opencode.db` plus its
-cached provider/model catalogue. Claude resolves the observed model's published
+cached provider/model catalogue. Pi uses its native extension's context estimate and active model limit. Claude resolves the observed model's published
 limit; OpenCode resolves `providerID` + `modelID`; the configured model is only
 a fallback when a record omits identity. Nothing is typed and nothing is asked
 of the agent. A kind with no reader is `unknown` and is never guessed at. The
@@ -1060,7 +1075,7 @@ notifier polls the same readers every 15 s, so this prints the notifier's
 reading when it is running and reads the files itself when it is not
 (`"source":"who.json"` or `"files"`).
 
-JSON `{"team","source","members":[{"name","kind","context":{"used","window":number|null,"percent":number|null,"source","model","at"}|null}]}`.
+JSON `{"team","source","members":[{"name","kind","context":{"used":number|null,"window":number|null,"percent":number|null,"source","model","at","estimated"?:true}|null}]}`. Pi snapshots are freshness-checked even when `who.json` is available; unknown usage stays null and estimated readings are labelled `~`.
 When the token count exists but the model window is unknown, human output keeps
 the exact count and says `window unknown`; no percentage or warning is emitted.
 `who` carries the same reading as a `context 94%` tag, and the notifier
@@ -1080,7 +1095,7 @@ compacts a peer: it posts a request and the peer or the operator decides.
 
 The keystroke is per kind and only the verified ones are offered
 (`control_unsupported`, exit 1, otherwise): Claude `/compact`, Codex
-`/compact`, OpenCode `/compact`. It is typed with `pane.send_text` and a
+`/compact`, OpenCode `/compact`, Pi `/compact`. It is typed with `pane.send_text` and a
 separate Enter rather than `agent.prompt`, because a prompt is delivered as a
 bracketed paste and a pasted `/compact` is read as text to answer rather than
 as a command to run.
@@ -1541,7 +1556,7 @@ optional, milliseconds unless named otherwise, defaults in parentheses:
 `pair_window_ms` (600000), `sample_gap_reset_ms` (10000),
 `post_ttl_ms` (1800000), `burst_window_ms` (1000), `nudge_focused`
 (`"never"`, one of `never|always`), `interrupt_kinds`
-(`["claude","codex","opencode"]`, the
+(`["claude","codex","opencode","pi"]`, the
 agent kinds whose running turn a teammate's `post --interrupt` may be typed
 into; an empty list turns interrupts off), `interrupt_cooldown_ms` (600000,
 one interrupt per sender and target). `post_ttl_ms` is the target-active time after which an

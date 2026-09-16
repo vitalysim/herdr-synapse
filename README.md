@@ -22,12 +22,11 @@ other. Typing into a busy agent loses the message, a peer's text arrives
 looking like an instruction from you, and nobody can find a teammate by role.
 `herdr-synapse` adds the missing layer as a plugin. Its board and delivery
 transport use Herdr's terminal and session APIs instead of patching any agent
-harness. The full core workflow is live-verified with Claude Code, Codex and
-OpenCode; other Herdr agent kinds stay blocked until you explicitly probe or
+harness. The full core workflow is live-verified with Claude Code, Codex, OpenCode and Pi; other Herdr agent kinds stay blocked until you explicitly probe or
 trust them.
 
 > [!CAUTION]
-> Synapse-managed Claude Code, Codex and OpenCode launches run unrestricted by default: `--dangerously-skip-permissions`, `--dangerously-bypass-approvals-and-sandbox` and `--auto`, respectively. Fresh spawns, exact-session resumes, controlled model restarts and OpenCode clear restarts all carry that default, so these agents can execute commands and change files without approval prompts. Use trusted repositories or an external sandbox; unrestricted execution does not grant Synapse operator authority.
+> Synapse-managed Claude Code, Codex and OpenCode launches run unrestricted by default: `--dangerously-skip-permissions`, `--dangerously-bypass-approvals-and-sandbox` and `--auto`, respectively. Fresh spawns, exact-session resumes, controlled model restarts and OpenCode clear restarts all carry that default, so these agents can execute commands and change files without approval prompts. Pi tools are unrestricted natively; Synapse adds run-scoped `--approve` for project resources. Use trusted repositories or an external sandbox; unrestricted execution does not grant Synapse operator authority.
 
 ```
 team red-dev · 3 members · view:on · nudges:on · toasts:herdr · unread(you):0
@@ -69,7 +68,7 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
 - **A model and an effort for supported harnesses.** Say `opus@medium` for one agent and
   `gpt-5.6-luna@high` for another when you create the team, or change it
   later from the CLI, the console, or the teams view. Claude switches live;
-  OpenCode effort can switch live; Codex changes and OpenCode model changes
+  OpenCode effort can switch live; Codex/Pi changes and OpenCode model changes
   apply at their next resume, or now with a restart that keeps their session.
   `who` shows what was asked for beside what the harness reports.
 
@@ -114,9 +113,9 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
   board announcement, and an audit line on every use.
 - **Instructions you actually edit.** Every member gets a document with the
   same six sections: mission, scope, constraints, definition of done,
-  handoffs, and notes you keep private. Edit the file in your repo, and one
-  command shows the diff and applies it. Claude receives the change through
-  its next hook; other trusted kinds are nudged to read it.
+  handoffs, and notes you keep private. Save edits to auto-sync them, or use
+  manual adoption to review each diff. Changed instructions notify the
+  affected member when delivery is safe.
 - **A folder the team shares.** `herdr-synapse project set <path>` gives the
   team `.herdr-synapse/<team>/` in your project: the rules, one instructions
   file per member, a live `board.md`, and an `artifacts/` directory the agents
@@ -129,9 +128,7 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
 
 **Operations**
 
-- **Context you can see and act on.** Claude Code, Codex and OpenCode members
-  show how full their context window is, read from the harness's own transcript,
-  rollout log or database; other kinds explicitly show unknown.
+- **Context you can see and act on.** Claude Code, Codex, OpenCode and Pi members show how full their context window is, read from the harness's own transcript, rollout log, database or runtime extension. Pi readings are estimates; other kinds explicitly show unknown.
   The board says so at 75 % and 90 %, the sidebar gauge turns yellow then red,
   and `compact <name>` or `clear <name>` types the kind's own command when the
   member is next idle. A compacted or cleared member is re-briefed, and
@@ -172,7 +169,7 @@ The coordination layer itself does not depend on a harness adapter:
 | Operations and safety | ✓ | ✓ | Export, archive, wipe, audit, notifier statistics, mute/pause, health checks and operator gates are agent-independent. |
 
 The remaining capabilities touch the receiving TUI, its session store, model
-flags, context files or provider account. Claude Code, Codex and OpenCode are
+flags, context files or provider account. Claude Code, Codex, OpenCode and Pi are
 the fully supported core tier. Delivery to any other kind is implemented
 through Herdr's terminal API, but Synapse blocks it until you explicitly probe
 or trust that TUI.
@@ -182,9 +179,9 @@ means supported and live-verified, `◐` means implemented but conditional or no
 fully live-verified, and `—` means Synapse has no adapter for that feature.
 
 <!-- BEGIN: integration-compatibility -->
-| Herdr integration | Resume | Idle nudge | Safe `!` | Running `!!` / interrupt | Ask wait | Hooks | Model / effort | Context | Compact / clear | Usage |
+| Herdr integration | Resume | Idle nudge | Safe `!` | Running `!!` / interrupt | Ask wait | Hooks (prompt/stop) | Model / effort | Context | Compact / clear | Usage |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Pi (`pi`) | ◐ | ◐ | ◐ | ◐ | ◐ | — | — | — | — | ◐ |
+| Pi (`pi`) | ✓ | ✓ | ✓ | ✓ | ✓ | — | ✓ | ✓ | ✓ | ◐ |
 | OMP (`omp`) | ◐ | ◐ | ◐ | ◐ | ◐ | — | — | — | — | — |
 | Claude Code (`claude`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Codex (`codex`) | ✓ | ✓ | ✓ | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ |
@@ -203,6 +200,27 @@ fully live-verified, and `—` means Synapse has no adapter for that feature.
 | Grok (`grok`) | ◐ | ◐ | ◐ | ◐ | ◐ | — | — | — | — | — |
 <!-- END: integration-compatibility -->
 
+Pi's `—` under prompt/stop hooks does not mean it lacks an integration: `hooks install pi` installs its telemetry extension, while messages and briefings use typed delivery. Its context `✓` covers runtime model limits and explicitly labelled token estimates; its conditional usage cell refers to provider-account quotas, not context tracking.
+
+### Pi setup and behavior
+
+Pi support is live-verified with Pi 0.85.1 on Herdr 0.9.0. Its native Herdr integration identifies the running session; Synapse's separate extension reports the active provider/model, thinking level, context estimate, and lifecycle events. Neither extension patches Pi or Herdr core. Typed delivery recognizes Pi's standard editor and footer, including narrow panes; a custom UI extension that replaces these can cause protective delivery holds.
+
+```bash
+herdr integration install pi
+herdr-synapse skill install
+herdr-synapse hooks install pi
+herdr-synapse kinds trust pi
+```
+
+For an already-running Pi session, run `/reload` after installing the extensions. Pi already discovers the shared Synapse skill in `~/.agents/skills/`. The extension installer respects `PI_CODING_AGENT_DIR`; `hooks check pi` checks installation, `hooks install pi --dry-run` previews it, and `hooks uninstall pi` removes only the managed extension. After a Synapse update, re-run `hooks install pi` and `/reload` to refresh the copied extension. Run `doctor` to identify missing or stale runtime reports.
+
+Use `--spawn developer:pi` when creating a team and `--model pi=provider/model@high` for its Pi default. Fresh conversations receive their member name through Pi's native `--name`; resume and restore preserve the original conversation and title. Model/thinking changes use `model <member> provider/model@high --apply restart`, reopening the exact recorded session path. Models are passed through to Pi, not maintained in a Synapse catalogue. A model appearing in Pi's catalogue does not guarantee that your provider account permits it.
+
+Pi has no built-in tool approval prompts. Synapse-managed launches add `--approve` to trust project resources for that run; this does not change global project trust or disable user extensions. Use only trusted projects or an external sandbox.
+
+The context gauge uses the active model's runtime limit, including model changes and custom models. Pi estimates context tokens, so Synapse labels the reading as estimated (`~`); unknown usage remains unknown rather than becoming zero. Compact uses `/compact`; clear uses `/new`. Working-turn messages use Pi's native steering queue, which is processed at its next steering boundary—not an immediate cancellation. Provider-account quota reporting remains separate and conditional.
+
 “Full core support” means the live-verified path from resume through idle and
 running delivery, blocking asks, model/effort control, context measurement,
 compaction, clear and re-briefing. Hooks are an optional Claude-only delivery
@@ -212,31 +230,30 @@ required for core support.
 What the conditional cells mean:
 
 - **Session resume:** implemented for all 17 Herdr integrations above; live
-  round trips are verified only for Claude Code, Codex and OpenCode. It needs
+  round trips are verified for Claude Code, Codex, OpenCode and Pi. It needs
   that integration to have reported the member's session identity first.
-- **Idle nudge:** live-verified end to end for Claude Code, Codex and OpenCode.
+- **Idle nudge:** live-verified end to end for Claude Code, Codex, OpenCode and Pi.
   Every other kind is blocked by default until `hooks probe` or `kinds trust`;
   trust enables it but does not turn an unverified harness into a verified one.
 - **Safe `!`:** the protocol path and refusal behaviour are covered by tests;
-  the complete TUI round trip is live-verified with all three supported
+  the complete TUI round trip is live-verified with all four supported
   harnesses. It also requires a running Herdr server that advertises atomic
   idle submission and fails closed with an `@name` suggestion when that method
   is unavailable.
 - **Running `!!` / interrupt:** `!!name text`, its per-agent `!!all text`
-  fan-out, and teammate `post --interrupt` are live-verified for all three
-  supported harnesses, in both directions. Other kinds are labelled
+  fan-out, and teammate `post --interrupt` are live-verified for all four supported harnesses. Pi uses native steering, not immediate cancellation. Other kinds are labelled
   unverified and remain off unless explicitly enabled.
 - **Ask wait:** the board wait and operator popup are harness-independent, but
   the agent must keep a long-running shell command alive. The complete wait,
-  answer and unblock round trip is live-verified for all three supported
+  answer and unblock round trip is live-verified for all four supported
   harnesses; every other TUI remains unverified.
 - **Prompt hooks:** only Claude Code receives board context at prompt submit,
   the session briefing at startup and the Stop check. Other kinds rely on typed
   delivery and re-briefing.
-- **Model / effort:** implemented only for Claude Code, Codex and OpenCode.
+- **Model / effort:** implemented for Claude Code, Codex, OpenCode and Pi.
   Claude switches both live. OpenCode switches effort live through its variant
   picker; model changes use a controlled restart. Codex applies both at resume
-  or controlled restart. All three paths preserve the member's exact session
+  or controlled restart, as does Pi. All four paths preserve the member's exact session
   and were live-verified.
 - **Context gauge:** Codex supplies its effective window at runtime. OpenCode
   supplies the active provider/model and its standard catalog limit, but custom
@@ -244,9 +261,8 @@ What the conditional cells mean:
   and its active model, but Synapse currently resolves capacity through a
   compiled Claude model catalog; therefore Claude context capacity is not yet
   fully dynamic. Unknown capacity is shown as unknown and never raises a
-  percentage warning. Pi and the other integrations are not tracked yet.
-- **Compact / clear:** implemented and live-verified for Claude Code, Codex and
-  OpenCode, including context-drop detection, session-generation handling and
+  percentage warning. Pi reads its active model's limit directly through its Synapse extension and marks token usage as estimated; after compaction the count can be unknown. Other integrations are not tracked yet.
+- **Compact / clear:** implemented and live-verified for Claude Code, Codex, OpenCode and Pi, including native Pi compaction events, session-generation handling and
   one re-brief after each operation. OpenCode 1.18.30 crashes when a fresh TUI
   starts in a very narrow terminal, so Synapse refuses its clear before exit
   when the pane layout is under 38 columns (about a 40-column PTY).
@@ -290,9 +306,14 @@ herdr-synapse skill install
 herdr-synapse kinds trust claude
 herdr-synapse kinds trust codex
 herdr-synapse kinds trust opencode
+herdr-synapse kinds trust pi       # if you use Pi
 
 # 5. Add the richer lifecycle integration for Claude Code.
 herdr-synapse hooks install claude
+
+# Pi also needs its native state integration and Synapse telemetry extension.
+herdr integration install pi
+herdr-synapse hooks install pi
 ```
 
 ### Why these setup commands are separate
@@ -303,6 +324,8 @@ herdr-synapse hooks install claude
 | `herdr-synapse kinds trust claude` | Required once per Herdr session when Claude Code members receive terminal delivery | Opens the notifier's explicit trust gate for the `claude` terminal UI. |
 | `herdr-synapse kinds trust codex` | Required once per Herdr session when Codex members receive terminal delivery | Opens the same trust gate for the `codex` terminal UI. |
 | `herdr-synapse kinds trust opencode` | Required once per Herdr session when OpenCode members receive terminal delivery | Opens the same trust gate for the `opencode` terminal UI. |
+| `herdr-synapse kinds trust pi` | Required once per Herdr session when Pi members receive terminal delivery | Opens the same trust gate for Pi; it is separate from project trust. |
+| `herdr-synapse hooks install pi` | Required for Pi runtime context and lifecycle observations | Installs a Synapse-owned Pi extension beside Herdr's state integration; it does not enable Claude-style prompt or stop hooks. |
 | `herdr-synapse hooks install claude` | Recommended for Claude Code only | Adds session-start briefings, board context at prompt submission, and an end-of-turn unread-post check. Codex and OpenCode use the skill and notifier instead; they do not have Synapse hooks. |
 
 Kind trust is intentionally session-local: run only the lines for agent kinds
@@ -502,7 +525,7 @@ to the tree; arrows and PgUp/PgDn scroll, and `r` refreshes live state.
 | `/nudge name`, `/mute name 10m`, `/pause`, `/focus name`, `/peek name` | delivery and pane controls |
 | `/asks`, `/ask-policy block 8m` | what is waiting on you; whether agents wait, and how long |
 | `/context`, `/compact name`, `/clear name` | context windows, and the two ways to make room |
-| `/model name opus@medium [--restart]` | a member's model and effort; Claude and OpenCode effort can apply live, while Codex changes and OpenCode model changes apply at resume or `--restart` now |
+| `/model name opus@medium [--restart]` | a member's model and effort; Claude and OpenCode effort can apply live, while Codex/Pi changes and OpenCode model changes apply at resume or `--restart` now |
 | `/links`, `/link other-team`, `/unlink other-team` | the links this team has, and making or breaking one |
 | `/filter teams`, `/filter team`, Tab | the inter-team lens, the local lens, or cycle through all of them |
 | `/who`, `/charter`, `/charter set text`, `/use team`, `/retract N`, `/remove name` | roster, charter, teams, board |
@@ -544,11 +567,11 @@ outward. Replies thread across the two boards, so `re#N` is right on both
 sides, and when the receiving manager reads the post a receipt comes back:
 `read by <manager>` on the mirror.
 
-In the console, `/filter teams` shows only what crossed a link and
-`/filter team` everything else; `board --teams` is the same on the CLI. Link
-lines carry `⇄` and the sender's team. In the teams view, `c` on a team row
-lists the other teams: Enter links or breaks, and a team without a manager
-says so.
+In the console, `/filter teams` shows only what crossed a link and `/filter team` everything else; `board --teams` is the same on the CLI.
+
+Inter-team messages use bold magenta with `[⇄ TEAM IN]` / `[⇄ TEAM OUT]` badges, so they stand out even in the full feed. Direction is relative to the current team's board; monochrome terminals retain bold text and ASCII mode uses `<->`.
+
+In the teams view, `c` on a team row lists the other teams: Enter links or breaks, and a team without a manager says so.
 
 Managers are told about every link in their briefing and in `me`, along with
 the command to use. The skill tells every agent that a linked team's manager is
@@ -558,7 +581,7 @@ tells the other side. Links are session-scoped: two Herdr servers do not link.
 
 ## A model and an effort for supported harnesses
 
-Claude Code, Codex and OpenCode members can carry an optional setting of the
+Claude Code, Codex, OpenCode and Pi members can carry an optional setting of the
 form `<model>[@<effort>]`, in the harness's own vocabulary, passed through
 untranslated: `medium` means what that harness means by it. Other kinds are
 refused rather than receiving guessed flags.
@@ -580,13 +603,14 @@ herdr-synapse model --self opus@high                   # a member, for itself
 | Claude Code | `--model`, `--effort`, `--dangerously-skip-permissions` | `/model` and `/effort` typed by the notifier when idle | `low medium high xhigh max` |
 | Codex | `-m`, `-c model_reasoning_effort`, `--dangerously-bypass-approvals-and-sandbox` | picker only: applies at the next resume, or now with `--apply restart` | `minimal low medium high xhigh` |
 | OpenCode | `-m provider/model`, `--auto`; effort is selected with `/variants` after startup | effort switches live with `/variants`; model applies at the next resume or with `--apply restart` | provider-specific |
+| Pi | `--model provider/model`, `--thinking`, `--approve` | next resume or controlled restart; confirmed against runtime telemetry | `off minimal low medium high xhigh max`, subject to the model |
 
 Resolution is the member's own setting, then the team default for its kind,
 then the harness default. The setting travels with the session: `resume`
 reopens the member with the same flags, and Herdr's `agent.start` receives
 them as arguments, never as a shell string.
 
-Every fresh spawn of these three harnesses carries its unrestricted flag even when no model is selected. `herdr-synapse resume`, controlled model restarts and OpenCode clear restarts rebuild the same default; an already-running agent added to a team keeps its current launch mode until a Synapse-managed resume or restart.
+Every fresh spawn of Claude Code, Codex and OpenCode carries its unrestricted flag even when no model is selected. Pi has unrestricted tools natively and receives run-scoped `--approve` for project resources. `herdr-synapse resume`, controlled model restarts and OpenCode clear restarts rebuild the same defaults; an already-running agent added to a team keeps its current launch mode until a Synapse-managed resume or restart.
 
 `--apply restart` exits the agent cleanly and resumes its own session with the
 new flags; the member is never marked missing while that is in progress, and
@@ -615,7 +639,9 @@ them apart. Give the team a directory and it gets one:
   artifacts/           work products; git-ignored
 ```
 
-Each member's file has the same six sections, with a line of guidance in each: Mission, Scope, Constraints, Definition of done, Handoffs, and Notes, which stays private to you. Mission is required when a member joins; the other five sections are optional. Team creation fills Mission from the required brief, or derives the short roster brief from an explicit `## Mission`, so nobody starts at "none set". `knowledge-status`, `doctor` and the teams view report any older or hand-edited member that has no Mission. Edit the file in your editor and the notifier leaves it alone and tells you; `herdr-synapse instructions <name> --adopt` shows the diff and applies it. That confirm step is the whole security model: the folder is inside a checkout your agents can write to, so nothing there counts as your word until you say it does.
+Each member's file has six sections: Mission, Scope, Constraints, Definition of done, Handoffs, and private Notes. Mission is required at creation; the remaining sections are optional. New teams automatically import saved member edits and the Rules section of `knowledge.md`, then notify affected agents when delivery is safe. Findings remain generated and attributed; private Notes stay out of agent context. Existing teams retain manual adoption until you run `herdr-synapse project sync auto`. Auto-sync trusts everyone who can write these documents. Use `project sync manual` to require explicit `instructions <name> --adopt` again. Conflicting edits are preserved and reported, never silently discarded. [Document sync reference](docs/cli.md#project-sync-automanual)
+
+Fresh CLI-created Claude Code, Codex, and OpenCode conversations also receive their full team-member name as a native session title. Resuming a saved conversation preserves its title. Naming failures appear on the board without preventing team operation.
 
 On daemon load or an explicit `project render`, Synapse completes only the exact revision-1 Mission-only scaffold written by the old creation path. It adds the five empty standard sections without changing the revision or posting to the board, and leaves edited, custom and later-revision documents untouched.
 
@@ -752,8 +778,7 @@ reopen. `prefix+t`, Enter on a member, action 7 shows the command.
 ## Context windows
 
 Herdr knows nothing about tokens and no agent exposes them through Herdr's
-socket. Synapse currently has file readers for Claude Code, Codex and OpenCode;
-the notifier reads them every fifteen seconds.
+socket. Synapse has file readers for Claude Code, Codex and OpenCode, plus runtime telemetry from its Pi extension; the notifier polls these sources every fifteen seconds.
 
 ```bash
 herdr-synapse context                           # supported members get a bar; others are unknown
@@ -766,13 +791,14 @@ herdr-synapse clear vuln-hunt-reviewer --yes    # throw it away and brief it aga
 | Claude Code | newest transcript `message.usage`, cache reads included | compiled catalog keyed by the observed model; not fully dynamic yet |
 | Codex | rollout log's newest `token_count` | exact `model_context_window` from the same runtime event |
 | OpenCode | newest assistant message in `opencode.db` | active `providerID` + `modelID` in the standard local catalog; custom config overrides are not read yet |
+| Pi | native `getContextUsage()` estimate, labelled `~`; unknown after compaction until Pi reports usage | active model's runtime `contextWindow`, including custom models and model changes |
 
-Any other kind reads `unknown`; nothing is estimated. At 75 % and again at
+Any other kind reads `unknown`; Pi alone labels its readings as estimated. At 75 % and again at
 90 % the board gets one line addressed to that member and to the team, and
 the member is nudged with it. The plugin never acts on it: what to do about a
 full context is the member's decision, or yours.
 
-`compact` and `clear` are available only for these three kinds. Both operations
+`compact` and `clear` are available for these four kinds. Both operations
 and the following re-brief were live-verified in each real TUI. OpenCode clear
 exits and starts a fresh full TUI on the same member rather than sending
 `/new`; Synapse refuses before exiting when the pane layout is under 38 columns
@@ -831,12 +857,7 @@ those are peer notes, attributed and escaped, and they are pointed at rather
 than injected, so one agent's text can never reach another wearing your
 authority.
 
-`instructions <name>` writes one member's own document: mission, scope,
-constraints, definition of done, handoffs, and notes that stay private to you.
-Scope is what stops two agents auditing the same tree. You can also edit
-`<team>/members/<name>.md` in your project folder and run `instructions <name>
---adopt`, which shows a diff first; that folder is writable by the agents
-themselves, so nothing in it reaches anyone until you adopt it.
+`instructions <name>` writes one member's own document: mission, scope, constraints, definition of done, handoffs, and private notes. In auto-sync mode, save `<team>/members/<name>.md` to apply changes and notify that member. In manual mode, `instructions <name> --adopt` shows the diff first. `project` reports the mode; auto-sync trusts project-document writers, including agents.
 
 ## When an agent needs you
 
@@ -868,7 +889,7 @@ you answer, so it cannot proceed on a guess or be talked past by a peer. Only
 the operator closes an ask; a teammate's reply is a note on the thread, not an
 answer. The board-side wait is harness-independent and reports that it is still
 waiting every 30 s. The complete wait, answer and unblock path is live-verified
-with Claude Code, Codex and OpenCode; other kinds should be treated as
+with Claude Code, Codex, OpenCode and Pi; other kinds should be treated as
 conditional until verified. If nobody answers within eight minutes the command
 gives up with a distinct exit code, the question stays on the board, and the
 skill tells the agent not to guess.

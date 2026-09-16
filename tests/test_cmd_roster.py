@@ -443,9 +443,10 @@ class CreateNew(unittest.TestCase):
             self.assertEqual(code, 0, err)
             self.assertEqual([m["name"] for m in payload["members"]], ["delta-reviewer", "delta-worker"])
             self.assertTrue(all(m["managed"] for m in payload["members"]))
+            self.assertEqual(store.read_json(ts.session.team("delta").team_json)["config"]["document_sync"], "auto")
             self.assertEqual(api.runs, [
                 ["agent", "start", "delta-reviewer", "--kind", "codex", "--pane", "w9:p1", "--timeout", "60000", "--", "--dangerously-bypass-approvals-and-sandbox"],
-                ["agent", "start", "delta-worker", "--kind", "claude", "--pane", "w9:p2", "--timeout", "60000", "--", "--dangerously-skip-permissions"],
+                ["agent", "start", "delta-worker", "--kind", "claude", "--pane", "w9:p2", "--timeout", "60000", "--", "--dangerously-skip-permissions", "--name", "delta-worker"],
             ])
             request = [p for m, p in api.calls if m == "layout.apply"][0]
             self.assertEqual(request["workspace_id"], "w9")

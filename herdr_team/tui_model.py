@@ -889,10 +889,13 @@ def feed_entry(
     else:
         glyph = kind_glyph(kind, ascii_only)
         parts = ["#{}".format(seq)]
+        link = record.get("link")
+        if isinstance(link, dict):
+            # Put the badge before optional time/author details so it survives
+            # narrow headers; direction is relative to this team's board.
+            parts.append("[{} TEAM {}]".format("<->" if ascii_only else "⇄", "OUT" if link.get("mirror") else "IN"))
         if level == 0:
             parts.append(clock_label(record.get("ts")))
-        if isinstance(record.get("link"), dict):
-            parts.append("<->" if ascii_only else "⇄")
         parts.append("{}{}{}".format(_author_label(record), "->" if ascii_only else "→", _to_label(record)))
         if kind != "note":
             parts.append("{}{}".format(glyph, kind) if glyph else kind)
@@ -2192,6 +2195,7 @@ STYLE_PEEK = "peek"
 STYLE_PLAIN = ""
 #: The team manager's row in the teams view: bold, and coloured where the terminal has colours.
 STYLE_MANAGER = "manager"
+STYLE_LINK = "link"
 
 
 def member_style(name: Optional[str]) -> str:
@@ -2211,13 +2215,15 @@ def member_color_slot(name: str, members: Iterable[Dict[str, Any]]) -> Optional[
 
 
 def entry_style(entry: Dict[str, Any]) -> str:
-    """Style key for one feed entry: warning, system, human, or the author's member color."""
+    """Style key: warnings/system notices, linked-team traffic, then author color."""
     if entry.get("warning"):
         return STYLE_WARNING
     kind = str(entry.get("kind") or "")
     author = str(entry.get("from") or "")
     if kind == "system" or author == "system":
         return STYLE_SYSTEM
+    if isinstance(entry.get("link"), dict):
+        return STYLE_LINK
     if author == "human" or author.startswith("human@"):
         return STYLE_HUMAN
     return member_style(author) if author else STYLE_PLAIN

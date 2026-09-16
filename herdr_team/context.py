@@ -1,7 +1,8 @@
 """How full each member's context window is, read from the harness's own files.
 
-Herdr knows nothing about tokens, and no agent kind will tell us over a socket,
-but every kind we support writes exact counts to disk. One reader per kind
+The file-backed readers report native counts; Pi's optional Synapse extension
+reports its native context estimate and active model limit in a private snapshot.
+One reader per kind
 behind one interface; a kind with no reader reports nothing rather than a
 guess, because a wrong number here would be worse than no number.
 
@@ -54,32 +55,36 @@ CLAUDE_ALIAS_WINDOWS = {"fable": 1_000_000, "mythos": 1_000_000, "opus": 1_000_0
 #: provider/model -> context projection, invalidated by the file identity.
 _OPENCODE_WINDOWS_CACHE: Dict[str, Tuple[int, int, Dict[Tuple[str, str], int]]] = {}
 
-KINDS = ("claude", "codex", "opencode")
+KINDS = ("claude", "codex", "opencode", "pi")
 
 
 @dataclass
 class Reading:
     """One member's context, as read from its harness."""
 
-    used: int
+    used: Optional[int]
     window: Optional[int]
     source: str  # the file we read it from
     model: Optional[str] = None
     at: Optional[str] = None  # timestamp carried by the record, when it has one
+    estimated: bool = False
 
     @property
     def percent(self) -> Optional[float]:
-        if not isinstance(self.window, int) or self.window <= 0:
+        if self.used is None or not isinstance(self.window, int) or self.window <= 0:
             return None
         return max(0.0, min(100.0, (float(self.used) / float(self.window)) * 100.0))
 
     def to_json(self) -> Dict[str, Any]:
         percent = self.percent
-        return {
-            "used": int(self.used), "window": int(self.window) if isinstance(self.window, int) else None,
+        result = {
+            "used": int(self.used) if self.used is not None else None, "window": int(self.window) if isinstance(self.window, int) else None,
             "percent": round(percent, 1) if percent is not None else None, "model": self.model,
             "source": self.source, "at": self.at,
         }
+        if self.estimated:
+            result["estimated"] = True
+        return result
 
 
 def home_dir(env: Optional[Dict[str, str]] = None) -> Path:

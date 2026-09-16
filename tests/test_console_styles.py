@@ -74,6 +74,38 @@ class StyleTaggingTests(unittest.TestCase):
         self.assertEqual(rows[0][1], "member:alpha-reviewer")
         self.assertEqual(rows[1][1], tm.STYLE_MENU_SELECTED)
 
+    def test_link_style_overrides_author_color_but_not_warnings(self):
+        for author in ("human", "alpha-worker", "beta-manager"):
+            entry = {"kind": "request", "from": author, "link": {"id": "m1"}}
+            self.assertEqual(tm.entry_style(entry), tm.STYLE_LINK)
+            self.assertEqual(tm.entry_style(dict(entry, warning=True)), tm.STYLE_WARNING)
+        self.assertEqual(tm.entry_style({"kind": "system", "from": "system", "event": "link_read", "link_id": "m1"}), tm.STYLE_SYSTEM)
+
+    def test_link_badges_survive_narrow_width_and_wrap_styling(self):
+        for ascii_only in (False, True):
+            for outgoing in (False, True):
+                record = {"seq": 7, "kind": "note", "from": "beta-manager", "to": ["alpha-worker"],
+                          "text": "Wrapped inter-team message " * 5, "link": {"id": "m1", "mirror": outgoing}}
+                entry = tm.feed_entry(record, ascii_only=ascii_only, width=32)
+                self.assertIn("TEAM OUT" if outgoing else "TEAM IN", entry["line"])
+                if ascii_only:
+                    self.assertIn("[<-> TEAM", entry["line"])
+                    self.assertNotIn("⇄", entry["line"])
+                model = model_with_feed()
+                model.width = 32
+                model.feed = [entry]
+                styled = tm.render_console_styled(model, 32, 30)
+                linked_rows = [line for line, style in styled if style == tm.STYLE_LINK]
+                self.assertEqual(linked_rows, tm.entry_rows(entry, 32))
+                self.assertGreater(len(linked_rows), 2)
+                self.assertTrue(all(tm.display_width(line) <= 32 for line in linked_rows))
+
+    def test_local_messages_do_not_get_link_badges(self):
+        entry = tm.feed_entry({"seq": 9, "kind": "note", "from": "alpha-worker", "text": "local"})
+        self.assertNotIn("TEAM IN", entry["head"])
+        self.assertNotIn("TEAM OUT", entry["head"])
+        self.assertEqual(tm.entry_style(entry), "member:alpha-worker")
+
 
 class RuntimeAttrTests(unittest.TestCase):
     def test_style_attr_without_colors_uses_bold_dim_reverse(self):
@@ -85,6 +117,7 @@ class RuntimeAttrTests(unittest.TestCase):
         self.assertEqual(console.style_attr(tm.STYLE_SYSTEM, MEMBERS, False), curses.A_DIM)
         self.assertEqual(console.style_attr(tm.STYLE_MENU_SELECTED, MEMBERS, False), curses.A_REVERSE)
         self.assertEqual(console.style_attr(tm.STYLE_WARNING, MEMBERS, False), curses.A_BOLD)
+        self.assertEqual(console.style_attr(tm.STYLE_LINK, MEMBERS, False), curses.A_BOLD)
         self.assertEqual(console.style_attr("member:alpha-worker", MEMBERS, False), 0)
         self.assertEqual(console.style_attr("member:nobody", MEMBERS, True), 0)
         self.assertEqual(console.style_attr(tm.STYLE_PLAIN, MEMBERS, True), 0)
@@ -96,6 +129,14 @@ class RuntimeAttrTests(unittest.TestCase):
         many = [{"name": "m{}".format(i), "kind": "claude"} for i in range(9)]
         self.assertEqual(tm.member_color_slot("m8", many), 8)
         self.assertEqual(console.MEMBER_PALETTE[8 % len(console.MEMBER_PALETTE)], console.MEMBER_PALETTE[2])
+
+    def test_link_color_is_bold_magenta(self):
+        import curses
+        from unittest.mock import patch
+        from herdr_team import console
+        with patch.dict(console._COLOR_PAIRS, {"magenta": 3}), patch.object(curses, "color_pair", return_value=256) as pair:
+            self.assertEqual(console.style_attr(tm.STYLE_LINK, MEMBERS, True), 256 | curses.A_BOLD)
+            pair.assert_called_once_with(3)
 
 
 if __name__ == "__main__":

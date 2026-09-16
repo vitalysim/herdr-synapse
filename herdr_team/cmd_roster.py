@@ -543,8 +543,15 @@ def _spawn_member(layout: Layout, api: Any, team: _roster.Team, team_paths: Team
     if isinstance(initial_instructions, str):
         _charter.initialize_instructions(layout, team.team, author, member.name, initial_instructions)
     out: Dict[str, Any] = {"member": _member_json(member, False), "job": None}
+    from . import session_names
+    launch_args = _models.launch_args(kind, leaf.get("launch_model"), leaf.get("launch_effort"))
+    naming = None
     try:
-        started = _start_agent(api, name, kind, pane_id, args=_models.launch_args(kind, leaf.get("launch_model"), leaf.get("launch_effort")))
+        launch_args, naming = session_names.prepare(kind, name, launch_args)
+    except (OSError, HerdrTeamError) as err:
+        warn(args, "{}: native naming unavailable: {}".format(name, err))
+    try:
+        started = _start_agent(api, name, kind, pane_id, args=launch_args)
         started_terminal = started.get("terminal_id")
         if started_terminal and started_terminal != member.terminal_id:
             # the CLI's agent_started result names the terminal the agent runs in;
@@ -578,6 +585,11 @@ def _spawn_member(layout: Layout, api: Any, team: _roster.Team, team_paths: Team
         _roster.remove_pane_record(layout.session, member.terminal_id)
     _roster.write_pane_record(layout.session, resolved.terminal_id, team.team, name, 1)
     _roster.execute_token_commands(api, _roster.token_commands(active, team.team, color_slot=team.color_slot))
+    if naming is not None:
+        try:
+            session_names.arm(team_paths, active, naming, resolved.agent_session)
+        except (OSError, HerdrTeamError) as err:
+            warn(args, "{}: started, but native naming could not be queued: {}".format(name, err))
     try:
         from herdr_team.cmd_board import board_max_seq, cursor_advance
 
@@ -770,6 +782,8 @@ def _run_create(args: argparse.Namespace) -> int:
     fresh = not existing_paths.team_json.is_file()
     team = _roster.create_team(layout, team_name, naming="plain" if names_plain else "prefixed", charter=None, reuse=args.reuse)
     team_paths = layout.team(team_name)
+    if fresh:
+        team = _roster.update_team(team_paths, lambda doc: doc.config.update(document_sync="auto"))
     try:
         return _create_members(args, layout, api, env, author, team, team_paths, specs, spawn, briefs, names_plain, charter_body, known_before, project_dir, instructions)
     except BaseException:

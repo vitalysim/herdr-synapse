@@ -646,7 +646,10 @@ def _login_provider_from_keys(keys: Iterable[str], types: Mapping[str, Any]) -> 
 def login_provider(kind: str, env: Mapping[str, str]) -> Tuple[Optional[str], Optional[str]]:
     """``(provider id, login note)`` for a kind whose provider depends on its auth file."""
     if kind == "pi":
-        doc = _read_json_file(_home(env) / ".pi" / "agent" / "auth.json")
+        root = env.get("PI_CODING_AGENT_DIR")
+        if root == "~" or (root and root.startswith("~/")):
+            root = str(_home(env)) + root[1:]
+        doc = _read_json_file((Path(root) if root else _home(env) / ".pi" / "agent") / "auth.json")
     elif kind == "opencode":
         data_home = Path(env.get("XDG_DATA_HOME") or (_home(env) / ".local" / "share"))
         doc = _read_json_file(data_home / "opencode" / "auth.json")

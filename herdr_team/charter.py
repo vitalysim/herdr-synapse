@@ -456,9 +456,18 @@ def set_instructions(layout: Layout, team: str, author: Author, member_name: str
     anyway and a record per member would be noise before anyone has read a board.
     """
     require_human(layout, team, author, "instructions set")
+    from .document_sync import document_lock
+    with document_lock(layout.team(team)):
+        return _store_instructions(layout, team, author, member_name, text, file_path, urgent, announce)
+
+
+def _store_instructions(layout: Layout, team: str, author: Author, member_name: str, text: Optional[str], file_path: Optional[str] = None, urgent: bool = False, announce: bool = True) -> Dict[str, Any]:
+    """Internal writer; caller holds document_lock and has checked authority."""
     team_paths = layout.team(team)
     doc = _roster.load_team(team_paths)
     member = doc.find(member_name)
+    if author.via == "file-sync" and member is not None and member.name != member_name:
+        raise HerdrTeamError("member_changed", "member renamed during document sync; old file was preserved", EXIT_REFUSED)
     if member is None or member.is_human or member.status == "left":
         raise HerdrTeamError("member_not_found", "{!r} is not an agent member of team {!r}".format(member_name, team), EXIT_REFUSED, {"name": member_name, "team": team, "roster": doc.names()})
     if text is not None and file_path:
@@ -485,8 +494,8 @@ def set_instructions(layout: Layout, team: str, author: Author, member_name: str
         seq = _roster.append_system_record(
             team_paths, "instructions_updated",
             "{}'s instructions updated: {} (read them: herdr-synapse instructions {})".format(member.name, what, member.name),
-            to=[member.name, "all"],
-            extra={"urgent": bool(urgent), "member": member.name, "chars": len(stored), "instructions_seq": revision},
+            to=[member.name] if author.via == "file-sync" else [member.name, "all"],
+            extra={"urgent": bool(urgent), "member": member.name, "chars": len(stored), "instructions_seq": revision, "source": author.via},
             socket=os.fspath(layout.socket),
         )
     audit(layout, team, "instructions_set", author, {"member": member.name, "chars": len(stored), "urgent": bool(urgent), "instructions_seq": revision})
@@ -590,6 +599,13 @@ def rules_stale(member: Any, doc: Any) -> bool:
 def set_rules(layout: Layout, team: str, author: Author, text: Optional[str], file_path: Optional[str] = None, urgent: bool = False) -> Dict[str, Any]:
     """Set the team's rules (human only; carries operator authority)."""
     require_human(layout, team, author, "knowledge set")
+    from .document_sync import document_lock
+    with document_lock(layout.team(team)):
+        return _store_rules(layout, team, author, text, file_path, urgent)
+
+
+def _store_rules(layout: Layout, team: str, author: Author, text: Optional[str], file_path: Optional[str] = None, urgent: bool = False) -> Dict[str, Any]:
+    """Internal writer; caller holds document_lock and has checked authority."""
     team_paths = layout.team(team)
     if file_path:
         body = _read_text_file(file_path, MAX_RULES_CHARS, "rules_too_long", truncate=False)
@@ -612,7 +628,8 @@ def set_rules(layout: Layout, team: str, author: Author, text: Optional[str], fi
     seq = _roster.append_system_record(
         team_paths, "knowledge_updated",
         "team rules updated: {} (full text: herdr-synapse knowledge)".format(headline),
-        to=["all"], extra={"urgent": bool(urgent), "chars": len(body), "rules_seq": revision}, socket=os.fspath(layout.socket),
+        to=([m.name for m in _roster.load_team(team_paths).members if not m.is_human and m.status in ("active", "starting")] if author.via == "file-sync" else ["all"]),
+        extra={"urgent": bool(urgent), "chars": len(body), "rules_seq": revision, "source": author.via}, socket=os.fspath(layout.socket),
     )
     audit(layout, team, "knowledge_set", author, {"chars": len(body), "urgent": bool(urgent), "rules_seq": revision})
     return {"team": team, "chars": len(body), "path": os.fspath(team_paths.rules_md), "record_seq": seq, "rules_seq": revision}

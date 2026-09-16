@@ -22,9 +22,9 @@ class ReferenceDocsTests(unittest.TestCase):
 
     def test_every_cli_command_appears_once(self):
         commands = load_commands()
-        self.assertEqual(len(commands), 75)
+        self.assertEqual(len(commands), 76)
         self.assertEqual(len([command for command in commands if not command.hidden]), 67)
-        self.assertEqual(len([command for command in commands if command.hidden]), 8)
+        self.assertEqual(len([command for command in commands if command.hidden]), 9)
         section = self._section("cli")
         for command in commands:
             token = "<summary><code>{}</code>".format(command.name)
@@ -54,6 +54,14 @@ class ReferenceDocsTests(unittest.TestCase):
         for relative in ("README.md", "docs/cli.md", "docs/capabilities.md"):
             text = (PLUGIN_ROOT / relative).read_text(encoding="utf-8")
             self.assertIn("reference.md", text, relative)
+
+    def test_readme_pi_core_support_keeps_hooks_and_account_usage_distinct(self):
+        readme = (PLUGIN_ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("| Pi (`pi`) | ✓ | ✓ | ✓ | ✓ | ✓ | — | ✓ | ✓ | ✓ | ◐ |", readme)
+        self.assertIn("Hooks (prompt/stop)", readme)
+        self.assertIn("hooks install pi", readme)
+        self.assertIn("explicitly labelled token estimates", readme)
+        self.assertIn("provider-account quotas, not context tracking", readme)
 
     def test_readme_compatibility_matrix_covers_every_herdr_state_integration(self):
         readme = (PLUGIN_ROOT / "README.md").read_text(encoding="utf-8")

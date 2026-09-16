@@ -722,11 +722,11 @@ def context_label(context: Any) -> Optional[str]:
         return None
     percent = context.get("percent")
     if not isinstance(percent, (int, float)):
-        return None
+        return "context unknown" if context.get("estimated") else None
     from herdr_team import usage as _usage
 
     mark = {_usage.WARNING: " !", _usage.CRITICAL: " !!"}.get(_usage.severity_for(float(percent)), "")
-    return "context {:.0f}%{}".format(float(percent), mark)
+    return "context {}{:.0f}%{}".format("~" if context.get("estimated") else "", float(percent), mark)
 
 
 def render_operator_grants(grants: Sequence[Dict[str, Any]]) -> str:

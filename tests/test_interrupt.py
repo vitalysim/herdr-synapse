@@ -56,7 +56,7 @@ class GateInterruptTests(unittest.TestCase):
     def test_config_accepts_interrupt_kinds_and_cooldown(self):
         cfg = GateConfig.from_mapping({"interrupt_kinds": ["claude", "codex"], "interrupt_cooldown_ms": 1000})
         self.assertEqual((cfg.interrupt_kinds, cfg.interrupt_cooldown_ms), (("claude", "codex"), 1000))
-        self.assertEqual(GateConfig().interrupt_kinds, ("claude", "codex", "opencode"))
+        self.assertEqual(GateConfig().interrupt_kinds, ("claude", "codex", "opencode", "pi"))
         self.assertEqual(GateConfig().interrupt_cooldown_ms, 600000)
         built, overrides, error = D.gate_config_from_roster({"config": {"gate": {"interrupt_kinds": ["claude", "codex"], "interrupt_cooldown_ms": 0}}})
         self.assertIsNone(error)
@@ -243,7 +243,7 @@ class InterruptsCommandTests(unittest.TestCase):
             code, payload, err = json_out(run_cli(["--json", "--team", "alpha", "interrupts"], ts.env))
             self.assertEqual(code, 0, err)
             self.assertEqual((payload["kinds"], payload["cooldown_ms"], payload["changed"]),
-                             (["claude", "codex", "opencode"], 600000, False))
+                             (["claude", "codex", "opencode", "pi"], 600000, False))
             code, payload, err = json_out(run_cli(["--json", "--team", "alpha", "interrupts", "claude,codex", "--cooldown", "5m"], ts.env))
             self.assertEqual(code, 0, err)
             self.assertEqual((payload["kinds"], payload["cooldown_ms"], payload["changed"]), (["claude", "codex"], 300000, True))
@@ -255,7 +255,7 @@ class InterruptsCommandTests(unittest.TestCase):
             code, payload, err = json_out(run_cli(["--json", "--team", "alpha", "interrupts", "off"], ts.env))
             self.assertEqual((code, payload["kinds"]), (0, []))
             code, payload, err = json_out(run_cli(["--json", "--team", "alpha", "interrupts", "on"], ts.env))
-            self.assertEqual((code, payload["kinds"]), (0, ["claude", "codex", "opencode"]))
+            self.assertEqual((code, payload["kinds"]), (0, ["claude", "codex", "opencode", "pi"]))
             code, payload, err = json_out(run_cli(["--json", "--team", "alpha", "interrupts", "Bad Kind"], ts.env))
             self.assertEqual(code, 2)
             code, payload, err = json_out(run_cli(["--json", "interrupts", "off"], ts.env_with(HERDR_PANE_ID="w2:p1"), pane_api()))

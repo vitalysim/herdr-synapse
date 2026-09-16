@@ -124,14 +124,7 @@ one team routinely sit in different checkouts.
 
 Three properties make it safe to put in a repository agents can write to:
 
-- **The mirror is never truth.** The authoritative copies live in the team
-  state dir behind human-only commands, and every read that feeds an agent's
-  context comes from there. Since 0.6 one file is editable in place, the
-  member's own `members/<name>.md`: an edit to it is **kept** rather than
-  overwritten, but it is still not truth until `instructions <name> --adopt`
-  imports it, and that command is human only. Everything else is still
-  regenerated. Without this an agent could edit a file and have it read back
-  to a teammate as the operator's instruction.
+- **Document trust is configurable.** Agent context reads stored state. In manual mode, member edits require `instructions <name> --adopt`. In auto mode, settled member edits and the Rules section of `knowledge.md` are imported as `file-sync` changes and affected agents are notified. Auto mode trusts all project-document writers; it is the default for new teams, while existing teams keep manual mode until an operator runs `project sync auto`. Generated findings never become instructions, and private Notes never enter agent context.
 - **Consent is explicit.** `config.project_dir` is empty until a human runs
   `project set`. Nothing is inferred from member cwds, so the plugin cannot
   write into the wrong repository or into two of them.
@@ -148,7 +141,8 @@ exists:
 | --- | --- | --- |
 | `knowledge set` | `knowledge_updated` | everyone, next board read |
 | `instructions --set/--edit/--adopt` | `instructions_updated` | the member itself, nudged when idle; everyone else on their next board read |
-| editing `members/<name>.md` | `instructions_edited` | you, so you can adopt it |
+| editing `members/<name>.md` | auto: `instructions_updated`; manual: `instructions_edited` | auto: affected member when safe; manual: you, to adopt it |
+| editing Rules in `knowledge.md` (auto mode) | `knowledge_updated` | every active agent when safe; Findings edits are reported as conflicts |
 | `project set` | `project_set` | everyone, next board read |
 | `knowledge add` | `knowledge_finding` | everyone, next board read |
 | a file in `artifacts/` | `artifacts_changed` | everyone, next board read |
@@ -434,12 +428,12 @@ what was actually sent: intents, results, per-kind clean-landing rate,
 | `herdr-synapse mute <name> \| --all [--for 10m\|2h\|1d\|N]`, `unmute <name> \| --all`, `pause` | silence nudges (gate 2) and the Claude Stop hook; posts still land and **toasts are not muted** |
 | `herdr-synapse focus <name>` | focus the member's pane through the daemon |
 | `herdr-synapse say <name\|all> "<text>" [--force]` (console: `!name text`, `!!name text`, `!!all text`) | type one line into one member, or with forced `all` into every current agent, with operator authority; each target is a separate `direct` board record and job; plain `!` atomically requires the inspected terminal to remain idle through submission, while `--force`/`!!` deliberately permits a running turn; dialogs, permission prompts, overlays, and drafts still refuse; every target gets a `typed` outcome and feed tag (`✓typed`, `✗ not typed (working)`, …); human only, from the focused console only |
-| `herdr-synapse post --to <name> --interrupt "<text>"` (console: `/interrupt @name text`) | urgent, and when the recipient's kind is in `config.gate.interrupt_kinds` (default `claude`, `codex`, `opencode`) and the sender is out of its cooldown for that teammate (10 min), the daemon types the nudge into the recipient's *running turn* instead of waiting for idle: `[herdr-team interrupt] <sender> could not wait: 1 urgent board post for <name> (seq N). Run: herdr-synapse board --new [nK]`. Dialog, overlay, draft, focus, and rate-limit gates still hold it; otherwise it is an ordinary urgent nudge. The feed shows `⚡INTERRUPT` on the post and `⚡interrupted` once typed; `who` shows `⚡armed`, `⚡cooldown`, or `⚡kind_not_allowed` next to `↪N`. Named recipients only; a member's repeat inside the cooldown is `interrupt_cooldown` at the CLI; the human has no cooldown |
+| `herdr-synapse post --to <name> --interrupt "<text>"` (console: `/interrupt @name text`) | urgent, and when the recipient's kind is in `config.gate.interrupt_kinds` (default `claude`, `codex`, `opencode`, `pi`) and the sender is out of its cooldown for that teammate (10 min), the daemon types the nudge into the recipient's *running turn* instead of waiting for idle: `[herdr-team interrupt] <sender> could not wait: 1 urgent board post for <name> (seq N). Run: herdr-synapse board --new [nK]`. Dialog, overlay, draft, focus, and rate-limit gates still hold it; otherwise it is an ordinary urgent nudge. The feed shows `⚡INTERRUPT` on the post and `⚡interrupted` once typed; `who` shows `⚡armed`, `⚡cooldown`, or `⚡kind_not_allowed` next to `↪N`. Named recipients only; a member's repeat inside the cooldown is `interrupt_cooldown` at the CLI; the human has no cooldown |
 | `herdr-synapse interrupts [show\|off\|on\|<kind>,<kind>] [--cooldown 10m]` (console: `/interrupts …`) | show or set the team's interrupt kinds and cooldown (`config.gate`); changing them is human only |
 | `herdr-synapse read <name>` | the member's visible screen; `--lines` is refused for every member because scrolling an alternate screen types into it |
 | `herdr-synapse notifier stats [--team] [--kind]` | the delivery ledger |
 | `herdr-synapse kinds list \| trust <kind> [--reason "…"] \| untrust <kind>` | the trust override behind gate 4; `list` prints `<kind>  delivers\|held  <flags>`; a kind also becomes `verified` on its own after 20 clean round trips |
-| `team.json` → `config.gate` | `stable_ms_screen` 2000, `stable_ms_hook` 750, `stable_ms_hooks_delivery` 15000, `done_hold_ms` 60000, `min_interval_ms` 20000, `global_interval_ms` 1500, `focus_max_hold_ms` 300000, `focus_snapshot_stable_ms` 3000, `dialog_hold_cap_ms` 600000, `pair_budget` 10, `pair_window_ms` 600000, `sample_gap_reset_ms` 10000, `post_ttl_ms` 1800000, `burst_window_ms` 1000, `nudge_focused` `never\|always`, `interrupt_kinds` `["claude","codex","opencode"]`, `interrupt_cooldown_ms` 600000; the daemon reloads it within 2 s and ignores the whole block if any key is invalid |
+| `team.json` → `config.gate` | `stable_ms_screen` 2000, `stable_ms_hook` 750, `stable_ms_hooks_delivery` 15000, `done_hold_ms` 60000, `min_interval_ms` 20000, `global_interval_ms` 1500, `focus_max_hold_ms` 300000, `focus_snapshot_stable_ms` 3000, `dialog_hold_cap_ms` 600000, `pair_budget` 10, `pair_window_ms` 600000, `sample_gap_reset_ms` 10000, `post_ttl_ms` 1800000, `burst_window_ms` 1000, `nudge_focused` `never\|always`, `interrupt_kinds` `["claude","codex","opencode","pi"]`, `interrupt_cooldown_ms` 600000; the daemon reloads it within 2 s and ignores the whole block if any key is invalid |
 | `daemon start --dry-nudge` | log nudges instead of typing them (for a dry run) |
 
 Measured in the rig with `done_hold_ms 5000`: post to the member working in
@@ -570,8 +564,9 @@ as good as the shell tool it runs in, and the cap was calibrated to Claude Code:
 | Claude Code | kills the command at 10 min; output only at the end | give the tool a 10-minute timeout |
 | Codex | runs it in an exec cell that **yields after 10 s with the process still running**; the model must keep calling `wait` | keep waiting on the exec cell until it exits |
 | OpenCode | optional `timeout`, 2 min by default and 10 min max | pass a 10-minute timeout |
+| Pi | its `bash` tool waits for completion; an explicitly short timeout can terminate the wait | allow enough time for the board wait; answer/unblock verified with a bounded live test |
 
-The wait, operator answer and unblock round trip is live-verified for all three
+The wait, operator answer and unblock round trip is live-verified for all four
 rows. The stderr heartbeat remains useful for Codex: a silent wait looks hung
 to a model watching a yielded cell.
 
@@ -674,6 +669,7 @@ is typed and nothing is asked of the agent.
 | Claude | newest `message.usage` in the transcript the hook recorded, else the transcript named by the session id | exact, cache reads included | from the observed model's published limit; the configured model is a fallback when the record omits it |
 | Codex | newest `token_count` in `~/.codex/sessions/**/rollout-*-<id>.jsonl` | exact, `last_token_usage` (not the cumulative total) | exact, `model_context_window` |
 | OpenCode | newest assistant `message.data.tokens.total` in `opencode.db` | exact | `limit.context` for its `providerID` + `modelID` in OpenCode's cached model catalogue |
+| Pi | private, identity-validated runtime snapshot from the Synapse Pi extension | estimated by Pi; nullable after compaction | active `getContextUsage().contextWindow` / `ctx.model.contextWindow`, including custom models and runtime switches |
 
 Readers tail their files rather than parsing them (`TAIL_BYTES` 256 KB), open
 SQLite read-only with WAL updates visible, and cache OpenCode's catalogue by
@@ -701,8 +697,9 @@ OpenCode `/compact`, while clear exits with `/exit` and starts a fresh full TUI
 for the same member. Codex takes `/new` deliberately, since its `/clear` also
 wipes the scrollback the detection layer reads. OpenCode clear is refused
 before exit when `pane.layout` reports a width below 38 (about a 40-column PTY),
-because OpenCode 1.18.30 crashes while starting its full TUI that narrow. Any
-other kind is `control_unsupported`.
+because OpenCode 1.18.30 crashes while starting its full TUI that narrow. Kinds other than Claude Code, Codex, OpenCode and Pi are `control_unsupported`.
+
+Pi uses `/compact` and `/new`. Native success/failure events, not token-count drops, settle compaction; an event from an older request or different native session cannot complete a control. The runtime snapshot expires after 20 seconds without a report, and the notifier clears stale context on its next context poll. The extension emits at most one report per two seconds, normally one heartbeat per five seconds, never one subprocess per generated token. It reports no prompt text, editor content, credentials, or transcripts. Pi keeps normal typed delivery and still requires kind trust.
 
 Properties that hold:
 
@@ -729,7 +726,7 @@ Properties that hold:
 
 **Verified**: unit tests in `tests/test_context.py` (readers, tailing,
 thresholds, forged jobs, gate holds, typed-once, all completion paths). Live:
-the three readings against the numbers the agents showed themselves, plus a
+the four readings against the numbers the agents showed themselves, plus a
 compact and clear of every harness with its context/session transition and
 single re-brief observed.
 
@@ -1025,7 +1022,7 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
   *working* member: your own `!!name text` (including each delivery expanded
   from `!!all text`), and a teammate's `post
   --interrupt` when the team allows it for that kind (`interrupt_kinds`,
-  default Claude Code, Codex and OpenCode), at most once per sender and
+  default Claude Code, Codex, OpenCode and Pi), at most once per sender and
   teammate per 10 min,
   always as the `[herdr-team interrupt]` envelope and never the post text,
   so attribution is unchanged; `herdr-synapse interrupts off` turns it off.
@@ -1042,17 +1039,17 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
 
 ## 12. Current limits
 
-- Claude Code, Codex and OpenCode are live-verified end to end for the core
+- Claude Code, Codex, OpenCode and Pi are live-verified end to end for the core
   workflow. Other kinds, including Gemini, Cursor Agent, Kimi and Antigravity,
   need `hooks probe` or `kinds trust` before terminal delivery and remain
   conditional rather than fully supported.
 - Synapse-managed Claude Code, Codex and OpenCode starts are unrestricted by default. Agents already running when they join a team retain their current launch mode until a Synapse-managed resume or restart.
-- Hooks exist for Claude only. Codex and OpenCode use the typed briefing path.
+- Prompt/stop hooks exist for Claude only. Codex, OpenCode and Pi use typed briefings. Pi also has a telemetry-only extension installed through `hooks install pi`.
 - `!!name text`, the per-agent `!!all text` fan-out, and `post --interrupt`
-  are live-verified for all three supported harnesses. Other kinds still
+  are live-verified for all four supported harnesses. Other kinds still
   carry `unverified for <kind>` and are excluded from the default interrupt
   set.
-- Compact and clear are live-verified for all three supported harnesses.
+- Compact and clear are live-verified for all four supported harnesses.
   OpenCode 1.18.30 cannot safely start its full TUI in a very narrow terminal,
   so clear refuses before `/exit` below the 38-column layout guard.
 - `usage` windows are verified live for Anthropic (Claude Code login) and
@@ -1072,7 +1069,7 @@ Each row: do this, expect that.
 | # | Do | Expect |
 | --- | --- | --- |
 | C1 | `herdr-synapse doctor` after linking and `daemon-start` | daemon alive, your socket, slug `default`, no errors |
-| C2 | trust `claude`, `codex` and `opencode`; `kinds list` | all three rows are in the `delivers` column with `trusted` in the flags (`--json`: `delivers: true, trusted: true`) |
+| C2 | trust `claude`, `codex`, `opencode` and `pi`; `kinds list` | all four rows are in the `delivers` column with `trusted` in the flags (`--json`: `delivers: true, trusted: true`) |
 | C3 | two fresh idle agents; `prefix+t`; Space on both; Enter; team name; charter; optional rules; folder; per member role, name, required Mission / brief (fields are prefilled except Mission: Ctrl-U clears before typing, Enter accepts a shown default); confirm | `who` lists both with roles; `herdr agent list` shows names and tokens; `herdr pane list` shows labels `team:<t>/<role>`; each authoritative member document has all six standard sections |
 | C4 | wait about a minute; `who` | the `unbriefed` tag disappears from both rows once the briefing lines landed; each screen shows the `[herdr-team briefing]` lines and the agent running `herdr-synapse ack` (otherwise one re-brief after 90 s, then a `<name> unbriefed` toast) |
 | C5 | ask a member "what is this team for and what is your role" | it answers from `charter` and `me` with the right names |
@@ -1100,8 +1097,8 @@ Each row: do this, expect that.
 | C27 | in the console, while a member is idle: `!<member> reply with the word pong` | the text is in its input box within about a second with no `[herdr-team` header and the member starts working; the feed shows a `»direct` entry with `… typing` then `✓typed`; `board --thread <seq>` shows the `typed` record under it; the member's `board --new` does not list it; `notifier stats` intents grow by one and the clean rate is unchanged |
 | C28 | for each supported harness, run `!<member> x` while it works; then `!!<member> summarize so far`; `!<member> /clear`; the compose popup `!<member> hi`; `herdr-synapse say <member> x` from a shell pane | `✗ not typed (working)` with the `!!` hint in the status line, nothing typed; the forced line lands as `✓typed (in running turn)` without an unverified label; `/clear` is refused `say_control_command`; the popup answers `direct typing is console-only`; the shell answers `say_unverified` and `herdr-synapse audit` lists it |
 | C29 | `prefix+i` (or `herdr-synapse usage`) | a popup lists every agent grouped by provider with session and weekly bars, `% used`, `⚠`/`‼` past 75/90 %, and reset times; `r` refreshes; `herdr-synapse usage --json` contains no token |
-| C30 | while each supported kind works, have a teammate run `herdr-synapse post --to <member> --interrupt "stop, wrong branch"`; repeat within 10 min; then `/interrupts off` and once more | for Claude Code, Codex and OpenCode the feed shows `⚡INTERRUPT`; `[herdr-team interrupt] <sender> could not wait …` lands in the working turn (`⚡interrupted`); the repeat is `interrupt_cooldown`; after `/interrupts off` the post waits for idle (`who`: `⚡kind_not_allowed`) |
+| C30 | while each supported kind works, have a teammate run `herdr-synapse post --to <member> --interrupt "stop, wrong branch"`; repeat within 10 min; then `/interrupts off` and once more | for Claude Code, Codex, OpenCode and Pi the feed shows `⚡INTERRUPT`; `[herdr-team interrupt] <sender> could not wait …` lands in the working turn (`⚡interrupted`); the repeat is `interrupt_cooldown`; after `/interrupts off` the post waits for idle (`who`: `⚡kind_not_allowed`) |
 | C31 | inspect the console header and run `herdr-synapse daemon status`; then try `!<member> x` against a server without `agent.prompt_if_idle` | both surfaces show Herdr/protocol/plugin/daemon versions and `safe !` as ready, unavailable, or unknown; without the method nothing is typed, the outcome is `capability_unavailable`, and the status offers `@<member>` or explicit `!!<member>` |
 | C32 | run `herdr-synapse update` from a managed install, then from a local link | the managed checkout is reinstalled; the local checkout is only re-registered and its files remain untouched; both refresh the CLI link and skill, replace the notifier, and report all steps in one result |
-| C33 | for Claude Code, Codex and OpenCode, change model/effort, inspect `context`, run `compact`, then `clear` | each harness reports the requested setting and exact context window; compact drops carried tokens and re-briefs once; clear changes session/generation and re-briefs once; an OpenCode pane below the safe-width guard refuses clear before exiting |
+| C33 | for Claude Code, Codex, OpenCode and Pi, change model/effort, inspect `context`, run `compact`, then `clear` | each harness reports the requested setting and observed context window (Pi usage is estimated); compact is observed through native events or carried-token reduction and re-briefs once; clear changes session/generation and re-briefs once; an OpenCode pane below the safe-width guard refuses clear before exiting |
 | C34 | with at least two supported agents in one team, type `!!all summarize your current task`; then inspect the board and each pane | the `!!` menu offers `all`; the console watches one seq per agent; each target has its own `direct` record and `typed` outcome; the line reaches working or muted agents, runtime dialog/draft/blocker/occupant checks still refuse per target, and an untrusted target kind refuses the whole fan-out before anything is written |

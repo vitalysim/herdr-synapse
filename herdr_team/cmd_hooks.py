@@ -4,7 +4,8 @@
 absolute CLI path baked in, registers three entries in
 ``~/.claude/settings.json`` (``claude_settings``), scans the four Claude
 settings files for duplicates, and flips existing Claude members to
-``delivery:hooks``. Kinds other than ``claude`` have no installer in the
+``delivery:hooks``. Pi installs an observability extension and keeps typed
+delivery. Kinds other than ``claude`` and ``pi`` have no installer in the
 prototype: ``install`` refuses ``hooks_unprobed`` until ``probe`` recorded a
 passing nonce round trip in ``kinds.json``, and ``hooks_unsupported`` after.
 
@@ -38,7 +39,7 @@ from herdr_team import render as _render
 from herdr_team import roster as _roster
 from herdr_team import cli as _cli
 from herdr_team.cli import api_for, emit, layout_for
-from herdr_team.errors import EXIT_DAEMON_DOWN, EXIT_OK, EXIT_REFUSED, HerdrTeamError
+from herdr_team.errors import EXIT_DAEMON_DOWN, EXIT_OK, EXIT_REFUSED, HerdrTeamError, UsageError
 
 #: Internal exit code from ``hook-input stop`` asking the shim to block (never a contract code).
 EXIT_HOOK_BLOCK = 7
@@ -736,7 +737,8 @@ def run_hook_input(args: argparse.Namespace) -> int:
 
 def _hooks_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("action", choices=("install", "uninstall", "check", "probe"))
-    parser.add_argument("kind", nargs="?", default="claude", help="agent kind (only claude has an installer)")
+    parser.add_argument("kind", nargs="?", default="claude", help="agent kind (claude or pi installers)")
+    parser.add_argument("--dry-run", action="store_true", help="pi install/uninstall: report changes without writing")
     parser.add_argument("--claude-dir", metavar="PATH", help="Claude config dir (default ~/.claude)")
     parser.add_argument("--settings", metavar="PATH", help="settings.json to edit (default <claude-dir>/settings.json)")
     parser.add_argument("--hooks-dir", metavar="PATH", help="where the shim goes (default <claude-dir>/hooks)")
@@ -861,6 +863,8 @@ def _human_hooks(payload: Dict[str, Any]) -> str:
 def run_hooks(args: argparse.Namespace) -> int:
     action = args.action
     kind = args.kind
+    if getattr(args, "dry_run", False) and (kind != "pi" or action not in ("install", "uninstall")):
+        raise UsageError("--dry-run is supported for Pi install/uninstall only")
     layout = _layout_or_none(args)
     payload: Dict[str, Any] = {
         "kind": kind, "action": action, "settings": None, "hook": None,
@@ -869,6 +873,12 @@ def run_hooks(args: argparse.Namespace) -> int:
     }
     if action == "probe":
         return _run_probe(args, layout, payload)
+    if kind == "pi":
+        from . import pi_support
+
+        payload = pi_support.install(args, _cli_path(args))
+        emit(args, payload, lambda: _human_hooks(payload))
+        return 0 if payload["ok"] else EXIT_REFUSED
     if kind != "claude":
         if action in ("uninstall", "check"):
             payload["probe"] = _probe_passed(layout, kind)
@@ -1012,10 +1022,10 @@ Command = _cli.Command
 COMMANDS: List[Command] = [
     Command(
         name="hooks",
-        help="install, remove, check, or probe agent-side hooks (claude)",
+        help="install, remove, check, or probe agent-side integrations (claude, pi)",
         add_arguments=_hooks_args,
         run=run_hooks,
-        description="hooks install|uninstall|check|probe <kind>. Only claude has an installer: the shim goes to ~/.claude/hooks/ and three entries to ~/.claude/settings.json.",
+        description="hooks install|uninstall|check|probe <kind>. Claude uses a hook shim; Pi uses a runtime-observability extension and keeps typed delivery.",
     ),
     Command(
         name="hook-input",

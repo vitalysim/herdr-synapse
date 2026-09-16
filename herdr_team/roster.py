@@ -1724,6 +1724,11 @@ class Roster:
         return found[0]
 
     def remove_member(self, api: Any, name: str, keep_name: bool = False, reason: str = "removed", socket: Optional[str] = None) -> Dict[str, Any]:
+        from .document_sync import document_lock
+        with document_lock(self.paths):
+            return self._remove_member_locked(api, name, keep_name, reason, socket)
+
+    def _remove_member_locked(self, api: Any, name: str, keep_name: bool = False, reason: str = "removed", socket: Optional[str] = None) -> Dict[str, Any]:
         """Clear tokens and label, mark ``left`` (tombstone), post ``member_gone``."""
         team = self.load()
         member = team.find(name)
@@ -1827,6 +1832,11 @@ class Roster:
         return {"team": self.name, "archived_to": os.fspath(destination), "members_cleared": cleared}
 
     def adopt_rename(self, member_name: str, new_name: str, socket: Optional[str] = None) -> Member:
+        from .document_sync import document_lock
+        with document_lock(self.paths):
+            return self._adopt_rename_locked(member_name, new_name, socket)
+
+    def _adopt_rename_locked(self, member_name: str, new_name: str, socket: Optional[str] = None) -> Member:
         """The roster follows a rename by hand (or ``herdr-synapse rename``): history plus a board note."""
         validate_member_name(new_name)
         adopted: List[Member] = []

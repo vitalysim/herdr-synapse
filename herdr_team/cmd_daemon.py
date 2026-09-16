@@ -216,6 +216,7 @@ def daemon_status(layout: paths.Layout) -> Dict[str, Any]:
         "ledger_by_team": per_team,
         "identity_env_unset": info.identity_env_unset if info is not None else None,
         "manifest_version": info.manifest_version if info is not None else None,
+        "code_digest": info.code_digest if info is not None else None,
         "capabilities": info.capabilities if info is not None else None,
     }
 

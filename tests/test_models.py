@@ -76,7 +76,7 @@ class SettingTests(unittest.TestCase):
     def test_an_unsupported_kind_and_an_unknown_effort_are_refused_by_name(self):
         with self.assertRaises(HerdrTeamError) as caught:
             models.launch_args("gemini", "pro", None)
-        self.assertEqual((caught.exception.code, caught.exception.details["supported"]), ("model_unsupported", ["claude", "codex", "opencode"]))
+        self.assertEqual((caught.exception.code, caught.exception.details["supported"]), ("model_unsupported", ["claude", "codex", "opencode", "pi"]))
         with self.assertRaises(HerdrTeamError) as caught:
             models.validate("codex", None, "max")
         self.assertEqual((caught.exception.code, caught.exception.details["efforts"]), ("effort_unknown", ["minimal", "low", "medium", "high", "xhigh"]))
@@ -208,7 +208,7 @@ class SpawnTests(unittest.TestCase):
             self.assertEqual(by_name["delta-reviewer"][by_name["delta-reviewer"].index("--") + 1:],
                              ["-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"', "--dangerously-bypass-approvals-and-sandbox"])
             self.assertEqual(by_name["delta-worker"][by_name["delta-worker"].index("--") + 1:],
-                             ["--model", "opus", "--effort", "medium", "--dangerously-skip-permissions"])
+                             ["--model", "opus", "--effort", "medium", "--dangerously-skip-permissions", "--name", "delta-worker"])
             doc = store.read_json(ts.session.team("delta").team_json)
             self.assertEqual(doc["config"]["models"], {"claude": {"model": "opus", "effort": "medium"}})
             rows = {m["name"]: m for m in doc["members"]}
@@ -240,7 +240,9 @@ class SpawnTests(unittest.TestCase):
             ], env_no_daemon(ts), api))
             self.assertEqual(code, 0, err)
             start = next(argv for argv in api.runs if argv[:2] == ["agent", "start"])
-            self.assertEqual(start[start.index("--") + 1:], ["-m", "opencode/glm-5.3-flash", "--auto"])
+            extra = start[start.index("--") + 1:]
+            self.assertEqual(extra[:-1], ["-m", "opencode/glm-5.3-flash", "--auto", "--hostname", "127.0.0.1", "--port"])
+            self.assertTrue(1 <= int(extra[-1]) <= 65535)
             jobs = [store.read_json(path) for path in ts.session.team("delta").jobs_dir.glob("*.json")]
             self.assertEqual(len(jobs), 1)
             self.assertEqual((jobs[0]["kind"], jobs[0]["action"]), ("control", "model"))

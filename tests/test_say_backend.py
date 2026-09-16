@@ -574,6 +574,18 @@ class SayJobTests(unittest.TestCase):
         self.say(force=True)
         self.assertEqual(len(self.prompts()), 1)
 
+    def test_animated_codex_placeholder_allows_both_say_modes(self):
+        from herdr_team import daemon
+        self.d._prompt_line = daemon.Daemon._prompt_line.__get__(self.d)
+        for screen in ("› Ask Codex to do anything⡀        ⠈    ⠁ ", "›⠁Ask Codex to do anything  ⠈ ⠂"):
+            for force in (False, True):
+                self.setUp()  # each mode gets independent in-flight confirmation state
+                self.d._prompt_line = daemon.Daemon._prompt_line.__get__(self.d)
+                self.d._detection_text = lambda *a, text=screen, **k: text
+                before = len(self.prompts())
+                self.say(force=force)
+                self.assertEqual(len(self.prompts()), before + 1)
+
     def test_unverified_sources_and_stale_jobs_are_refused_with_a_record(self):
         cases = [
             ("popup origin", dict(via="popup", verified=False)),

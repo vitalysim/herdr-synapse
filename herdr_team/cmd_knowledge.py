@@ -57,7 +57,7 @@ def _render_quietly(layout: Any, team_name: str) -> Dict[str, Any]:
 
 
 def _add_project_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("action", nargs="?", choices=("set", "clear", "render"), help="set <path>, clear, or render the folder again")
+    parser.add_argument("action", nargs="?", choices=("set", "clear", "render", "sync"), help="set <path>, clear, render, or sync auto|manual (auto trusts project writers)")
     parser.add_argument("path", nargs="?", help="the project directory (with set)")
     parser.add_argument("--force", action="store_true", help="overwrite generated files that are not ours")
 
@@ -69,13 +69,15 @@ def _run_project(args: argparse.Namespace) -> int:
     if args.action is None:
         doc = load_doc(team_paths)
         project = _workdir.project_dir_of(doc)
-        payload: Dict[str, Any] = {"team": team_name, "project_dir": project}
+        from . import document_sync
+        sync_state = {path: {key: value for key, value in entry.items() if key in ("digest", "pending", "since", "error")} for path, entry in document_sync.load(team_paths).items() if isinstance(entry, dict)}
+        payload: Dict[str, Any] = {"team": team_name, "project_dir": project, "sync": "auto" if document_sync.enabled(doc) else "manual", "sync_state": sync_state}
         if project:
             targets = _workdir.paths_for(project, team_name)
             payload["folder"] = os.fspath(targets["root"])
             payload["exists"] = targets["root"].is_dir()
         return emit(args, payload, lambda: (
-            "project: {}\nfolder:  {}{}".format(project, payload.get("folder"), "" if payload.get("exists") else "  (not created yet)")
+            "project: {}\nfolder:  {}{}\nsync: {}".format(project, payload.get("folder"), "" if payload.get("exists") else "  (not created yet)", payload["sync"])
             if project else
             "project: none. Set one with: herdr-synapse project set <path>"
         ))
@@ -83,16 +85,32 @@ def _run_project(args: argparse.Namespace) -> int:
     check_write_session(args, layout, team_name)
 
     if args.action == "render":
+        if args.force:
+            _human_only(layout, team_name, author, "project render --force")
         result = _workdir.render(layout, team_name, force=args.force)
         return emit(args, dict(result, team=team_name), lambda: _render_result_text(result))
 
     _human_only(layout, team_name, author, "project {}".format(args.action))
 
+    if args.action == "sync":
+        if args.path not in ("auto", "manual"):
+            raise UsageError("project sync needs auto or manual; auto trusts writers of the project documents")
+        from . import document_sync
+        with document_sync.document_lock(team_paths):
+            def set_sync(doc: _roster.Team) -> None:
+                doc.config["document_sync"] = args.path
+            _roster.update_team(team_paths, set_sync)
+            _charter.audit(layout, team_name, "project_sync", author, {"mode": args.path})
+        _workdir.render(layout, team_name)
+        return emit(args, {"team": team_name, "sync": args.path}, "document sync: {}{}".format(args.path, " (project document writers are trusted)" if args.path == "auto" else ""))
+
     if args.action == "clear":
         def clear(doc: _roster.Team) -> None:
             doc.config.pop("project_dir", None)
 
-        _roster.update_team(team_paths, clear)
+        from .document_sync import document_lock
+        with document_lock(team_paths):
+            _roster.update_team(team_paths, clear)
         return emit(args, {"team": team_name, "project_dir": None}, "project cleared. Files already written were left in place.")
 
     if not args.path:
@@ -102,7 +120,9 @@ def _run_project(args: argparse.Namespace) -> int:
     def apply(doc: _roster.Team) -> None:
         doc.config["project_dir"] = os.fspath(resolved)
 
-    _roster.update_team(team_paths, apply)
+    from .document_sync import document_lock
+    with document_lock(team_paths):
+        _roster.update_team(team_paths, apply)
     result = _workdir.render(layout, team_name, force=args.force)
     # Writing files is not telling anyone. Members that joined before the folder
     # existed had no way to learn about it: nothing announced it and `me` is the
@@ -132,6 +152,8 @@ def _render_result_text(result: Dict[str, Any]) -> str:
         lines.append("  drifted (regenerated, your edit was not imported): " + path)
     for path in result.get("skipped") or []:
         lines.append("  skipped, not ours (pass --force to overwrite): " + path)
+    for path in result.get("sync_pending") or []:
+        lines.append("  preserved for document sync (see --json project for status): " + path)
     return "\n".join(lines)
 
 
