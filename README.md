@@ -2,6 +2,8 @@
   <img src="docs/banner.svg" alt="Herdr Synapse - the coordination layer for every coding agent" width="100%">
 </p>
 
+https://github.com/user-attachments/assets/4afbee34-daf0-4d1f-8ed1-7f803ab9a642
+
 <p align="center">
   Teams of coding agents inside one <a href="https://github.com/herdrdev/herdr">Herdr</a> session.<br>
   A shared board, a human-owned charter, and a notifier that speaks to an agent only when it can listen.
