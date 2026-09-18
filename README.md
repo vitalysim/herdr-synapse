@@ -73,6 +73,13 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
   OpenCode effort can switch live; Codex/Pi changes and OpenCode model changes
   apply at their next resume, or now with a restart that keeps their session.
   `who` shows what was asked for beside what the harness reports.
+- **A fresh replacement when an agent hits its limit.** Select a member in
+  `prefix+t`, choose **Swap agent…** (`0`), and pick Claude Code, Codex,
+  OpenCode, or Pi plus an optional model. Synapse creates a new agent with the same
+  name, role, Mission, instructions, manager assignment, working directory,
+  and team history. You do not need to create or select an existing agent.
+  The outgoing pane closes and the replacement opens in a new tab, so the
+  swap works even when the old agent cannot answer another prompt.
 
 **Coordination**
 
@@ -278,6 +285,9 @@ are not among the 17 installable state integrations above. They can join teams
 and use the board without an integration; automatic terminal delivery still
 requires explicit trust. Synapse does not promise session resume or any
 feature in the harness-sensitive matrix for them.
+
+Herdr 0.9.1 also advertises `letta`; Synapse reserves that agent-kind name.
+Fresh replacement currently supports Claude Code, Codex, OpenCode, and Pi.
 
 ## Install
 
@@ -580,6 +590,40 @@ the command to use. The skill tells every agent that a linked team's manager is
 a peer asking, never the operator. A manager cleared after linking pauses the
 link rather than dropping messages; dissolving a team breaks its links and
 tells the other side. Links are session-scoped: two Herdr servers do not link.
+
+## Replace an exhausted agent
+
+From the member menu, press `0` (Swap agent), choose Claude Code, Codex,
+OpenCode, or Pi, optionally enter `model@effort`, and confirm the replacement.
+From the board console:
+
+```text
+/swap hunt-reviewer codex
+/swap hunt-reviewer claude opus@medium
+```
+
+The replacement starts a **fresh conversation**. Its briefing includes the
+saved member instructions and recent relevant board context; project files
+stay in place. The old agent does not need to produce a final summary.
+Native conversation history is not converted between agents. Previous
+conversation references and model settings are retained for recovery.
+
+The equivalent CLI supports preview, an optional handoff note, and recovery:
+
+```bash
+herdr-synapse --team hunt swap hunt-reviewer --to codex --dry-run
+herdr-synapse --team hunt swap hunt-reviewer --to codex --handoff-file handoff.md
+herdr-synapse --team hunt swap hunt-reviewer --status
+herdr-synapse --team hunt swap hunt-reviewer --retry
+```
+
+A failed attempt retains its reserved pane. Resolve any login/setup prompt
+there and retry; Synapse reuses that instance. Before takeover, `--cancel`
+closes the reserved replacement and keeps the source configuration. If the
+source pane was already closed, `herdr-synapse resume hunt-reviewer` can reopen
+its recorded conversation from a shell pane. Swaps require operator authority
+and a trusted destination kind. They use the same unrestricted launch defaults
+as other Synapse-managed agents. Changing an agent does not restore provider quota.
 
 ## A model and an effort for supported harnesses
 
@@ -1004,7 +1048,7 @@ peer mail.
 
 ## Status
 
-Current source version: 0.16.0, skill v10.
+Current source version: 0.17.0, skill v10.
 
 Claude Code 2.1.267, Codex 0.153.4 and OpenCode 1.18.30 were exercised together
 in one disposable Herdr 0.9.0/p22 session. Formation, exact-session resume, idle

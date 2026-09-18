@@ -16,11 +16,10 @@ from support import FakeApi, TempState
 
 
 def run_cli(argv, env, api=None):
-    """``cli.main`` with ``HerdrApi`` replaced by ``api`` (a ``FakeApi``)."""
+    """Inject a per-call API; threaded board waits must not patch a global."""
     out, err = io.StringIO(), io.StringIO()
     fake = api if api is not None else FakeApi()
-    with mock.patch("herdr_team.api.HerdrApi", lambda socket_path, env=None, **kw: fake):
-        code = cli.main(list(argv), env=env, stdout=out, stderr=err)
+    code = cli.main(list(argv), env=env, stdout=out, stderr=err, api=fake)
     return code, out.getvalue(), err.getvalue()
 
 

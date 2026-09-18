@@ -53,13 +53,13 @@ MAX_COMBINING_RUN = 3
 #: Words a member, role, or team may never be called (plan 5.1).
 RESERVED_NAMES: FrozenSet[str] = frozenset({"human", "all", "me", "none", "system", "team"})
 
-#: The 23 kind labels of the installed Herdr 0.9.0 binary, verified against
-#: ``herdr agent start --help`` (``[possible values: ...]``) on 2026-09-09.
+#: Kind labels of the installed Herdr 0.9.1 binary, verified against
+#: ``herdr agent start --help`` (``[possible values: ...]``) on 2026-09-18.
 #: ``test_sanitize`` re-checks this list against the binary when one is on PATH.
 KIND_LABELS: FrozenSet[str] = frozenset({
     "pi", "claude", "codex", "gemini", "cursor", "devin", "agy", "cline", "omp",
     "mastracode", "opencode", "copilot", "kimi", "kiro", "droid", "amp", "grok",
-    "hermes", "kilo", "qodercli", "qwen", "maki", "muse",
+    "hermes", "kilo", "qodercli", "qwen", "maki", "muse", "letta",
 })
 
 #: Every alias ``src/detect/mod.rs::lookup_agent`` maps to a kind at HEAD.

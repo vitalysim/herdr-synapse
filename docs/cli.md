@@ -22,11 +22,31 @@ Pi context JSON can contain `used: null`, `percent: null`, and `estimated: true`
 
 ## Restore a saved team
 
+Members with an unfinished swap are skipped until that operation is retried or cancelled.
+
 `herdr-synapse restore <team> [--workspace ID] [--dry-run]` restores missing members into a new `team:<name>` tab in the current workspace. Teams larger than 24 restored members use additional numbered tabs. The command requires human/operator authority and an existing team in the selected Herdr session.
 
 Recorded conversations resume by exact ID using the member's effective model/effort configuration. Members without a conversation ID start fresh with their saved instructions and briefing. Already-running agents and members whose reserved pane still exists are skipped. Missing executables/directories, conflicting names, unsupported conversation references and startup failures are reported per member; eligible members continue. Failed panes remain available for inspection, and repeated calls do not duplicate them. Board history, read cursors, manager assignment, team links and member documents are preserved.
 
 `--dry-run` performs read-only preflight and returns `{team, dry_run: true, members}`. Execution returns `{team, tabs, members, counts}`, where `counts` contains `resumed`, `fresh`, `skipped` and `failed`. Each member includes `name`, `kind`, `role`, `status`, and, when applicable, its `mode`, `pane_id`, `terminal_id`, launch arguments and failure `reason`. Progress goes to stderr; `--json` keeps stdout to one result object. Exit 0 means no member failed; exit 1 means partial or complete member failure. An overlapping restore is refused with `restore_busy` (exit 5). A recorded session failing to resume never silently falls back to a new conversation.
+
+## Create a replacement agent
+
+`herdr-synapse [--team TEAM] swap MEMBER --to claude|codex|opencode|pi [--model MODEL[@EFFORT]] [--handoff-file PATH] [--dry-run]` creates a new instance and fresh conversation for an existing logical member. It never selects an unrelated live agent. The picker member action `0` and `/swap MEMBER KIND [MODEL[@EFFORT]]` use this backend. The CLI invocation authorizes closing the outgoing pane; the interactive surfaces show a confirmation first.
+
+Preflight checks the destination executable, settings, directory, trust, operator authority, and outgoing pane identity. A dry run does not start the daemon or allocate panes. Source panes with multiple views of one terminal are refused. Source identity is checked again immediately before close; this uses existing pane APIs, not an atomic conditional-stop method. Calling from the outgoing pane is refused.
+
+The operation creates a labelled `swap:<operation-id-prefix>` tab in the source workspace, closes the outgoing pane without typing a command into its dialog, launches the destination, transfers membership, and queues its briefing. A current daemon is required; a running older plugin daemon is replaced through the normal daemon startup path. A detected destination with a login or provider dialog still needs operator attention before it can receive its briefing. Completion means the fresh instance is bound and its briefing queued, not that a provider has accepted a model request.
+
+The member name, role, Mission, instruction documents/revisions, manager flag, project directory, board history/read cursors, links, delivery preferences, and existing operator-grant expiry survive. Model settings are selected for the destination kind from an explicit setting, previous saved settings for that kind, team defaults, then harness defaults. Source-native model arguments and conversation IDs do not carry into a fresh destination launch. The member generation increments once at takeover, and briefing/instruction acknowledgments reset. A missing initial destination session ID remains null until reported.
+
+`Member.swap` is optional durable operation data: `{id, phase, source, destination, created_at, requested_by, cutoff_seq, handoff, note, pane, ...}`. Phases are `prepared`, `stopping`, `starting`, `briefing`, `complete`, `failed`, `cancelled`; a failure retains `resume_phase` and `error`. `Member.agent_history` stores previous agent configurations and exact conversation references. Existing roster documents need no migration. Runtime identity writes are fenced while an operation is unfinished, including after the CLI or daemon restarts. The operation shares the restore lock during execution.
+
+Normal board requests remain available. Old direct typing/control/probe jobs are cancelled across takeover; the destination's own initial setting is tagged with its operation ID. Orientation includes a bounded recent board handoff with original author labels plus the optional operator note (UTF-8, up to 8 KiB). It preserves instruction-private sections and does not advance the historical board cursor.
+
+`swap MEMBER --status` returns the last operation and agent history. `--retry` continues an unfinished operation using its reserved pane and original settings; a layout-response timeout recovers the tab by its unique label. `--cancel` is available before takeover: close an owned reserved replacement and retain the original member configuration/session reference. If the source is gone, the member becomes missing and can be resumed from a shell. After takeover, retry finishes briefing setup. Both paths refuse to close a changed or unrelated replacement pane. If the source moved or changed, cancellation leaves it untouched and releases the member for explicit rebinding.
+
+JSON execution returns `{team, member, swap}`; failures during execution also include `error` and exit 1. Preflight/authority errors use the standard error object on stderr. Dry-run JSON includes `{team, member, name, role, kind, model, effort, argv, cwd, workspace_id, fresh:true, dry_run:true}`. Status also includes `agent_history`. Progress goes to stderr. `agent_swapped` records completion and `swap_control_cancelled` records discarded controls on the board. No automatic provider failover or transcript conversion is performed.
 
 Conventions used below:
 
@@ -68,7 +88,7 @@ Global flags are accepted before or after the command name.
 | `--session NAME` | Named session, mirrors `herdr --session`. `default` means the default session. |
 | `--socket PATH` | Socket override. Wins over `--session`, `HERDR_SOCKET_PATH`, `HERDR_SESSION`. |
 | `--session-mismatch-ok` | Allow a write (`post`, `retract`, `edit`, `task`, `ack`, `charter set|edit`, `brief --set`, `use`, `rename`, `remove`, `bind`, `dissolve`) to a team whose `team.json` socket differs from the resolved socket. Without it such a write is refused with `team_session_mismatch` (plan 12, RS-08) whenever the socket was resolved explicitly (`HERDR_SOCKET_PATH`, `HERDR_SESSION`, `--session`); `--socket` counts as consent; the default-socket fallback outside Herdr (`--team <path>`, nothing configured) is not checked so the offline append of HP-05 keeps working. `add` checks always (as before). Reads never check. |
-| `--version` | `herdr-synapse 0.16.0`; JSON `{"version","skill_version","plugin_id"}`. |
+| `--version` | `herdr-synapse 0.17.0`; JSON `{"version","skill_version","plugin_id"}`. |
 | `--skill` | Prints `skills/herdr-synapse/SKILL.md`; JSON `{"skill","skill_version"}`. |
 
 Environment the CLI reads: `HERDR_SOCKET_PATH`, `HERDR_SESSION`,

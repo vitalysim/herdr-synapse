@@ -75,7 +75,7 @@ SYSTEM_EVENTS = (
     "knowledge_updated", "instructions_updated", "instructions_edited", "knowledge_finding",
     "artifacts_changed", "project_set", "operator_granted", "operator_revoked",
     "context_high", "context_cleared", "context_compacted", "workdir_moved", "manager_changed",
-    "model_changed", "model_applied", "restart_failed",
+    "model_changed", "model_applied", "restart_failed", "agent_swapped", "swap_control_cancelled",
     "link_established", "link_broken", "link_read",
     "board_cleared",
 )
@@ -582,6 +582,13 @@ def enqueue_job(team: TeamPaths, kind: str, member: Optional[str], author: Autho
     }
     if extra:
         job.update(extra)
+    if member and kind in ("say", "control", "probe"):
+        from herdr_team import swap
+        target = swap.current(team, member)
+        operation = target.get("swap") or {}
+        if swap.active(target) and job.get("swap_id") != operation.get("id"):
+            swap.require_available(target)
+        job["target_generation"] = target.get("generation", 1)
     store.write_json(team.jobs_dir / "{}-{}.json".format(ts.replace(":", "").replace(".", ""), job_id), job)
     return job_id
 

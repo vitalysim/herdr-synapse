@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.17.0 (2026-09-18)
+
+- Create a fresh Claude Code, Codex, OpenCode, or Pi agent to replace a member whose provider allowance is exhausted. The member menu's `0` action, console `/swap`, and CLI `swap` retain its configuration and team history, launch a new conversation in a new tab, and queue an orientation with a saved-information handoff. No existing replacement or final response from the outgoing agent is required.
+- Swaps retain previous conversation references and native model settings, persist recovery progress, fence old controls, and support preview, status, retry, and cancellation before takeover. The source pane closes even when its agent is blocked; startup failures keep a reserved pane for inspection and retry.
+- Reserve the `letta` kind name advertised by Herdr 0.9.1.
+
 ## 0.16.0 (2026-09-09)
 
 - Context gauges now use the agent's actual model capacity instead of silently defaulting to 200k: current Claude 1M families resolve from the observed transcript model, OpenCode resolves `providerID` + `modelID` through its local catalogue, and Codex keeps using its runtime-reported window. An unknown window retains the exact token count but emits no percentage, sidebar severity, or `context_high` warning.

@@ -1,5 +1,31 @@
 # Human testing guide
 
+## Fresh agent replacement (0.17.0)
+
+Use a disposable session for this test. Pick a team member with a saved Mission
+and instructions, note its manager flag and working directory, then open its
+action menu and press `0`. Choose another agent type, leave model/effort empty
+or specify a supported setting, and confirm with `y`.
+
+Expect a newly created agent in a `swap:` tab, the old pane closed, and the
+same member name/configuration on the board. Once ready, the replacement gets
+its orientation and recent board context. It starts a new conversation.
+Repeat with an outgoing agent at a provider limit: the operation must not
+depend on the old agent generating a handoff or becoming idle.
+
+For startup trouble, inspect the reserved tab and resolve any login/setup
+prompt. Run `/swap <name> --retry`; expect the same reserved pane, not another
+instance. Before takeover, CLI `swap <name> --cancel` removes the reserved
+replacement and retains the source configuration/conversation reference.
+Use `swap <name> --status` to inspect recovery details.
+
+Automated tests cover blocked-source and failure/retry paths. The implementation
+also has a live Herdr 0.9.1 pane/process shutdown check; exercising actual
+provider quota screens and authenticated destination briefings remains a
+manual test, using an explicitly chosen model and budget.
+
+## First session
+
 How to try herdr-synapse in your own Herdr session for the first time. The
 complete list of capabilities, with UI and CLI paths, expected behaviour, and
 a test checklist, is `capabilities.md` in this directory. Written

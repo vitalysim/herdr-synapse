@@ -328,12 +328,20 @@ class SayCommandTests(unittest.TestCase):
         write_live_daemon(self.ts)
 
         def outcomes():
-            typed_record(self.ts, 1, "typed", "in_turn", member="alpha-reviewer")
-            typed_record(self.ts, 2, "refused", "dialog", member="alpha-worker")
+            # Wait for the actual requests; a fixed timer can publish receipts
+            # before CLI setup finishes on a busy machine, consuming seqs 1/2.
+            for _ in range(100):
+                rows = [r for r in store.BoardStore(self.ts.team).read() if r.get("kind") == "direct"]
+                if len(rows) == 2:
+                    by_member = {r["to"][0]: r["seq"] for r in rows}
+                    typed_record(self.ts, by_member["alpha-reviewer"], "typed", "in_turn", member="alpha-reviewer")
+                    typed_record(self.ts, by_member["alpha-worker"], "refused", "dialog", member="alpha-worker")
+                    return
+                time.sleep(0.05)
 
-        timer = threading.Timer(0.3, outcomes)
+        timer = threading.Thread(target=outcomes)
         timer.start()
-        self.addCleanup(timer.cancel)
+        self.addCleanup(timer.join)
         code, payload, err = self.say("all", "finish", "--force", "--timeout", "3")
         self.assertEqual(code, 0, err)
         self.assertTrue(payload["waited"])

@@ -226,7 +226,7 @@ class ScrollTests(unittest.TestCase):
 
 
 class ActionMenuTests(unittest.TestCase):
-    def test_the_menu_lists_nine_numbered_actions(self):
+    def test_the_menu_lists_ten_actions_and_zero_opens_swap(self):
         model = managed(picker_model(ALPHA, focused=None))
         lines = tui_model.picker_lines(model, 100, 24)
         self.assertIn("alpha-reviewer · reviewer · codex · w2:p1 · idle", lines[0])
@@ -237,7 +237,9 @@ class ActionMenuTests(unittest.TestCase):
         self.assertTrue(any("8  make it the team manager" in line for line in lines))
         self.assertTrue(any("9  set its model and effort" in line for line in lines))
         picker_apply_key(model, "0")
-        self.assertEqual(model.error, "type a number between 1 and 9")
+        self.assertEqual(model.stage, "swap_kind")
+        picker_apply_key(model, "ESC")
+        model.action_index = 0
         picker_apply_key(model, "DOWN")
         picker_apply_key(model, "ENTER")
         self.assertEqual(model.stage, "goal")

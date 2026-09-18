@@ -58,7 +58,7 @@ class GrammarTests(unittest.TestCase):
             with self.assertRaises(HerdrTeamError) as ctx:
                 roster.validate_member_name(alias)
             self.assertEqual(ctx.exception.details["reason"], "agent kind alias")
-        self.assertEqual(len(roster.KIND_LABELS), 23)
+        self.assertEqual(len(roster.KIND_LABELS), 24)
 
     def test_role_grammar(self) -> None:
         self.assertEqual(roster.validate_role("reviewer"), "reviewer")

@@ -17,8 +17,7 @@ from support import FakeApi, FakeError, TempState, fake_agent, identity_tokens
 def run_cli(argv, env, api=None):
     out, err = io.StringIO(), io.StringIO()
     fake = api if api is not None else FakeApi()
-    with mock.patch("herdr_team.api.HerdrApi", lambda socket_path, env=None, **kw: fake):
-        code = cli.main(list(argv), env=env, stdout=out, stderr=err)
+    code = cli.main(list(argv), env=env, stdout=out, stderr=err, api=fake)
     return code, out.getvalue(), err.getvalue()
 
 

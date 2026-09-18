@@ -33,6 +33,7 @@ PROG = "herdr-synapse"
 COMMAND_MODULES: Tuple[str, ...] = (
     "herdr_team.cmd_roster",
     "herdr_team.cmd_restore",
+    "herdr_team.cmd_swap",
     "herdr_team.cmd_board",
     "herdr_team.cmd_misc",
     "herdr_team.cmd_update",
@@ -190,6 +191,7 @@ def main(
     env: Optional[Mapping[str, str]] = None,
     stdout: Optional[IO[str]] = None,
     stderr: Optional[IO[str]] = None,
+    api: Any = None,
 ) -> int:
     """Parse, dispatch, and turn every ``HerdrTeamError`` into a JSON stderr line."""
     args_list = list(sys.argv[1:] if argv is None else argv)
@@ -203,6 +205,7 @@ def main(
         args.env = environment
         args.stdout = out
         args.stderr = err
+        args.api = api
         if args.version:
             return emit(args, {"version": VERSION, "skill_version": SKILL_VERSION, "plugin_id": "herdr-synapse"}, "{} {}".format(PROG, VERSION))
         if args.skill:

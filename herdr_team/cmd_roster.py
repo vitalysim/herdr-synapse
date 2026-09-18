@@ -1457,6 +1457,8 @@ def _run_rename(args: argparse.Namespace) -> int:
     member = team.find(args.old)
     if member is None or member.is_human or member.status == "left":
         raise HerdrTeamError("member_not_found", "{!r} is not an agent member of {!r}".format(args.old, team_name), EXIT_REFUSED, {"name": args.old, "roster": team.names()})
+    from herdr_team import swap
+    swap.require_available(member)
     new = _roster.validate_member_name(args.new)
     if member.pane_id:
         _roster.rename_agent(api, member.pane_id, new)

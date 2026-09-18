@@ -1940,6 +1940,16 @@ class Daemon:
     def _reload_roster(self, team: TeamState) -> None:
         doc = _load_roster_doc(team.paths)
         if doc is not None:
+            from herdr_team import swap
+            for member in doc.get("members", []):
+                name = str(member.get("name"))
+                previous = team.member(name) or {}
+                if member.get("swap") and ((previous.get("swap") or {}).get("id") != member["swap"].get("id") or previous.get("kind") != member.get("kind")):
+                    # Never carry a landed control, probe, or usage observation into a replacement.
+                    pending = team.pending.get(name)
+                    if pending is not None and pending.kind != "nudge":
+                        team.pending.pop(name, None)
+                    team.runtime.pop(name, None)
             revision = int(doc.get("revision") or 0)
             repair_result = _workdir.repair_creation_scaffolds(self.layout, team.name) if team.scaffold_repair_revision != revision else []
             if repair_result is not None:
@@ -2521,6 +2531,9 @@ class Daemon:
         members: List[roster.Member] = []
         by_name: Dict[str, Dict[str, Any]] = {}
         for raw in team.members():
+            from herdr_team import swap
+            if swap.active(raw):
+                continue
             name = raw.get("name")
             if not isinstance(name, str) or not name or raw.get("kind") == "human" or raw.get("status") == "left":
                 continue
@@ -3806,6 +3819,13 @@ class Daemon:
 
     def _advance_restart(self, team: TeamState, name: str, rt: MemberRuntime, now: float) -> None:
         """One step of exit -> start -> wait for the session to come back."""
+        from herdr_team import swap
+        latest = swap.current(team.paths, name)
+        if latest.get("swap") != (team.member(name) or {}).get("swap"):
+            self._reload_roster(team)
+            return
+        if swap.active(latest):
+            return
         state = rt.restart or {}
         phase = state.get("phase")
         pane_id = str(state.get("pane_id") or "")
@@ -4124,6 +4144,15 @@ class Daemon:
         kind = str(job.get("kind") or "")
         member_name = job.get("member")
         member = team.member(str(member_name)) if isinstance(member_name, str) else None
+        from herdr_team import swap
+        if member is not None:
+            latest = swap.current(team.paths, str(member_name))
+            if latest.get("swap") and latest.get("swap") != member.get("swap"):
+                self._reload_roster(team)
+                member = team.member(str(member_name))
+            if swap.stale_job(latest, job):
+                self._append_system(team, "swap_control_cancelled", "{}: old {} cancelled by agent swap".format(member_name, kind), ["human"])
+                return
         self.log("{}: job {} for {}".format(team.name, kind, member_name))
         if kind == "brief":
             if member is None:
@@ -4287,6 +4316,9 @@ class Daemon:
 
     def _evaluate_member(self, team: TeamState, member: Dict[str, Any], pending: Pending, now: float) -> None:
         name = str(member["name"])
+        from herdr_team import swap
+        if swap.active(member):
+            return
         rt = team.rt(name)
         # 1. cursor re-read
         cursor, seen = read_cursor_state(team.paths, name)
@@ -4667,6 +4699,10 @@ class Daemon:
         zero). A roster terminal that moved to another pane is refused too,
         without the counter: reconcile adopts the new pane id first.
         """
+        from herdr_team import swap
+        latest = swap.current(team.paths, str(member.get("name")))
+        if swap.active(latest) or (latest.get("swap") and latest.get("generation") != member.get("generation")):
+            return False
         terminal_id = agent.get("terminal_id")
         roster_terminal = member.get("terminal_id")
         ok = isinstance(terminal_id, str) and terminal_id == roster_terminal and team.member_by_terminal(terminal_id) is not None

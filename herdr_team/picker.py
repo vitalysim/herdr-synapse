@@ -281,8 +281,23 @@ def _loop(stdscr: Any, model: PickerModel, api: Any, layout: Optional[Layout], e
     last_key = time.monotonic()
     pending_path: Optional[str] = None
     restore = None
+    replacement = None
     try:
         while True:
+            if replacement is not None:
+                result = replacement.result()
+                if result is None:
+                    model.status = replacement.progress()
+                else:
+                    from herdr_team.swap_ui import result_text
+                    replacement.close()
+                    replacement = None
+                    model.stage = "select"
+                    model.status = result_text(result)
+                    try:
+                        refresh_rows(model, api, layout)
+                    except HerdrTeamError as err:
+                        model.error = err.message
             if restore is not None:
                 result = restore.result()
                 if result is None:
@@ -308,13 +323,13 @@ def _loop(stdscr: Any, model: PickerModel, api: Any, layout: Optional[Layout], e
             stdscr.timeout(int(TICK_S * 1000))
             key = read_key(stdscr, int(TICK_S * 1000))
             if key is None:
-                if restore is None and time.monotonic() - last_key > IDLE_WATCHDOG_S:
+                if restore is None and replacement is None and time.monotonic() - last_key > IDLE_WATCHDOG_S:
                     return None
                 refresh_status_from_who(model, layout)
                 continue
             last_key = time.monotonic()
-            if restore is not None and key not in ("UP", "DOWN", "PGUP", "PGDN", "HOME", "END"):
-                model.error = "restore is running; you can scroll while agents start"
+            if (restore is not None or replacement is not None) and key not in ("UP", "DOWN", "PGUP", "PGDN", "HOME", "END"):
+                model.error = "agents are starting; you can scroll while this runs"
                 continue
             if pending_path is not None:
                 if key == "ENTER":
@@ -357,6 +372,18 @@ def _loop(stdscr: Any, model: PickerModel, api: Any, layout: Optional[Layout], e
                 except OSError as err:
                     model.error = "cannot start restore: {}".format(err)
                 continue
+            if intent.kind == "member_swap":
+                if not actions:
+                    model.error = "--dry-run: picker actions are disabled"
+                    continue
+                from herdr_team.swap_ui import SwapProcess
+                try:
+                    replacement = SwapProcess(intent.args, dict(env or {}))
+                    model.stage = "select"
+                    model.error = None
+                except OSError as err:
+                    model.error = "cannot start swap: {}".format(err)
+                continue
             if intent.kind == "restore_focus":
                 if actions and focus_restored_pane(model, api):
                     return None
@@ -383,6 +410,8 @@ def _loop(stdscr: Any, model: PickerModel, api: Any, layout: Optional[Layout], e
             if intent.kind == "create":
                 return intent.args
     finally:
+        if replacement is not None:
+            replacement.close()
         if restore is not None:
             restore.close()
         disable_bracketed_paste()

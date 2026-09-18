@@ -1,5 +1,9 @@
 # herdr-synapse capabilities reference
 
+Fresh agent replacement: open a member's action menu and press `0`, choose Claude Code, Codex, OpenCode, or Pi, optionally set its model/effort, and confirm. Synapse creates a new instance in a new tab, closes the outgoing pane, preserves member configuration, and queues a handoff. Console: `/swap <member> <kind> [model@effort]`. CLI: `swap <member> --to <kind>`, with `--dry-run`, `--status`, `--retry`, and pre-takeover `--cancel`. No existing replacement agent is needed. See [the command contract](cli.md#create-a-replacement-agent).
+
+Replacement acceptance checklist: verify configuration and historical read positions survive; the destination is a newly created instance; an unrelated agent of the same kind is untouched; a quota-blocked source does not need to answer a prompt; failed startup can be inspected and retried in its reserved pane; old direct/control jobs do not reach the replacement. Native transcripts stay separate. Completion reports creation and queued briefing, not verified provider availability.
+
 Team restoration: in `Ctrl+B`, `T`, highlight a saved team and press `s`, or run `herdr-synapse restore <team>`. Missing agents reopen in a new named tab using their saved conversations, or start fresh when no conversation ID exists. Roles, manager, settings, instructions, board history and team links are retained. Running/reserved panes are skipped; startup failures remain available to inspect. See [the command contract](cli.md#restore-a-saved-team) for preflight and partial-result behavior.
 
 Everything the plugin can do, how to drive it from the Herdr UI and from the

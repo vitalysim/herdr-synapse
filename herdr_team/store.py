@@ -274,7 +274,7 @@ SYSTEM_EVENTS = (
     "knowledge_updated", "instructions_updated", "instructions_edited", "knowledge_finding",
     "artifacts_changed", "project_set", "operator_granted", "operator_revoked",
     "context_high", "context_cleared", "context_compacted", "workdir_moved", "manager_changed",
-    "model_changed", "model_applied", "restart_failed",
+    "model_changed", "model_applied", "restart_failed", "agent_swapped", "swap_control_cancelled",
     "link_established", "link_broken", "link_read",
     "board_cleared",
 )
@@ -1575,7 +1575,18 @@ class RosterStore:
         except (TypeError, ValueError):
             return 0
 
-    def _save_locked(self, doc: Dict[str, Any], expected_revision: Optional[int]) -> Dict[str, Any]:
+    def _save_locked(self, doc: Dict[str, Any], expected_revision: Optional[int], swap_id: Optional[str] = None) -> Dict[str, Any]:
+        # An unfinished replacement owns the member, even after its CLI exits.
+        # Other members and team documents may still change normally.
+        before = read_json(self.team.team_json, default={}) or {}
+        after_members = {m.get("name"): m for m in doc.get("members", [])}
+        for member in before.get("members", []):
+            operation = member.get("swap") or {}
+            if operation and operation.get("phase") not in ("complete", "cancelled") and operation.get("id") != swap_id:
+                after = after_members.get(member.get("name")) or {}
+                protected = ("name", "kind", "terminal_id", "pane_id", "workspace_id", "tab_id", "status", "generation", "session", "model", "effort", "role", "manager", "swap")
+                if any(after.get(key) != member.get(key) for key in protected):
+                    raise HerdrTeamError("swap_busy", "member has an unfinished swap; use swap --status or --retry", EXIT_REFUSED)
         current = self.current_revision()
         if expected_revision is not None and current is not None and current != expected_revision:
             raise HerdrTeamError(
@@ -1598,7 +1609,7 @@ class RosterStore:
         with team_lock(self.team):
             return self._save_locked(doc, expected_revision)
 
-    def update(self, mutate: Callable[[Dict[str, Any]], Any], retries: Optional[int] = None) -> Dict[str, Any]:
+    def update(self, mutate: Callable[[Dict[str, Any]], Any], retries: Optional[int] = None, swap_id: Optional[str] = None) -> Dict[str, Any]:
         """Lock, load, ``mutate(doc)`` in place, save; retries ``MAX_RETRIES`` on conflict."""
         attempts = max(1, int(retries if retries is not None else self.MAX_RETRIES))
         last: Optional[HerdrTeamError] = None
@@ -1611,7 +1622,7 @@ class RosterStore:
                     expected = 0
                 mutate(doc)
                 try:
-                    return self._save_locked(doc, expected)
+                    return self._save_locked(doc, expected, swap_id=swap_id)
                 except HerdrTeamError as err:
                     if err.code != "roster_conflict":
                         raise

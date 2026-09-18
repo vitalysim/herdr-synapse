@@ -279,6 +279,7 @@ class ConsoleState:
         self.last_build = 0.0
         #: This console's terminal id: the registry key for its entry.
         self.terminal_id: Optional[str] = None
+        self.swap_process: Optional[Any] = None
 
 
 #: Rebuild at least this often even when nothing on disk moved, so relative age
@@ -702,6 +703,17 @@ def execute_intent(intent: Intent, model: ConsoleModel, state: ConsoleState, api
         else:
             model.status = "{} <-> {} unlinked; both managers were told".format(team, other)
         return True
+    if kind == "swap":
+        if state.swap_process is not None:
+            model.status = "a replacement is already starting in this console"
+            return True
+        from herdr_team.swap_ui import SwapProcess
+        try:
+            state.swap_process = SwapProcess(dict(intent.args, team=team), env)
+            model.status = "creating replacement for {}…".format(intent.args["member"])
+        except OSError as err:
+            model.status = "cannot start replacement: {}".format(err)
+        return True
     if kind == "model_set":
         member = str(intent.args.get("member"))
         args = ["--team", team, "model", member, str(intent.args.get("setting") or "")]
@@ -1061,6 +1073,13 @@ def _loop(stdscr: Any, state: ConsoleState, api: Any) -> int:
     last_refresh = time.monotonic()
     try:
         while True:
+            if state.swap_process is not None:
+                from herdr_team.swap_ui import result_text
+                result = state.swap_process.result()
+                model.status = state.swap_process.progress() if result is None else result_text(result)
+                if result is not None:
+                    state.swap_process.close()
+                    state.swap_process = None
             state.height, state.width = stdscr.getmaxyx()
             model.width, model.height = state.width, state.height
             styled = tui_model.render_console_styled(model, state.width, state.height)
@@ -1087,6 +1106,8 @@ def _loop(stdscr: Any, state: ConsoleState, api: Any) -> int:
                 refresh(model, state.layout, state)
                 last_refresh = time.monotonic()
     finally:
+        if state.swap_process is not None:
+            state.swap_process.close()
         disable_bracketed_paste()
 
 

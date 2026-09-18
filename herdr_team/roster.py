@@ -187,7 +187,7 @@ SYSTEM_EVENTS = (
     "knowledge_updated", "instructions_updated", "instructions_edited", "knowledge_finding",
     "artifacts_changed", "project_set", "operator_granted", "operator_revoked",
     "context_high", "context_cleared", "context_compacted", "workdir_moved", "manager_changed",
-    "model_changed", "model_applied", "restart_failed",
+    "model_changed", "model_applied", "restart_failed", "agent_swapped", "swap_control_cancelled",
     "link_established", "link_broken", "link_read",
     "board_cleared",
 )
@@ -394,6 +394,9 @@ class Member:
     model: Optional[str] = None
     effort: Optional[str] = None
     previous_names: List[Dict[str, Any]] = field(default_factory=list)
+    #: Durable create-and-replace operation; completed records retain recovery information.
+    swap: Optional[Dict[str, Any]] = None
+    agent_history: List[Dict[str, Any]] = field(default_factory=list)
 
     @property
     def is_human(self) -> bool:
@@ -433,6 +436,10 @@ class Member:
             obj["effort"] = self.effort
         if self.previous_names:
             obj["previous_names"] = [dict(p) for p in self.previous_names]
+        if self.swap:
+            obj["swap"] = self.swap
+        if self.agent_history:
+            obj["agent_history"] = self.agent_history
         return obj
 
     @classmethod
@@ -475,6 +482,8 @@ class Member:
             model=str(obj["model"]) if isinstance(obj.get("model"), str) and obj.get("model") else None,
             effort=str(obj["effort"]) if isinstance(obj.get("effort"), str) and obj.get("effort") else None,
             previous_names=[dict(p) for p in previous if isinstance(p, dict)],
+            swap=obj.get("swap") if isinstance(obj.get("swap"), dict) else None,
+            agent_history=[dict(p) for p in obj.get("agent_history", []) if isinstance(p, dict)],
         )
 
     def retired_name_active(self, name: str, now: Optional[float] = None) -> bool:
@@ -1732,6 +1741,8 @@ class Roster:
         """Clear tokens and label, mark ``left`` (tombstone), post ``member_gone``."""
         team = self.load()
         member = team.find(name)
+        from herdr_team import swap
+        swap.require_available(member)
         if member is None or member.is_human:
             raise HerdrTeamError("member_not_found", "{!r} is not an agent member of team {!r}".format(name, self.name), EXIT_REFUSED, {"name": name, "team": self.name, "roster": team.names()})
         if member.status == "left":
@@ -1815,6 +1826,9 @@ class Roster:
     def dissolve(self, api: Any, timestamp: Optional[str] = None) -> Dict[str, Any]:
         """Clear tokens and labels for every member and move the team dir to ``_archive/<team>-<ts>/``."""
         team = self.load()
+        from herdr_team import swap
+        for member in team.agents():
+            swap.require_available(member)
         cleared = 0
         for member in team.agents():
             if not member.pane_id:

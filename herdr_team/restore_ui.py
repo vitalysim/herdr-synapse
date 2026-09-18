@@ -11,13 +11,17 @@ from herdr_team.console import cli_path
 
 
 class RestoreProcess:
-    def __init__(self, team: str, workspace: Optional[str], env: Dict[str, str]) -> None:
+    result_key = "counts"
+
+    def __init__(self, team: str, workspace: Optional[str], env: Dict[str, str], command: Optional[list] = None) -> None:
         self.team = team
         self.output = tempfile.TemporaryFile()
         self.errors = tempfile.TemporaryFile()
         argv = [os.fspath(cli_path()), "--json", "restore", team]
         if workspace:
             argv += ["--workspace", workspace]
+        if command is not None:
+            argv = [os.fspath(cli_path()), "--json"] + command
         try:
             self.proc = subprocess.Popen(argv, env=dict(env), stdin=subprocess.DEVNULL,
                                          stdout=self.output, stderr=self.errors, start_new_session=True)
@@ -39,7 +43,7 @@ class RestoreProcess:
             out = json.load(self.output)
         except (ValueError, UnicodeError):
             out = None
-        if not isinstance(out, dict) or "counts" not in out:
+        if not isinstance(out, dict) or self.result_key not in out:
             out = {"error": self.progress(), "counts": {"failed": 1}, "members": []}
         out["exit_code"] = code
         return out

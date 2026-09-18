@@ -30,6 +30,10 @@ def plan_restore(team: roster.Team, agents: List[Dict[str, Any]], panes: List[Di
     """Identity evidence wins over cached status; pane IDs alone never identify a member."""
     result = []
     for member in team.agents():
+        from herdr_team import swap
+        if swap.active(member):
+            result.append({"name": member.name, "role": member.role, "kind": member.kind, "status": "skipped", "reason": "unfinished swap; use swap --retry"})
+            continue
         item: Dict[str, Any] = {"name": member.name, "role": member.role, "kind": member.kind, "cwd": member.cwd}
         live = next((a for a in agents if
                      (member.terminal_id and a.get("terminal_id") == member.terminal_id)
@@ -92,7 +96,7 @@ def _brief(book: roster.Roster, item: Dict[str, Any], author: Any) -> None:
                              "effort": item["effort"], "setting": models.label(item["model"], item["effort"]),
                              "keystrokes": keys, "brief_after": True}
         seq = board_append(book.paths, record)
-        enqueue_job(book.paths, "control", item["name"], author, extra={"seq": seq, "action": "model"})
+        enqueue_job(book.paths, "control", item["name"], author, extra={"seq": seq, "action": "model", "swap_id": item.get("swap_id")})
     else:
         roster.write_briefing_job(book.paths, item["name"], requested_by=commands._requested_by(author))
 

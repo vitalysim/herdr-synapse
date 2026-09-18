@@ -207,7 +207,8 @@ def _update_members(team: TeamPaths, updates: Dict[str, Dict[str, Any]]) -> Opti
 
 
 def _members_on_pane(doc: Dict[str, Any], pane_id: str) -> List[Dict[str, Any]]:
-    return [m for m in doc.get("members", []) if isinstance(m, dict) and m.get("pane_id") == pane_id and m.get("kind") != "human" and m.get("status") in LIVE_STATUSES]
+    from herdr_team import swap
+    return [m for m in doc.get("members", []) if isinstance(m, dict) and not swap.active(m) and m.get("pane_id") == pane_id and m.get("kind") != "human" and m.get("status") in LIVE_STATUSES]
 
 
 def _member_by_session(doc: Dict[str, Any], session: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -461,6 +462,8 @@ def _reconcile_available(layout: Layout, api: Any, teams: Dict[str, Dict[str, An
     ``missing`` member waits for a detected kind), the same rule as
     ``roster.rehydrate_match`` and the daemon's reconcile.
     """
+    from herdr_team import swap
+    teams = {name: dict(doc, members=[m for m in doc.get("members", []) if not swap.active(m)]) for name, doc in teams.items()}
     if agent is None:
         # The agent was released (or the pane hosts a shell): members on that pane are missing.
         say("agent.get {} -> {}; members on the pane become missing".format(pane_id, code))
