@@ -714,6 +714,16 @@ def execute_intent(intent: Intent, model: ConsoleModel, state: ConsoleState, api
         except OSError as err:
             model.status = "cannot start replacement: {}".format(err)
         return True
+    if kind == "permissions":
+        rc, out, err = run_cli(["--team", team, "permissions"] + list(intent.args.get("args") or []), env)
+        if err:
+            model.status = "permissions failed: {}".format(err.get("message") or err.get("code"))
+        else:
+            lines = ["Team default: {}. Saved settings apply at next launch; running mode unverified.".format((out or {}).get("default"))]
+            lines.extend("{}: {} ({}) — {}".format(r["name"], r["mode"], r["source"], r["effect"]) for r in (out or {}).get("members", []))
+            model.peek = tui_model.box(lines, model.width, "launch permissions (Esc closes)")
+            model.status = "launch permissions; YOLO is the initial default"
+        return True
     if kind == "model_set":
         member = str(intent.args.get("member"))
         args = ["--team", team, "model", member, str(intent.args.get("setting") or "")]

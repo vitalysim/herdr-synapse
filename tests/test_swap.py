@@ -56,6 +56,21 @@ class SwapTests(unittest.TestCase):
     def run_swap(self, *extra):
         return json_out(run_cli(["--json", "--team", "alpha", "swap", self.name, *extra], env_no_daemon(self.ts), self.api))
 
+    def test_native_permissions_survive_failed_swap_retry_and_takeover(self):
+        self.book.update(lambda team: setattr(team.find(self.name), "permissions", "native"))
+        self.start.side_effect = HerdrTeamError("agent_start_failed", "try again", 1)
+        code, out, err = self.run_swap("--to", "codex")
+        self.assertNotEqual(code, 0)
+        self.assertNotIn("--dangerously-bypass-approvals-and-sandbox", self.start.call_args.kwargs["args"])
+        self.assertEqual(self.book.load().find(self.name).permissions, "native")
+        self.start.side_effect = self.launch
+        code, out, err = self.run_swap("--retry")
+        self.assertEqual(code, 0, (out, err))
+        self.assertNotIn("--dangerously-bypass-approvals-and-sandbox", self.start.call_args.kwargs["args"])
+        self.assertEqual(self.book.load().find(self.name).permissions, "native")
+        spec = swap.plan(self.book.load(), self.name, "claude", None, env_no_daemon(self.ts))
+        self.assertNotIn("--dangerously-skip-permissions", spec["argv"])
+
     def test_creates_new_agent_for_blocked_source_and_keeps_configuration(self):
         store.write_json(self.ts.team.cursors_dir / (self.name + ".json"), {"seq": 7})
         cursor = (self.ts.team.cursors_dir / (self.name + ".json")).read_bytes()

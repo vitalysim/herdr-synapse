@@ -14,7 +14,7 @@ Pi 0.85.1 uses the existing team commands with kind `pi`. Setup requires Herdr's
 
 `hooks install|check|uninstall pi` manages only `<PI_CODING_AGENT_DIR or ~/.pi/agent>/extensions/herdr-synapse.ts`. Install and uninstall support `--dry-run`. Foreign files and symlinks are refused. Check returns a nonzero exit code when the managed extension is missing or outdated; it does not change delivery configuration.
 
-Pi accepts model defaults/member overrides as `provider/model@thinking`, using native `--model` and `--thinking` flags. Thinking levels are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`, subject to the actual model's capabilities. Use `--apply restart` to change a running member; success requires a new runtime report matching the requested setting and original native conversation. Managed resumes require the recorded absolute session path. Fresh starts receive `--name <member>`; resumed titles are preserved. Managed starts and resumes use run-scoped `--approve` without changing global project trust.
+Pi accepts model defaults/member overrides as `provider/model@thinking`, using native `--model` and `--thinking` flags. Thinking levels are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`, subject to the actual model's capabilities. Use `--apply restart` to change a running member; success requires a new runtime report matching the requested setting and original native conversation. Managed resumes require the recorded absolute session path. Fresh starts receive `--name <member>`; resumed titles are preserved. Managed starts and resumes default to run-scoped `--approve` without changing global project trust; `permissions MEMBER native` omits it.
 
 Pi context JSON can contain `used: null`, `percent: null`, and `estimated: true`; `window` is the active model's runtime limit, not a hardcoded default. Stale or identity-mismatched telemetry is ignored. Compact uses `/compact`; clear uses `/new`. A compact failure is recorded as a failed `typed` outcome, not as successful compaction. `!!` and interrupt deliveries use native steering semantics; typed means submitted, not that the agent has already acted on it.
 
@@ -164,7 +164,7 @@ create <team> --new [--workspace] [--charter …] --spawn <role>:<kind>[:<cwd>]�
   flags is refused (`model_unsupported`) before anything is written; a key
   that names nobody being added is a usage error. See section 9c.
 
-- Every `--new --spawn` launch of Claude Code, Codex or OpenCode is unrestricted by default: Synapse appends `--dangerously-skip-permissions`, `--dangerously-bypass-approvals-and-sandbox` or `--auto`, respectively. A live `--member` is not restarted and therefore keeps its current mode.
+- Every `--new --spawn` launch of Claude Code, Codex or OpenCode is unrestricted by default: Synapse appends `--dangerously-skip-permissions`, `--dangerously-bypass-approvals-and-sandbox` or `--auto`, respectively. `--permissions native` selects native agent settings for the new team; repeat `--member-permissions NAME|ROLE=yolo|native` for individual overrides. A live `--member` is not restarted and therefore keeps its current mode. Use `permissions --default MODE` to change an existing team’s default before `create --reuse`.
 
 - `<target>`: pane id or live agent name. Role defaults to the kind label.
   Name defaults to `<team>-<role>` (`--names plain` uses `<role>`).
@@ -1645,3 +1645,28 @@ evaluation, so no restart is needed. Unknown labels are `kind_unknown` (1).
 
 JSON `list`: `{"kinds":[{"kind","delivers","trusted","verified","probe_ok","multiline","trusted_at","reason"}],"path"}`;
 `trust`/`untrust`: `{"kind","action","row":{...},"path"}`.
+
+## Launch permissions
+
+`permissions [MEMBER [yolo|native|inherit]]` shows or saves next-launch settings.
+`permissions --default yolo|native` sets the team default. The same arguments
+work with `/permissions` in the console. Writes require operator authority;
+reads are available to members. Settings resolve member → team → `yolo`.
+`inherit` removes the member override. New teams also accept `create
+--permissions MODE` and repeated `--member-permissions NAME|ROLE=MODE`.
+
+The JSON result contains `team`, `default`, and `members`. Each member has
+`name`, `kind`, `mode`, `source` (`member`, `team`, `default`), `flags`, `effect`,
+`applies: "next launch"`, and `running_mode: "unknown"`. `who` includes this
+policy under each agent’s `permissions`; create output uses `launch_permissions`
+to distinguish it from the persisted member override.
+
+Saved policy applies to create, resume, restore, swap and controlled restarts.
+Pending swaps lock their policy until completion/cancellation. Stale queued
+restart argv is rejected if the policy changes. Running agents are unchanged.
+An outdated daemon must be replaced successfully before a new policy is saved.
+
+Native mode adds no bypass flags and still respects native config and profiles;
+it does not guarantee sandboxing or approval dialogs. Pi’s YOLO flag trusts
+project resources, not tools: Pi has no built-in tool approval prompts.
+See the [permission table](../README.md#launch-permissions-yolo-by-default).

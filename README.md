@@ -28,7 +28,7 @@ harness. The full core workflow is live-verified with Claude Code, Codex, OpenCo
 trust them.
 
 > [!CAUTION]
-> Synapse-managed Claude Code, Codex and OpenCode launches run unrestricted by default: `--dangerously-skip-permissions`, `--dangerously-bypass-approvals-and-sandbox` and `--auto`, respectively. Fresh spawns, exact-session resumes, controlled model restarts and OpenCode clear restarts all carry that default, so these agents can execute commands and change files without approval prompts. Pi tools are unrestricted natively; Synapse adds run-scoped `--approve` for project resources. Use trusted repositories or an external sandbox; unrestricted execution does not grant Synapse operator authority.
+> Synapse-managed Claude Code, Codex and OpenCode launches run unrestricted by default: `--dangerously-skip-permissions`, `--dangerously-bypass-approvals-and-sandbox` and `--auto`, respectively. Use `--permissions native` at creation or `permissions NAME native` to use an agent’s own settings. Fresh spawns, exact-session resumes, controlled model restarts and OpenCode clear restarts otherwise carry the YOLO default, so these agents can execute commands and change files without approval prompts. Pi tools are unrestricted natively; Synapse adds run-scoped `--approve` for project resources. Use trusted repositories or an external sandbox; unrestricted execution does not grant Synapse operator authority.
 
 ```
 team red-dev · 3 members · view:on · nudges:on · toasts:herdr · unread(you):0
@@ -226,7 +226,7 @@ For an already-running Pi session, run `/reload` after installing the extensions
 
 Use `--spawn developer:pi` when creating a team and `--model pi=provider/model@high` for its Pi default. Fresh conversations receive their member name through Pi's native `--name`; resume and restore preserve the original conversation and title. Model/thinking changes use `model <member> provider/model@high --apply restart`, reopening the exact recorded session path. Models are passed through to Pi, not maintained in a Synapse catalogue. A model appearing in Pi's catalogue does not guarantee that your provider account permits it.
 
-Pi has no built-in tool approval prompts. Synapse-managed launches add `--approve` to trust project resources for that run; this does not change global project trust or disable user extensions. Use only trusted projects or an external sandbox.
+Pi has no built-in tool approval prompts. By default, Synapse-managed launches add `--approve` to trust project resources for that run; this does not change global project trust or disable user extensions. Use only trusted projects or an external sandbox.
 
 The context gauge uses the active model's runtime limit, including model changes and custom models. Pi estimates context tokens, so Synapse labels the reading as estimated (`~`); unknown usage remains unknown rather than becoming zero. Compact uses `/compact`; clear uses `/new`. Working-turn messages use Pi's native steering queue, which is processed at its next steering boundary—not an immediate cancellation. Provider-account quota reporting remains separate and conditional.
 
@@ -622,8 +622,50 @@ there and retry; Synapse reuses that instance. Before takeover, `--cancel`
 closes the reserved replacement and keeps the source configuration. If the
 source pane was already closed, `herdr-synapse resume hunt-reviewer` can reopen
 its recorded conversation from a shell pane. Swaps require operator authority
-and a trusted destination kind. They use the same unrestricted launch defaults
-as other Synapse-managed agents. Changing an agent does not restore provider quota.
+and a trusted destination kind. They inherit the member’s permission policy across agent kinds (YOLO unless configured otherwise). Changing an agent does not restore provider quota.
+
+## Launch permissions: YOLO by default
+
+Existing and new teams default to `yolo`. An operator can select `native` for
+an entire team or individual members, including before their first launch:
+
+```bash
+herdr-synapse create demo --new --spawn dev:claude --spawn reviewer:codex \
+    --brief dev="Implement the change." --brief reviewer="Review and test it." \
+    --permissions native --member-permissions dev=yolo
+
+herdr-synapse --team demo permissions                    # every member, source and flags
+herdr-synapse --team demo permissions --default native   # team default
+herdr-synapse --team demo permissions demo-dev native    # member override
+herdr-synapse --team demo permissions demo-dev inherit   # use team default again
+herdr-synapse --team demo permissions --default yolo     # restore YOLO default
+```
+
+The console supports the same arguments with `/permissions`. `who` shows the
+saved next-launch mode. Resolution is **member override → team default → YOLO**.
+Only the operator or an operator delegate can change permissions; model-setting
+authority alone does not grant that permission.
+
+| Agent | `yolo` adds | `native` behavior |
+| --- | --- | --- |
+| Claude Code | `--dangerously-skip-permissions` | Own permission settings |
+| Codex | `--dangerously-bypass-approvals-and-sandbox` | Own approval and sandbox settings |
+| OpenCode | `--auto` | Own permission rules; explicit denies still apply in YOLO |
+| Pi | `--approve` (project resources, this run only) | Own project trust; Pi has no built-in tool approval prompts in either mode |
+| Other detected agents | No verified Synapse switch | Own settings |
+
+Changes apply to subsequent Synapse-managed spawns, exact-session resumes,
+restores, model restarts, OpenCode clear restarts, and fresh agent swaps.
+They do not change an already-running process. Swap retries keep their saved
+policy; finish or cancel a pending swap before changing it. A queued restart
+whose permission policy changed is refused instead of launching with stale flags.
+
+`native` means Synapse does not add a bypass; it does **not** guarantee approval
+prompts or a sandbox. Agent configuration, profiles, settings and extensions
+still apply. The displayed mode is a saved launch setting, not a verified reading
+of the running process. Native approval dialogs may require operator input.
+Herdr’s own automatic restoration is separate; use Synapse’s `restore` or
+`resume` to rebuild this policy.
 
 ## A model and an effort for supported harnesses
 
@@ -656,12 +698,12 @@ then the harness default. The setting travels with the session: `resume`
 reopens the member with the same flags, and Herdr's `agent.start` receives
 them as arguments, never as a shell string.
 
-Every fresh spawn of Claude Code, Codex and OpenCode carries its unrestricted flag even when no model is selected. Pi has unrestricted tools natively and receives run-scoped `--approve` for project resources. `herdr-synapse resume`, controlled model restarts and OpenCode clear restarts rebuild the same defaults; an already-running agent added to a team keeps its current launch mode until a Synapse-managed resume or restart.
+The permission policy below applies independently of model choice. YOLO is the default; `native` omits Synapse’s bypass flags. An already-running agent added to a team keeps its current mode until a Synapse-managed launch.
 
 `--apply restart` exits the agent cleanly and resumes its own session with the
 new flags; the member is never marked missing while that is in progress, and
 both the exit and the return are bounded. Controlled restarts preserve the
-harness's allowlisted non-permission flags, rebuild the unrestricted default, and Codex restarts suppress its update
+harness's allowlisted non-permission flags, rebuild the saved permission policy, and Codex restarts suppress its update
 picker so the requested model cannot be stranded behind a startup screen. Who
 may change a setting: the
 operator or a delegate for anyone, the team manager for anyone, and a member
@@ -1048,7 +1090,7 @@ peer mail.
 
 ## Status
 
-Current source version: 0.17.0, skill v10.
+Current source version: 0.18.0, skill v10.
 
 Claude Code 2.1.267, Codex 0.153.4 and OpenCode 1.18.30 were exercised together
 in one disposable Herdr 0.9.0/p22 session. Formation, exact-session resume, idle

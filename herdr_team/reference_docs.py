@@ -50,6 +50,7 @@ MODULE_TITLES = {
     "herdr_team.cmd_usage": "Usage limits",
     "herdr_team.cmd_asks": "Human asks",
     "herdr_team.cmd_knowledge": "Shared knowledge",
+    "herdr_team.cmd_permissions": "Launch permissions",
     "herdr_team.cmd_models": "Models and effort",
     "herdr_team.cmd_links": "Team-to-team links",
 }

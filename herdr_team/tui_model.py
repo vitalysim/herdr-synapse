@@ -36,7 +36,7 @@ from herdr_team.paths import MAX_ROLE_CHARS, MAX_TEAM_CHARS, ROLE_NAME_RE, TEAM_
 FILTERS = ("all", "to me", "requests", "human", "system", "teams", "team")
 SLASH_COMMANDS = (
     "/all", "/human", "/kind", "/reply", "/urgent", "/interrupt", "/interrupts", "/ref", "/retract", "/mute", "/unmute", "/pause",
-    "/nudge", "/focus", "/peek", "/who", "/context", "/compact", "/clear", "/model", "/swap", "/team", "/links", "/link", "/unlink", "/wipe", "/asks", "/ask-policy", "/filter", "/as", "/use", "/charter", "/remove", "/export", "/help", "/quit",
+    "/nudge", "/focus", "/peek", "/who", "/context", "/compact", "/clear", "/model", "/permissions", "/swap", "/team", "/links", "/link", "/unlink", "/wipe", "/asks", "/ask-policy", "/filter", "/as", "/use", "/charter", "/remove", "/export", "/help", "/quit",
 )
 #: ``/`` menu rows: command -> (placeholder, what it does). Every entry in
 #: ``SLASH_COMMANDS`` must appear here; a test keeps the two in step, so a new
@@ -63,6 +63,7 @@ SLASH_USAGE = {
     "/context": ("[name]", "how full each member's context window is"),
     "/compact": ("name", "ask a member to summarise its context"),
     "/clear": ("name", "throw away a member's context and brief it again"),
+    "/permissions": ("[name [yolo|native|inherit]] | --default yolo|native", "show or save next-launch permissions (YOLO is the default)"),
     "/model": ("name model[@effort] [--restart]", "set model/effort (Claude and OpenCode effort can apply live; other changes at resume or --restart)"),
     "/swap": ("name kind [model[@effort]] | name --retry", "create a fresh agent to replace this member's agent, keeping its configuration"),
     "/team": ("other-team text", "post to a linked team (its manager is nudged)"),
@@ -1887,6 +1888,13 @@ def _parse_slash(head: str, rest: str, default_team: str) -> Intent:
         if len(args) not in (2, 3) or not MEMBER_NAME_RE.match(args[0]) or args[1] not in KINDS:
             return Intent("error", {"message": "usage: /swap <name> {} [model[@effort]], or /swap <name> --retry".format("|".join(KINDS))})
         return Intent("swap", {"member": args[0], "kind": args[1], "setting": args[2] if len(args) == 3 else "", "team": default_team})
+    if head == "/permissions":
+        valid = (not args or (len(args) == 1 and MEMBER_NAME_RE.match(args[0]))
+                 or (len(args) == 2 and ((args[0] == "--default" and args[1] in ("yolo", "native"))
+                     or (MEMBER_NAME_RE.match(args[0]) and args[1] in ("yolo", "native", "inherit")))))
+        if not valid:
+            return Intent("error", {"message": "usage: /permissions [name [yolo|native|inherit]] | --default yolo|native"})
+        return Intent("permissions", {"args": list(args), "team": default_team})
     if head == "/model":
         words = [w for w in args if w]
         restart = "--restart" in words

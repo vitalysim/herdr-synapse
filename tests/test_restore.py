@@ -50,6 +50,18 @@ class RestoreTests(unittest.TestCase):
     def run_restore(self, *extra):
         return json_out(run_cli(["--json", "restore", "alpha", "--workspace", "w9", *extra], env_no_daemon(self.ts), self.api))
 
+    def test_native_default_and_yolo_override_reach_actual_restore_launches(self):
+        book = roster.Roster(self.ts.layout, "alpha")
+        def configure(team):
+            team.config["permissions"] = "native"
+            team.find("alpha-worker").permissions = "yolo"
+        book.update(configure)
+        code, out, err = self.run_restore()
+        self.assertEqual(code, 0, err)
+        calls = self.start.call_args_list
+        self.assertNotIn("--dangerously-bypass-approvals-and-sandbox", calls[0].kwargs["args"])
+        self.assertIn("--dangerously-skip-permissions", calls[1].kwargs["args"])
+
     def test_restores_metadata_and_preserves_unread_cursor_and_retries_without_duplicates(self):
         cursor = self.ts.team.root / "cursors" / "alpha-reviewer.json"
         store.write_json(cursor, {"seq": 3, "terminal_id": "term_r1"})

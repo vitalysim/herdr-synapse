@@ -677,6 +677,9 @@ def render_who(
             tags.append("manager")
         if member.get("operator"):
             tags.append("acts as operator")
+        policy = member.get("permissions")
+        if isinstance(policy, dict):
+            tags.append("next launch " + _safe_token(policy.get("mode") or "?", 8))
         setting = member.get("setting")
         if isinstance(setting, str) and setting:
             tags.append("model " + _safe_token(setting, 40))

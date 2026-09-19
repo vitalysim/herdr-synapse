@@ -54,6 +54,7 @@ from herdr_team import charter as _charter
 from herdr_team import identity as _identity
 from herdr_team import launch as _launch
 from herdr_team import links as _links
+from herdr_team import permissions as _permissions
 from herdr_team import models as _models
 from herdr_team import context as _context
 from herdr_team import operator as _operator
@@ -3442,6 +3443,9 @@ class Daemon:
             self._append_system(team, "typed", "{} of {} refused: {}".format(action, name, problem), ["human"], {"member": name})
             return
         control_doc = (record or {}).get("control") if isinstance((record or {}).get("control"), dict) else {}
+        latest_doc = store.RosterStore(team.paths).load()
+        latest_member = next((m for m in latest_doc.get("members", []) if m.get("name") == name), member)
+        mode = _permissions.effective(latest_doc.get("config"), latest_member)
         extra: Dict[str, Any] = {}
         if action == "model":
             # The lines come from the record, which the origin check above vouched for.
@@ -3470,10 +3474,10 @@ class Daemon:
             kind = str(member.get("kind") or "")
             try:
                 expected_exit = _models.exit_keystroke(kind)
-                safe_preserved = _models.preserved_launch_args(kind, [kind] + preserved)
+                safe_preserved = _models.preserved_launch_args(kind, [kind] + preserved, mode)
                 expected_argv = _models.restart_argv(
                     kind, member.get("session"), control_doc.get("model"), control_doc.get("effort"),
-                    [kind] + preserved,
+                    [kind] + preserved, permissions=mode,
                 )
             except HerdrTeamError:
                 expected_exit, expected_argv, safe_preserved = "", [], []
@@ -3483,7 +3487,7 @@ class Daemon:
                 self._append_system(team, "typed", "restart of {} refused: control does not match its recorded session and setting".format(name), ["human"], {"member": name})
                 return
             lines = [exit_key]
-            extra = {"model": control_doc.get("model"), "effort": control_doc.get("effort"), "argv": argv,
+            extra = {"permissions": mode, "model": control_doc.get("model"), "effort": control_doc.get("effort"), "argv": argv,
                      "preserved": preserved, "after": after, "session": member.get("session")}
         else:
             try:
@@ -3496,9 +3500,9 @@ class Daemon:
             if action == "clear" and kind == "opencode":
                 model, effort = _models.effective_setting(team.roster.get("config"), member)
                 current_argv = self._foreground_argv(member)
-                extra = {"fresh_restart": True, "model": model, "effort": effort,
+                extra = {"fresh_restart": True, "permissions": mode, "model": model, "effort": effort,
                          "setting": _models.label(model, effort),
-                         "argv": _models.fresh_argv(kind, model, effort, current_argv),
+                         "argv": _models.fresh_argv(kind, model, effort, current_argv, permissions=mode),
                          "after": _models.post_start_keystrokes(kind, effort)}
         pending = Pending(first_ms=now, kind="control", lines=list(lines), force=True, seqs=[])
         pending.control = dict({"action": action, "keystroke": lines[0], "keystrokes": list(lines), "requested_by": (record or {}).get("from"), "kind": member.get("kind")}, **extra)
@@ -3550,6 +3554,12 @@ class Daemon:
 
             pi_previous_instance = (pi_support.read_snapshot(self.session, member) or {}).get("instance")
         action = str(control.get("action") or "")
+        if action == "restart" or control.get("fresh_restart"):
+            doc = store.RosterStore(team.paths).load()
+            row = next((m for m in doc.get("members", []) if m.get("name") == name), {})
+            if _permissions.effective(doc.get("config"), row) != control.get("permissions", "yolo"):
+                self._finish_pending(team, name, pending, "typed", "{} of {} refused: permissions changed; request it again".format(action, name))
+                return
         keystrokes = [str(k) for k in (control.get("keystrokes") or []) if str(k)] or ([str(control.get("keystroke"))] if control.get("keystroke") else [])
         keystroke = " then ".join(keystrokes)
         pane_id = str(snapshot.pane_id or member.get("pane_id") or "")
@@ -3634,13 +3644,13 @@ class Daemon:
             rt.restart = {"phase": "exiting", "since_ms": now, "argv": list(control.get("argv") or []), "kind": str(member.get("kind") or ""),
                           "pane_id": pane_id, "model": control.get("model"), "effort": control.get("effort"),
                           "after": list(control.get("after") or []), "requested_by": rt.control_pending["requested_by"],
-                          "session": control.get("session")}
+                          "session": control.get("session"), "permissions": control.get("permissions", "yolo")}
         elif action == "clear" and control.get("fresh_restart"):
             rt.restart = {"phase": "exiting", "since_ms": now, "action": "clear",
                           "argv": list(control.get("argv") or []), "kind": str(member.get("kind") or ""),
                           "pane_id": pane_id, "model": control.get("model"), "effort": control.get("effort"),
                           "after": list(control.get("after") or []), "requested_by": rt.control_pending["requested_by"],
-                          "session": member.get("session")}
+                          "session": member.get("session"), "permissions": control.get("permissions", "yolo")}
         elif action == "model" and not control.get("model"):
             # Effort alone has no observable: the transcript records the model,
             # not the thinking budget. Typed is as far as this can be proven.
@@ -3838,7 +3848,20 @@ class Daemon:
                 return  # still up, or not readable yet
             argv = [str(a) for a in state.get("argv") or []]
             # ``agent start`` runs the kind's own binary; the resume argv's first word is that binary.
-            handle = _launch.start_agent_async(self.api, name, str(state.get("kind") or ""), pane_id, args=argv[1:])
+            # Serialize policy writes with launch submission; a changed setting
+            # cancels this queued restart rather than reviving its old bypass.
+            try:
+                with store.FileLock(team.paths.root / "restore.lock", timeout=0, code="permissions_busy"):
+                    doc = store.RosterStore(team.paths).load()
+                    row = next((m for m in doc.get("members", []) if m.get("name") == name), {})
+                    if _permissions.effective(doc.get("config"), row) != state.get("permissions", "yolo"):
+                        self._restart_failed(team, name, rt, "permissions changed; resume the member with its saved setting", now)
+                        return
+                    handle = _launch.start_agent_async(self.api, name, str(state.get("kind") or ""), pane_id, args=argv[1:])
+            except HerdrTeamError as err:
+                if err.code == "permissions_busy":
+                    return
+                raise
             state.update({"phase": "starting", "started_ms": now, "handle": handle})
             phase = "starting"
             self.log("{}: {} exited; starting again: {}".format(team.name, name, " ".join(handle.argv)))
@@ -5436,6 +5459,7 @@ class Daemon:
                     "manager": bool(member.get("manager")),
                     "model": member.get("model"),
                     "effort": member.get("effort"),
+                    "permissions": _permissions.view(team.roster.get("config"), member) if member.get("kind") != "human" else None,
                     "model_effective": _models.effective_setting(team.roster.get("config"), member)[0],
                     "setting": _models.label(*_models.effective_setting(team.roster.get("config"), member)),
                     "restarting": isinstance(rt.restart, dict),

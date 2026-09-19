@@ -23,6 +23,7 @@ Claude gets ``--dangerously-skip-permissions``, Codex gets
 ``--dangerously-bypass-approvals-and-sandbox``, and OpenCode gets ``--auto``.
 The same flags are rebuilt on exact-session resume, controlled model restart,
 and OpenCode clear/restart instead of depending on a previous process argv.
+An explicit native permission policy omits these flags.
 
 Pi has no built-in tool permission prompts; ``--approve`` trusts project
 resources for this run without changing global trust decisions.
@@ -36,6 +37,7 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, List, Optional, Tuple
 
+from herdr_team import permissions as _permissions
 from herdr_team.errors import EXIT_REFUSED, HerdrTeamError, UsageError
 
 KINDS: Tuple[str, ...] = ("claude", "codex", "opencode", "pi")
@@ -52,13 +54,7 @@ EFFORTS: Dict[str, Optional[Tuple[str, ...]]] = {
 #: Full-auto execution is the plugin default for every fully supported kind.
 #: Keep the spelling aligned with the installed harness CLIs; these are argv
 #: elements passed directly to Herdr, never shell fragments.
-UNRESTRICTED_ARGS: Dict[str, Tuple[str, ...]] = {
-    "claude": ("--dangerously-skip-permissions",),
-    "codex": ("--dangerously-bypass-approvals-and-sandbox",),
-    "opencode": ("--auto",),
-    # Pi has no built-in tool approval gate; this trusts project resources for this run only.
-    "pi": ("--approve",),
-}
+UNRESTRICTED_ARGS = _permissions.YOLO_ARGS
 
 #: What ends the harness cleanly, so the notifier can resume it with new flags.
 EXIT_KEYSTROKE: Dict[str, str] = {"claude": "/exit", "codex": "/quit", "opencode": "/exit", "pi": "/quit"}
@@ -71,7 +67,7 @@ _TOKEN_OK = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234
 
 # Non-permission runtime switches worth carrying across a model-change restart.
 # Permission, approval and sandbox selectors are deliberately absent: every
-# supported kind is rebuilt with UNRESTRICTED_ARGS. This remains an allowlist
+# supported kind is rebuilt from its saved permission policy. This remains an allowlist
 # because copying an arbitrary process argv into the board could persist
 # secrets supplied through unrelated CLI options.
 _PRESERVED_FLAGS: Dict[str, Dict[str, int]] = {
@@ -164,8 +160,8 @@ def validate(kind: Any, model: Optional[str], effort: Optional[str]) -> None:
         )
 
 
-def launch_args(kind: Any, model: Optional[str], effort: Optional[str]) -> List[str]:
-    """The model flags and unrestricted default appended to a supported harness argv."""
+def launch_args(kind: Any, model: Optional[str], effort: Optional[str], permissions: str = "yolo") -> List[str]:
+    """Model flags and the saved permission policy (YOLO by default)."""
     validate(kind, model, effort)
     key = str(kind or "").strip()
     out: List[str] = []
@@ -187,18 +183,18 @@ def launch_args(kind: Any, model: Optional[str], effort: Optional[str]) -> List[
             out += ["--model", model]
         if effort:
             out += ["--thinking", effort]
-    out += UNRESTRICTED_ARGS.get(key, ())
+    out += _permissions.launch_args(key, permissions)
     return out
 
 
-def resume_argv(kind: Any, session: Any, model: Optional[str], effort: Optional[str]) -> List[str]:
+def resume_argv(kind: Any, session: Any, model: Optional[str], effort: Optional[str], permissions: str = "yolo") -> List[str]:
     """``roster.resume_argv(session)`` with the setting's flags appended."""
     from herdr_team import roster as _roster
 
     if kind == "pi" and (not isinstance(session, dict) or session.get("kind") != "path"
                          or not os.path.isabs(str(session.get("value") or ""))):
         raise HerdrTeamError("resume_unsupported", "Pi requires its recorded absolute session path", EXIT_REFUSED)
-    return list(_roster.resume_argv(session)) + launch_args(kind, model, effort)
+    return list(_roster.resume_argv(session)) + launch_args(kind, model, effort, permissions)
 
 
 def foreground_argv(kind: Any, processes: Any) -> Optional[List[str]]:
@@ -223,7 +219,7 @@ def foreground_argv(kind: Any, processes: Any) -> Optional[List[str]]:
     return None
 
 
-def preserved_launch_args(kind: Any, current_argv: Any) -> List[str]:
+def preserved_launch_args(kind: Any, current_argv: Any, permissions: str = "yolo") -> List[str]:
     """Allowlisted runtime-policy flags from a live harness argv.
 
     Session, model and effort selectors are intentionally absent from the
@@ -231,9 +227,12 @@ def preserved_launch_args(kind: Any, current_argv: Any) -> List[str]:
     are dropped instead of being copied into a durable board record.
     """
     key = str(kind or "").strip()
+    mode = _permissions.validate(permissions)
     specs = _PRESERVED_FLAGS.get(key)
     if specs is None or not isinstance(current_argv, (list, tuple)):
         return []
+    if mode == "native":
+        specs = {flag: arity for flag, arity in specs.items() if flag != "--dangerously-bypass-hook-trust"}
     argv = [str(arg) for arg in current_argv]
     out: List[str] = []
     index = 1 if argv else 0
@@ -266,7 +265,7 @@ def preserved_launch_args(kind: Any, current_argv: Any) -> List[str]:
     return out
 
 
-def restart_argv(kind: Any, session: Any, model: Optional[str], effort: Optional[str], current_argv: Any = None) -> List[str]:
+def restart_argv(kind: Any, session: Any, model: Optional[str], effort: Optional[str], current_argv: Any = None, permissions: str = "yolo") -> List[str]:
     """Exact controlled-resume argv plus safe live policy flags.
 
     Codex's version chooser is a legitimate startup blocker, but a notifier
@@ -275,17 +274,17 @@ def restart_argv(kind: Any, session: Any, model: Optional[str], effort: Optional
     retain the user's normal update behavior.
     """
     key = str(kind or "").strip()
-    out = resume_argv(key, session, model, effort)
+    out = resume_argv(key, session, model, effort, permissions)
     if key == "codex":
         out += ["-c", "check_for_update_on_startup=false"]
-    return out + preserved_launch_args(key, current_argv)
+    return out + preserved_launch_args(key, current_argv, permissions)
 
 
-def fresh_argv(kind: Any, model: Optional[str], effort: Optional[str], current_argv: Any = None) -> List[str]:
+def fresh_argv(kind: Any, model: Optional[str], effort: Optional[str], current_argv: Any = None, permissions: str = "yolo") -> List[str]:
     """A fresh harness argv with its setting and safe live policy retained."""
     key = str(kind or "").strip()
     validate(key, model, effort)
-    return [key] + launch_args(key, model, effort) + preserved_launch_args(key, current_argv)
+    return [key] + launch_args(key, model, effort, permissions) + preserved_launch_args(key, current_argv, permissions)
 
 
 def live_keystrokes(kind: Any, model: Optional[str], effort: Optional[str]) -> Optional[List[str]]:

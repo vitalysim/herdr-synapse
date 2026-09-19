@@ -6,6 +6,7 @@ import os
 import shutil
 from typing import Any, Dict, List
 
+from herdr_team import permissions
 from herdr_team import models, roster, store
 from herdr_team import cmd_roster as commands
 from herdr_team.cli import Command, api_for, emit, layout_for
@@ -52,7 +53,9 @@ def plan_restore(team: roster.Team, agents: List[Dict[str, Any]], panes: List[Di
                     source = roster.RESUME_COMMANDS.get(member.session.get("source"))
                     if source and source[0] != member.kind:
                         raise HerdrTeamError("session_mismatch", "recorded conversation belongs to a different agent kind", EXIT_REFUSED)
-                argv = models.resume_argv(member.kind, member.session, model, effort) if member.session else models.fresh_argv(member.kind, model, effort)
+                policy = permissions.effective(team.config, member)
+                argv = (models.resume_argv(member.kind, member.session, model, effort, policy) if member.session
+                        else models.fresh_argv(member.kind, model, effort, permissions=policy))
                 if not member.session:
                     argv[0] = next((spec[2][0] for spec in roster.RESUME_COMMANDS.values() if spec[0] == member.kind), argv[0])
                 if member.cwd and not os.path.isdir(member.cwd):
@@ -60,6 +63,7 @@ def plan_restore(team: roster.Team, agents: List[Dict[str, Any]], panes: List[Di
                 if not shutil.which(argv[0], path=env.get("PATH", os.defpath)):
                     raise HerdrTeamError("command_not_found", "{} is not on PATH".format(argv[0]), EXIT_REFUSED)
                 item.update(status="planned", mode=mode, argv=argv, model=model, effort=effort,
+                            permissions=permissions.view(team.config, member),
                             expected_terminal=member.terminal_id, expected_generation=member.generation,
                             expected_session=dict(member.session) if member.session else None)
             except HerdrTeamError as err:

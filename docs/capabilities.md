@@ -610,14 +610,14 @@ Herdr's `agent.start` hands `args` to the binary verbatim
 (`herdr agent start NAME --kind K --pane P -- ARG…`), so every flag above is
 argv, never a shell string.
 
-**Unrestricted by default.** Every Synapse-managed fresh launch of Claude Code, Codex or OpenCode carries the unrestricted flag in the table. Synapse rebuilds the same default on `resume`, controlled model restart and OpenCode clear/restart; a live agent added to a team keeps its current launch mode until one of those Synapse-managed starts. Conflicting approval, permission and sandbox selectors from a previous process are not carried into a restart, while unrelated allowlisted flags still are. This execution mode does not turn an agent into the Synapse operator: charter, roster and other privileged changes still pass the process-tree authority gate.
+**YOLO by default, with an explicit native opt-out.** `permissions --default native` changes the team default; `permissions MEMBER native` overrides one member, and `inherit` removes that override. Creation accepts `--permissions` and repeated `--member-permissions NAME|ROLE=MODE`. In YOLO mode, Synapse-managed launches carry the flags in the table. Native mode adds no bypass flags and leaves native configuration in control; it does not promise sandboxing or approval prompts. Synapse rebuilds the saved policy on `resume`, restore, fresh swaps, controlled model restart and OpenCode clear/restart; a live agent added to a team keeps its current launch mode until one of those Synapse-managed starts. Conflicting approval, permission and sandbox selectors from a previous process are not carried into a restart, while unrelated allowlisted flags still are. This execution mode does not turn an agent into the Synapse operator: charter, roster and other privileged changes still pass the process-tree authority gate.
 
 **Verified live:** Claude changed model and effort inside the running TUI;
 Codex restarted its exact session with the requested model and effort; OpenCode
 changed effort through `/variants`, then restarted the exact session for a
 model change and re-applied the effort. Controlled restarts validate the exact
 returning record and argv, preserve allowlisted non-permission flags, rebuild
-the unrestricted default, and disable the Codex startup update picker for that
+the saved permission policy (YOLO by default), and disable the Codex startup update picker for that
 restart.
 
 **Changing it while the agent runs.** A change is recorded on the roster and
@@ -1064,7 +1064,7 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
 - No shared task list with claiming; no cross-session or cross-machine
   teams; no Windows.
 - The console opens as a split in the current tab, not its own tab.
-- Herdr's own automatic server restoration still rebuilds a bare harness resume command and drops launch flags. Use `herdr-synapse resume <name>` when the unrestricted/model flags must be rebuilt; changing Herdr's global restore behavior is outside the plugin boundary.
+- Herdr's own automatic server restoration still rebuilds a bare harness resume command and drops launch flags. Use `herdr-synapse resume <name>` when the saved permission/model flags must be rebuilt; changing Herdr's global restore behavior is outside the plugin boundary.
 
 ## 13. Test checklist
 
@@ -1106,3 +1106,10 @@ Each row: do this, expect that.
 | C32 | run `herdr-synapse update` from a managed install, then from a local link | the managed checkout is reinstalled; the local checkout is only re-registered and its files remain untouched; both refresh the CLI link and skill, replace the notifier, and report all steps in one result |
 | C33 | for Claude Code, Codex, OpenCode and Pi, change model/effort, inspect `context`, run `compact`, then `clear` | each harness reports the requested setting and observed context window (Pi usage is estimated); compact is observed through native events or carried-token reduction and re-briefs once; clear changes session/generation and re-briefs once; an OpenCode pane below the safe-width guard refuses clear before exiting |
 | C34 | with at least two supported agents in one team, type `!!all summarize your current task`; then inspect the board and each pane | the `!!` menu offers `all`; the console watches one seq per agent; each target has its own `direct` record and `typed` outcome; the line reaches working or muted agents, runtime dialog/draft/blocker/occupant checks still refuse per target, and an untrusted target kind refuses the whole fan-out before anything is written |
+
+Permission changes are operator-only and apply at the next launch. `permissions`,
+`/permissions` and `who` expose saved policy without claiming to observe the
+running process. Pi’s `--approve` is project trust only. Pending swaps prevent
+permission changes until finished/cancelled; queued restarts validate policy
+again before launching. Permission writes ensure a current daemon is running
+so an older notifier cannot rebuild unconditional YOLO flags.

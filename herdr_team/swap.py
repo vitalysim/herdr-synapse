@@ -7,7 +7,7 @@ import shutil
 import uuid
 from typing import Any, Dict, Optional
 
-from herdr_team import models, roster, store
+from herdr_team import models, permissions, roster, store
 from herdr_team.errors import EXIT_REFUSED, HerdrTeamError
 
 KINDS = models.KINDS
@@ -57,13 +57,14 @@ def plan(team: roster.Team, name: str, kind: str, setting: Optional[str], env: D
         dest.update(model=model, effort=effort)
     model, effort = models.effective_setting(team.config, dest)
     models.validate(kind, model, effort)
-    argv = models.fresh_argv(kind, model, effort)
+    argv = models.fresh_argv(kind, model, effort, permissions=permissions.effective(team.config, member))
     if not shutil.which(argv[0], path=env.get("PATH", os.defpath)):
         raise HerdrTeamError("command_not_found", "{} is not on PATH".format(argv[0]), EXIT_REFUSED)
     if not member.cwd or not os.path.isdir(member.cwd):
         raise HerdrTeamError("cwd_missing", "member working directory is missing", EXIT_REFUSED)
     return {"member": name, "name": name, "role": member.role, "kind": kind, "model": model, "effort": effort,
             "argv": argv, "cwd": member.cwd, "source": member.to_json(),
+            "permissions": permissions.view(team.config, dict(kind=kind, permissions=member.permissions)),
             "workspace_id": member.workspace_id, "fresh": True}
 
 

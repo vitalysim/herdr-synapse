@@ -187,7 +187,7 @@ SYSTEM_EVENTS = (
     "knowledge_updated", "instructions_updated", "instructions_edited", "knowledge_finding",
     "artifacts_changed", "project_set", "operator_granted", "operator_revoked",
     "context_high", "context_cleared", "context_compacted", "workdir_moved", "manager_changed",
-    "model_changed", "model_applied", "restart_failed", "agent_swapped", "swap_control_cancelled",
+    "permissions_changed", "model_changed", "model_applied", "restart_failed", "agent_swapped", "swap_control_cancelled",
     "link_established", "link_broken", "link_read",
     "board_cleared",
 )
@@ -393,6 +393,8 @@ class Member:
     #: to the team default for the kind, then to the harness's own default.
     model: Optional[str] = None
     effort: Optional[str] = None
+    #: Next-launch override; None inherits the team default, which defaults to YOLO.
+    permissions: Optional[str] = None
     previous_names: List[Dict[str, Any]] = field(default_factory=list)
     #: Durable create-and-replace operation; completed records retain recovery information.
     swap: Optional[Dict[str, Any]] = None
@@ -434,6 +436,8 @@ class Member:
             obj["model"] = self.model
         if self.effort:
             obj["effort"] = self.effort
+        if self.permissions is not None:
+            obj["permissions"] = self.permissions
         if self.previous_names:
             obj["previous_names"] = [dict(p) for p in self.previous_names]
         if self.swap:
@@ -481,6 +485,7 @@ class Member:
             manager=bool(obj.get("manager", False)),
             model=str(obj["model"]) if isinstance(obj.get("model"), str) and obj.get("model") else None,
             effort=str(obj["effort"]) if isinstance(obj.get("effort"), str) and obj.get("effort") else None,
+            permissions=obj.get("permissions"),
             previous_names=[dict(p) for p in previous if isinstance(p, dict)],
             swap=obj.get("swap") if isinstance(obj.get("swap"), dict) else None,
             agent_history=[dict(p) for p in obj.get("agent_history", []) if isinstance(p, dict)],

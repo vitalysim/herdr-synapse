@@ -274,7 +274,7 @@ SYSTEM_EVENTS = (
     "knowledge_updated", "instructions_updated", "instructions_edited", "knowledge_finding",
     "artifacts_changed", "project_set", "operator_granted", "operator_revoked",
     "context_high", "context_cleared", "context_compacted", "workdir_moved", "manager_changed",
-    "model_changed", "model_applied", "restart_failed", "agent_swapped", "swap_control_cancelled",
+    "permissions_changed", "model_changed", "model_applied", "restart_failed", "agent_swapped", "swap_control_cancelled",
     "link_established", "link_broken", "link_read",
     "board_cleared",
 )
@@ -1584,8 +1584,9 @@ class RosterStore:
             operation = member.get("swap") or {}
             if operation and operation.get("phase") not in ("complete", "cancelled") and operation.get("id") != swap_id:
                 after = after_members.get(member.get("name")) or {}
-                protected = ("name", "kind", "terminal_id", "pane_id", "workspace_id", "tab_id", "status", "generation", "session", "model", "effort", "role", "manager", "swap")
-                if any(after.get(key) != member.get(key) for key in protected):
+                protected = ("name", "kind", "terminal_id", "pane_id", "workspace_id", "tab_id", "status", "generation", "session", "model", "effort", "permissions", "role", "manager", "swap")
+                if (any(after.get(key) != member.get(key) for key in protected)
+                        or (before.get("config") or {}).get("permissions") != (doc.get("config") or {}).get("permissions")):
                     raise HerdrTeamError("swap_busy", "member has an unfinished swap; use swap --status or --retry", EXIT_REFUSED)
         current = self.current_revision()
         if expected_revision is not None and current is not None and current != expected_revision:

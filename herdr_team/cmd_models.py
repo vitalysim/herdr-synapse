@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from herdr_team import charter as _charter
 from herdr_team import identity as _identity
+from herdr_team import permissions as _permissions
 from herdr_team import models as _models
 from herdr_team import paths as _paths
 from herdr_team import roster as _roster
@@ -230,7 +231,7 @@ def _run_model(args: argparse.Namespace) -> int:
     if apply == "restart":
         # Planned before anything is written: a member with no recorded
         # session cannot be resumed, and must not be left half-changed.
-        _models.resume_argv(kind, member.get("session"), model or _models.effective_setting(doc.get("config"), member)[0], effort or _models.effective_setting(doc.get("config"), member)[1])
+        _models.resume_argv(kind, member.get("session"), model or _models.effective_setting(doc.get("config"), member)[0], effort or _models.effective_setting(doc.get("config"), member)[1], _permissions.effective(doc.get("config"), member))
     current_argv = running_argv(api, member) if apply == "restart" else None
 
     def mutate(t: _roster.Team) -> None:
@@ -262,10 +263,11 @@ def _run_model(args: argparse.Namespace) -> int:
     require_daemon(layout.session)
     if apply == "restart":
         session = member.get("session")
-        preserved = _models.preserved_launch_args(kind, current_argv)
-        argv = _models.restart_argv(kind, session, eff_model, eff_effort, current_argv)  # session_unknown / session_unsupported surface here
+        mode = _permissions.effective(updated.config, row)
+        preserved = _models.preserved_launch_args(kind, current_argv, mode)
+        argv = _models.restart_argv(kind, session, eff_model, eff_effort, current_argv, permissions=mode)  # session_unknown / session_unsupported surface here
         after = _models.post_start_keystrokes(kind, eff_effort)
-        control = {"action": "restart", "kind": kind, "model": eff_model, "effort": eff_effort,
+        control = {"action": "restart", "kind": kind, "permissions": mode, "model": eff_model, "effort": eff_effort,
                    "exit": _models.exit_keystroke(kind), "argv": argv, "preserved": preserved, "after": after}
         line = "restart {}: {}".format(name, " ".join(argv))
     else:
