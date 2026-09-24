@@ -164,7 +164,7 @@ create <team> --new [--workspace] [--charter …] --spawn <role>:<kind>[:<cwd>]�
   flags is refused (`model_unsupported`) before anything is written; a key
   that names nobody being added is a usage error. See section 9c.
 
-- Every `--new --spawn` launch of Claude Code, Codex or OpenCode is unrestricted by default: Synapse appends `--dangerously-skip-permissions`, `--dangerously-bypass-approvals-and-sandbox` or `--auto`, respectively. `--permissions native` selects native agent settings for the new team; repeat `--member-permissions NAME|ROLE=yolo|native` for individual overrides. A live `--member` is not restarted and therefore keeps its current mode. Use `permissions --default MODE` to change an existing team’s default before `create --reuse`.
+- Every `--new --spawn` launch is unrestricted by default when the kind has a switch: Synapse appends `--dangerously-skip-permissions` for Claude Code, `--dangerously-bypass-approvals-and-sandbox` for Codex, `--auto` for OpenCode, and each other kind's own flag from `permissions.YOLO_ARGS` (for example `--yolo` for Gemini, `--force` for Cursor). A kind without a switch starts with its own settings. `--permissions native` selects native agent settings for the new team; repeat `--member-permissions NAME|ROLE=yolo|native` for individual overrides. A live `--member` is not restarted and therefore keeps its current mode. Use `permissions --default MODE` to change an existing team’s default before `create --reuse`.
 
 - `<target>`: pane id or live agent name. Role defaults to the kind label.
   Name defaults to `<team>-<role>` (`--names plain` uses `<role>`).
@@ -2100,8 +2100,11 @@ reads are available to members. Settings resolve member → team → `yolo`.
 --permissions MODE` and repeated `--member-permissions NAME|ROLE=MODE`.
 
 The JSON result contains `team`, `default`, and `members`. Each member has
-`name`, `kind`, `mode`, `source` (`member`, `team`, `default`), `flags`, `effect`,
-`applies: "next launch"`, and `running_mode: "unknown"`. `who` includes this
+`name`, `kind`, `mode`, `source` (`member`, `team`, `default`), `flags`, `evidence`
+(`live`, `help`, `docs`, or null for a kind with no switch), `effect`,
+`applies: "next launch"`, and `running_mode: "unknown"`. `evidence` says how the
+flag is known: exercised live, read from the installed binary's `--help`, or
+taken from the vendor's documentation only. `who` includes this
 policy under each agent’s `permissions`; create output uses `launch_permissions`
 to distinguish it from the persisted member override.
 

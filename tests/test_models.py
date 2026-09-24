@@ -59,7 +59,7 @@ class SettingTests(unittest.TestCase):
                 models.parse_setting(bad)
 
     def test_launch_args_are_the_harness_own_flags(self):
-        self.assertEqual(set(models.UNRESTRICTED_ARGS), set(models.KINDS))
+        self.assertTrue(set(models.KINDS) <= set(models.UNRESTRICTED_ARGS))  # other kinds may have a switch without model flags
         self.assertEqual(models.launch_args("claude", None, None), ["--dangerously-skip-permissions"])
         self.assertEqual(models.launch_args("codex", None, None), ["--dangerously-bypass-approvals-and-sandbox"])
         self.assertEqual(models.launch_args("opencode", None, None), ["--auto"])
@@ -71,7 +71,9 @@ class SettingTests(unittest.TestCase):
                          ["-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"', "--dangerously-bypass-approvals-and-sandbox"])
         self.assertEqual(models.launch_args("opencode", "opencode/claude-opus-4-8", "max"),
                          ["-m", "opencode/claude-opus-4-8", "--auto"])
-        self.assertEqual(models.launch_args("gemini", None, None), [])
+        # no model flags for Gemini, but its own YOLO switch still applies
+        self.assertEqual(models.launch_args("gemini", None, None), ["--yolo"])
+        self.assertEqual(models.launch_args("some-future-agent", None, None), [])
 
     def test_an_unsupported_kind_and_an_unknown_effort_are_refused_by_name(self):
         with self.assertRaises(HerdrTeamError) as caught:

@@ -33,12 +33,12 @@ readily as a feature: the board, work items, facts and schedules carry no
 assumption about what the deliverable is.
 
 > [!CAUTION]
-> Synapse-managed Claude Code, Codex and OpenCode launches run unrestricted by default: `--dangerously-skip-permissions`, `--dangerously-bypass-approvals-and-sandbox` and `--auto`, respectively. Use `--permissions native` at creation or `permissions NAME native` to use an agent’s own settings. Fresh spawns, exact-session resumes, controlled model restarts and OpenCode clear restarts otherwise carry the YOLO default, so these agents can execute commands and change files without approval prompts. Pi tools are unrestricted natively; Synapse adds run-scoped `--approve` for project resources. Use trusted repositories or an external sandbox; unrestricted execution does not grant Synapse operator authority.
+> Every agent Synapse launches runs unrestricted by default when that agent has a switch for it: Claude Code gets `--dangerously-skip-permissions`, Codex `--dangerously-bypass-approvals-and-sandbox`, OpenCode `--auto`, and each other kind its own flag ([table](#launch-permissions-yolo-by-default)). Use `--permissions native` at creation or `permissions NAME native` to use an agent’s own settings. Fresh spawns, exact-session resumes, restores, controlled model restarts and OpenCode clear restarts otherwise carry the YOLO default, so these agents can execute commands and change files without approval prompts. Pi tools are unrestricted natively; Synapse adds run-scoped `--approve` for project resources. Use trusted repositories or an external sandbox; unrestricted execution does not grant Synapse operator authority.
 
 ```
 team red-dev · 3 members · view:on · nudges:on · toasts:herdr · unread(you):0
 charter #1: Ship the HTML report for susfind
-runtime: safe !:ready · Herdr 0.9.1/p22 · Synapse 0.19.0 · daemon 0.19.0
+runtime: safe !:ready · Herdr 0.9.1/p22 · Synapse 0.19.1 · daemon 0.19.1
 
 ○  red-dev-claude-dev     claude-dev      claude    w1:p1  idle     "report.py: templates done"   manager  model opus@medium
 ◐  red-dev-codex-reviewer codex-reviewer  codex     w1:p2  working  "reviewing report.py"         ↪1 (not_idle)
@@ -737,7 +737,23 @@ authority alone does not grant that permission.
 | Codex | `--dangerously-bypass-approvals-and-sandbox` | Own approval and sandbox settings |
 | OpenCode | `--auto` | Own permission rules; explicit denies still apply in YOLO |
 | Pi | `--approve` (project resources, this run only) | Own project trust; Pi has no built-in tool approval prompts in either mode |
-| Other detected agents | No verified Synapse switch | Own settings |
+| Gemini CLI, Kimi | `--yolo` (Kimi's `--yolo` still lets the agent ask you questions) | Own settings |
+| Cursor Agent | `--force` | Own settings |
+| GitHub Copilot CLI | `--yolo` (tools, paths and URLs; Copilot CLI 0.0.381 or newer) | Own settings |
+| Qwen Code, Hermes, Qoder, Letta Code, Oh My Pi, Maki, Muse | `--yolo` | Own settings |
+| Kilo Code | `--auto` | Own settings; explicit denies still apply in YOLO |
+| Devin | `--permission-mode dangerous` | Own settings |
+| Amp, Mastra Code | Nothing: their documentation says they run tools without approval prompts by default | Own settings |
+| Droid, Grok, Kiro, Cline, Antigravity CLI | No switch Synapse can use yet | Own settings |
+
+The first four rows are live-verified end to end. Gemini, Kimi and Cursor flags
+were read from the installed binaries' own `--help`; the rest come from each
+vendor's documentation or source and have not been run here, so `permissions`
+labels them "not yet live-verified". If one refuses its flag, set that member to
+`native` and it launches with its own settings. Some are left out on purpose:
+Droid's and Grok's references do not say their flag applies to the interactive
+TUI, Kiro's belongs to `kiro-cli chat` and asks for confirmation at startup,
+Cline's `--yolo` exits after one turn, and Antigravity's is unconfirmed.
 
 Changes apply to subsequent Synapse-managed spawns, exact-session resumes,
 restores, model restarts, OpenCode clear restarts, and fresh agent swaps.
@@ -1403,7 +1419,7 @@ just written it; a schedule that fails toasts you and wakes nobody.
 
 ## Status
 
-Current source version: 0.19.0, skill v11.
+Current source version: 0.19.1, skill v11.
 
 Claude Code 2.1.267, Codex 0.153.4 and OpenCode 1.18.30 were exercised together
 in one disposable Herdr 0.9.0/p22 session. Formation, exact-session resume, idle

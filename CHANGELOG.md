@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.19.1 (2026-09-24)
+
+- **YOLO by default for every agent kind with a switch, not only the core four.** `create --spawn`, `resume` and `restore` now start Gemini CLI and Kimi with `--yolo` and Cursor Agent with `--force` (read from the installed binaries' own `--help`), and GitHub Copilot CLI, Qwen Code, Hermes, Qoder, Letta Code, Oh My Pi, Maki and Muse with `--yolo`, Kilo Code with `--auto` and Devin with `--permission-mode dangerous` (from each vendor's documentation or source). Kimi gets `--yolo` rather than `--auto` because `--auto` stops the agent from asking the operator anything. `native` still omits every flag. `permissions` and `who` report how each flag is known (`evidence`: `live`, `help` or `docs`) and label the ones not yet exercised live. Droid, Grok, Kiro, Cline and the Antigravity CLI are left without a flag on purpose (the README says why); Amp and Mastra Code need none.
+
 ## 0.19.0 (2026-09-23)
 
 Synapse is a collaboration layer for any team of agents: research, marketing,

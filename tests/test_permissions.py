@@ -38,9 +38,35 @@ class PermissionTests(unittest.TestCase):
                         self.assertEqual(permissions.YOLO_ARGS[kind][0] in argv, mode == "yolo")
                         if mode == "native":
                             self.assertNotIn("--dangerously-bypass-hook-trust", argv)
-        self.assertEqual(models.launch_args("gemini", None, None), [])
-        self.assertIn("no verified", permissions.view({}, {"kind": "gemini"})["effect"])
+        self.assertEqual(models.launch_args("some-future-agent", None, None), [])
+        self.assertIn("no known YOLO switch", permissions.view({}, {"kind": "some-future-agent"})["effect"])
         self.assertIn("no built-in tool approval", permissions.view({}, {"kind": "pi"})["effect"])
+
+    def test_every_other_kind_with_a_switch_gets_it_by_default_on_start_resume_and_restore(self):
+        """Beyond the four core harnesses, every kind the CLI can spawn with a known switch starts in YOLO."""
+        self.assertEqual(set(permissions.YOLO_EVIDENCE), set(permissions.YOLO_ARGS))
+        self.assertTrue(set(permissions.YOLO_ARGS) <= set(roster.KIND_LABELS), set(permissions.YOLO_ARGS) - set(roster.KIND_LABELS))
+        self.assertEqual({k for k, v in permissions.YOLO_EVIDENCE.items() if v == "live"}, set(models.KINDS))
+        self.assertTrue(set(permissions.YOLO_EVIDENCE.values()) <= {"live", "help", "docs"})
+        for kind in sorted(set(permissions.YOLO_ARGS) - set(models.KINDS)):
+            flags = list(permissions.YOLO_ARGS[kind])
+            with self.subTest(kind=kind):
+                self.assertEqual(models.launch_args(kind, None, None), flags)
+                self.assertEqual(models.launch_args(kind, None, None, "native"), [])
+                self.assertEqual(models.fresh_argv(kind, None, None), [kind] + flags)
+                view = permissions.view({}, {"kind": kind})
+                self.assertEqual((view["mode"], view["flags"], view["evidence"]), ("yolo", flags, permissions.YOLO_EVIDENCE[kind]))
+                self.assertIn("not yet live-verified", view["effect"])
+                self.assertEqual(permissions.view({"permissions": "native"}, {"kind": kind})["flags"], [])
+                for source, (agent, ref_kinds, template) in roster.RESUME_COMMANDS.items():
+                    if agent != kind:
+                        continue
+                    session = dict(source=source, kind=ref_kinds[0], value="/tmp/s.jsonl" if ref_kinds[0] == "path" else "exact-session")
+                    argv = models.resume_argv(kind, session, None, None)
+                    self.assertEqual(argv[:len(template)], [p.replace("{id}", session["value"]) for p in template])
+                    self.assertEqual(argv[len(template):], flags)
+                    self.assertEqual(models.resume_argv(kind, session, None, None, "native")[len(template):], [])
+        self.assertEqual(permissions.view({}, {"kind": "claude"})["effect"], "permission bypass")
 
     def test_command_defaults_override_inherit_and_audit(self):
         with TempState() as ts:

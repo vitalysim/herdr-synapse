@@ -452,6 +452,25 @@ class CreateNew(unittest.TestCase):
             self.assertEqual(request["root"]["second"]["cwd"], "/tmp/work")
             self.assertEqual(request["root"]["first"]["env"]["HERDR_TEAM_DIR"], os.fspath(ts.session.team("delta").root))
 
+    def test_other_kinds_spawn_with_their_own_yolo_switch_unless_native(self):
+        for mode, extra in ((None, []), ("native", ["--permissions", "native"])):
+            with self.subTest(mode=mode), TempState(write_team=False) as ts:
+                api = live_api()
+
+                def layout_apply(params, api=api):
+                    api.rows.append(fake_agent("w9:p1", "term_n1", "cursor", None))
+                    api.rows.append(fake_agent("w9:p2", "term_n2", "gemini", None))
+                    return {"type": "layout_apply", "layout": {"workspace_id": "w9", "tab_id": "w9:t1", "zoomed": False, "focused_pane_id": "w9:p1", "root": {"type": "split", "direction": "right", "ratio": 0.5, "first": {"type": "pane", "pane_id": "w9:p1"}, "second": {"type": "pane", "pane_id": "w9:p2"}}}}
+
+                api.set_response("layout.apply", layout_apply)
+                api.set_cli(["agent", "start"], 0, "{}", "")
+                code, _payload, err = json_out(run_cli(["--json", "create", "delta", "--new", "--workspace", "w9", "--spawn", "hunter:cursor", "--spawn", "scout:gemini",
+                                                         "--brief", "hunter=Hunt.", "--brief", "scout=Scout."] + extra, env_no_daemon(ts), api))
+                self.assertEqual(code, 0, err)
+                starts = [run for run in api.runs if run[:2] == ["agent", "start"]]
+                self.assertEqual([run[run.index("--") + 1:] if "--" in run else [] for run in starts],
+                                 [["--force"], ["--yolo"]] if mode is None else [[], []])
+
 
 class StartAgent(unittest.TestCase):
     """``_start_agent`` reads the real ``herdr agent start`` envelope (src/cli/agent.rs) and retries ``agent_pane_busy``."""

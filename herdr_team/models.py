@@ -18,9 +18,10 @@ binaries, most recently 2026-09-16):
 - **Pi** ``--model provider/id`` and ``--thinking <level>`` on fresh starts
   and exact-path resumes. Model changes use the controlled restart path.
 
-Synapse-managed Claude Code, Codex and OpenCode launches are unrestricted by default:
-Claude gets ``--dangerously-skip-permissions``, Codex gets
-``--dangerously-bypass-approvals-and-sandbox``, and OpenCode gets ``--auto``.
+Synapse-managed launches are unrestricted by default: Claude gets
+``--dangerously-skip-permissions``, Codex gets
+``--dangerously-bypass-approvals-and-sandbox``, and OpenCode gets ``--auto``;
+every other kind with a known switch gets its own (``permissions.YOLO_ARGS``).
 The same flags are rebuilt on exact-session resume, controlled model restart,
 and OpenCode clear/restart instead of depending on a previous process argv.
 An explicit native permission policy omits these flags.
@@ -51,9 +52,9 @@ EFFORTS: Dict[str, Optional[Tuple[str, ...]]] = {
     "pi": ("off", "minimal", "low", "medium", "high", "xhigh", "max"),
 }
 
-#: Full-auto execution is the plugin default for every fully supported kind.
-#: Keep the spelling aligned with the installed harness CLIs; these are argv
-#: elements passed directly to Herdr, never shell fragments.
+#: Full-auto execution is the plugin default for every kind with a known switch,
+#: a superset of ``KINDS``. Keep the spelling aligned with the installed harness
+#: CLIs; these are argv elements passed directly to Herdr, never shell fragments.
 UNRESTRICTED_ARGS = _permissions.YOLO_ARGS
 
 #: What ends the harness cleanly, so the notifier can resume it with new flags.
