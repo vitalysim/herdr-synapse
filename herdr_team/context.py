@@ -181,11 +181,44 @@ def read_claude(transcript: Optional[str], configured_model: Optional[str] = Non
     return None
 
 
-def codex_rollout(session_value: Optional[str], home: Optional[Path] = None) -> Optional[Path]:
-    """The rollout file whose name ends in this session id."""
+# --------------------------------------------------------------------------
+# where each harness keeps its conversations
+#
+# ``env`` is optional so the context readers keep resolving from ``home``
+# alone, exactly as before. Transcript search passes it and so also follows
+# the harnesses' own relocation variables, the ones ``usage`` already honours
+# for their login files: ``CLAUDE_CONFIG_DIR``, ``CODEX_HOME`` and
+# ``XDG_DATA_HOME``.
+
+
+def claude_projects_root(home: Optional[Path] = None, env: Optional[Dict[str, str]] = None) -> Path:
+    """``<claude config>/projects``: one directory per project, one JSONL per session."""
+    configured = (env or {}).get("CLAUDE_CONFIG_DIR")
+    return (Path(configured) if configured else (home or Path.home()) / ".claude") / "projects"
+
+
+def codex_home(home: Optional[Path] = None, env: Optional[Dict[str, str]] = None) -> Path:
+    configured = (env or {}).get("CODEX_HOME")
+    return Path(configured) if configured else (home or Path.home()) / ".codex"
+
+
+def codex_rollout(session_value: Optional[str], home: Optional[Path] = None,
+                  env: Optional[Dict[str, str]] = None, archived: bool = False) -> Optional[Path]:
+    """The rollout file whose name ends in this session id.
+
+    ``archived`` also looks in ``archived_sessions/``, where Codex moves a
+    conversation the user archived; only search asks for that.
+    """
     if not session_value:
         return None
-    root = (home or Path.home()) / ".codex" / "sessions"
+    base = codex_home(home, env)
+    found = _codex_rollout_in(base / "sessions", session_value)
+    if found is None and archived:
+        found = _codex_rollout_in(base / "archived_sessions", session_value)
+    return found
+
+
+def _codex_rollout_in(root: Path, session_value: str) -> Optional[Path]:
     if not root.is_dir():
         return None
     try:
@@ -250,8 +283,20 @@ def read_codex(session_value: Optional[str], home: Optional[Path] = None) -> Opt
     return Reading(used=used, window=window, source=os.fspath(path), model=model, at=at)
 
 
-def opencode_db(home: Optional[Path] = None) -> Path:
-    return (home or Path.home()) / ".local" / "share" / "opencode" / "opencode.db"
+def opencode_db(home: Optional[Path] = None, env: Optional[Dict[str, str]] = None) -> Path:
+    data_home = (env or {}).get("XDG_DATA_HOME")
+    return (Path(data_home) if data_home else (home or Path.home()) / ".local" / "share") / "opencode" / "opencode.db"
+
+
+def connect_readonly(path: Path, timeout: float = 1.0) -> sqlite3.Connection:
+    """A read-only connection to a live harness database (raises ``sqlite3.Error``).
+
+    Read-only mode participates in SQLite's WAL snapshot, so it sees the live
+    agent's committed messages without ever writing. ``immutable`` looks
+    attractive here but deliberately ignores WAL updates, leaving readings
+    stale until the harness checkpoints.
+    """
+    return sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=timeout)
 
 
 def opencode_models(home: Optional[Path] = None) -> Path:
@@ -340,11 +385,7 @@ def read_opencode(session_value: Optional[str], home: Optional[Path] = None,
     if not path.is_file():
         return None
     try:
-        # Read-only mode participates in SQLite's WAL snapshot, so it sees the
-        # live agent's committed messages without ever writing. ``immutable``
-        # looks attractive here but deliberately ignores WAL updates, leaving
-        # context and compaction readings stale until OpenCode checkpoints.
-        conn = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=1.0)
+        conn = connect_readonly(path)
     except sqlite3.Error:
         return None
     try:
@@ -412,9 +453,10 @@ def read_member(kind: Optional[str], session: Any, pane_record: Optional[Dict[st
     return None
 
 
-def _claude_transcript_by_id(session_value: str, home: Optional[Path] = None) -> Optional[str]:
+def _claude_transcript_by_id(session_value: str, home: Optional[Path] = None,
+                             env: Optional[Dict[str, str]] = None) -> Optional[str]:
     """Find a Claude transcript by session id when no hook recorded its path."""
-    root = (home or Path.home()) / ".claude" / "projects"
+    root = claude_projects_root(home, env)
     if not root.is_dir():
         return None
     try:
@@ -422,3 +464,6 @@ def _claude_transcript_by_id(session_value: str, home: Optional[Path] = None) ->
     except OSError:
         return None
     return os.fspath(matches[-1]) if matches else None
+
+
+claude_transcript_by_id = _claude_transcript_by_id

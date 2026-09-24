@@ -22,9 +22,9 @@ class ReferenceDocsTests(unittest.TestCase):
 
     def test_every_cli_command_appears_once(self):
         commands = load_commands()
-        self.assertEqual(len(commands), 78)
-        self.assertEqual(len([command for command in commands if not command.hidden]), 69)
-        self.assertEqual(len([command for command in commands if command.hidden]), 9)
+        self.assertEqual(len(commands), 89)
+        self.assertEqual(len([command for command in commands if not command.hidden]), 79)
+        self.assertEqual(len([command for command in commands if command.hidden]), 10)
         section = self._section("cli")
         for command in commands:
             token = "<summary><code>{}</code>".format(command.name)
@@ -34,7 +34,7 @@ class ReferenceDocsTests(unittest.TestCase):
         section = self._section("actions")
         manifest = reference_docs.MANIFEST_PATH.read_text(encoding="utf-8")
         actions = reference_docs.manifest_actions(manifest)
-        self.assertEqual(len(actions), 8)
+        self.assertEqual(len(actions), 9)
         for action in actions:
             invocation = "herdr plugin action invoke {}.{}".format(reference_docs.PLUGIN_ID, action["id"])
             self.assertEqual(section.count(invocation), 1, action["id"])

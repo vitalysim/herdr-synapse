@@ -180,9 +180,12 @@ class KnowledgeAuthorityTests(unittest.TestCase):
         self.assertEqual([f["text"] for f in _charter.read_findings(self.layout, self.team)], ["real one"])
 
     def test_concurrent_appends_do_not_interleave(self):
+        from herdr_team import facts as _facts
+
         for index in range(40):
             _charter.add_finding(self.layout, self.team, agent(), "finding {}".format(index))
-        raw = self.layout.team(self.team).knowledge_jsonl.read_text(encoding="utf-8")
+        # since 0.19 a finding is a fact: one ``add`` event per finding in facts.jsonl
+        raw = _facts.facts_jsonl(self.layout.team(self.team)).read_text(encoding="utf-8")
         self.assertEqual(len(raw.splitlines()), 40)
         for line in raw.splitlines():
             json.loads(line)

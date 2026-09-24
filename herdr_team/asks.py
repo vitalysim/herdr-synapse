@@ -21,7 +21,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
 
 from herdr_team import store
 from herdr_team.errors import HerdrTeamError
-from herdr_team.identity import human_origin_ok
+from herdr_team.identity import record_human_ok
 from herdr_team.paths import TeamPaths
 
 #: Kinds that mean "I am waiting on you" rather than "for your records". Only
@@ -54,7 +54,7 @@ def answered_by(record: Any) -> Optional[int]:
     if not isinstance(record, dict) or record.get("from") != "human":
         return None
     origin = record.get("origin") if isinstance(record.get("origin"), dict) else {}
-    if not human_origin_ok(origin):
+    if not record_human_ok(origin):
         return None  # renders ``(unverified)`` on the board and counts for nothing there either
     reply_to = record.get("reply_to")
     return reply_to if isinstance(reply_to, int) and not isinstance(reply_to, bool) else None

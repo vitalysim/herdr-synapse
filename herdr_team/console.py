@@ -692,6 +692,32 @@ def execute_intent(intent: Intent, model: ConsoleModel, state: ConsoleState, api
             model.status = "links: " + "; ".join("{} ({}, manager {})".format(
                 [t for t in r["teams"] if t != team][0], r.get("state"), (r.get("managers") or {}).get([t for t in r["teams"] if t != team][0]) or "none") for r in rows)
         return True
+    if kind == "schedule":
+        action = str(intent.args.get("action") or "list")
+        if action != "list":
+            ref = str(intent.args.get("ref"))
+            # ``run`` may wait on a precheck (60 s by default); a longer one is a job for the CLI.
+            rc, out, err = run_cli(["--team", team, "schedule", action, ref], env, timeout=CLI_TIMEOUT_S + 60.0 if action == "run" else CLI_TIMEOUT_S)
+            result = out if isinstance(out, dict) else {}
+            if err:
+                model.status = "schedule {} failed: {}".format(action, err.get("message") or err.get("code"))
+            elif action == "run":
+                model.status = "{}: {}".format(ref, "posted #{}".format(result.get("seq")) if result.get("outcome") == "posted" else "precheck said skip; nothing posted")
+            else:
+                model.status = "{} {}{}".format(ref, action + "d", "; next {}".format(str(result["next"])[:16].replace("T", " ")) if result.get("next") else "")
+            return True
+        rc, out, err = run_cli(["--team", team, "schedule", "list"], env)
+        if err:
+            model.status = "schedule failed: {}".format(err.get("message") or err.get("code"))
+            return True
+        rows = [r for r in ((out or {}).get("schedules") or []) if isinstance(r, dict)] if isinstance(out, dict) else []
+        lines = ["{} {}{} ({}) -> {}: {}".format(
+            r.get("id"), "{} ".format(r["name"]) if r.get("name") else "", r.get("when"), r.get("zone"), ",".join(r.get("to") or []),
+            "next {}".format(str(r["next"])[:16].replace("T", " ")) if r.get("next") else "off" if not r.get("enabled") else "no next fire")
+            for r in rows] or ["no schedules; create one with: herdr-synapse schedule add \"<text>\" --every weekdays --at 09:00 --to <name|all|role:x>"]
+        model.peek = tui_model.box(lines, model.width, "schedules (Esc closes)")
+        model.status = "{} schedule(s) · /schedule run <id> fires one now".format(len(rows))
+        return True
     if kind in ("link", "unlink"):
         other = str(intent.args.get("other"))
         rc, out, err = run_cli(["--team", team, kind, team, other], env)
@@ -774,6 +800,18 @@ def execute_intent(intent: Intent, model: ConsoleModel, state: ConsoleState, api
 
             model.peek = tui_model.box(render_context(out or {}, model.width - 4, model.ascii_only).splitlines(), model.width, "context (Esc closes)")
             model.status = "how full each member is, read from its own harness files"
+        return True
+    if kind == "search":
+        # Excerpts sized to the box, so the marked match is never cut off by the border.
+        width = max(40, model.width - 8)
+        rc, out, err = run_cli(["--team", team, "search", "--context", str(width), "--", str(intent.args.get("query") or "")], env)
+        if err:
+            model.status = "search failed: {}".format(err.get("message") or err.get("code"))
+        else:
+            from herdr_team.cmd_search import render as render_search
+
+            model.peek = tui_model.box(render_search(out or {}, model.width - 4).splitlines(), model.width, "search (Esc closes)")
+            model.status = "{} match(es), newest first, from members' own conversations".format(int((out or {}).get("total") or 0))
         return True
     if kind == "remove":
         rc, out, err = run_cli(["--team", team, "remove", team, str(intent.args.get("member"))], env)

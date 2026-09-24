@@ -174,6 +174,8 @@ def is_unverified(record: Dict[str, Any]) -> bool:
     if sender == "human":
         if via in HUMAN_ORIGINS:
             return False
+        if via in ("schedule", "remote") and verified:
+            return False  # written by the notifier on the operator's behalf (identity.RECORD_ONLY_HUMAN_VIAS)
         return not (via == "cli" and verified)
     return not verified
 
@@ -797,6 +799,12 @@ def render_me(member: Dict[str, Any], team_doc: Dict[str, Any]) -> str:
         lines.append("teammates: none yet")
     if member.get("unread") is not None:
         lines.append("unread: {} (cursor {})".format(_safe_token(member.get("unread"), 12), _safe_token(member.get("cursor"), 12)))
+    work = member.get("work") if isinstance(member.get("work"), dict) else {}
+    for row in (work.get("owned") or [])[:8]:
+        lines.append("work {} [{}{}] {}".format(_safe_token(row.get("id"), 12), _safe_token(row.get("status"), 20),
+                                               ", ready" if row.get("ready") else "", _safe_text(row.get("title"))[:80]))
+    for row in (work.get("reviewing") or [])[:5]:
+        lines.append("review {} {}".format(_safe_token(row.get("id"), 12), _safe_text(row.get("title"))[:80]))
     if member.get("via"):
         lines.append("via: {}{}".format(_safe_token(member.get("via"), 24), "" if member.get("verified") else " (unverified)"))
     if member.get("skill_version") is not None:

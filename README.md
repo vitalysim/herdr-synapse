@@ -27,13 +27,18 @@ transport use Herdr's terminal and session APIs instead of patching any agent
 harness. The full core workflow is live-verified with Claude Code, Codex, OpenCode and Pi; other Herdr agent kinds stay blocked until you explicitly probe or
 trust them.
 
+The agents are coding-agent TUIs, but the work does not have to be code. A
+team can run a research sprint, a content campaign or a security review as
+readily as a feature: the board, work items, facts and schedules carry no
+assumption about what the deliverable is.
+
 > [!CAUTION]
 > Synapse-managed Claude Code, Codex and OpenCode launches run unrestricted by default: `--dangerously-skip-permissions`, `--dangerously-bypass-approvals-and-sandbox` and `--auto`, respectively. Use `--permissions native` at creation or `permissions NAME native` to use an agent’s own settings. Fresh spawns, exact-session resumes, controlled model restarts and OpenCode clear restarts otherwise carry the YOLO default, so these agents can execute commands and change files without approval prompts. Pi tools are unrestricted natively; Synapse adds run-scoped `--approve` for project resources. Use trusted repositories or an external sandbox; unrestricted execution does not grant Synapse operator authority.
 
 ```
 team red-dev · 3 members · view:on · nudges:on · toasts:herdr · unread(you):0
 charter #1: Ship the HTML report for susfind
-runtime: safe !:ready · Herdr 0.9.0/p22 · Synapse 0.16.0 · daemon 0.16.0
+runtime: safe !:ready · Herdr 0.9.1/p22 · Synapse 0.19.0 · daemon 0.19.0
 
 ○  red-dev-claude-dev     claude-dev      claude    w1:p1  idle     "report.py: templates done"   manager  model opus@medium
 ◐  red-dev-codex-reviewer codex-reviewer  codex     w1:p2  working  "reviewing report.py"         ↪1 (not_idle)
@@ -111,6 +116,9 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
   of guessing or being talked past by a peer. Long-running shell behaviour is
   harness-dependent and is called out in the matrix below. `Ctrl-A`
   acknowledges without deciding, and says that it is not a decision.
+- **Work that ends.** Work items with a brief (what done looks like), owners,
+  dependencies, reviewers and attempts that settle with an explicit outcome;
+  `work next` says exactly what to run.
 
 **Authority and knowledge**
 
@@ -134,14 +142,28 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
   DOs and DON'Ts and carries your authority; any agent appends what it learned
   with `knowledge add`, attributed and marked as a peer note rather than a
   rule. `prefix+f` shows what every team has and what is missing.
+- **Facts, not a pile of notes.** Findings carry their sources, their supporters and
+  when they were true; a newer value supersedes the old one, and disagreements
+  between agents are handled the way you choose, from silently observed to
+  debated to decided by you. `recall` searches all of it at once.
 
 **Operations**
 
+- **Mission control and templates.** `prefix+d` shows what needs you across every
+  team. `create --template research-sprint | content-campaign | vuln-hunt |
+  feature-team` starts a whole team, and `template save` keeps yours.
+- **Recurring work and your phone.** A schedule posts, or hands out a work
+  item, on a timetable. A paired phone (ntfy, Telegram or a webhook) hears
+  about questions waiting on you, and can answer them.
 - **Context you can see and act on.** Claude Code, Codex, OpenCode and Pi members show how full their context window is, read from the harness's own transcript, rollout log, database or runtime extension. Pi readings are estimates; other kinds explicitly show unknown.
   The board says so at 75 % and 90 %, the sidebar gauge turns yellow then red,
   and `compact <name>` or `clear <name>` types the kind's own command when the
   member is next idle. A compacted or cleared member is re-briefed, and
   `herdr-synapse orient` gives it the whole team back in one read.
+- **Search what members actually said.** `search rate limit` looks through
+  the members' own Claude Code, Codex, OpenCode and Pi conversations, not only
+  the board: newest first, the match marked, secrets redacted. You and the
+  manager may search anyone; any other member only itself.
 - **Usage limits across supported providers.** `prefix+i` shows the session,
   weekly, and per-model windows that supported provider accounts publish,
   grouped by the agents behind each. It reads the agent CLIs' local login
@@ -176,6 +198,8 @@ The coordination layer itself does not depend on a harness adapter:
 | Instructions and knowledge | ✓ | ✓ | Project folder, rules, per-member instructions, findings and artifact watching work for every kind; automatic delivery of a change follows the delivery row below. |
 | Human interaction and UI | ✓ | ✓ | Teams view, console, compose, sidebar tokens, focus/peek and the operator ask queue are shared. Whether an agent's shell tool can remain blocked for an answer is listed below. |
 | Operations and safety | ✓ | ✓ | Export, archive, wipe, audit, notifier statistics, mute/pause, health checks and operator gates are agent-independent. |
+| Work, facts and recall | ✓ | ✓ | Work items, briefs, settlements, reviews, facts, disputes and the recall index are team records, identical for every kind; the posts they make are delivered like any other. |
+| Templates, mission control, schedules, phone | ✓ | ✓ | A template only fills in `create`; mission control reads roster, board and work state; scheduled posts and phone answers are ordinary board records, so they reach agents the way any post does. |
 
 The remaining capabilities touch the receiving TUI, its session store, model
 flags, context files or provider account. Claude Code, Codex, OpenCode and Pi are
@@ -275,6 +299,9 @@ What the conditional cells mean:
   one re-brief after each operation. OpenCode 1.18.30 crashes when a fresh TUI
   starts in a very narrow terminal, so Synapse refuses its clear before exit
   when the pane layout is under 38 columns (about a 40-column PTY).
+- **Transcript search:** reads the same stores as the context gauge, so it
+  covers Claude Code, Codex, OpenCode and Pi; any other kind is reported as
+  having no reader rather than returning an empty result.
 - **Account usage:** separate from the per-agent context gauge. Anthropic and
   OpenAI Codex are live-verified; Copilot is best effort; Pi and OpenCode depend
   on the provider/login they use, and OpenCode Zen publishes billing rather
@@ -311,7 +338,8 @@ herdr plugin install vitalysim/herdr-synapse
 # 2. Start the notifier once; future Herdr starts launch it automatically.
 herdr-synapse daemon start
 
-# 3. Install the Synapse operating skill for your agents.
+# 3. Install the Synapse operating skill for your agents (agents then load their
+#    role's guide from the CLI with `herdr-synapse skill get`).
 herdr-synapse skill install
 
 # 4. Trust each terminal UI you use (required once per Herdr session).
@@ -389,6 +417,10 @@ than one bad table, so if `config check` fails, fix the snippet before
 reloading. The block gives you the key bindings and the sidebar rows that show
 each member's team, role and current task, using a six-colour team palette.
 
+If you pasted the block before 0.19, it lacks the `prefix+d` binding for
+mission control. `herdr-synapse keys print` prints the current bindings; add
+the missing one and reload.
+
 ### Verify
 
 ```bash
@@ -437,7 +469,15 @@ checkout. Foreign skill directories are left alone unless you explicitly use
 console immediately shows both the loaded plugin and daemon versions, so a
 stale process is visible. Then `/quit` and reopen an already-open console to
 load new console code. A notifier whose checkout changed version some other
-way (`git pull`, `herdr plugin install`) restarts itself on the new code.
+way (`git pull`, `herdr plugin install`) restarts itself on the new code. That
+self-restart arrived in 0.18.1: a notifier older than that exits when its
+version changes, so after that one upgrade run `herdr-synapse daemon start`
+(or use `herdr-synapse update`, which restarts it for you).
+
+Agents learn new commands from the skill. After an update that raises the
+skill version (0.19 ships v11), `herdr-synapse skill check` lists the stale
+copies and `skill install` refreshes them, and an agent's own `me` warns it
+while its installed skill differs from the CLI.
 
 Teams, boards and the state pointer all survive an update, because the
 plugin's state lives outside the checkout. Even `herdr plugin uninstall
@@ -485,10 +525,36 @@ its context is not broken by the move.
 
 Default key bindings: `prefix+t` teams view, `prefix+u` console, `prefix+m`
 compose popup, `prefix+y` team view in the sidebar, `prefix+i` usage limits,
-`prefix+f` team knowledge.
+`prefix+f` team knowledge, `prefix+d` mission control.
 
 The [complete command and shortcut reference](docs/reference.md) lists every
 CLI parameter, plugin action, console command, and key used inside each view.
+
+## Team templates
+
+Start a whole team from a shape that works: its charter, rules, roles, each
+role's Mission and instructions, who manages, how disagreements are handled,
+who reviews, and the vocabulary its facts use.
+
+```bash
+herdr-synapse template list
+herdr-synapse template show research-sprint
+herdr-synapse create q4-churn --template research-sprint --new --project ~/research/churn \
+    --charter "Is our churn seasonal, and what drives it?"
+```
+
+| Template | Roles | Settings |
+| --- | --- | --- |
+| `research-sprint` | lead (manager), researcher, skeptic (reviews) | disagreements debated for 30 min, then escalated; every work item needs acceptance evidence |
+| `content-campaign` | strategist (manager), writer, editor (reviews) | disagreements go straight to the manager or you; the editor approves every asset |
+| `vuln-hunt` | lead (manager), hunter, validator (reviews) | findings count only once the validator reproduces them |
+| `feature-team` | lead (manager), implementer, reviewer | disagreements observed; acceptance evidence recommended |
+
+Anything you pass yourself wins: your own `--charter`, `--spawn`, `--brief` or
+`--instructions`. Live agents work too: `--member <pane>:<role>` takes the role's
+Mission and instructions. `herdr-synapse template save <name>` turns the current
+team into a template of your own (in your Herdr config), which you can start again
+or share as a folder of Markdown.
 
 ## The teams view
 
@@ -538,6 +604,8 @@ to the tree; arrows and PgUp/PgDn scroll, and `r` refreshes live state.
 | `/nudge name`, `/mute name 10m`, `/pause`, `/focus name`, `/peek name` | delivery and pane controls |
 | `/asks`, `/ask-policy block 8m` | what is waiting on you; whether agents wait, and how long |
 | `/context`, `/compact name`, `/clear name` | context windows, and the two ways to make room |
+| `/search words "a phrase"` | what members said and did in their own conversations, newest first |
+| `/schedule`, `/schedule run\|enable\|disable <id>` | the team's schedules and when each fires next; fire one now or switch it |
 | `/model name opus@medium [--restart]` | a member's model and effort; Claude and OpenCode effort can apply live, while Codex/Pi changes and OpenCode model changes apply at resume or `--restart` now |
 | `/links`, `/link other-team`, `/unlink other-team` | the links this team has, and making or breaking one |
 | `/filter teams`, `/filter team`, Tab | the inter-team lens, the local lens, or cycle through all of them |
@@ -553,6 +621,22 @@ placeholder, so you do not have to remember the arguments.
 The feed follows the newest post. Scrolling back with Up or PgUp stops it and
 shows how many entries are below; End or Esc returns to the latest, and
 posting snaps you there too.
+
+## Mission control
+
+`prefix+d` (or `herdr-synapse mission`) puts every team on one screen, in five
+lanes:
+
+| Lane | What lands there |
+| --- | --- |
+| Needs you | questions to you, agents stuck in an approval dialog, work waiting for your review or decision, disagreements routed to you, operator grants about to expire |
+| Blocked | work items reported blocked, and work held by an agent that has gone missing |
+| Working | agents in a turn, with the work item each holds |
+| Done | work settled in the last day, and agents that finished a turn |
+| Idle | agents with nothing in progress |
+
+Each card carries the command that deals with it. In the popup, Enter on an
+agent jumps to its pane; on anything else it shows the command.
 
 ## Teams that talk to each other
 
@@ -740,7 +824,8 @@ On daemon load or an explicit `project render`, Synapse completes only the exact
 | `instructions <name> --edit` | that member's own document, in your editor | you |
 | edit `members/<name>.md`, then `instructions <name> --adopt` | the same, in your repo | you |
 | `knowledge set "…"` | the team's DOs and DON'Ts | you |
-| `knowledge add "…"` | one attributed finding | any member |
+| `knowledge add "…"` | one attributed finding (a fact without a subject) | any member |
+| `fact add "…" --about X --attribute Y --source URL` | a fact with its subject, source and time | any member |
 | `knowledge-status`, `prefix+f` | what every team has, and what is missing | anyone |
 
 Three things make this safe to keep in a repository agents can write to. The
@@ -769,7 +854,9 @@ the work, link up with another team's manager, and read the board back. The
 documents that carry your authority are the exception: the charter, the team
 rules, and each member's instructions are yours, and a member is refused when
 it tries to write them. Removing or renaming an existing member also requires
-operator authority.
+operator authority, and so do the team-wide switches: the `contradictions`
+mode, schedules, `template save` and `create --template`, and approving or
+closing a work item in place of its named reviewer.
 
 When you want an agent to do the whole thing, say so once:
 
@@ -784,14 +871,18 @@ audit log records `operator_action` with its name, the board carries the
 grant, `who` marks it `acts as operator`, and `doctor` keeps warning you while
 it is live. Granting is yours alone: a delegated member is refused if it tries
 to grant anything, and `say`, the one command that types straight into a
-teammate's pane, stays yours.
+teammate's pane, stays yours. So do two things that act as you outside the
+team: pairing a phone or changing what it is sent (`remote pair`, `unpair`,
+`policy`), and any schedule with a `--precheck`, because that runs a shell
+command as you. A delegate may still add schedules without one.
 
 Authority is decided by origin, not by name. A process inside an agent's pane
 is that agent whatever its environment claims, and the gates test where a
 command came from rather than what it calls itself. A shell Herdr cannot
 verify as yours still posts, rendered `(unverified)`, but carries no
 authority: `charter`, `knowledge set`, `instructions`, `manager`, `remove`,
-`rename`, `operator grant`, `dissolve`, `wipe` and the policies refuse it and say how to be
+`rename`, `operator grant`, `dissolve`, `wipe`, a `contradictions` or
+`schedule` change, `remote` pairing and the policies refuse it and say how to be
 trusted — the team console, a focused Herdr pane, or `env -u HERDR_PANE_ID
 herdr-synapse --team <team> …`. This is a speed bump rather than a wall:
 anything running as your user can reach your files. It closes the obvious
@@ -828,6 +919,89 @@ does, while an ordinary peer's broadcast waits for the next read; it is also
 the team's voice across a link to another team. Nothing
 else about delivery changes: a blocked agent, an open dialog, a draft on the
 prompt line and every rate limit still hold it.
+
+## Work items
+
+A request that must end with a result is a work item. It has a brief that
+says what done looks like, an owner, dependencies, optional reviewers, and
+attempts that end with an explicit outcome.
+
+```bash
+herdr-synapse work add "Map competitor pricing tiers" --to research-analyst \
+    --deliverable artifacts/pricing.md --acceptance "every price has a dated source" \
+    --review-by role:skeptic
+herdr-synapse work add "Draft the pricing page" --to copywriter --deps W-1 --quick
+herdr-synapse work list          # what is unfinished, and why
+herdr-synapse work next          # exactly what you should run next
+```
+
+The owner runs `work claim W-1`, then `work done W-1 --outcome succeeded|failed|partial
+--summary "..." --deliverable ... --evidence ...`. Failure is an outcome, never
+something buried in prose. With reviewers, a success waits for `work review W-1
+--approve` or `--changes "<what to fix>"`. When W-1 is done, W-2's owner is woken:
+its dependency finished.
+
+Every change is also an ordinary post on the board (the assignment is a request
+to the owner, the settlement a done to the requester and the manager), so it is
+delivered through the same idle gates. An agent restarted, cleared or swapped
+since it claimed an item is a new generation and cannot settle the old attempt:
+it claims again, and the history shows both attempts. `work list --json` and
+`work next` give each row the literal command that moves it on, which is what a
+manager agent follows.
+
+## Team facts, and what happens when agents disagree
+
+What the team learns is recorded as facts, with where each came from and when
+it was true:
+
+```bash
+herdr-synapse fact add "Pro plan is $59/mo" --about "Competitor X" --attribute price \
+    --source https://example.com/pricing@2026-09-20
+herdr-synapse facts --about "Competitor X" --history   # $49 (Aug 2 – Sep 20) -> $59
+herdr-synapse facts --as-of 2026-09-01                 # what the team believed then
+```
+
+The same statement from a second member becomes support, not a duplicate, and
+the number of members behind a fact is its confidence. A member refines or
+retires only its own facts; nothing is deleted. `knowledge add` still works and
+records a fact without a subject.
+
+Two members giving different values for the same subject and attribute is a
+disagreement. What happens next is your switch, per team, and it never limits
+what agents may say to each other:
+
+| `contradictions` | What happens |
+| --- | --- |
+| `off` | nothing; both facts stand |
+| `observe` (default) | recorded and marked disputed where you look (mission control, `facts --disputed`); no agent is told |
+| `debate` | the two authors are introduced and settle it on the board; unresolved after 30 min, it goes to the manager or you |
+| `escalate` | the manager (when not a party) or you decide at once: `fact resolve D-1 --keep F-7` |
+
+```bash
+herdr-synapse contradictions                        # the current mode
+herdr-synapse contradictions debate --timeout 45m   # operator only
+herdr-synapse fact disputes                         # what is open, and between whom
+```
+
+A dispute ends as soon as only one of its facts is still current: a side
+concedes by retiring or superseding its own fact, or someone who may decide
+resolves it with `--keep`, `--keep-both` or `--retire-all`. A manager that is a party to the
+dispute cannot decide it. The mode changes who hears about a clash, never
+whether a post is delivered: agents can always argue on the board in any mode.
+
+## Recall: search what the team knows
+
+```bash
+herdr-synapse recall "enterprise pricing"
+herdr-synapse recall "launch date" --kind fact --as-of 2026-09-01
+herdr-synapse recall "rate limit" --about "Payments API"
+```
+
+One ranked list over the board (archive included), the facts, the work items
+with their settlement summaries, and the text files in the team's `artifacts/`.
+It needs no model and no service: a SQLite full-text index kept in the team's
+state directory, ranked by relevance, recency and how well each fact is
+supported. Agents are taught to recall before they start.
 
 ## Members and their sessions
 
@@ -904,6 +1078,40 @@ answer rather than a command to run. It waits for the same gate as everything
 else, idle included, and Claude's two-to-three-minute compaction is waited
 out rather than retried into.
 
+## Searching what members said
+
+The board holds what a member chose to post. Its harness keeps the rest: what
+it was asked, what it answered, which tools it ran and what came back.
+`search` looks through that, for the conversations the roster recorded for
+each member.
+
+```bash
+herdr-synapse search rate limit                         # every word, in one message, any case
+herdr-synapse search '"token bucket" refill' --since 1d # a quoted phrase matches exactly
+herdr-synapse search pricing --member alpha-analyst --role assistant
+herdr-synapse search pricing --history                  # also conversations before a restart, clear, or swap
+```
+
+Hits come newest first, each with the member, its kind, the time, who spoke
+(user, assistant, or tool), a short excerpt with the match marked `»…«`, and
+the session it came from. Claude Code, Codex, OpenCode and Pi conversations
+are read, from the same files `context` uses; other kinds say there is no
+reader. Nothing is written, the OpenCode database is opened read-only, and a
+store that is missing or locked is listed as skipped rather than failing the
+search.
+
+| Who runs it | What it may search |
+| --- | --- |
+| you, or a member you delegated to | any member |
+| the team manager | any member |
+| any other member | only its own conversations |
+
+A member asking about a teammate is refused and the refusal is audited, the
+same rule that keeps agents out of each other's panes. Every search is
+audited without its words. Excerpts pass through the same secret patterns
+the board refuses, so keys show as `[redacted:<kind>]` and cannot be searched
+for. In the console, `/search <words>` shows the same result in a box.
+
 ## Coming back from a compaction
 
 An agent that has just been compacted or cleared has lost the team. One command
@@ -915,7 +1123,8 @@ herdr-synapse orient
 
 It prints who you are, the charter, your brief, your own instructions, the team
 rules, your model and effort, your teammates with the manager marked, the
-teams you are linked to, where the team's files are, and your unread count.
+teams you are linked to, the work items you hold, where the team's files are,
+and your unread count.
 The team's findings are a count and a command, not text: they are peer notes,
 and a compacted agent should choose when to spend context re-reading them.
 
@@ -987,6 +1196,90 @@ Blocking defaults to `question`, `blocked` and `request`; blocking a `done`
 notice would freeze a team that posts forty of them. `/ask-policy` in the team
 console changes it, or turns waiting off entirely.
 
+## Recurring work on a timetable
+
+Work that comes back every day or every week can post itself. A schedule is a
+post you write once; the notifier puts it on the board at the time you chose,
+as if you had just written it, and the recipients are nudged the usual way.
+
+```bash
+# a marketing team: every weekday morning, the analyst triages yesterday's mentions
+herdr-synapse schedule add "Triage yesterday's brand mentions and flag anything urgent" \
+  --every weekdays --at 09:00 --tz Europe/Berlin --to role:analyst --name mentions
+
+# a research team: Monday competitor scan, only when the scraper produced new data
+herdr-synapse schedule add "Summarise this week's competitor pricing changes" \
+  --cron "0 8 * * mon" --to all --precheck "test -s data/pricing-new.csv"
+
+herdr-synapse schedule next          # what fires next, across the team
+herdr-synapse schedule list          # every schedule, its next run and its last outcome
+herdr-synapse schedule run mentions  # fire one now, without changing its timetable
+herdr-synapse schedule disable mentions
+```
+
+`--every` takes `hourly`, `daily`, `weekdays` or `weekly` (with `--day`);
+`--cron` takes a standard five-field line. Times follow `--tz`, or this
+machine's zone, and daylight-saving changes neither skip nor double a run. The
+post is marked `[scheduled mentions]` so nobody mistakes it for you typing
+now, and `role:analyst` is resolved at each run, so a replaced analyst still
+gets it.
+
+A `--precheck` is a shell command run just before: a non-zero exit skips that
+run quietly, and a precheck that hangs past its timeout reaches you as a
+toast. If the notifier was down when a run was due, the run still happens if
+it is at most `--grace` late (30 minutes by default); otherwise you get one
+"missed" note on the board instead of a burst of stale posts.
+
+Add `--as-work` and each run is a tracked work item instead of a post: owned by
+the recipient when it names one member (open to whoever claims it otherwise),
+with `--acceptance "<evidence>"` as its brief, and settled like any other item.
+
+Creating, changing and removing schedules is yours, or an agent's you have
+delegated to. A schedule with a precheck runs a command as you, so only you in
+person can create, re-enable or run one. The definitions are a readable,
+editable `schedules.json` in the team's state directory (`schedule list
+--json` prints its path); `/schedule` in the console shows them.
+
+### On your phone
+
+A team left running overnight can still reach you. Phone reach is off until
+you pair a channel, and it only makes outbound HTTPS requests; nothing on your
+machine listens for connections.
+
+```bash
+herdr-synapse remote pair telegram --bot-token-file ~/.config/herdr-bot-token   # then send /start <code> to your bot
+herdr-synapse remote pair ntfy --topic my-team-asks --token-file ~/.config/ntfy-token
+herdr-synapse remote pair webhook --url-file ~/.config/slack-webhook-url      # Slack-style, send only
+herdr-synapse remote test          # one test message
+herdr-synapse remote status        # what is paired, what is sent, the last result
+herdr-synapse remote policy --text full
+herdr-synapse remote unpair
+```
+
+Each new question, blocker or request addressed to you arrives with a short
+code. Reply `K7QX EU first, then US` and that becomes your answer on the
+board, the same answer the popup would have written, marked as sent from your
+phone. The waiting agent is released and the ask closes. `K7QX ok` is the popup's acknowledgement, and like
+it, it is not approval: to approve something, say so in words. Telegram answers
+count only from the one private chat you paired. ntfy answers need an access
+token, because an open topic is public. A webhook only sends.
+
+**What leaves this machine.** Messages go to the service you pair: ntfy.sh or
+your own ntfy server, Telegram, or your webhook's host. The default `summary`
+policy sends the session and team name, who asked, the kind of post and the
+reply code, never the text. `--text full` also sends the text, with anything
+that looks like a key or password replaced by `[redacted:…]`, capped at 500
+characters. `--text none` sends only "1 item waiting in Herdr". Fact conflicts
+and failed schedules addressed to you are sent too, unless `--send` leaves
+them out. Only items that appear after you pair are sent. Tokens and URLs are
+read from a file or an environment variable, never from the command line, and
+are kept in a private file (mode 0600) that `unpair` deletes. `doctor` reminds
+you while a channel is paired.
+
+A phone answer can answer or acknowledge an ask, and nothing else. It cannot
+change the charter, rules, grants or this policy. Pairing and the policy are
+operator only.
+
 ## Housekeeping
 
 ```bash
@@ -1044,6 +1337,14 @@ receipts wake nobody. They remain visible board awareness, but never fall
 through the catch-up sweep or hold Claude's Stop hook open as if they were
 peer mail.
 
+Work items and facts use the same table. Assigning, settling and reviewing
+work are ordinary posts to the people involved; when an item's dependency
+settles, its owner alone is woken (`work_ready`). A new or retired fact wakes
+nobody. A clash under `debate` wakes its two authors and under `escalate` the
+manager when it is not a party (otherwise it goes to you), with a toast
+either way; under `observe` it is addressed to you only, so no agent sees it. A scheduled post is delivered exactly as if you had
+just written it; a schedule that fails toasts you and wakes nobody.
+
 ## Safety properties
 
 - Only the daemon types into an agent, one line at a time, only into panes
@@ -1072,6 +1373,15 @@ peer mail.
   from another team's manager is marked as a peer team asking.
 - Only the operator closes an ask or releases a waiting agent. A teammate's
   reply, or a reply from an unverified shell, is a note on the thread.
+- A paired phone (`remote`) can answer or acknowledge an ask that is still
+  waiting, and nothing else: its answers never pass an authority gate. The
+  same holds for scheduled posts, which are marked `[scheduled <name>]`.
+- Contradiction handling never blocks, delays or filters a post. Every mode,
+  `off` to `escalate`, changes only who is told about a clash.
+- Work settles once, and only for the attempt that claimed it: an agent
+  restarted, cleared or swapped since its claim is refused
+  (`attempt_fenced`). Only a named reviewer approves an item, or you in its
+  place.
 - Emergency stop: `herdr-synapse daemon stop`. Nothing is typed anywhere after
   that. `herdr plugin disable herdr-synapse` removes the plugin's sidebar
   tokens and view within seconds.
@@ -1085,13 +1395,15 @@ peer mail.
 - [docs/cli.md](docs/cli.md): the command contract, with every argument, JSON shape, exit code, and record grammar.
 - [docs/development.md](docs/development.md): internals, conventions, state layout, and the status log.
 - [skills/herdr-synapse/SKILL.md](skills/herdr-synapse/SKILL.md): what agents are taught, printed by `herdr-synapse --skill`.
+- [skill-guides/](skill-guides/): the worker, manager, reviewer and librarian guides, and the work, facts, recall and coordination references, served to agents by `herdr-synapse skill get`.
+- [templates/](templates/): the built-in team templates, each a folder of Markdown you can copy and adapt.
 - [CHANGELOG.md](CHANGELOG.md): what changed in each release, and why.
 - [CONTRIBUTING.md](CONTRIBUTING.md): bug reports, pull requests, and validation.
 - [SECURITY.md](SECURITY.md): private vulnerability reporting and sensitive-data guidance.
 
 ## Status
 
-Current source version: 0.18.1, skill v10.
+Current source version: 0.19.0, skill v11.
 
 Claude Code 2.1.267, Codex 0.153.4 and OpenCode 1.18.30 were exercised together
 in one disposable Herdr 0.9.0/p22 session. Formation, exact-session resume, idle
@@ -1099,6 +1411,32 @@ nudge, safe `!`, running `!!`, teammate interrupt, blocking ask, model and
 effort changes, context readings, compact, clear and re-briefing all completed
 end to end for each harness. The notifier's `wrong_target` counter remained
 zero, and the complete automated suite covers the surrounding failure paths.
+
+The 0.19 features were run end to end on 2026-09-23 in a disposable, fully
+isolated Herdr 0.9.1/p22 session, with Claude Code 2.1.281 and Codex 0.155.1
+as members. The run covered:
+
+- a team created from a template;
+- a work item through claim, settlement, requested changes and approval;
+- a debated disagreement settled by concession;
+- an operator-versus-agent disagreement escalated to the manager, which
+  resolved it;
+- a blocking ask answered from a phone through a local stand-in for ntfy;
+- a schedule firing as a work item;
+- recall, transcript search, `skill get` in a member's pane, and mission
+  control, as its CLI view and as the popup opened by `ui mission` (the
+  command behind `prefix+d`);
+- generation fencing after a real `clear`;
+- the notifier restarting itself on a version change;
+- `template save`.
+
+That run found five defects, all fixed with regression tests before release.
+Not yet exercised live:
+
+- the hosted ntfy.sh, Telegram and Slack services;
+- OpenCode and Pi members using the 0.19 features;
+- 0.19 on Linux;
+- a person reading the mission control popup on a real screen.
 
 Hooks remain Claude-only. Provider account usage is separate from core agent
 support: Anthropic and OpenAI Codex logins are verified, while OpenCode depends

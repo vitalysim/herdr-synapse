@@ -182,11 +182,11 @@ class SetupAndKeys(unittest.TestCase):
     def test_keys_print(self):
         with TempState() as ts:
             code, payload, _ = json_out(run_cli(["--json", "keys", "print"], ts.env))
-            self.assertEqual(payload["keys"], {"team-up": "prefix+t", "compose": "prefix+m", "console": "prefix+u", "toggle-view": "prefix+y", "usage": "prefix+i", "knowledge": "prefix+f"})
+            self.assertEqual(payload["keys"], {"team-up": "prefix+t", "compose": "prefix+m", "console": "prefix+u", "toggle-view": "prefix+y", "usage": "prefix+i", "knowledge": "prefix+f", "mission": "prefix+d"})
             snippet = payload["snippet"]
-            self.assertEqual(snippet.count("[[keys.command]]"), 6)
-            self.assertEqual(snippet.count('type = "plugin_action"'), 6)
-            for action in ("herdr-synapse.team-up", "herdr-synapse.compose", "herdr-synapse.console", "herdr-synapse.toggle-view", "herdr-synapse.usage"):
+            self.assertEqual(snippet.count("[[keys.command]]"), 7)
+            self.assertEqual(snippet.count('type = "plugin_action"'), 7)
+            for action in ("herdr-synapse.team-up", "herdr-synapse.compose", "herdr-synapse.console", "herdr-synapse.toggle-view", "herdr-synapse.usage", "herdr-synapse.mission"):
                 self.assertIn('command = "{}"'.format(action), snippet)
             code, out, _ = run_cli(["keys", "print"], ts.env)
             self.assertEqual(out.strip(), snippet.strip())

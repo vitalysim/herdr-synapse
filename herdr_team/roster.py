@@ -180,17 +180,13 @@ SESSION_REF_KINDS = ("id", "path")
 #: Herdr's ``MAX_SESSION_ID_LEN`` and ``MAX_SESSION_PATH_LEN``.
 MAX_SESSION_ID_CHARS = 512
 MAX_SESSION_PATH_CHARS = 4096
+#: How many earlier conversations of the same agent a member keeps a reference
+#: to (``Member.session_history``). Only ``search --history`` reads them; a
+#: swap's outgoing conversation lives in ``agent_history`` instead.
+SESSION_HISTORY_MAX = 20
 
-SYSTEM_EVENTS = (
-    "nudged", "toast", "retracted", "expired", "abandoned", "member_gone",
-    "member_restarted", "rotated", "reset_detected", "charter_updated", "renamed", "typed", "member_joined",
-    "knowledge_updated", "instructions_updated", "instructions_edited", "knowledge_finding",
-    "artifacts_changed", "project_set", "operator_granted", "operator_revoked",
-    "context_high", "context_cleared", "context_compacted", "workdir_moved", "manager_changed",
-    "permissions_changed", "model_changed", "model_applied", "restart_failed", "agent_swapped", "swap_control_cancelled",
-    "link_established", "link_broken", "link_read",
-    "board_cleared",
-)
+#: The one list lives in ``store``; this name stays for existing importers.
+SYSTEM_EVENTS = store.SYSTEM_EVENTS
 
 _SAVE_RETRIES = 3
 
@@ -317,6 +313,25 @@ def session_source(session: Any) -> Optional[str]:
     return key[0] if key is not None else None
 
 
+def remember_session(history: Any, replaced: Any, live: Any) -> Optional[List[Dict[str, Any]]]:
+    """``session_history`` after ``replaced`` gave way to ``live``; None when there is nothing to keep.
+
+    A different *value* is a different conversation (a crash and restart, a
+    Claude ``/clear``, a resume of something else); a new phase of the same
+    value is not, so a compaction adds nothing. Newest last, one entry per
+    value, capped at ``SESSION_HISTORY_MAX``. Without this the only trace of
+    the old conversation was an eight-character tail on a board record, which
+    names nothing that can be opened again.
+    """
+    if session_key(replaced) is None or same_session_value(replaced, live):
+        return None
+    entry = dict(replaced, replaced_at=now_iso())
+    kept = [dict(h) for h in (history if isinstance(history, list) else [])
+            if isinstance(h, dict) and not same_session_value(h, replaced)]
+    kept.append(entry)
+    return kept[-SESSION_HISTORY_MAX:]
+
+
 def short_session(session: Any, tail: int = 8) -> Optional[str]:
     """The last ``tail`` characters of the session value, for ``who``/``me`` and the tree."""
     key = session_key(session)
@@ -399,6 +414,10 @@ class Member:
     #: Durable create-and-replace operation; completed records retain recovery information.
     swap: Optional[Dict[str, Any]] = None
     agent_history: List[Dict[str, Any]] = field(default_factory=list)
+    #: Earlier conversations of this member's agent, recorded when a new one
+    #: replaced them (``remember_session``). Exact references, never read by
+    #: delivery or identity; ``search --history`` is the one consumer.
+    session_history: List[Dict[str, Any]] = field(default_factory=list)
 
     @property
     def is_human(self) -> bool:
@@ -444,6 +463,8 @@ class Member:
             obj["swap"] = self.swap
         if self.agent_history:
             obj["agent_history"] = self.agent_history
+        if self.session_history:
+            obj["session_history"] = self.session_history
         return obj
 
     @classmethod
@@ -489,6 +510,7 @@ class Member:
             previous_names=[dict(p) for p in previous if isinstance(p, dict)],
             swap=obj.get("swap") if isinstance(obj.get("swap"), dict) else None,
             agent_history=[dict(p) for p in obj.get("agent_history", []) if isinstance(p, dict)],
+            session_history=[dict(p) for p in obj.get("session_history") or [] if isinstance(p, dict)],
         )
 
     def retired_name_active(self, name: str, now: Optional[float] = None) -> bool:

@@ -71,8 +71,14 @@ def _home(args: argparse.Namespace) -> Path:
     return paths.home_dir(args.env)
 
 
+ROLES = ("worker", "manager", "reviewer", "librarian")
+
+
 def _skill_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("action", choices=("install", "check"))
+    parser.add_argument("action", choices=("install", "check", "get"))
+    parser.add_argument("role", nargs="?", choices=ROLES, help="get: whose guide (default: manager for the team manager, else worker)")
+    parser.add_argument("--reference", metavar="NAME", help="get: one reference instead of a guide (see --list)")
+    parser.add_argument("--list", action="store_true", help="get: list the guides and references")
     parser.add_argument("--check", action="store_true", help="install: only report what install would do")
     parser.add_argument("--force", action="store_true", help="replace foreign directories or symlinks")
     parser.add_argument("--home", metavar="PATH", help="root holding .agents/.claude/.codex/... (default $HOME)")
@@ -255,7 +261,45 @@ def _human(payload: Dict[str, Any], action: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _default_role(args: argparse.Namespace) -> str:
+    """The team manager gets the manager guide; everyone else, the operator included, the member guide."""
+    try:
+        from herdr_team.cmd_board import _open_team
+
+        _layout, _api, author, _team_name, _team, doc = _open_team(args, require_server=False)
+    except HerdrTeamError:
+        return "worker"
+    for member in doc.get("members") or []:
+        if isinstance(member, dict) and member.get("name") == author.name and member.get("manager"):
+            return "manager"
+    return "worker"
+
+
+def run_skill_get(args: argparse.Namespace) -> int:
+    """Print a version-matched guide: the installed SKILL.md stays a stable safety floor, the detail comes from here."""
+    root = paths.skill_guides_dir()
+    references = sorted(p.stem for p in (root / "references").glob("*.md")) if (root / "references").is_dir() else []
+    if args.list:
+        return emit(args, {"roles": list(ROLES), "references": references, "version": SKILL_VERSION},
+                    "guides: {}\nreferences: {}\nprint one: herdr-synapse skill get <guide> | skill get --reference <name>".format(", ".join(ROLES), ", ".join(references)))
+    if args.reference:
+        name = args.reference[:-3] if args.reference.endswith(".md") else args.reference
+        if name not in references:
+            raise HerdrTeamError("reference_unknown", "no reference {!r}; there are: {}".format(name, ", ".join(references)), EXIT_REFUSED, {"references": references})
+        path, what = root / "references" / (name + ".md"), "reference " + name
+    else:
+        role = args.role or _default_role(args)
+        path, what = root / (role + ".md"), role
+    text = _read(path)
+    if text is None:
+        raise HerdrTeamError("skill_missing", "cannot read {}".format(path), EXIT_REFUSED, {"path": os.fspath(path)})
+    header = "<!-- herdr-synapse {} guide, skill v{} -->\n".format(what, SKILL_VERSION)
+    return emit(args, {"guide": what, "text": text, "skill_version": SKILL_VERSION}, header + text)
+
+
 def run_skill(args: argparse.Namespace) -> int:
+    if args.action == "get":
+        return run_skill_get(args)
     source_text = read_skill_text()
     if skill_version_of(source_text) != SKILL_VERSION:
         raise HerdrTeamError("skill_version_mismatch", "bundled SKILL.md marker does not say v{}".format(SKILL_VERSION), EXIT_REFUSED)
@@ -291,9 +335,9 @@ Command = _cli.Command
 COMMANDS: List[Command] = [
     Command(
         name="skill",
-        help="install the herdr-synapse skill into the agents' skill dirs, or check it",
+        help="install the herdr-synapse skill into the agents' skill dirs, check it, or print your role's guide (get)",
         add_arguments=_skill_args,
         run=run_skill,
-        description="skill install [--check] [--force] | skill check. Canonical ~/.agents/skills/herdr-synapse, copy in ~/.claude/skills, symlinks from ~/.codex, ~/.copilot, ~/.gemini when those dirs exist.",
+        description="skill install [--check] [--force] | skill check | skill get [worker|manager|reviewer|librarian] [--reference NAME] [--list]. Canonical ~/.agents/skills/herdr-synapse, copy in ~/.claude/skills, symlinks from ~/.codex, ~/.copilot, ~/.gemini when those dirs exist.",
     ),
 ]

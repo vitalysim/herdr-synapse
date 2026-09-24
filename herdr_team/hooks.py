@@ -39,7 +39,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from herdr_team import store
 from herdr_team.api import HerdrApi, scrub_env
-from herdr_team.roster import same_session, session_key, session_of, short_session, write_briefing_job
+from herdr_team.roster import remember_session, same_session, session_key, session_of, short_session, write_briefing_job
 from herdr_team.errors import HerdrTeamError
 from herdr_team.paths import Layout, TeamPaths, ensure_dir, ensure_session_dirs, resolve_layout, socket_allowed
 
@@ -560,6 +560,9 @@ def _reconcile_available(layout: Layout, api: Any, teams: Dict[str, Dict[str, An
                 fields["generation"] = int(member.get("generation") or 1) + 1  # moved panes, memory intact
             if live_session is not None and not same_session(member.get("session"), live_session):
                 fields["session"] = live_session
+                history = remember_session(member.get("session_history"), member.get("session"), live_session)
+                if history is not None:
+                    fields["session_history"] = history  # keep the replaced conversation for search --history
                 if session_key(member.get("session")) is not None:
                     # A different session than recorded: a fresh agent, whether on the member's own
                     # terminal or on the pane a label or pane-id match found (same rule as the daemon).

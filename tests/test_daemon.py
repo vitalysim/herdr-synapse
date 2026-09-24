@@ -257,6 +257,23 @@ class DetachTests(unittest.TestCase):
         self.assertTrue(store.daemon_lock(self.ts.session).try_acquire())
 
 
+class ControlSourceTests(unittest.TestCase):
+    """E2E 2026-09-23: ``clear`` from an outside shell was accepted by the CLI, then refused here."""
+
+    def record(self, frm, origin):
+        return {"kind": "direct", "to": ["m"], "control": {"action": "clear"}, "from": frm, "origin": origin}
+
+    def test_the_operators_origins_are_accepted_and_notifier_ones_are_not(self):
+        check = D.Daemon._control_source_problem
+        self.assertIsNone(check(self.record("human", {"via": "outside", "verified": False}), "m"))
+        self.assertIsNone(check(self.record("human", {"via": "console", "verified": True}), "m"))
+        self.assertIsNone(check(self.record("human", {"via": "cli", "verified": True}), "m"))
+        for via in ("schedule", "remote", "cli"):
+            self.assertEqual(check(self.record("human", {"via": via, "verified": via != "cli"}), "m"), "record origin is unverified", via)
+        self.assertEqual(check(self.record("m", {"via": "cli", "verified": False}), "m"), "record origin is unverified")
+        self.assertIsNone(check(self.record("m", {"via": "cli", "verified": True}), "m"))
+
+
 class SelfRestartTests(unittest.TestCase):
     """Regression: an upgrade exit left the session with no notifier until someone ran ``daemon start``."""
 

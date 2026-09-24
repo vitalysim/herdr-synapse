@@ -132,6 +132,11 @@ def skill_file() -> Path:
     return plugin_root() / "skills" / PLUGIN_ID / "SKILL.md"
 
 
+def skill_guides_dir() -> Path:
+    """Role guides and references printed by ``skill get``: always the running CLI's own."""
+    return plugin_root() / "skill-guides"
+
+
 def home_dir(env: Mapping[str, str]) -> Path:
     home = env.get("HOME")
     if not home:

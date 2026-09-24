@@ -205,10 +205,12 @@ class CompactionRebriefTests(unittest.TestCase):
 
     def test_the_delivery_table_replaces_both_lists_without_changing_them(self):
         self.assertEqual(D.URGENT_SYSTEM_EVENTS, ("charter_updated", "member_joined", "knowledge_updated", "instructions_updated", "manager_changed"))
-        self.assertEqual(D.TOAST_SYSTEM_EVENTS, ("manager_changed",))
-        self.assertEqual(D.NAMED_SYSTEM_EVENTS, ("context_high", "model_changed", "link_established", "link_broken"))
+        self.assertEqual(D.TOAST_SYSTEM_EVENTS, ("manager_changed", "fact_conflict", "schedule_failed"))
+        self.assertEqual(D.NAMED_SYSTEM_EVENTS, ("context_high", "model_changed", "link_established", "link_broken", "work_ready", "fact_conflict"))
         declared_without_wake = {e for e, d in D.SYSTEM_EVENT_DELIVERY.items() if not d.get("wake")}
-        self.assertEqual(declared_without_wake, {"link_read", "board_cleared"}, "declared so it is deliberate; wakes nobody (board readers and hook context carry it)")
+        self.assertEqual(declared_without_wake, {"link_read", "board_cleared", "work_cancelled", "fact_added", "fact_retired", "fact_disputed", "fact_resolved",
+                                                 "contradictions_changed", "schedule_failed", "schedule_missed"},
+                         "declared so it is deliberate; wakes nobody (board readers and hook context carry it)")
         self.assertEqual(set(D.URGENT_SYSTEM_EVENTS) | set(D.NAMED_SYSTEM_EVENTS) | declared_without_wake, set(D.SYSTEM_EVENT_DELIVERY))
 
 

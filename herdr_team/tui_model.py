@@ -36,7 +36,7 @@ from herdr_team.paths import MAX_ROLE_CHARS, MAX_TEAM_CHARS, ROLE_NAME_RE, TEAM_
 FILTERS = ("all", "to me", "requests", "human", "system", "teams", "team")
 SLASH_COMMANDS = (
     "/all", "/human", "/kind", "/reply", "/urgent", "/interrupt", "/interrupts", "/ref", "/retract", "/mute", "/unmute", "/pause",
-    "/nudge", "/focus", "/peek", "/who", "/context", "/compact", "/clear", "/model", "/permissions", "/swap", "/team", "/links", "/link", "/unlink", "/wipe", "/asks", "/ask-policy", "/filter", "/as", "/use", "/charter", "/remove", "/export", "/help", "/quit",
+    "/nudge", "/focus", "/peek", "/who", "/context", "/search", "/compact", "/clear", "/model", "/permissions", "/swap", "/team", "/links", "/link", "/unlink", "/wipe", "/schedule", "/asks", "/ask-policy", "/filter", "/as", "/use", "/charter", "/remove", "/export", "/help", "/quit",
 )
 #: ``/`` menu rows: command -> (placeholder, what it does). Every entry in
 #: ``SLASH_COMMANDS`` must appear here; a test keeps the two in step, so a new
@@ -61,6 +61,7 @@ SLASH_USAGE = {
     "/asks": ("", "what is waiting on you"),
     "/ask-policy": ("[block|noblock] [8m]", "whether an agent waits for you, and how long"),
     "/context": ("[name]", "how full each member's context window is"),
+    "/search": ("words or \"a phrase\"", "search what members said and did in their own conversations"),
     "/compact": ("name", "ask a member to summarise its context"),
     "/clear": ("name", "throw away a member's context and brief it again"),
     "/permissions": ("[name [yolo|native|inherit]] | --default yolo|native", "show or save next-launch permissions (YOLO is the default)"),
@@ -71,6 +72,7 @@ SLASH_USAGE = {
     "/link": ("other-team", "link this team to another (both need a manager)"),
     "/unlink": ("other-team", "break the link to another team"),
     "/wipe": ("[--purge] [reason]", "empty the board: posts move to the archive (--purge deletes them); asks first"),
+    "/schedule": ("[run|enable|disable <id>]", "the team's recurring posts and when each fires next; fire or switch one"),
     "/filter": ("[all|to me|requests|human|system]", "filter the feed"),
     "/as": ("label", "change the label your posts carry"),
     "/use": ("team", "switch to another team"),
@@ -1873,6 +1875,11 @@ def _parse_slash(head: str, rest: str, default_team: str) -> Intent:
             else:
                 return Intent("error", {"message": "usage: /ask-policy [block|noblock] [8m]"})
         return Intent("ask_policy", {"team": default_team, "block": block, "timeout": timeout})
+    if head == "/search":
+        # The whole rest is the query: its own quoting says what is a phrase.
+        if not rest.strip():
+            return Intent("error", {"message": 'usage: /search <words or "a phrase">'})
+        return Intent("search", {"query": rest.strip(), "team": default_team})
     if head == "/context":
         if len(args) > 1 or (args and not MEMBER_NAME_RE.match(args[0])):
             return Intent("error", {"message": "usage: /context [<name>]"})
@@ -1925,6 +1932,13 @@ def _parse_slash(head: str, rest: str, default_team: str) -> Intent:
         return Intent("wipe", {"team": default_team, "purge": purge, "reason": reason, "confirm": False})
     if head == "/links":
         return Intent("links", {"team": default_team})
+    if head == "/schedule":
+        # Read and operate only; a schedule is created with ``herdr-synapse schedule add``, whose flags do not fit one line here.
+        if not args or args == ["list"]:
+            return Intent("schedule", {"action": "list", "team": default_team})
+        if len(args) == 2 and args[0] in ("run", "enable", "disable") and re.match(r"^[a-z0-9][a-z0-9._-]{0,39}\Z", args[1]):
+            return Intent("schedule", {"action": args[0], "ref": args[1], "team": default_team})
+        return Intent("error", {"message": "usage: /schedule [run|enable|disable <id>]"})
     if head in ("/link", "/unlink"):
         if len(args) != 1 or not re.match(r"^[a-z][a-z0-9_-]{0,63}\Z", args[0]):
             return Intent("error", {"message": "usage: {} <other-team>".format(head)})
@@ -1969,7 +1983,7 @@ HELP_TEXT = (
     "!name text types only if that member stays idle (!!name permits working; !!all targets every agent) | @@path attaches a file (@@ lists files) | "
     "@name text | @role:r text | /all text | /human text | /kind k | /reply N | /urgent | /interrupt | /ref path | "
     "/retract N | /mute [name] [10m] | /unmute [name] | /pause | /nudge name [--force] | /focus name | "
-    "/peek name | /who | /context [name] | /compact name | /clear name | /filter [name] | /as label | /use team | /charter [set [--urgent] text] | /remove name | /export | /quit"
+    "/peek name | /who | /context [name] | /search words | /compact name | /clear name | /filter [name] | /as label | /use team | /charter [set [--urgent] text] | /remove name | /export | /quit"
 )
 
 
@@ -1981,7 +1995,7 @@ HELP_LINES = (
     "           a line that begins with ! never posts by itself; to post one, write /all !text",
     "menus:     / commands   @ names   @@ files   ! members   !! members + all   (up/down move, Tab picks, Esc hides)",
     "board:     /retract N   /filter [all|to me|requests|human|system]   Tab cycles   /who",
-    "members:   /peek name   /focus name   /nudge name [--force]   /remove name   /asks",
+    "members:   /peek name   /focus name   /nudge name [--force]   /remove name   /asks   /search words",
     "context:   /context [name]   /compact name   /clear name (throws it away, asks)   /ask-policy",
     "delivery:  /mute [name] [10m]   /unmute [name]   /pause [10m]   Esc clears the status or closes a box",
     "interrupt: /interrupt @name text (into a working turn)   /interrupts [off|on|kind,…] [--cooldown 10m]",

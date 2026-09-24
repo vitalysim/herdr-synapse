@@ -277,6 +277,10 @@ SYSTEM_EVENTS = (
     "permissions_changed", "model_changed", "model_applied", "restart_failed", "agent_swapped", "swap_control_cancelled",
     "link_established", "link_broken", "link_read",
     "board_cleared",
+    # 0.19: work items, facts, schedules
+    "work_ready", "work_cancelled",
+    "fact_added", "fact_retired", "fact_disputed", "fact_conflict", "fact_resolved", "contradictions_changed",
+    "schedule_failed", "schedule_missed",
 )
 #: Every key of a stored record in file order (docs/cli.md section 10).
 RECORD_KEYS = (

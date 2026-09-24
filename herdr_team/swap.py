@@ -87,6 +87,7 @@ def prepare(book: roster.Roster, spec: Dict[str, Any], author: Any, note: str = 
     source = copy.deepcopy(spec["source"])
     source.pop("swap", None)
     source.pop("agent_history", None)
+    source.pop("session_history", None)  # stays on the member; no nested copies per swap
     records = store.BoardStore(book.paths).read(last=100, include_retracted=False)
     relevant = [r for r in records if r.get("from") == spec["member"] or spec["member"] in r.get("to", []) or "all" in r.get("to", [])]
     handoff = render_board_context(relevant[-20:], max_posts=20, max_bytes=6000)

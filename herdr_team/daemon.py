@@ -57,6 +57,7 @@ from herdr_team import links as _links
 from herdr_team import permissions as _permissions
 from herdr_team import models as _models
 from herdr_team import context as _context
+from herdr_team import remote as _remote
 from herdr_team import operator as _operator
 from herdr_team import usage as _usage
 from herdr_team import workdir as _workdir
@@ -148,6 +149,8 @@ OPENCODE_FRESH_TUI_MIN_WIDTH = 38
 LINK_RECEIPT_POLL_S = 5.0
 #: How often a half-finished cross-team send is looked for (``links.flush_outbox``).
 LINK_OUTBOX_POLL_S = 10.0
+#: How often debated disputes are checked for their escalation deadline.
+DISPUTE_POLL_S = 30.0
 #: A restart (``model --apply restart``) exits the agent and resumes its
 #: session with new flags. These bound each half so a member cannot sit in
 #: limbo: the exit keystroke must empty the pane, and the resumed agent must
@@ -181,6 +184,16 @@ SYSTEM_EVENT_DELIVERY: Dict[str, Dict[str, Any]] = {
     "link_broken": {"wake": "named"},
     "link_read": {},  # a receipt for the sending console; nobody is woken
     "board_cleared": {},  # visible on the board and in hook context; nobody is woken
+    "work_ready": {"wake": "named"},  # a dependency settled: the owner can start
+    "work_cancelled": {},
+    "fact_added": {},  # peer notes: awareness, never a wake
+    "fact_retired": {},
+    "fact_disputed": {},  # ``observe``: addressed to the human only, so no agent sees it
+    "fact_conflict": {"wake": "named", "toast": True},  # ``debate`` names the authors, ``escalate`` the manager or you
+    "fact_resolved": {},
+    "contradictions_changed": {},
+    "schedule_failed": {"toast": True},
+    "schedule_missed": {},
 }
 URGENT_SYSTEM_EVENTS = tuple(e for e, d in SYSTEM_EVENT_DELIVERY.items() if d.get("wake") == "all")
 NAMED_SYSTEM_EVENTS = tuple(e for e, d in SYSTEM_EVENT_DELIVERY.items() if d.get("wake") == "named")
@@ -1376,6 +1389,8 @@ class TeamState:
     #: The raw ``config.gate`` value the current ``gate_config`` was built from (change detection).
     gate_overrides: Any = None
     gate_loaded: bool = False
+    #: ``schedules.Runner`` for this team's timetable, created at the first ``run_schedules``.
+    schedules: Any = None
 
     def members(self) -> List[Dict[str, Any]]:
         return [m for m in self.roster.get("members", []) if isinstance(m, dict)]
@@ -1441,6 +1456,8 @@ class Daemon:
         self.allow_version = allow_version
         self.clock = clock or time.monotonic
         self.sleep = sleep or time.sleep
+        #: Schedules fire on the calendar, so they need the wall clock; ``clock`` stays monotonic (tests swap both).
+        self.wall_clock: Callable[[], float] = time.time
         self.session = layout.session
         self.lock: Optional[store.FileLock] = None
         self.detached = False
@@ -1473,6 +1490,7 @@ class Daemon:
         self.stability: Dict[str, Stability] = {}
         self.global_last_nudge_ms: Optional[float] = None
         self.link_outbox_ms: Optional[float] = None
+        self.disputes_ms: Optional[float] = None
         self.pair_exchanges: Dict[Tuple[str, str], List[float]] = {}
         self.notifications: List[Notification] = []
         self.toasts_disabled = False
@@ -1484,6 +1502,8 @@ class Daemon:
         self.next_toast_ms = 0.0
         #: When the asks phase may next look; also the popup back-off.
         self.ask_next_ms: Optional[float] = None
+        #: Phone reach (``herdr_team.remote``): idle and I/O-free until ``remote.json`` exists.
+        self.remote = _remote.RemoteRelay(layout, log=self.log)
         self.who_dirty = True
         self.last_who_ms: Optional[float] = None
         self.last_heartbeat_ms: Optional[float] = None
@@ -1879,6 +1899,8 @@ class Daemon:
             self._phase("console_reconcile", self._reconcile_console_after_connect)
         if self.reconcile_due or self._reconcile_poll_due(now):
             self._phase("reconcile", self.reconcile)
+        # Before the tail, so a scheduled post is ingested and its nudges queued in the same tick.
+        self._phase("schedules", lambda: self.run_schedules(now))
         self._phase("tail_boards", self.tail_boards)
         self._phase("consume_jobs", lambda: self.consume_jobs(now))
         self._phase("restarts", lambda: self.advance_restarts(now))
@@ -1889,6 +1911,9 @@ class Daemon:
         self._phase("sweep_unread", lambda: self.sweep_all_unread(now))
         self._phase("link_receipts", lambda: self.poll_link_receipts(now))
         self._phase("link_outbox", lambda: self.flush_link_outbox(now))
+        self._phase("disputes", lambda: self.escalate_disputes(now))
+        # After ``asks`` so ``open_asks`` is current; the HTTP runs on the relay's own thread.
+        self._phase("remote", lambda: self.remote.tick(self.teams, now))
         self._phase("board_snapshot", lambda: self.snapshot_all_boards(now))
         self._phase("session_names", self.poll_session_names)
         self._phase("evaluate_pending", self.evaluate_pending)
@@ -2610,6 +2635,9 @@ class Daemon:
         live_session = roster.session_of(match)
         if live_session is not None and not roster.same_session(member.get("session"), live_session):
             update["session"] = live_session
+            history = roster.remember_session(member.get("session_history"), member.get("session"), live_session)
+            if history is not None:
+                update["session_history"] = history  # keep the replaced conversation for search --history
         return update
 
     def _ids_update(self, team: TeamState, member: Dict[str, Any], match: Dict[str, Any]) -> Dict[str, Any]:
@@ -2986,7 +3014,7 @@ class Daemon:
         if not render.is_unverified(rec):
             return True
         origin = rec.get("origin") if isinstance(rec.get("origin"), dict) else {}
-        return rec.get("from") == "human" and _identity.human_origin_ok(origin)
+        return rec.get("from") == "human" and _identity.record_human_ok(origin)
 
     def _unread_mail_seqs(self, team: TeamState, name: str, retry_terminal: bool = False) -> List[int]:
         """Authored unread mail eligible for automatic delivery to ``name``.
@@ -3035,6 +3063,8 @@ class Daemon:
                 self.log("{}: board cleared at #{}; asks, link inbox and pending nudges dropped".format(team.name, seq))
             if event in TOAST_SYSTEM_EVENTS and "human" in [t for t in (rec.get("to") or []) if isinstance(t, str)]:
                 team.human_queue.append(rec)
+            if event in _remote.RELAYED_EVENTS:
+                self.remote.note_record(team.name, rec)
             for name, urgent, _interrupt in self._nudge_targets(team, rec):
                 self._add_pending(team, name, seq, urgent, "system", now)
             return
@@ -3163,6 +3193,36 @@ class Daemon:
             if isinstance(rec.get("seq"), int) and rec["seq"] > cursor:
                 self._track_link(team, rec)
 
+    def escalate_disputes(self, now: float) -> None:
+        """``debate`` mode: a dispute its parties have not settled in time goes to the manager or the human.
+
+        The only thing the notifier does about contradictions. It never holds,
+        filters or delays a post; it adds one ``fact_conflict`` record for the
+        decider once the debate window has passed.
+        """
+        if self.disputes_ms is not None and now - self.disputes_ms < DISPUTE_POLL_S * 1000.0:
+            return
+        self.disputes_ms = now
+        from herdr_team import facts as _facts
+
+        for team in list(self.teams.values()):
+            if not _facts.facts_jsonl(team.paths).exists():
+                continue
+            config = _facts.contradictions_config(team.roster)
+            state = _facts.load(team.paths)
+            for dispute in _facts.due_for_escalation(state, config["debate_timeout_ms"]):
+                parties = [state.facts[f] for f in dispute.facts if f in state.facts]
+                authors = sorted({f.author for f in parties})
+                manager = team.manager_name()
+                decider = manager if manager and manager not in authors else "human"
+                if _facts.escalate(team.paths, dispute.id, decider) is None:
+                    continue
+                claims = "; ".join("{} ({}) says {!r}".format(f.id, f.author, _facts.clip(f.statement, 120)) for f in parties)
+                text = "{}: {} did not settle their disagreement about {}{} in time: {}. Decide with: herdr-synapse fact resolve {} --keep <fact> (or --keep-both / --retire-all)".format(
+                    dispute.id, " and ".join(authors), dispute.about or "?", " · " + dispute.attribute if dispute.attribute else "", claims, dispute.id)
+                self._append_system(team, "fact_conflict", text, [decider], {"dispute": dispute.id, "facts": list(dispute.facts), "mode": dispute.mode, "escalated": True})
+                self.log("{}: dispute {} escalated to {}".format(team.name, dispute.id, decider))
+
     def flush_link_outbox(self, now: float) -> None:
         """Finish a cross-team send that stopped between its two boards (``links.flush_outbox``)."""
         if self.link_outbox_ms is not None and now - self.link_outbox_ms < LINK_OUTBOX_POLL_S * 1000.0:
@@ -3173,6 +3233,19 @@ class Daemon:
         for report in _links.flush_outbox(self.layout.session):
             self.log("link message {}: completed {} dropped {} pending {}".format(
                 report.get("id"), report.get("appended"), report.get("dropped"), report.get("pending")))
+
+    def run_schedules(self, now: float) -> None:
+        """Fire each team's due schedules (``herdr_team.schedules.Runner``; cheap when nothing is due)."""
+        from herdr_team import schedules as _schedules
+
+        wall = self.wall_clock()
+        for team in list(self.teams.values()):
+            if team.schedules is None:
+                team.schedules = _schedules.Runner(self.layout, team.name, self.env, log=self.log)
+            try:
+                team.schedules.tick(wall, now / 1000.0)
+            except HerdrTeamError as err:
+                self.log("{}: schedules: {}".format(team.name, err))
 
     def poll_link_receipts(self, now: float) -> None:
         """Tell the sending team's board when this team's manager has read a linked message."""
@@ -3593,7 +3666,14 @@ class Daemon:
         if not isinstance(record.get("control"), dict):
             return "record carries no control block"
         origin = record.get("origin") if isinstance(record.get("origin"), dict) else {}
-        if origin.get("verified") is not True:
+        if record.get("from") == "human":
+            # The operator's rule, the one the CLI's gate already applied: console, popup,
+            # a verified shell, or outside Herdr. Requiring ``verified`` here refused the
+            # outside-shell route the README recommends, after the CLI said "queued" (E2E,
+            # 2026-09-23). Notifier-written origins (schedule, remote) never qualify.
+            if not _identity.human_origin_ok(origin):
+                return "record origin is unverified"
+        elif origin.get("verified") is not True:
             return "record origin is unverified"
         return None
 

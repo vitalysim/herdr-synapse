@@ -69,10 +69,10 @@ VIEW_LABEL_MAX_TWO = 27
 FULL_SCREEN_KINDS = frozenset({"claude", "opencode", "codex", "kilo", "omp"})
 DEFAULT_MUTE = "10m"
 
-KEYS: Dict[str, str] = {"team-up": "prefix+t", "compose": "prefix+m", "console": "prefix+u", "toggle-view": "prefix+y", "usage": "prefix+i", "knowledge": "prefix+f"}
-KEY_DESCRIPTIONS: Dict[str, str] = {"team-up": "team up: pick agents", "compose": "post to the team board", "console": "open the team console", "toggle-view": "toggle the team agents view", "usage": "usage limits across agents", "knowledge": "team knowledge bases"}
+KEYS: Dict[str, str] = {"team-up": "prefix+t", "compose": "prefix+m", "console": "prefix+u", "toggle-view": "prefix+y", "usage": "prefix+i", "knowledge": "prefix+f", "mission": "prefix+d"}
+KEY_DESCRIPTIONS: Dict[str, str] = {"team-up": "team up: pick agents", "compose": "post to the team board", "console": "open the team console", "toggle-view": "toggle the team agents view", "usage": "usage limits across agents", "knowledge": "team knowledge bases", "mission": "mission control: what needs you across teams"}
 #: The order the bindings are printed in.
-KEY_ACTIONS = ("team-up", "compose", "console", "toggle-view", "usage", "knowledge")
+KEY_ACTIONS = ("team-up", "compose", "console", "toggle-view", "usage", "knowledge", "mission")
 
 #: The token a stale sidebar block is missing; ``doctor`` looks for it.
 COLOR_SLOT_TOKEN = "$team_c1"
@@ -529,6 +529,14 @@ def _run_doctor(args: argparse.Namespace) -> int:
             grant.get("member"), grant.get("team"),
             "until {}".format(grant["expires_at"]) if grant.get("expires_at") else "no expiry",
             grant.get("member"), grant.get("team")))
+    from herdr_team import remote as _remote
+
+    # Anything that sends board content off the machine is worth one line here.
+    warnings.extend(_remote.doctor_warnings(layout.config_dir))
+    try:
+        remote_view: Optional[Dict[str, Any]] = _remote.public_view(_remote.load_config(layout.config_dir), time.time())
+    except HerdrTeamError:
+        remote_view = None
     plugin = _plugin_state(args, layout, env, reachable=bool(herdr["reachable"]))
     if plugin.get("installed") is False:
         warnings.append("plugin {} is not installed".format(PLUGIN_ID))
@@ -588,7 +596,7 @@ def _run_doctor(args: argparse.Namespace) -> int:
         "herdr": herdr, "socket": socket_info, "slug": layout.slug, "config_dir": os.fspath(layout.config_dir),
         "state_root": state_root, "pointer": pointer, "plugin": plugin, "toast_delivery": delivery, "toast_probe": toast_probe,
         "daemon": daemon, "teams": teams, "console": {"open": console_open, "pane_id": console.get("pane_id"), "lifecycle": console_lifecycle},
-        "warnings": warnings, "errors": errors,
+        "remote": remote_view, "warnings": warnings, "errors": errors,
     }
 
     def human() -> str:

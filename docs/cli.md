@@ -40,7 +40,7 @@ The operation creates a labelled `swap:<operation-id-prefix>` tab in the source 
 
 The member name, role, Mission, instruction documents/revisions, manager flag, project directory, board history/read cursors, links, delivery preferences, and existing operator-grant expiry survive. Model settings are selected for the destination kind from an explicit setting, previous saved settings for that kind, team defaults, then harness defaults. Source-native model arguments and conversation IDs do not carry into a fresh destination launch. The member generation increments once at takeover, and briefing/instruction acknowledgments reset. A missing initial destination session ID remains null until reported.
 
-`Member.swap` is optional durable operation data: `{id, phase, source, destination, created_at, requested_by, cutoff_seq, handoff, note, pane, ...}`. Phases are `prepared`, `stopping`, `starting`, `briefing`, `complete`, `failed`, `cancelled`; a failure retains `resume_phase` and `error`. `Member.agent_history` stores previous agent configurations and exact conversation references. Existing roster documents need no migration. Runtime identity writes are fenced while an operation is unfinished, including after the CLI or daemon restarts. The operation shares the restore lock during execution.
+`Member.swap` is optional durable operation data: `{id, phase, source, destination, created_at, requested_by, cutoff_seq, handoff, note, pane, ...}`. Phases are `prepared`, `stopping`, `starting`, `briefing`, `complete`, `failed`, `cancelled`; a failure retains `resume_phase` and `error`. `Member.agent_history` stores previous agent configurations and exact conversation references. `Member.session_history` (optional, up to 20) keeps the exact references of earlier conversations of the same agent that a restart or clear replaced; only `search --history` reads it. Existing roster documents need no migration. Runtime identity writes are fenced while an operation is unfinished, including after the CLI or daemon restarts. The operation shares the restore lock during execution.
 
 Normal board requests remain available. Old direct typing/control/probe jobs are cancelled across takeover; the destination's own initial setting is tagged with its operation ID. Orientation includes a bounded recent board handoff with original author labels plus the optional operator note (UTF-8, up to 8 KiB). It preserves instruction-private sections and does not advance the historical board cursor.
 
@@ -1285,6 +1285,291 @@ manager how to post to each linked team, and everyone else that only the
 manager speaks across it. `dissolve` breaks the team's links and tells the
 other side.
 
+## 9e. Transcript search
+
+### `search "<query>" [--member NAME]... [--since 3d|12h|ISO] [--limit N] [--history] [--role user|assistant|tool] [--context CHARS]`
+
+Searches what members said and did in their own harness conversations, not
+only what they posted: "what did the analyst find about X yesterday?". The
+reader (`herdr_team/transcripts.py`) uses the same locators as `context`:
+Claude's transcript (`<CLAUDE_CONFIG_DIR or ~/.claude>/projects/*/<id>.jsonl`,
+or the path the SessionStart hook recorded for exactly that session), Codex's
+rollout log (`<CODEX_HOME or ~/.codex>/sessions/**/rollout-*-<id>.jsonl`, then
+`archived_sessions/`), OpenCode's `<XDG_DATA_HOME or ~/.local/share>/opencode/opencode.db`
+(the `message` and `part` rows of that session, opened read-only), and Pi's
+session file (the recorded path, or `<PI_CODING_AGENT_DIR or ~/.pi/agent>/sessions/*/*_<id>.jsonl`).
+Other kinds are reported as having no reader.
+
+**Query.** Case-insensitive. Every whitespace-separated term must occur in the
+same message (AND); a double-quoted run is one term matched as an exact phrase,
+with any whitespace between its words. Terms are literal substrings, never
+patterns. Several arguments are joined with spaces, so `search rate limit` and
+`search 'rate "token bucket"'` both work. An unbalanced quote is a usage error.
+
+**What counts as a message.** User text, assistant text, and tool activity
+(`role: tool`): a tool call's arguments and a tool result's text. Thinking and
+reasoning blocks are not what was said and are skipped. Codex is read from its
+`response_item` records only; `developer` messages and the harness-written
+`<environment_context>` / AGENTS.md preamble are skipped.
+
+**Scope.** The resolved team's agent members (not `left`), or `--member`
+(repeatable; a member that left may be named). Only conversations recorded on
+the roster are opened: the member's current `session`, and with `--history`
+also `session_history` (earlier conversations of the same agent, kept when a
+restart, a Claude `/clear`, or a resume replaced them; up to 20, newest last)
+and the `session` of each `agent_history` entry (swaps). No directory is
+scanned for other conversations, and a session id reaches a filename pattern
+only when it is a plain id (`[A-Za-z0-9][A-Za-z0-9._:-]*`); anything else is
+reported as `not a plain id`.
+
+**Authority.** The operator from a trusted origin, an operator delegate, and
+the team manager may search any member. Any other member searches only itself:
+with no `--member` it defaults to itself, and naming anyone else is refused
+with `author_mismatch` (1) and audited. Every search appends
+`transcript_search` to the audit log with `{authority, query_chars, terms,
+members, history, role, since, hits, shown}`; the query text itself is never
+logged.
+
+**Limits.** Files are streamed line by line and unparsable lines are skipped.
+Each conversation is capped at 64 MiB; over the cap the newest 64 MiB is read
+and the cap is listed in `skipped`. A missing store, a missing session, an
+unreadable database, or a kind without a reader is a `skipped` reason for that
+member, never an error. `--limit` is 1 to 500 (default 20); `--context` is the
+excerpt length, 40 to 2000 (default 160). `--since` takes `30m`, `12h`, `3d`,
+`2w`, or an ISO date or time (no zone means local time); messages without a
+timestamp are left out when it is given.
+
+**Redaction.** A matching message is passed through the board's secret
+patterns (`cmd_board.SECRET_PATTERNS`, with a private key redacted through its
+footer) and every match becomes `[redacted:<kind>]` before the excerpt is
+taken. The terms are matched again on the redacted text, so text that only
+matched inside a secret is not a hit and a key cannot be searched for.
+
+Output is newest first. Text mode prints member, kind, local time, role, the excerpt
+with the first match marked `»…«`, and the session id and file, then what was
+scanned and skipped. JSON:
+
+```json
+{"team": "alpha", "query": "rate \"token bucket\"", "terms": ["rate", "token bucket"], "members": ["alpha-analyst"],
+ "since": null, "role": null, "history": false, "total": 1,
+ "hits": [{"member": "alpha-analyst", "kind": "claude", "session": "<id or path>", "ts": "2026-09-22T14:03:11.000Z",
+           "role": "assistant", "excerpt": "…the rate limit is 600 per minute; the token bucket refills…",
+           "match": [5, 9], "source_path": "/…/<id>.jsonl", "history": false}],
+ "scanned": {"alpha-analyst": {"sessions": 1, "bytes": 482113, "skipped": []}}}
+```
+
+`ts` is UTC. `match` is the `[start, end)` character range of the marked match inside
+`excerpt`; `total` counts every matching message, `hits` holds the newest
+`--limit`. The console's `/search <query>` runs the same command and shows the
+result in a box.
+
+## 9f. Work items
+
+State: `<team>/work.jsonl`, an append-only event log under `team.lock` (`op`:
+`create`, `assign`, `claim`, `block`, `unblock`, `settle`, `review`, `reopen`,
+`close`, `cancel`, `update`; each with `id`, `at`, `by`, `by_via`, `by_gen`).
+The current state is derived by replaying it (`herdr_team.work`); a torn or
+foreign line is skipped. Every change except readiness is also an authored board
+post carrying `work: {"id", "op", ...}` (a `request` to the owner, a `done` to the
+requester and the manager, a `blocked`, an `answer` for an approval), so delivery,
+asks and the Stop hook treat work like any other post. A dependency finishing
+appends a `work_ready` system record (wake `named`) for the next owner.
+
+| Subcommand | Authority | Notes |
+| --- | --- | --- |
+| `work add "<title>" [--to M] [--deps W-1,W-2] [--review-by M\|role:R\|human] [--target T] [--deliverable T] [--constraints T] [--ownership T] [--acceptance T] [--brief-file F] [--quick]` | any member or the operator | `--to me`; no `--to` posts an open item to `all`. `config.work.acceptance` (`off`/`warn` default/`require`) governs a missing Acceptance (`brief_incomplete`); `config.work.review_by` is the default reviewer list. |
+| `work list [--status S] [--owner M\|me] [--all]`, `work ready` | anyone | rows carry `ready`, `waiting_on`, `hints`, `attention`, `next` |
+| `work show W-N` | anyone | adds `history` and the related `posts` |
+| `work claim W-N [--force]` | the owner (anyone, for an open item), verified pane | new attempt `{n, owner, gen}`; `work_taken`, `work_waiting`, `work_already_claimed`, `work_not_claimable`; sets the member's task headline |
+| `work block W-N "<why>"`, `work unblock W-N` | the owner | |
+| `work done W-N --outcome succeeded\|failed\|partial --summary T [--deliverable X] [--evidence X]` | the owner, from the generation that claimed | `attempt_fenced` when the generation changed; `work_already_settled`. `succeeded` with reviewers -> `in_review`. |
+| `work review W-N --approve [--note T] \| --changes T` | a named reviewer or role holder, `human` when named, the manager, the operator | the owner cannot review itself (`work_self_review`) |
+| `work assign W-N <member>`, `work reopen W-N [why]`, `work close W-N [note]`, `work cancel W-N [why]`, `work update W-N [...]` | requester, manager, operator/delegate | `close` accepts `failed`/`partial`/`in_review` as done; dependency cycles are refused (`work_dep_cycle`) |
+| `work next [--all]` | anyone | the hints addressed to the caller: `{id, attention, for, name, argv, why}` |
+
+Attention codes: `unassigned`, `ready`, `waiting_on_deps`, `owner_absent`,
+`stale_attempt`, `blocked`, `changes_requested`, `quiet` (no change for 2 h),
+`awaiting_review`, `settled_needs_decision`.
+
+## 9g. Facts and contradictions
+
+State: `<team>/facts.jsonl` (`op`: `add`, `support`, `retire`, `dispute`,
+`escalate`, `resolve`) under `team.lock`; findings recorded before 0.19 are read in
+place from `knowledge.jsonl` as `L-n` (never rewritten). A fact:
+`{id, statement, about, attribute, type, author, author_kind, author_gen,
+recorded_at, valid_from, valid_to, retired_at, retired_by, retire_reason,
+supersedes, superseded_by, sources, supporters, members, confidence, disputes,
+legacy, status}`; `status` is `current`, `disputed`, `retired` or `superseded`.
+Sources: `{"kind":"url","url","retrieved_at"}`, `{"kind":"post","seq"}`,
+`{"kind":"file","path"}`.
+
+- `fact add "<statement>" [--about S] [--attribute A] [--type T] [--source URL[@DATE]] [--post SEQ] [--ref PATH] [--valid-from D] [--valid-to D] [--supersedes F-N]`:
+  exact words already recorded by someone else become `support`; the same member
+  giving a new value for its own `--about`/`--attribute` supersedes its earlier
+  fact; near-identical wording (character 3-gram Jaccard >= 0.85) warns.
+  Superseding another member's fact needs the manager or the operator
+  (`fact_not_yours`). `--type` must be in `config.vocabulary` when the team has one.
+- `fact support F-N`, `fact retire F-N [why] [--valid-to D]` (own fact, or manager/operator), `fact show F-N`, `facts [--about S] [--by M] [--all] [--history] [--as-of D] [--disputed] [--limit N]`, `fact disputes [--all]`.
+- `fact resolve D-N --keep F-N... | --keep-both | --retire-all [--reason T]`: the manager when it is not a party, or the operator; a party concedes by retiring its own fact, which settles the dispute (`resolved_by: concession`).
+- `contradictions [off|observe|debate|escalate] [--timeout DURATION]`: show; setting is operator-only and announced with `contradictions_changed`. Stored as `config.contradictions {mode, debate_timeout_ms}`; default `observe`, 30 min.
+
+A dispute opens when a member records a statement for an `--about`/`--attribute`
+pair another member's current fact already answers differently. `observe` appends
+`fact_disputed` to `human` only (no wake, invisible to members); `debate` appends
+`fact_conflict` to both authors (wake `named`) and the notifier escalates it to the
+manager (when not a party) or the human after the timeout (`escalate` op, one
+`fact_conflict` with `escalated: true`); `escalate` sends `fact_conflict` to the
+decider at once (`toast` when that is the human). No mode refuses, holds or filters
+a post. `knowledge add` records a fact without a subject; `read_findings` returns
+current facts with `text` = the plain statement plus `id`, `display`, `status`.
+
+## 9h. Recall
+
+`recall "<words>" [--kind post|fact|work|file]... [--about S] [--as-of D] [--limit N] [--no-refresh]`.
+Anyone on the team. Index: `<team>/index/recall.sqlite3` (FTS5, `0600`), a cache
+rebuilt from the board (active and archive; retracted posts removed; a rotation,
+wipe or purge triggers a full rebuild), facts, work items and text files (<= 1 MiB,
+text suffixes, no dot-files or symlinks) under the team folder's `artifacts/`.
+Terms are quoted before matching, so no input is an FTS syntax error; all words
+must match, else any word. Ranking: reciprocal rank fusion (k=60) of `bm25`,
+recency and standing (facts weighted by status, members and sources), multiplied
+by `1 + 0.5 * closeness` when `--about` is given. JSON: `{query, hits: [{key,
+kind, ref, author, ts, when, weight, bm25, score, snippet, info, closeness}],
+indexed, as_of, about, team}`. File snippets are redacted like posts.
+
+## 9i. Templates
+
+`template list`, `template show NAME`, `template save NAME [--title T]
+[--description T] [--force]` (operator; from the resolved team), and `create
+<team> --template NAME ...` (operator). Built-in templates: `<plugin>/templates`;
+the operator's own: `<config>/plugins/config/herdr-synapse/templates` (they shadow
+a built-in of the same name). A template is `team.md` (`# Title`, description,
+`## Charter`, `## Rules`, `## Settings` with `manager`, `contradictions`,
+`debate_timeout`, `acceptance`, `review_by`, `permissions`, `## Roles` as `- role:
+kind — about`, `## Vocabulary` as `- Label: meaning`) plus `roles/<role>.md`
+instructions documents. `create` fills only what was not passed (charter, rules,
+`--spawn` per role with `--new`, per-role instructions keyed by role, launch
+permissions), sets the manager by role once the members exist, then writes
+`config.contradictions`, `config.work`, `config.vocabulary` and `config.template`.
+An invalid template is refused before anything is created (`template_invalid`).
+
+## 9j. Mission control
+
+`mission [--ascii] [--width N]` and the `mission` popup (`ui mission`, action
+`herdr-synapse.mission`, default `prefix+d`). Read-only over `team.json`,
+`who.json`, the board, `work.jsonl`, `facts.jsonl` and the operator grants. Lanes:
+`needs_you` (asks that are not work posts, agents in a dialog, work in review by
+`human`, `failed`/`partial` work without a manager or requested by the human,
+disputes routed to the human, grants expiring within an hour), `blocked`,
+`working`, `done` (settled in the last 24 h, agents that finished a turn), `idle`.
+Cards: `{lane, team, kind, title, detail, who, pane_id, argv, since}`. In the
+popup, Enter focuses an agent card's pane, otherwise shows its `argv`.
+
+## 9k. Skill guides
+
+`skill get [worker|manager|reviewer|librarian] [--reference work|facts|recall|coordination] [--list]`
+prints a guide from `<plugin>/skill-guides`, headed `<!-- herdr-synapse <guide>
+guide, skill vN -->`. The default is `manager` for the team manager and `worker`
+otherwise. The installed `SKILL.md` stays the safety floor and tells agents to load it.
+
+## 9l. Schedules
+
+A schedule is an operator post written in advance: the notifier appends it
+when it falls due, and ordinary delivery nudges the recipients at their next
+idle. The model, cron engine and firing are `herdr_team/schedules.py`; the
+commands are `herdr_team/cmd_schedule.py`.
+
+**Storage.** Definitions are `<team>/schedules.json`, indented, written under
+`team.lock`, and safe to edit by hand: `{"schema": 1, "next_id": N,
+"schedules": [{"id": "s1", "name", "text", "cron", "every", "tz", "to",
+"kind", "action": {"type": "post"}, "precheck", "precheck_timeout_s",
+"grace_s", "enabled", "created_at", "created_by", "updated_at"}]}`. Unknown
+keys are kept. An unparseable file refuses every write (`schedules_unreadable`,
+1) rather than being overwritten; an invalid entry is skipped, shown by `list`,
+and reported once as `schedule_failed`. The notifier's bookkeeping is
+`<team>/notifier/schedules-state.json` (`armed_at`, `last_slot`,
+`last_outcome` of `posted|skipped|failed|missed`, `last_seq`, `last_detail`,
+`next_due`, `running`, `last_precheck`, `last_manual_*`); it never rewrites the
+definitions.
+
+**Timetable.** Five Vixie-cron fields (`M H DOM MON DOW`) with `*`, lists,
+ranges, steps (`*/15`, `1-10/3`, `5/20`), month and day names, `7` for Sunday,
+and the `@hourly`/`@daily`/`@weekly`/`@monthly`/`@yearly` macros. When both day
+fields are restricted a day matching either fires; a day field starting with
+`*` counts as unrestricted, so the two combine with AND (Vixie). Presets:
+`hourly` (`--at :MM`, default `:00`), `daily`, `weekdays` (Mon-Fri), `weekly`
+(`--day mon[,thu]`, default `mon`), all at `--at HH:MM` (default `09:00`). A
+spec that can never fire (`0 9 30 2 *`) is refused. Times are wall-clock
+minutes in `--tz` (IANA, through `zoneinfo`; `tz_unknown`, 2) or, without it,
+this machine's zone, whose name is stored so the notifier uses the zone the
+printed fire times used. DST: a minute repeated by a fall-back change fires
+once, at its first occurrence; a minute skipped by a spring-forward change is
+shifted forward by the jump (02:30 fires at 03:30), once.
+
+### `schedule add "<text>" (--cron "M H DOM MON DOW" | --every hourly|daily|weekdays|weekly) --to <name|all|role:x> [options]` (operator)
+
+Options: `--at HH:MM`, `--day mon..sun`, `--tz IANA`, `--kind
+request|note|question` (default `request`), `--name NAME` (lowercase, unique,
+usable in place of the id), `--precheck "CMD"`, `--precheck-timeout 60`
+(seconds unless suffixed, at most 1h), `--grace 30m` (minutes unless
+suffixed, at most 7d), `--disabled`, `--force` (the secret check, as `post`).
+The text goes through `post`'s checks (sanitize, echo, secret). `--to` expands
+like `post --to` and is stored as given, so `role:x` resolves at each fire;
+`human`, `me` and `team:<other>` are refused (`schedule_recipient`). Prints the
+id and the next three fires; JSON `{team, id, schedule, when, zone, to,
+to_role, next: [iso]×3, notifier}`. Warns when the notifier is offline or when
+two fires are under ten minutes apart. Audits `schedule_add`.
+
+### `schedule list` / `schedule show <id|name>` / `schedule next [--count N]`
+
+Open to every member. `list`: every definition with `when`, `zone`, `next`,
+`state`, plus `invalid` entries. `show`: one definition, its state and the
+next five fires. `next`: the next N fires (default 10, at most 100) across the
+team's enabled schedules, soonest first, `{at, id, name, zone, to, kind,
+text}`. `who` adds `schedules: {count, enabled, invalid, next}` for a team
+that has any. The console's `/schedule` shows the list; `/schedule
+run|enable|disable <id>` operates on one.
+
+### `schedule rm|disable|enable|run <id|name>` (operator)
+
+`rm` deletes the definition and its state (the id is never reused). `disable`
+and `enable` flip `enabled`; enabling arms the schedule at that moment, so the
+slots of the time it was off are neither fired nor reported missed (a hand
+edit that re-enables one is treated the same way by the notifier). `run` fires
+now, precheck included, without consuming a slot: `{outcome:
+posted|skipped, seq, precheck}`; a precheck timeout or start failure is
+`schedule_precheck_failed` (1). Audits `schedule_rm`, `schedule_disable`,
+`schedule_enable`, `schedule_run`.
+
+**Authority.** Every write needs operator authority (the operator, or a
+delegate: `_human_only`). A precheck runs a shell command as the user, so
+anything that can make one run (`add --precheck`, `enable` or `run` of a
+schedule with one) needs the operator in person (`author_mismatch` for a
+delegate, audited). The post itself is `from: human` with `origin: {via:
+"schedule", verified: true, schedule, scheduled_by, slot}` (plus `manual,
+run_by` for `run`), and the record carries `schedule: {id, name, slot,
+manual}`; its text starts `[scheduled <name|id>]` so readers can tell it from
+the operator typing now. `identity.record_human_ok` accepts that origin for
+delivery and asks; no CLI author ever carries it, so it passes no gate.
+
+**Firing.** The notifier checks each team's schedules at every tick it has a
+slot due (cheaply: definitions are re-read every 5 s, due times cached). A
+slot fires once: `last_slot` is persisted, and before appending, the last 400
+board records are searched for a post already carrying that `schedule.slot`,
+so a notifier that died between the append and the state write does not post
+twice. A precheck runs as `/bin/sh -c CMD` in a worker thread (cwd: the
+team's project directory when set, else the team directory; env: only `PATH`,
+`HOME`, `LANG`, `HERDR_SYNAPSE_TEAM`, `HERDR_SYNAPSE_SCHEDULE`; its process
+group is killed at the timeout) and is collected on a later tick: exit 0
+posts, non-zero skips that run silently (state and audit only), a timeout is
+`schedule_failed` to `human` (toast). A slot the notifier missed while it was
+down fires once, for the latest missed slot only, when it is at most
+`grace` late (a slot is always on time within its own minute); later than
+that, one `schedule_missed` record goes to `human` (no wake) and the schedule
+moves on. A post that cannot be written (a role nobody holds, say) is
+`schedule_failed`; a locked board is retried at the next tick. Each outcome is
+audited as `schedule_fire`.
+
 ## 9b. Human in the loop
 
 An agent addressing the operator is the only thing on the board that needs a
@@ -1393,10 +1678,12 @@ Never fails on warnings; `ok:false` only on hard problems. JSON:
  "plugin":{"installed":true,"enabled":true,"path":"…","warnings":[]},
  "toast_delivery":"terminal","daemon":{…as daemon status…},
  "teams":[{"team","members","missing":n}],"console":{"open":bool,"pane_id"},
+ "remote":{…as remote status, without the session fields…}|null,
  "warnings":["…"],"errors":["…"]}
 ```
 
-Among the warnings: a team whose `project_dir` has been deleted or has become
+Among the warnings: a paired phone channel (section 9e), what it sends, and
+whether it is outbound-only; and a team whose `project_dir` has been deleted or has become
 read-only. The mirror is refreshed best effort, so without this the folder
 would just stop updating with nothing on screen to say why.
 
@@ -1546,6 +1833,150 @@ is touched. `plugin.pane.open` answers `plugin_pane_opened` (pane id at
 `plugin_pane.pane.pane_id`) for split/tab/overlay/zoomed placements and a
 bare `{"type":"ok"}` for `popup`, which is why `ui`'s `"pane_id"` is `null`
 for popups.
+
+## 9m. Phone reach (`remote`)
+
+Opt-in. When an agent asks the operator something (section 9b), the notifier
+can also send it to the operator's phone and read the answer back. Only
+outbound HTTPS is used and nothing listens on a port: replies are fetched on
+the notifier's own schedule. Code: `herdr_team/remote.py` (channels, policy,
+relay) and `herdr_team/cmd_remote.py` (commands).
+
+| channel | sends with | reads answers |
+| --- | --- | --- |
+| `ntfy` (ntfy.sh or self-hosted) | `POST <server>/<topic>`, headers `Title`, `Priority`, `Tags: herdr-synapse`, `Authorization: Bearer <token>` when set | only with an access token: `GET <server>/<topic>/json?poll=1&since=<id>`. Without one the topic is public, so the channel is **outbound-only** |
+| `telegram` (a bot you made with @BotFather) | Bot API `sendMessage` to the one pinned chat | `getUpdates` with `timeout=0` (never a long poll) and an offset; only messages from the pinned private chat count |
+| `webhook` | `POST <url>` with `{"text": "…"}` (Slack incoming-webhook shape) | never: **outbound-only** |
+
+Every request has a 5 s timeout, redirects are refused (they could carry the
+`Authorization` header elsewhere), and all network I/O runs on one worker
+thread, so a slow server or a dead resolver never holds the tick.
+
+### Files
+
+- `<config_dir>/plugins/config/herdr-synapse/remote.json` (0600, directory
+  0700, symlinks refused): `{"v":1,"channel","pair_id","paired_at","paired_by",
+  "<channel>":{…settings and secret…},"policy":{"send":[…],"text":"…"}}`. One
+  per Herdr config dir, shared by every session under it; messages name the
+  session slug and the team.
+- `remote-poll.json` beside it: the channel's read cursor, the last 300 reply
+  ids already handled, and a 30 s lease. The cursor belongs to the channel,
+  not a session: Telegram drops updates once any reader moves past them. Only
+  the lease holder reads, at most once per 5 s per channel across sessions,
+  and it routes each answer to the session that issued the code.
+- `<session>/remote-state.json`: this session's dedupe keys (`ask:<team>:<seq>`,
+  `event:<team>:<seq>`), the codes it issued (`{"team","seq","asker","kind",
+  "created_at","sent_at","message_id","state":"open"|"closed"|"answered"}`),
+  the outbox, and `last_send` / `last_poll`. A restart never resends a sent
+  key and never reapplies a handled reply id.
+
+Secrets are read from a file (its first line) or from an environment variable
+**name**, never from argv; `--token`, `--bot-token` and `--url` exist only to
+be refused with `secret_in_argv` (exit 2) without echoing the value. The secret
+is copied into `remote.json`; `unpair` deletes it. No secret is written to
+`daemon.log`, `audit.jsonl`, or either state file, and errors that could echo
+a URL are scrubbed to `[secret]`.
+
+### `remote status`
+
+No authority needed. JSON: `{"channel","paired","receives","outbound_only",
+"outbound_only_reason","pending_pair","pair_expired","destination",
+"paired_at","policy":{"send","text"},"leaves_machine","token_configured",
+"config","session","outbox","open_codes","last_send","last_poll","notifier"}`.
+`destination` never shows a secret, an open topic's full name (it is that
+topic's only password), or a chat id.
+
+### `remote pair ntfy --topic T [--server URL] [--token-file PATH | --token-env VAR]` (human only)
+### `remote pair telegram --bot-token-file PATH | --bot-token-env VAR` (human only)
+### `remote pair webhook --url-file PATH | --url-env VAR` (human only)
+
+Replaces any previous pairing (the policy is kept) and audits `remote_paired`
+in the resolved team when there is one. Servers and URLs must be `https`
+(`http` only for a loopback ntfy). ntfy's `since` starts at the pairing time.
+
+Telegram pairs in two steps. `pair telegram` stores the token and prints a
+one-time code (8 characters, 15 minutes) and, when `getMe` answers, a
+`https://t.me/<bot>?start=<code>` link; JSON adds `code`, `link`,
+`expires_in_s`. The operator sends `/start <code>` to the bot from a
+**private** chat. The notifier's next read pins that chat id, or
+`remote pair --complete` does it at once (`remote_pair_waiting` while nothing
+matched, `remote_pair_expired`, `remote_nothing_to_complete`). A group chat, a
+wrong code, or a message older than the pairing never pins. Nothing is sent
+until the chat is pinned.
+
+Refusals: `remote_secret_unreadable`, `remote_invalid`, `author_mismatch`
+(a member or a delegate; pairing decides what leaves the machine).
+
+### `remote unpair` (human only)
+
+Deletes the channel and its secret, keeps the policy, drops the read cursor;
+the notifier discards anything still queued for the old pairing.
+`remote_not_paired` when nothing is paired. Audited `remote_unpaired`.
+
+### `remote test`
+
+Sends one message on the paired channel from the CLI (operator or delegate).
+`remote_send_failed` with the scrubbed reason when it does not go out. Audited
+`remote_sent` with `category: "test"`.
+
+### `remote policy [--send asks,conflicts,failures,settled | none] [--text full|summary|none]`
+
+A bare call reads; a change is human only and audited `remote_policy`.
+
+| `--send` category | what triggers a message |
+| --- | --- |
+| `asks` (default) | a new ask to `human` of kind `question`, `blocked` or `request` |
+| `conflicts` (default) | a `fact_conflict` system record addressed to `human` |
+| `failures` (default) | a `schedule_failed` system record addressed to `human` |
+| `settled` | an ask the phone was sent was answered or withdrawn in Herdr |
+
+| `--text` | what leaves the machine |
+| --- | --- |
+| `summary` (default) | session and team, who asked, the kind and seq, the reply code; never the text |
+| `full` | the same plus the post text, with every `cmd_board.SECRET_PATTERNS` match replaced by `[redacted:<kind>]` before the text is capped at 500 characters |
+| `none` | only `1 item waiting in Herdr`: no names, no text, no code |
+
+Only items that appear **after** pairing are sent; what was already waiting
+stays in the popup. An ask answered in Herdr before its message went out is
+dropped, never sent late.
+
+### The notifier's `remote` phase
+
+After `asks` in every tick. It reads `remote.json` at most every 2 s (by
+mtime), queues new asks from `open_asks` and relayed system records as the
+board tail ingests them, and hands at most one request to the worker: a poll
+when one is due (5 s while a code is out or a pairing waits, 60 s otherwise,
+30 s after a failed poll), else the next due send (one per second at most).
+A failed send retries after 5 s, 15 s, 1 min, 5 min, then every 15 min, and
+is dropped after 8 attempts. Each send is audited `remote_sent`
+(`channel`, `category`, `seq`, `code`, `text` mode; never the text).
+
+### Answering from the phone
+
+Each ask message carries a 4-character code (letters and digits without
+`0 O 1 I`). A reply `<code> <answer>` (case-insensitive), or on Telegram a
+reply to the bot's message without the code, becomes this record on that
+team's board, the same shape the popup writes:
+
+```json
+{"from":"human","kind":"answer","to":["<asker>"],"reply_to":<ask seq>,"text":"<answer>",
+ "origin":{"via":"remote","verified":true,"channel":"ntfy|telegram",…}}
+```
+
+`<code> ok` or `<code> ack` is the popup's `Ctrl-A`: the text is the same
+acknowledgement, *not a decision*. `asks.answered_by` accepts the record
+(`identity.record_human_ok`), so the ask closes, a waiting `post --wait`
+returns, and the asker is nudged. The answer goes through the post sanitizer:
+a secret, a nudge marker, an empty or over-500-character answer posts nothing
+and gets a short reply saying why. An unknown or expired (7 days) code gets
+`unknown code <code>`; an ask that is no longer waiting gets `no longer
+waiting`. Every applied answer is audited `remote_answer` (`channel`, `code`,
+`reply_to`, `seq`, `ack`, `chars`).
+
+A phone answer can only answer or acknowledge an ask that is still pending.
+No CLI author ever carries `via: "remote"`, and `Author.trusted_human` does
+not accept it, so it never passes an authority gate: it cannot change a
+charter, rules, grants, links, or this policy.
 
 ## 10. Shared record grammar
 

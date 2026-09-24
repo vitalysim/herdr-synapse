@@ -47,7 +47,15 @@ COMMAND_MODULES: Tuple[str, ...] = (
     "herdr_team.cmd_models",
     "herdr_team.cmd_permissions",
     "herdr_team.cmd_links",
+    "herdr_team.cmd_work",
+    "herdr_team.cmd_facts",
+    "herdr_team.cmd_recall",
+    "herdr_team.cmd_templates",
+    "herdr_team.cmd_mission",
     "herdr_team.pi_support",
+    "herdr_team.cmd_search",
+    "herdr_team.cmd_schedule",
+    "herdr_team.cmd_remote",
 )
 
 

@@ -51,6 +51,14 @@ VIA_POPUP = "popup"
 VIA_OUTSIDE = "outside"
 VIA_HOOK = "hook"
 VIA_SYSTEM = "system"
+#: Written only by the notifier, on the operator's behalf: a scheduled post the
+#: operator set up (``schedule``), or an answer the operator sent from a paired
+#: phone (``remote``). They count as the human's word *on the board*, so the
+#: post is delivered and the ask it answers is closed. No CLI author ever
+#: carries them, so they never pass an authority gate.
+VIA_SCHEDULE = "schedule"
+VIA_REMOTE = "remote"
+RECORD_ONLY_HUMAN_VIAS = (VIA_SCHEDULE, VIA_REMOTE)
 
 AUTHOR_HUMAN = "human"
 AUTHOR_SYSTEM = "system"
@@ -858,3 +866,15 @@ def human_origin_ok(record_origin: Dict[str, Any]) -> bool:
     if via in (VIA_CONSOLE, VIA_CONSOLE_UNFOCUSED, VIA_POPUP, VIA_OUTSIDE):
         return True
     return via == VIA_CLI and bool(record_origin.get("verified"))
+
+
+def record_human_ok(record_origin: Dict[str, Any]) -> bool:
+    """``human_origin_ok`` for a stored record, which may also carry a notifier-written origin.
+
+    Only record readers use this (delivery, ask answers, rendering). The
+    authority gates keep ``Author.trusted_human``, which never sees a
+    ``schedule`` or ``remote`` origin.
+    """
+    if human_origin_ok(record_origin):
+        return True
+    return record_origin.get("via") in RECORD_ONLY_HUMAN_VIAS and bool(record_origin.get("verified"))

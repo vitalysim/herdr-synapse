@@ -652,52 +652,59 @@ def _bump_team_counter(team_paths: TeamPaths, field: str) -> int:
 
 
 def read_findings(layout: Layout, team: str, limit: int = MAX_FINDINGS_SHOWN) -> List[Dict[str, Any]]:
-    """The newest findings, oldest first. A malformed line is skipped, never fatal."""
-    path = layout.team(team).knowledge_jsonl
-    out: List[Dict[str, Any]] = []
-    raw = store.read_bytes(path, b"") or b""
-    for line in raw.decode("utf-8", "replace").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            record = json.loads(line)
-        except ValueError:
-            continue  # a half-written or hand-edited line is skipped, never fatal
-        if isinstance(record, dict) and isinstance(record.get("text"), str):
-            out.append(record)
-    if limit and len(out) > limit:
-        out = out[-limit:]
-    return out
+    """The team's current facts, oldest first, in the findings shape (``at``, ``author``, ``kind``, ``text``).
+
+    Since 0.19 findings are facts (``herdr_team.facts``): retired and
+    superseded ones are no longer handed to a re-orienting agent, and each
+    line carries its id and any open dispute. Findings recorded before that
+    are read in place from ``knowledge.jsonl``.
+    """
+    from herdr_team import facts as _facts
+
+    return _facts.findings_view(layout.team(team), limit=limit)
 
 
 def add_finding(layout: Layout, team: str, author: Author, text: str) -> Dict[str, Any]:
-    """Append one attributed finding. Any member may do this; it is a peer note, not a rule."""
+    """Record one attributed finding: a fact with no subject. Any member may; it is a peer note, not a rule."""
+    from herdr_team import facts as _facts
+
     if not author.is_member and not author.is_human:
         raise HerdrTeamError("not_a_member", "this pane is not a member of team {!r}".format(team), EXIT_REFUSED, {"team": team, "author": author.name})
+    # Since 0.19 a finding is a fact that other facts support and dispute: recorded in a
+    # member's name only from that member's verified pane (or by the trusted operator).
+    if (author.is_member and not author.verified) or (author.is_human and not author.trusted_human):
+        raise HerdrTeamError("author_unverified", "a finding is recorded from a verified member pane or by the operator ({})".format(author.reason or author.via), EXIT_REFUSED, {"author": author.name, "via": author.via})
     body = sanitize(str(text or ""), MAX_FINDING_CHARS, code="finding_too_long")
     if not body:
         raise HerdrTeamError("usage", "a finding needs text", EXIT_REFUSED, {"team": team})
     body = " ".join(body.split())
     team_paths = layout.team(team)
     ensure_team_dirs(team_paths)
+    kind = author.kind or ("human" if author.is_human else "?")
+    result = _facts.add(team_paths, {"statement": body, "by": author.name, "by_kind": kind, "by_gen": getattr(author, "generation", None)}, _facts.MODE_OFF)
+    fact = result.fact or result.supported
+    if result.fact is None and fact is not None and fact.author == author.name and not any(s.get("by") == author.name for s in fact.supporters[-1:]):
+        # the same member saying the same thing again: nothing new to record or announce
+        record = {"at": fact.recorded_at, "author": fact.author, "kind": fact.author_kind, "text": fact.label(), "id": fact.id}
+        return {"team": team, "finding": record, "record_seq": None, "supported": False, "already_recorded": True}
     record = {
-        "at": store.now_iso(),
+        "at": fact.recorded_at if fact is not None else store.now_iso(),
         "author": author.name,
-        "kind": author.kind or ("human" if author.is_human else "?"),
+        "kind": kind,
         "text": body,
+        "id": fact.id if fact is not None else None,
     }
-    _append_finding(team_paths.knowledge_jsonl, record)
     # A finding is a peer note, so it goes on the board as one: attributed to the
     # member, addressed to everyone, and never phrased as an instruction.
     seq = _roster.append_system_record(
         team_paths, "knowledge_finding",
-        "{} recorded a finding: {} (all of them: herdr-synapse knowledge)".format(author.name, body),
+        "{} recorded a finding{}: {} (all of them: herdr-synapse knowledge)".format(author.name, " ({})".format(fact.id) if fact is not None else "", body),
         # Not a "text" key: ``extra`` is merged into the record and would clobber it.
-        to=["all"], extra={"author": author.name, "finding": body}, socket=os.fspath(layout.socket),
+        to=["all"], extra={"author": author.name, "finding": body, "fact": {"id": fact.id if fact is not None else None, "op": "support" if result.fact is None else "add"}},
+        socket=os.fspath(layout.socket),
     )
-    audit(layout, team, "knowledge_finding", author, {"chars": len(body)})
-    return {"team": team, "finding": record, "record_seq": seq}
+    audit(layout, team, "knowledge_finding", author, {"chars": len(body), "id": record["id"]})
+    return {"team": team, "finding": record, "record_seq": seq, "supported": result.fact is None}
 
 
 def _one_line(text: str, limit: int) -> str:

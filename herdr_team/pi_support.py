@@ -23,12 +23,16 @@ TTL = 20.0
 MARKER = "// herdr-synapse pi extension v1"
 
 
-def extension_path(env: Dict[str, str]) -> Path:
+def agent_dir(env: Dict[str, str]) -> Path:
+    """Pi's agent directory (``PI_CODING_AGENT_DIR``, else ``~/.pi/agent``)."""
     value = env.get("PI_CODING_AGENT_DIR")
     if value == "~" or (value and value.startswith("~/")):
         value = str(paths.home_dir(env)) + value[1:]
-    root = Path(value or (paths.home_dir(env) / ".pi" / "agent"))
-    return root / "extensions" / "herdr-synapse.ts"
+    return Path(value or (paths.home_dir(env) / ".pi" / "agent"))
+
+
+def extension_path(env: Dict[str, str]) -> Path:
+    return agent_dir(env) / "extensions" / "herdr-synapse.ts"
 
 
 def extension_text(cli: Path) -> str:

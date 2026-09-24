@@ -111,6 +111,45 @@ class SkillFileTests(unittest.TestCase):
         self.assertEqual(payload["skill"], self.text)
 
 
+class SkillGetTests(unittest.TestCase):
+    """``skill get``: role guides and references served by the CLI that runs the commands."""
+
+    def test_every_guide_and_reference_prints_with_a_version_header(self):
+        code, out, err = run_cli(["skill", "get", "--list", "--json"], {})
+        self.assertEqual(code, 0, err)
+        listing = json.loads(out)
+        self.assertEqual(listing["roles"], ["worker", "manager", "reviewer", "librarian"])
+        self.assertEqual(listing["references"], ["coordination", "facts", "recall", "work"])
+        for role in listing["roles"]:
+            code, out, err = run_cli(["skill", "get", role], {})
+            self.assertEqual(code, 0, err)
+            self.assertTrue(out.startswith("<!-- herdr-synapse {} guide, skill v{} -->".format(role, SKILL_VERSION)))
+        for name in listing["references"]:
+            code, out, err = run_cli(["skill", "get", "--reference", name], {})
+            self.assertEqual(code, 0, err)
+        code, _out, err = run_cli(["skill", "get", "--reference", "nope", "--json"], {})
+        self.assertEqual(code, 1)
+        self.assertEqual(json.loads(err.splitlines()[0])["code"], "reference_unknown")
+
+    def test_guides_stay_short_and_domain_neutral(self):
+        root = paths.skill_guides_dir()
+        for path in sorted(root.glob("*.md")) + sorted((root / "references").glob("*.md")):
+            text = path.read_text(encoding="utf-8")
+            self.assertLessEqual(len(text.splitlines()), 120, path.name)
+            self.assertNotIn("coding agents", text, "{}: Synapse teams are not only for code".format(path.name))
+
+    def test_the_worker_guide_teaches_the_contracts(self):
+        text = (paths.skill_guides_dir() / "worker.md").read_text(encoding="utf-8")
+        for needle in ("work claim", "work done", "--outcome succeeded|failed|partial", "new generation",
+                       "fact add", "--supersedes", "fact support", "recall", "never hide failure", "Never supersede or retire another member's fact"):
+            self.assertIn(needle, text, needle)
+
+    def test_without_a_team_the_default_is_the_member_guide(self):
+        code, out, err = run_cli(["skill", "get"], {"HOME": "/nonexistent"})
+        self.assertEqual(code, 0, err)
+        self.assertIn("guide: team member", out)
+
+
 class SkillInstallCase(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = Path(tempfile.mkdtemp(prefix="ht-skill-"))

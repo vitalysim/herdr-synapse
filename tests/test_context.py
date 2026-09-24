@@ -537,10 +537,10 @@ class ControlJobTests(unittest.TestCase):
         self.d.on_connected()
         self.team = self.d.teams["alpha"]
 
-    def control_record(self, member=TARGET, action="compact", verified=True, to=None, control=True, kind="direct", agent_kind="codex"):
+    def control_record(self, member=TARGET, action="compact", verified=True, to=None, control=True, kind="direct", agent_kind="codex", via="console"):
         record = {
             "from": "human", "from_kind": "human", "from_terminal": "term_console",
-            "origin": {"via": "console", "verified": verified}, "to": to if to is not None else [member],
+            "origin": {"via": via, "verified": verified}, "to": to if to is not None else [member],
             "kind": kind, "text": "{} {}".format(action, member),
         }
         if control:
@@ -574,7 +574,7 @@ class ControlJobTests(unittest.TestCase):
 
     def test_a_job_whose_record_does_not_back_it_is_refused_and_said_so(self):
         for kwargs, why in (
-            ({"verified": False}, "unverified"),
+            ({"verified": False, "via": "cli"}, "an unverified shell"),
             ({"control": False}, "no control block"),
             ({"to": ["someone-else"]}, "addressed elsewhere"),
             ({"kind": "request"}, "not a direct line"),

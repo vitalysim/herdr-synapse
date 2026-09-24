@@ -80,8 +80,9 @@ class OrientTests(unittest.TestCase):
         text = self.orient()[1]["text"]
         self.assertIn("1 team finding recorded by your teammates: herdr-synapse knowledge", text)
         self.assertNotIn("the secret detail", text, "findings are peer notes; they are pointed at, never inlined")
-        for _ in range(4):
-            _charter.add_finding(self.ts.layout, "alpha", human(), "another")
+        for index in range(4):
+            _charter.add_finding(self.ts.layout, "alpha", human(), "another finding about area {}".format(index))
+        _charter.add_finding(self.ts.layout, "alpha", human(), "another finding about area 0")  # the same words again: no second finding
         self.assertIn("5 team findings recorded", self.orient()[1]["text"])
 
     def test_a_team_with_no_documents_still_orients_rather_than_failing(self):

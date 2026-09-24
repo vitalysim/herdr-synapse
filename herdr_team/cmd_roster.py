@@ -243,7 +243,7 @@ def _initial_member_documents(planned: Sequence[Tuple[str, str]], briefs: Dict[s
     missing: List[str] = []
     documents: Dict[str, str] = {}
     for name, role in planned:
-        explicit = instructions.get(name)
+        explicit = instructions.get(name) or instructions.get(role)  # by final name, or by role like --brief
         sections = _instructions_doc.parse(explicit)
         mission = _instructions_doc.mission_paragraph(sections)
         brief = (briefs.get(name) or briefs.get(role) or "").strip()
@@ -653,6 +653,7 @@ def _add_create_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--manager", metavar="NAME", help="the member that coordinates the team (see: herdr-synapse manager)")
     parser.add_argument("--model", action="append", default=[], metavar="ROLE|KIND=MODEL[@EFFORT]",
                         help="a member's model and effort (by --spawn role), or the team default for a kind (claude=opus@medium, codex=gpt-5.6-luna@high)")
+    parser.add_argument("--template", metavar="NAME", help="start from a team template (herdr-synapse template list): charter, rules, roles, missions and settings; your own flags win")
 
 
 def parse_model_args(items: List[str]) -> Tuple[Dict[str, Tuple[Optional[str], Optional[str]]], Dict[str, Tuple[Optional[str], Optional[str]]]]:
@@ -687,6 +688,19 @@ def _run_create(args: argparse.Namespace) -> int:
     env = env_of(args)
     team_name = _paths.validate_team_name(args.team_pos)
     author = _create_author(args, layout, api, team_name)
+    template = None
+    template_notes: List[str] = []
+    if getattr(args, "template", None):
+        from herdr_team import templates as _templates
+
+        template = _templates.load(args.template, layout.config_dir)
+        template_notes = _templates.fill_create_args(args, template)
+        if template.source == "user":
+            template_notes.append("template {} is one of yours: {}".format(template.name, template.path))
+        _human_only(layout, team_name, author, "create --template")
+    # carried to ``_create_members``, which sets the manager and settings once the members exist
+    args._template = template
+    args._template_notes = template_notes
     if args.charter is not None and args.charter_file is not None:
         raise UsageError("pass --charter or --charter-file, not both")
     if args.charter is not None or args.charter_file is not None:
@@ -835,7 +849,8 @@ def _apply_workdir_setup(
     if args.rules is not None or args.rules_file is not None:
         _charter.set_rules(layout, team_name, author, args.rules, args.rules_file)
 
-    live = {str(m.get("name")) for m in members_out}
+    # keyed by final name or by role, as ``_initial_member_documents`` applies them (templates key by role)
+    live = {str(m.get("name")) for m in members_out} | {str(m.get("role")) for m in members_out if m.get("role")}
     for name in (instructions or {}):
         if name not in live:
             out["warnings"].append("--instructions {}=…: no member of that name joined; skipped".format(name))
@@ -919,6 +934,12 @@ def _create_members(args: argparse.Namespace, layout: Layout, api: Any, env: Dic
     elif default_team != team_name:
         warn(args, "default team stays {!r}; run: herdr-synapse use {}".format(default_team or (others[0] if others else "?"), team_name))
     manager_name = None
+    template = getattr(args, "_template", None)
+    template_notes = list(getattr(args, "_template_notes", None) or [])
+    if template is not None and not getattr(args, "manager", None):
+        from herdr_team import templates as _templates
+
+        args.manager = _templates.manager_for(template, members_out)
     if getattr(args, "manager", None):
         # After the members exist, and by name rather than by spec, so a member
         # Herdr renamed on the way in is still found.
@@ -930,6 +951,12 @@ def _create_members(args: argparse.Namespace, layout: Layout, api: Any, env: Dic
         audit(layout, team_name, "manager_set", author, {"member": manager_name, "previous": None})
     # After the roster exists, so the folder renders one file per member.
     workdir_result = _apply_workdir_setup(args, layout, team_name, team_paths, author, project_dir, instructions, members_out)
+    template_settings: Dict[str, Any] = {}
+    if template is not None:
+        from herdr_team import templates as _templates
+
+        template_settings = _templates.apply_settings(team_paths, template)
+        audit(layout, team_name, "template_applied", author, {"template": template.name, "settings": sorted(template_settings)})
     saved_team = _roster.load_team(team_paths)
     for item in members_out:
         item["launch_permissions"] = _permissions.view(saved_team.config, saved_team.find(item["name"]))
@@ -940,6 +967,7 @@ def _create_members(args: argparse.Namespace, layout: Layout, api: Any, env: Dic
         "notifier": notifier_state(layout.session), "default_team": set_default, "briefing_jobs": jobs,
         "pending": list(getattr(args, "_still_pending", []) or []), "failed": [m["name"] for m in failed],
         "project_dir": workdir_result.get("project_dir"), "team_folder": workdir_result.get("folder"),
+        "template": {"name": template.name, "settings": template_settings, "notes": template_notes} if template is not None else None,
     }
 
     def human() -> str:
@@ -956,6 +984,9 @@ def _create_members(args: argparse.Namespace, layout: Layout, api: Any, env: Dic
             lines.append("team folder: {}".format(payload["team_folder"]))
         for hint in workdir_result.get("hints") or []:
             lines.append(hint)
+        if template is not None:
+            lines.append("template {}: {}".format(template.name, ", ".join("{}={}".format(k, v if not isinstance(v, dict) else v.get("mode", v)) for k, v in template_settings.items() if k != "template") or "no settings"))
+            lines.extend(template_notes)
         lines.append("notifier: {}".format(payload["notifier"]))
         return "\n".join(lines)
 
@@ -1602,6 +1633,9 @@ def _run_me(args: argparse.Namespace) -> int:
     payload.update({"model": own_model, "effort": own_effort, "setting": _models.label(own_model, own_effort),
                     "model_source": model_src, "effort_source": effort_src})
     payload["links"] = _links.summary(layout.session, team_name)
+    from herdr_team import work as _work
+
+    payload["work"] = _work.member_view(_work.load(team_paths), author.name)
     # The team folder is how an agent differentiated only by a file finds that
     # file. Both paths are absolute so a member outside the project can read them.
     project = _workdir.project_dir_of(doc)
@@ -1711,6 +1745,11 @@ def _who_payload(args: argparse.Namespace, layout: Layout, api: Any, team_name: 
         "members": members,
         "kinds": kinds,
     }
+    from herdr_team import schedules as _schedules
+
+    timetable = _schedules.summary(team_paths, dict(args.env))
+    if timetable is not None:
+        payload["schedules"] = timetable  # only for a team that has any, so the usual payload is unchanged
     return payload
 
 
@@ -1731,7 +1770,12 @@ def _run_who(args: argparse.Namespace) -> int:
         warn(args, "cannot reach Herdr; showing roster state only")
 
     def human() -> str:
-        return _render.render_who(payload, team_name, ascii_only=args.ascii, brief=args.brief, role=None)
+        text = _render.render_who(payload, team_name, ascii_only=args.ascii, brief=args.brief, role=None)
+        if payload.get("schedules"):
+            from herdr_team import schedules as _schedules
+
+            text += "\n" + _schedules.summary_line(payload["schedules"])
+        return text
 
     return emit(args, payload, human)
 
