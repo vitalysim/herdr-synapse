@@ -776,15 +776,16 @@ def addressed_to(record: Dict[str, Any], reader: str, is_human: bool) -> bool:
 
 
 def inbox_record(record: Dict[str, Any], reader: str, is_human: bool) -> bool:
-    """The reader's mail: addressed to it, not its own, and (for a member) not a line the human typed into it.
+    """The reader's inbox: addressed to it and not its own.
 
-    A ``direct`` record is already in the member's input box and the daemon's
-    ``typed`` outcome is addressed to the human, so neither is unread mail for
-    a member (docs/cli.md section 7, ``say``); the human's inbox lists both.
+    A member's is ``store.is_member_awareness``, the one definition the prompt
+    hook and ``ack`` share: no ``direct`` line (already in its input box, docs/cli.md
+    section 7, ``say``), no retract record, no delivery bookkeeping. The human's
+    inbox lists all of those.
     """
-    if record.get("from") == reader or not addressed_to(record, reader, is_human):
-        return False
-    return is_human or not store.is_direct_line(record)
+    if not is_human:
+        return store.is_member_awareness(record, reader)
+    return record.get("from") != reader and addressed_to(record, reader, is_human)
 
 
 def unread_for(team: TeamPaths, records: Sequence[Dict[str, Any]], reader: str, is_human: bool = False) -> int:
@@ -1283,23 +1284,33 @@ def _post_across_link(args: argparse.Namespace, layout: Layout, author: Author, 
     delivered.update({"to": [theirs], "to_role": None, "from_team": team_name, "reply_to": remote_reply, "link": dict(message)})
     mirror = dict(record)
     mirror.update({"to": [link_target], "to_role": None, "from_team": team_name, "link": dict(message, mirror=True)})
+    _links.flush_outbox(layout.session)
     # In team-name order, so every writer takes the two locks the same way round.
-    order = sorted(((team_name, team, mirror), (other, other_paths, delivered)), key=lambda item: item[0])
-    seqs: Dict[str, int] = {}
-    for name, paths, rec in order:
-        seqs[name] = board_append(paths, rec)
-    _identity.audit(layout, team_name, "link_post", author, {"link": link.id, "message": message["id"], "other": other, "seqs": seqs})
+    order = sorted(((team_name, mirror), (other, delivered)), key=lambda item: item[0])
+    seqs, failed, error = _links.send(layout.session, message["id"], order)
+    if error is not None and not seqs:
+        raise error
+    _identity.audit(layout, team_name, "link_post", author, {"link": link.id, "message": message["id"], "other": other, "seqs": seqs, "queued": failed})
+    if failed is not None:
+        # Half landed: the journal keeps the other copy, and the notifier or the next link post finishes it.
+        # Reported as a success so the sender does not retry and duplicate the half that is there.
+        warn(args, "the copy for {} is queued ({}); it is added once that board accepts it".format(failed, error.code if error else "error"))
     notifier = notifier_state(layout.session)
     if notifier == "offline":
         warn(args, "notifier offline: {}'s manager is nudged once the daemon runs (herdr-synapse daemon start)".format(other))
     payload = {
-        "seq": seqs[team_name], "team": team_name, "notifier": notifier, "to": [link_target], "to_role": None, "kind": args.kind,
+        "seq": seqs.get(team_name), "team": team_name, "notifier": notifier, "to": [link_target], "to_role": None, "kind": args.kind,
         "author": {"name": author.name, "via": author.via, "verified": bool(author.verified)},
         "spilled": False, "attached": [], "refs": list(record.get("refs") or []), "urgent": bool(record.get("urgent")), "interrupt": False,
         "waited": False, "answer": None,
-        "link": {"id": message["id"], "other_team": other, "other_manager": theirs, "delivered_seq": seqs[other], "mirror_seq": seqs[team_name], "reply_to_id": message["reply_to_id"]},
+        "link": {"id": message["id"], "other_team": other, "other_manager": theirs, "delivered_seq": seqs.get(other), "mirror_seq": seqs.get(team_name),
+                 "reply_to_id": message["reply_to_id"], "queued": failed},
     }
-    return emit(args, payload, "#{} posted to {} (its manager {} is nudged; their copy is #{})".format(seqs[team_name], other, theirs, seqs[other]))
+    if failed is not None:
+        text = "#{} posted to {}; the copy for {} is queued".format(seqs.get(team_name) or seqs.get(other), other, failed)
+    else:
+        text = "#{} posted to {} (its manager {} is nudged; their copy is #{})".format(seqs[team_name], other, theirs, seqs[other])
+    return emit(args, payload, text)
 
 
 def _seq_of_link_message(team: TeamPaths, message_id: str, lookback: int = LINK_THREAD_LOOKBACK) -> Optional[int]:
@@ -1917,8 +1928,10 @@ def _run_ack(args: argparse.Namespace) -> int:
     if member.get("terminal_id") and author.terminal_id and member.get("terminal_id") != author.terminal_id:
         raise HerdrTeamError("author_mismatch", "ack must come from {}'s own pane".format(author.name), EXIT_REFUSED, {"expected_terminal": member.get("terminal_id"), "actual_terminal": author.terminal_id})
     max_seq = board_max_seq(team)
-    # touch=True: an ack at an unchanged seq must still be a visible cursor write (see store.Cursors.advance)
-    cursor = cursor_advance(team, author.name, max_seq, author.terminal_id, "cli", touch=True)
+    # touch=True: an ack at an unchanged seq must still be a visible cursor write (see store.Cursors.advance).
+    # hold_unread: never past a post the member was not shown; ``board --new`` is what reads.
+    cursor = store.Cursors(team).advance(author.name, max_seq, author.terminal_id, "cli", touch=True, hold_unread=True)
+    unshown = store.Cursors(team).unshown(author.name)
     charter = charter_of(doc)
     charter_seq = int(charter.get("seq", 0)) if charter else None
     # The operator's two other documents are acknowledged here too, on the same
@@ -1941,8 +1954,12 @@ def _run_ack(args: argparse.Namespace) -> int:
 
     update_doc(team, mutate)
     payload = {"team": team_name, "member": author.name, "cursor": int(cursor.get("seq", max_seq)), "charter_seq_acked": charter_seq,
-               "instructions_seq_acked": instructions_seq, "rules_seq_acked": rules_seq}
-    return emit(args, payload, "{} acknowledged: cursor {}, charter #{}".format(author.name, payload["cursor"], charter_seq if charter_seq is not None else "none"))
+               "instructions_seq_acked": instructions_seq, "rules_seq_acked": rules_seq, "unread": len(unshown)}
+    text = "{} acknowledged: cursor {}, charter #{}".format(author.name, payload["cursor"], charter_seq if charter_seq is not None else "none")
+    if unshown:
+        text += "\n{} unread post{} you have not been shown ({}); run herdr-synapse board --new".format(
+            len(unshown), "" if len(unshown) == 1 else "s", ", ".join("#{}".format(s) for s in unshown[:5]))
+    return emit(args, payload, text)
 
 
 #: What each kind is told to do. ``compact`` summarises in place. Codex gets
@@ -2207,7 +2224,7 @@ COMMANDS: List[Command] = [
     Command("edit", "supersede one of your posts with new text", _add_edit_arguments, _run_edit),
     Command("task", "set your current task headline", _text_only, _run_task),
     Command("export", "save the whole board to a file (md, json, jsonl, text)", _add_export_arguments, _run_export),
-    Command("ack", "acknowledge the briefing and charter, move your cursor to the end", _no_arguments, _run_ack),
+    Command("ack", "acknowledge the briefing and charter, move your cursor past what you have read", _no_arguments, _run_ack),
     Command("wipe", "empty the board: every post moves to the archive (--purge deletes it all); operator only, asks first", _add_wipe_arguments, _run_wipe),
     Command("compact", "ask the notifier to compact a member's context (operator, or --self)", _add_control_arguments, _run_compact),
     Command("clear", "ask the notifier to clear a member's context (operator only)", _add_control_arguments, _run_clear),

@@ -731,13 +731,10 @@ def _cursor_seq(team: TeamPaths, name: str) -> int:
 
 
 def unread_for(team: TeamPaths, name: str, since_seq: int = 0) -> List[Dict[str, Any]]:
-    """Unread board context for ``name``: to it or ``all``, from someone else, past its cursor (and ``since_seq``).
+    """Unread board context for ``name`` past its cursor (and ``since_seq``): ``store.is_member_awareness``.
 
-    Retracted posts and retract records are excluded; ``nudged``/``toast``
-    system records never count, nor does a ``direct`` line the human typed
-    into the member or its ``typed`` outcome (``store.is_direct_line``).
-    Prompt-submit shows all remaining awareness; the Stop decision narrows it
-    to authored mail with ``store.is_member_mail``.
+    Retracted posts are excluded. Prompt-submit shows all of it; the Stop
+    decision narrows it to authored mail with ``store.is_member_mail``.
     """
     cursor, seen = _cursor_state(team, name)
     floor = max(cursor, since_seq)
@@ -745,20 +742,7 @@ def unread_for(team: TeamPaths, name: str, since_seq: int = 0) -> List[Dict[str,
         records = store.BoardStore(team).read(since_seq=floor, include_retracted=False)
     except HerdrTeamError:
         records = []
-    out: List[Dict[str, Any]] = []
-    for record in records:
-        if record.get("seq") in seen:
-            continue
-        if record.get("from") == name or store.is_direct_line(record):
-            continue
-        if record.get("kind") == "system" and record.get("event") in ("nudged", "toast"):
-            continue
-        to = record.get("to")
-        if isinstance(to, str):
-            to = [to]
-        if isinstance(to, list) and (name in to or "all" in to):
-            out.append(record)
-    return out
+    return [r for r in records if r.get("seq") not in seen and store.is_member_awareness(r, name)]
 
 
 def is_muted(team: TeamPaths, name: str, now: Optional[float] = None) -> bool:

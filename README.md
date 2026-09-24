@@ -436,7 +436,8 @@ checkout. Foreign skill directories are left alone unless you explicitly use
 `--force-skill`. The
 console immediately shows both the loaded plugin and daemon versions, so a
 stale process is visible. Then `/quit` and reopen an already-open console to
-load new console code.
+load new console code. A notifier whose checkout changed version some other
+way (`git pull`, `herdr plugin install`) restarts itself on the new code.
 
 Teams, boards and the state pointer all survive an update, because the
 plugin's state lives outside the checkout. Even `herdr plugin uninstall
@@ -1090,7 +1091,7 @@ peer mail.
 
 ## Status
 
-Current source version: 0.18.0, skill v10.
+Current source version: 0.18.1, skill v10.
 
 Claude Code 2.1.267, Codex 0.153.4 and OpenCode 1.18.30 were exercised together
 in one disposable Herdr 0.9.0/p22 session. Formation, exact-session resume, idle

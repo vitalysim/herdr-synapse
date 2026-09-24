@@ -1154,7 +1154,7 @@ def run(layout: Layout, api: Any, team: Optional[str], env: Dict[str, str]) -> i
     state = ConsoleState(layout, chosen, env)
     # Plan 4.1: the console records the state root for this config dir like the startup hook does.
     try:
-        if layout.state_root.source != _paths.STATE_SOURCE_TEAM_ARG and _paths.socket_allowed(layout.config_dir, layout.socket):
+        if _paths.pointer_recordable(layout.state_root) and _paths.socket_allowed(layout.config_dir, layout.socket):
             _paths.write_pointer(layout.config_dir, layout.state_root.path)
     except (HerdrTeamError, OSError):
         pass

@@ -835,8 +835,14 @@ daemon recognises an acknowledgement by a cursor write made after the briefing l
 a member whose cursor already sits at the board max (the join puts it there) would
 otherwise never produce one and be re-briefed after 90 s (sandbox, 2026-09-05).
 
-Records the member's cursor at the current max and `charter_seq_acked`.
-JSON `{"team","member","cursor":59,"charter_seq_acked":3}`.
+Records `charter_seq_acked`, `instructions_seq_acked` and `rules_seq_acked`, and
+moves the cursor forward over everything the member has been shown, stopping
+right before the first record it has not (`store.is_member_awareness`: addressed
+to it or `all` by someone else, not a retract, direct line or delivery
+bookkeeping; `seen` seqs count as shown). A post that lands between `board
+--new` and `ack` therefore stays unread and keeps its pending nudge; the text
+output names it and says to run `board --new`.
+JSON `{"team","member","cursor":59,"charter_seq_acked":3,"instructions_seq_acked":2,"rules_seq_acked":1,"unread":0}`.
 
 ### `say <member|all> "<text>" [--force] [--wait | --no-wait] [--timeout S]`
 
@@ -1248,7 +1254,7 @@ this team's manager, the operator, or a delegate; a plain member is refused
 (`author_mismatch`) and pointed at its manager. It goes alone (no other
 recipients) and without `--interrupt`, `--spill`, `--attach`, `--file`; `--ref`
 paths travel as text. Two records are written, each under its own team lock in
-team-name order:
+team-name order, journalled in `<session>/link-outbox/<message id>.json` first:
 
 - the **delivered copy** on the other board: `to: [<their manager>]`,
   `from_team: <this team>`, `link: {id, from_team, to_team, reply_to_id}`;
@@ -1257,8 +1263,15 @@ team-name order:
 `--reply-to <local seq>` on a link record carries `reply_to_id`; the delivered
 copy's `reply_to` is resolved to the other board's local seq by a bounded read
 (`LINK_THREAD_LOOKBACK`). JSON adds `link: {id, other_team, other_manager,
-delivered_seq, mirror_seq, reply_to_id}`. `--wait` is a usage error here (only
+delivered_seq, mirror_seq, reply_to_id, queued}`. `--wait` is a usage error here (only
 `human` answers a wait).
+
+If the first append fails, nothing was written and the error is returned. If
+the second fails (a lock timeout, say), the post is reported as a success with
+`queued: "<team>"` and a warning, so the sender does not retry and duplicate the
+half that landed; the journal stays, and the notifier (every 10 s, for journals
+older than 30 s) or the next link post appends the missing copy unless that
+board already carries the message id. A dissolved destination drops its copy.
 
 ### Receipts and lenses
 

@@ -556,7 +556,7 @@ herdr-synapse export [-h] [--json] [--team NAME|PATH] [--session NAME] [--socket
 </details>
 
 <details>
-<summary><code>ack</code> — acknowledge the briefing and charter, move your cursor to the end</summary>
+<summary><code>ack</code> — acknowledge the briefing and charter, move your cursor past what you have read</summary>
 
 ```text
 herdr-synapse ack [-h] [--json] [--team NAME|PATH] [--session NAME] [--socket PATH] [--session-mismatch-ok]

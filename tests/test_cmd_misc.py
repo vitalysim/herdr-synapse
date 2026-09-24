@@ -115,6 +115,38 @@ class DoctorTests(unittest.TestCase):
             self.assertTrue(payload["daemon"]["alive"])
             self.assertEqual(payload["daemon"]["pid"], os.getpid())
 
+    def test_doctor_warns_about_a_pointer_away_from_the_default_root(self):
+        with TempState() as ts:
+            env = dict(ts.env)
+            env.pop("HERDR_TEAM_STATE_DIR", None)
+            config = paths.canonicalize(ts.config_dir)
+            self.assertEqual(cmd_misc.pointer_warnings(config, env), [])
+            paths.write_pointer(config, paths.default_state_root(config, env))
+            self.assertEqual(cmd_misc.pointer_warnings(config, env), [])
+            paths.write_pointer(config, ts.tmp / "gone")
+            [missing] = cmd_misc.pointer_warnings(config, env)
+            self.assertIn("does not exist", missing)
+            paths.write_pointer(config, ts.state_root)
+            [elsewhere] = cmd_misc.pointer_warnings(config, env)
+            self.assertIn("instead of", elsewhere)
+            code, payload, _ = json_out(run_cli(["--json", "doctor"], ts.env, FakeApi()))
+            self.assertTrue(any("state pointer redirects" in w for w in payload["warnings"]), payload["warnings"])
+
+    def test_daemon_start_records_the_pointer_only_for_installation_sources(self):
+        from types import SimpleNamespace
+
+        from herdr_team import cmd_daemon
+
+        with TempState() as ts:
+            config = paths.canonicalize(ts.config_dir)
+            for source in (paths.STATE_SOURCE_OVERRIDE, paths.STATE_SOURCE_TEAM_DIR, paths.STATE_SOURCE_TEAM_ARG):
+                layout = SimpleNamespace(config_dir=config, state_root=paths.StateRootResolution(ts.tmp / "rig", source))
+                self.assertIsNone(cmd_daemon._write_pointer(layout))
+                self.assertIsNone(paths.read_pointer(config), source)
+            layout = SimpleNamespace(config_dir=config, state_root=paths.StateRootResolution(ts.state_root, paths.STATE_SOURCE_XDG))
+            self.assertIsNotNone(cmd_daemon._write_pointer(layout))
+            self.assertEqual(paths.read_pointer(config), ts.state_root)
+
     def test_doctor_plugin_list_only_when_allowed(self):
         with TempState() as ts:
             api = FakeApi()

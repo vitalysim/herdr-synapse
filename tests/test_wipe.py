@@ -54,6 +54,23 @@ class StoreTests(unittest.TestCase):
         self.assertIn("deleted with the archive and payloads", active[0]["text"])
         self.assertEqual(self.board.read(since_seq=0, include_archive=True), active, "nothing older survives")
 
+    def test_a_reason_with_braces_is_kept_verbatim_and_the_wipe_completes(self):
+        """Regression: the reason was run through ``str.format`` after the board
+        was renamed, so ``{`` raised with the board archived and no note written."""
+        for i in range(3):
+            post(self.ts, MEMBER, "post {}".format(i))
+        for reason, purge in (("sprint {2} starts {", False), ("{0}{segment}", True)):
+            post(self.ts, MEMBER, "more")
+            result = self.board.clear("human", reason=reason, purge=purge)
+            [note] = self.board.read()
+            self.assertEqual((note["event"], note["reason"], note["seq"]), ("board_cleared", reason, result["note_seq"]))
+            self.assertTrue(note["text"].endswith("; " + reason), note["text"])
+        # the size rotation shares the helper and still names its segment
+        rotated = store.BoardStore(self.ts.team, rotate_bytes=1)
+        post(self.ts, MEMBER, "x")
+        self.assertIsNotNone(rotated.rotate_if_needed())
+        self.assertRegex(rotated.read()[0]["text"], r"^board rotated: archive/board\.\d+-\d+\.jsonl \(\d+ through \d+\)$")
+
     def test_an_empty_board_is_a_no_op(self):
         result = self.board.clear("human")
         self.assertEqual((result["records"], result["note_seq"], result["archived_to"]), (0, None, None))

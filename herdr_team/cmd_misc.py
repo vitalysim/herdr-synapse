@@ -19,7 +19,7 @@ import shutil
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from herdr_team import asks as _asks
 from herdr_team import charter as _charter
@@ -416,6 +416,25 @@ def state_root_candidates(env: Dict[str, str], config_dir: Path, team_arg: Optio
     return out
 
 
+def pointer_warnings(config_dir: Path, env: Mapping[str, str]) -> List[str]:
+    """Name a pointer that sends this config dir somewhere other than its default.
+
+    The pointer outranks Herdr's derived state dir, so a stray one silently
+    hides every team from the plugin's panes and from the next daemon start.
+    """
+    try:
+        pointed = _paths.read_pointer(config_dir)
+        default = _paths.default_state_root(config_dir, env)
+    except HerdrTeamError:
+        return []
+    if pointed is None or os.path.realpath(os.fspath(pointed)) == os.path.realpath(os.fspath(default)):
+        return []
+    fix = "if your teams are not there, rewrite {} or delete it".format(_paths.pointer_file(config_dir))
+    if not pointed.is_dir():
+        return ["state pointer names {}, which does not exist; {}".format(pointed, fix)]
+    return ["state pointer redirects this config dir to {} instead of {}; {}".format(pointed, default, fix)]
+
+
 def _plugin_entry(plugins: Any, source: str) -> Dict[str, Any]:
     for entry in plugins or []:
         if isinstance(entry, dict) and entry.get("plugin_id") == PLUGIN_ID:
@@ -482,6 +501,7 @@ def _run_doctor(args: argparse.Namespace) -> int:
         warnings.append("socket is not listed in allowed-sockets; hooks, actions, and daemon start are no-ops here")
     pointer_path = _paths.pointer_file(layout.config_dir)
     pointer = os.fspath(pointer_path) if pointer_path.exists() else None
+    warnings.extend(pointer_warnings(layout.config_dir, env))
     state_root = {"path": os.fspath(layout.state_root.path), "source": layout.state_root.source, "candidates": state_root_candidates(env, layout.config_dir, getattr(args, "team", None))}
     if not layout.state_root.path.exists():
         warnings.append("state root {} does not exist yet".format(layout.state_root.path))

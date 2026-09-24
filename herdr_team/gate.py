@@ -143,7 +143,7 @@ RESULT_PANE_STUCK = "pane_stuck"
 RESULT_RE_RESOLVE = "re_resolve"
 RESULT_UNKNOWN_ERROR = "unknown_error"
 
-LANDED_RESULTS = frozenset({RESULT_LANDED_WORKING, RESULT_LANDED_BLOCKED, RESULT_STALLED, RESULT_SENT})
+LANDED_RESULTS = frozenset({RESULT_LANDED_WORKING, RESULT_LANDED_IN_TURN, RESULT_LANDED_BLOCKED, RESULT_STALLED, RESULT_SENT})
 
 RETRY_RETRY = "retry"
 RETRY_WAIT = "wait"
@@ -1180,8 +1180,6 @@ def next_action(history: Sequence[Any], now_ms: float, turn_completed_since: boo
             return RetryAction(RETRY_HOLD, now_ms + HOLD_REEVAL_MS, "gate", attempts)
         return RetryAction(RETRY_RENUDGE, None, "unread", attempts)
 
-    if last_result == RESULT_LANDED_IN_TURN:
-        return RetryAction(RETRY_RETRY, None, RESULT_LANDED_IN_TURN, attempts, "text lost inside a turn; the stable window paces the retry")
     if last_result in (RESULT_TRANSIENT, RESULT_BUSY):
         streak = 0
         for item in reversed(entries):

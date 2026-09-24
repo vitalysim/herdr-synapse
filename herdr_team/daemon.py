@@ -146,6 +146,8 @@ OPENCODE_FRESH_TUI_MIN_WIDTH = 38
 #: How often a team's manager cursor is checked against the messages another
 #: team's manager sent it, so the sender's console can show ``read by``.
 LINK_RECEIPT_POLL_S = 5.0
+#: How often a half-finished cross-team send is looked for (``links.flush_outbox``).
+LINK_OUTBOX_POLL_S = 10.0
 #: A restart (``model --apply restart``) exits the agent and resumes its
 #: session with new flags. These bound each half so a member cannot sit in
 #: limbo: the exit keystroke must empty the pane, and the resumed agent must
@@ -636,6 +638,45 @@ def acquire_daemon_lock(session: SessionPaths, socket_path: Path, replace: bool,
     return lock, {"replaced": True, "holder": holder.to_json() if holder else None}
 
 
+#: ``request_stop`` reason of the version watcher; the one exit that restarts itself.
+STOP_MANIFEST_CHANGED = "manifest version changed"
+
+
+def restart_argv(daemon: "Daemon") -> Optional[List[str]]:
+    """The command a detached daemon execs after an upgrade exit, or None to stay down.
+
+    Only the version watcher's exit restarts: a plugin updated by ``git pull``
+    or ``herdr plugin install`` without ``daemon start --replace`` used to
+    leave the session with no notifier and nothing typed anywhere until
+    somebody noticed. ``daemon stop`` (the emergency stop), a disabled plugin,
+    a Herdr version refusal and an unreachable server all stay down; Herdr's
+    startup hook starts a fresh one when the server comes back.
+    """
+    if not getattr(daemon, "detached", False) or daemon.stop_reason != STOP_MANIFEST_CHANGED:
+        return None
+    if os.environ.get("HERDR_TEAM_NO_SELF_RESTART") == "1":
+        return None
+    launcher = plugin_root() / "bin" / "herdr-synapse"
+    if not os.access(os.fspath(launcher), os.X_OK):
+        return None
+    return [os.fspath(launcher), "daemon", "start"]
+
+
+def forget_self(session: SessionPaths) -> None:
+    """Drop ``daemon.json`` before the upgrade exec.
+
+    ``execv`` keeps the pid and the process start time, so the ``daemon start``
+    it becomes would find this very process "alive" in ``daemon.json`` and
+    report the notifier already running: the upgrade then left the session with
+    none at all (E2E, 2026-09-23). The lock is already released; nothing else
+    reads the file as authority.
+    """
+    try:
+        os.unlink(session.daemon_json)
+    except OSError:
+        pass
+
+
 def _grandchild_main(layout: Layout, env: Dict[str, str], replace: bool, status_fd: Optional[int], allow_version: bool, dry_nudge: bool) -> None:
     """Runs in the detached grandchild; never returns."""
     session = layout.session
@@ -700,6 +741,13 @@ def _grandchild_main(layout: Layout, env: Dict[str, str], replace: bool, status_
             os.close(status_fd)
             status_fd = None
         exit_code = daemon.run()
+        argv = restart_argv(daemon)
+        if argv is not None:
+            # The lock is released; the new code starts its own notifier and this process ends.
+            log("restarting on the new code: {}".format(" ".join(argv)))
+            forget_self(session)
+            os.chdir(os.fspath(plugin_root()))
+            os.execv(argv[0], argv)
     except BaseException as err:  # noqa: BLE001 - the grandchild must never unwind into the parent's code
         try:
             _write_status(status_fd, {"status": "error", "error": {"code": "daemon_start_failed", "message": "{}: {}".format(type(err).__name__, err)}})
@@ -1424,6 +1472,7 @@ class Daemon:
         self.last_agent_list_ms: Optional[float] = None
         self.stability: Dict[str, Stability] = {}
         self.global_last_nudge_ms: Optional[float] = None
+        self.link_outbox_ms: Optional[float] = None
         self.pair_exchanges: Dict[Tuple[str, str], List[float]] = {}
         self.notifications: List[Notification] = []
         self.toasts_disabled = False
@@ -1839,6 +1888,7 @@ class Daemon:
         self._phase("asks", lambda: self.raise_asks(now))
         self._phase("sweep_unread", lambda: self.sweep_all_unread(now))
         self._phase("link_receipts", lambda: self.poll_link_receipts(now))
+        self._phase("link_outbox", lambda: self.flush_link_outbox(now))
         self._phase("board_snapshot", lambda: self.snapshot_all_boards(now))
         self._phase("session_names", self.poll_session_names)
         self._phase("evaluate_pending", self.evaluate_pending)
@@ -1871,7 +1921,7 @@ class Daemon:
             return
         if self.manifest_seen == current:
             self.log("manifest version changed {} -> {} (two identical reads); exiting after the current delivery".format(self.manifest_version, current))
-            self.request_stop("manifest version changed")
+            self.request_stop(STOP_MANIFEST_CHANGED)
         else:
             self.manifest_seen = current
 
@@ -2245,37 +2295,20 @@ class Daemon:
         added: Dict[str, List[int]] = {}
         for rec in records:
             seq = int(rec["seq"])
-            if seq in retracted or rec.get("kind") == "retract" or isinstance(rec.get("retracts"), int) or store.is_direct_line(rec) or not self._counts_for_nudges(rec):
+            if seq in retracted or store.is_direct_line(rec) or not self._counts_for_nudges(rec):
                 continue
             author = str(rec.get("from"))
-            urgent = bool(rec.get("urgent"))
-            targets: List[str] = []
-            if author == "system":
-                if rec.get("event") in URGENT_SYSTEM_EVENTS and urgent:
-                    newcomer = rec.get("member") if rec.get("event") == "member_joined" else None
-                    targets = [n for n in cursors if n != newcomer]
-            else:
-                for target in rec.get("to", []) or []:
-                    if not isinstance(target, str) or target == author or target == "human":
-                        continue
-                    if target == "all":
-                        if urgent or author == "human":
-                            targets.extend(cursors)
-                        continue
-                    recipient = team.member(target) or team.member_by_retired_name(target)
-                    if recipient is not None:
-                        targets.append(str(recipient.get("name")))
-            for name in targets:
+            for name, urgent, interrupt in self._nudge_targets(team, rec):
                 if name == author or name not in cursors:
                     continue
                 cursor, seen = cursors[name]
                 if seq <= cursor or seq in seen or seq in team.delivery_terminal.get(name, set()):
                     continue
-                self._add_pending(team, name, seq, urgent, author, now, interrupt=bool(rec.get("interrupt")))
+                self._add_pending(team, name, seq, urgent, author, now, interrupt=interrupt)
                 added.setdefault(name, []).append(seq)
         if not added:
             return
-        landed_results = (RESULT_LANDED_WORKING, RESULT_DRY)
+        landed_results = (RESULT_LANDED_WORKING, RESULT_LANDED_IN_TURN, RESULT_DRY)
         attempts = [a for a in team.ledger.attempts().values() if a.get("result") in landed_results and a.get("member") in added]
         for name, seqs in added.items():
             pending = team.pending.get(name)
@@ -2298,10 +2331,17 @@ class Daemon:
         self.who_dirty = True
 
     def _replay_ledger(self, team: TeamState) -> None:
+        """An intent with no result was sent by a notifier that stopped before recording it: count it as sent, once.
+
+        The result is written here, so the intent is closed. Left open, every
+        later restart replayed it again and swallowed that member's next
+        nudge, whatever posts it was about.
+        """
         for entry in team.ledger.open_intents():
             member = entry.get("member")
             if isinstance(member, str):
                 team.open_intents[member] = entry
+                team.ledger.record_result(str(entry.get("id")), RESULT_LANDED_WORKING, {"assumed": "the previous notifier stopped before recording a result"})
         if team.open_intents:
             self.log("team {}: {} open intents count as sent".format(team.name, len(team.open_intents)))
 
@@ -2995,20 +3035,8 @@ class Daemon:
                 self.log("{}: board cleared at #{}; asks, link inbox and pending nudges dropped".format(team.name, seq))
             if event in TOAST_SYSTEM_EVENTS and "human" in [t for t in (rec.get("to") or []) if isinstance(t, str)]:
                 team.human_queue.append(rec)
-            if event in NAMED_SYSTEM_EVENTS:
-                # Addressed to particular members: each gets an ordinary nudge,
-                # every gate applying, so "you are at 90%, finish and compact"
-                # arrives at that member's next idle rather than never.
-                for target in [t for t in (rec.get("to") or []) if isinstance(t, str) and t not in ("all", "human")]:
-                    named = team.member(target)
-                    if named is not None and named.get("kind") != "human" and named.get("terminal_id"):
-                        self._add_pending(team, str(named["name"]), seq, False, "system", now)
-            if rec.get("urgent") and event in URGENT_SYSTEM_EVENTS:
-                # An urgent system broadcast nudges every member; a join spares the newcomer (its briefing covers it).
-                newcomer = rec.get("member") if event == "member_joined" else None
-                for member in team.members():
-                    if member.get("kind") != "human" and member.get("terminal_id") and member.get("name") != newcomer:
-                        self._add_pending(team, str(member["name"]), seq, True, "system", now)
+            for name, urgent, _interrupt in self._nudge_targets(team, rec):
+                self._add_pending(team, name, seq, urgent, "system", now)
             return
         if kind == "direct":
             # A line the human typed into one member (``say``): already in its input box, never a nudge.
@@ -3036,13 +3064,46 @@ class Daemon:
             rt = team.rt(author)
             rt.last_post = rec
             rt.last_headline = task_headline(member, rec, time.time())
-        recipients = [str(t) for t in rec.get("to", []) if isinstance(t, str)]
+        if "human" in [t for t in rec.get("to", []) if isinstance(t, str)] and author != "human":
+            team.human_queue.append(rec)
+        for name, urgent, interrupt in self._nudge_targets(team, rec):
+            self._add_pending(team, name, seq, urgent, author, now, interrupt=interrupt)
+
+    def _nudge_targets(self, team: TeamState, rec: Dict[str, Any]) -> List[Tuple[str, bool, bool]]:
+        """``(member, urgent, interrupt)`` for each member a verified record nudges.
+
+        The one routing table for the live tail and the cold-start rebuild, so
+        a restart requeues exactly what the running daemon would have. The
+        rebuild once had its own copy that forgot manager broadcasts and
+        member-named system events (a context warning, a model change), so a
+        restart silently dropped them.
+        """
+        author = rec.get("from")
+
+        def agents(exclude: Set[Any]) -> List[str]:
+            return [str(m["name"]) for m in team.members() if m.get("kind") != "human" and m.get("terminal_id") and m.get("name") not in exclude]
+
+        out: List[Tuple[str, bool, bool]] = []
+        if author == "system":
+            event = rec.get("event")
+            if event in NAMED_SYSTEM_EVENTS:
+                # Addressed to particular members: each gets an ordinary nudge,
+                # every gate applying, so "you are at 90%, finish and compact"
+                # arrives at that member's next idle rather than never.
+                for target in [t for t in (rec.get("to") or []) if isinstance(t, str) and t not in ("all", "human")]:
+                    named = team.member(target)
+                    if named is not None and named.get("kind") != "human" and named.get("terminal_id"):
+                        out.append((str(named["name"]), False, False))
+            if rec.get("urgent") and event in URGENT_SYSTEM_EVENTS:
+                # An urgent system broadcast nudges every member; a join spares the newcomer (its briefing covers it).
+                out.extend((name, True, False) for name in agents({rec.get("member") if event == "member_joined" else None}))
+            return out
+        if rec.get("kind") in ("direct", "retract") or isinstance(rec.get("retracts"), int):
+            return out
         urgent = bool(rec.get("urgent"))
         interrupt = bool(rec.get("interrupt"))  # ``post --interrupt``: named recipients only (the CLI refuses ``all``)
-        for target in recipients:
-            if target == "human":
-                if author != "human":
-                    team.human_queue.append(rec)
+        for target in [str(t) for t in rec.get("to", []) if isinstance(t, str)]:
+            if target in ("human", author):
                 continue
             if target == "all":
                 # The operator addressing the whole team is heard by every member (normal holds apply),
@@ -3050,16 +3111,12 @@ class Daemon:
                 # agent's broadcast waits for the next board read unless it is urgent. Measured on a live
                 # team, that wait ran to a median of 42 minutes, which is not a way to hand out scope.
                 if urgent or author == "human" or author == team.manager_name():
-                    for m in team.members():
-                        if m.get("kind") != "human" and m.get("name") != author and m.get("terminal_id"):
-                            self._add_pending(team, str(m["name"]), seq, urgent, author, now)
-                continue
-            if target == author:
+                    out.extend((name, urgent, False) for name in agents({author}))
                 continue
             recipient = team.member(target) or team.member_by_retired_name(target)  # old names resolve for 10 min
-            if recipient is None:
-                continue
-            self._add_pending(team, str(recipient.get("name")), seq, urgent, author, now, interrupt=interrupt)
+            if recipient is not None:
+                out.append((str(recipient.get("name")), urgent, interrupt))
+        return out
 
     def _track_ask(self, team: TeamState, rec: Dict[str, Any]) -> None:
         """Keep ``team.open_asks`` current from the records already flowing past.
@@ -3105,6 +3162,17 @@ class Daemon:
         for rec in records:
             if isinstance(rec.get("seq"), int) and rec["seq"] > cursor:
                 self._track_link(team, rec)
+
+    def flush_link_outbox(self, now: float) -> None:
+        """Finish a cross-team send that stopped between its two boards (``links.flush_outbox``)."""
+        if self.link_outbox_ms is not None and now - self.link_outbox_ms < LINK_OUTBOX_POLL_S * 1000.0:
+            return
+        self.link_outbox_ms = now
+        from herdr_team import links as _links
+
+        for report in _links.flush_outbox(self.layout.session):
+            self.log("link message {}: completed {} dropped {} pending {}".format(
+                report.get("id"), report.get("appended"), report.get("dropped"), report.get("pending")))
 
     def poll_link_receipts(self, now: float) -> None:
         """Tell the sending team's board when this team's manager has read a linked message."""
@@ -4434,13 +4502,18 @@ class Daemon:
         if pending.kind == "nudge" and pending.landed_ms is None and pending.last_added_ms is not None and now - pending.last_added_ms < team.gate_config.burst_window_ms:
             return  # let a same-second burst settle so one nudge covers the whole range (plan 12)
         if name in team.open_intents:
-            # A prior daemon sent this without recording a result: count it as sent once.
+            # A prior daemon sent this without recording a result: count it as sent once,
+            # but only for the posts it carried. An intent about other posts says nothing here.
             entry = team.open_intents.pop(name)
-            pending.landed_ms = now
-            pending.attempts = max(pending.attempts, int(entry.get("attempts") or 1))
-            pending.landed_seq_max = max(pending.seqs) if pending.seqs else 0
-            self.log("{}: open intent {} for {} counts as sent".format(team.name, entry.get("id"), name))
-            return
+            carried = {s for s in (entry.get("seqs") or []) if isinstance(s, int) and not isinstance(s, bool)}
+            if pending.landed_ms is None and carried & set(pending.seqs):
+                pending.landed_ms = now
+                pending.attempts = max(pending.attempts, int(entry.get("attempts") or 1))
+                pending.landed_seq_max = max(pending.seqs) if pending.seqs else 0
+                pending.attempt_id = str(entry.get("id"))
+                self.log("{}: open intent {} for {} counts as sent".format(team.name, entry.get("id"), name))
+                return
+            self.log("{}: open intent {} for {} was about {}, not {}; ignored".format(team.name, entry.get("id"), name, sorted(carried), pending.seqs))
         self._update_interrupt_state(team, name, str(member.get("kind")), pending, now)
         snapshot = self._snapshot(team, member, agent, rt, now, pending)
         pending_work = self._pending_work(team, pending, cursor)
@@ -4907,7 +4980,11 @@ class Daemon:
         rt = team.rt(name)
         self.log("{}: {} -> {} {}".format(team.name, name, result, json.dumps(details, ensure_ascii=False)[:300]))
         pending.follow_up_due = False
-        if result in (RESULT_LANDED_WORKING, RESULT_DRY):
+        # In-turn text is queued by every supported harness (Claude, Codex,
+        # OpenCode, Pi steering), so it is a landing: re-nudged on the
+        # schedule after a completed turn, at most ``RENUDGE_AFTER_S`` times.
+        # Retried as a transient failure it re-typed every ~60 s until the TTL.
+        if result in (RESULT_LANDED_WORKING, RESULT_LANDED_IN_TURN, RESULT_DRY):
             rt.last_nudge_ms = now
             self.global_last_nudge_ms = now
             pending.landed_ms = now
@@ -4947,6 +5024,9 @@ class Daemon:
                 seq_list = ", ".join("#{}".format(s) for s in pending.seqs)
                 nudged_extra: Dict[str, Any] = {"seqs": list(pending.seqs)}
                 text = "nudged {} for {}".format(name, seq_list)
+                if result == RESULT_LANDED_IN_TURN:
+                    nudged_extra["in_turn"] = True
+                    text += " (queued in a running turn)"
                 if pending.interrupt_sent:
                     senders = sorted(pending.interrupt_authors)
                     nudged_extra.update({"interrupt": True, "interrupt_by": senders})
@@ -4975,14 +5055,10 @@ class Daemon:
         if result == RESULT_WRONG_OCCUPANT:
             # Re-resolve the member before any retry, and back off like a transient failure.
             self.reconcile_due = True
-        # transient, landed_in_turn, not_submitted, wrong_occupant: back off 3 .. 60 s
+        # transient, not_submitted, wrong_occupant: back off 3 .. 60 s
         pending.transient_failures += 1
         backoff = min(TRANSIENT_BACKOFF_MAX_S, TRANSIENT_BACKOFF_MIN_S * (2 ** (pending.transient_failures - 1)))
         pending.next_eligible_ms = now + backoff * 1000.0
-        if result == RESULT_LANDED_IN_TURN:
-            # The text landed inside a turn: treat as sent but unread; re-nudge on the schedule.
-            rt.last_nudge_ms = now
-            self.global_last_nudge_ms = now
 
     # -- say: a human line typed into a member now (docs/cli.md section 7) ------------------------
 

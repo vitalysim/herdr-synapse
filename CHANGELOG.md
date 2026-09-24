@@ -1,10 +1,34 @@
 # Changelog
 
+## 0.18.1 (2026-09-23)
+
+- **A test run can no longer hide your teams.** The state pointer (`plugins/config/herdr-synapse/state-dir`) is shared by every session under one Herdr config dir, and a daemon or console started with a per-process redirection (`HERDR_TEAM_STATE_DIR`, `HERDR_TEAM_DIR`, `--team <path>`) wrote its root there. A rig driving a named session under the real `~/.config/herdr` once pointed the default session at an empty temp dir: plugin panes showed no teams, `prefix+t` started a second notifier on the empty root, and the next Herdr restart would have started the only notifier there. Only installation sources (Herdr's `HERDR_PLUGIN_STATE_DIR`, the pointer itself, the XDG default) are recorded now, and `doctor` warns when the pointer sends the config dir anywhere other than its default.
+- **`ack` never marks an unseen post read.** It moved the cursor to the board's end, so a post landing between `board --new` and `ack` was marked read without being shown and its pending nudge was dropped. `ack` now stops right before the first record the member has not been shown, reports `unread`, and says to run `board --new`. The charter, instructions and rules acknowledgements are unchanged.
+- **One definition of what a member has unread.** `board --new`, `me`/`who` unread counts, the Claude prompt hook and `ack` now share `store.is_member_awareness`. `board --new` no longer shows a member the notifier's own `nudged` notes or retract records.
+- **A nudge typed into a running turn is a landing.** Every supported harness queues in-turn text, so it now follows the 2/5/10-minute re-nudge schedule after a completed turn. It was retried as a transient failure, which could re-type roughly once a minute until the 30-minute TTL; the board notes `(queued in a running turn)`.
+- **A restart requeues exactly what the running notifier would.** The cold-start rebuild had its own routing that forgot manager broadcasts and member-named system events (`context_high`, `model_changed`, link announcements); both paths now share one table. An intent the previous notifier left without a result is closed when it is replayed and applies only to the posts it carried, instead of swallowing the member's next nudge after every restart.
+- **Cross-team posts cannot be left on one board.** Each send is journalled in `<session>/link-outbox/` before its two appends. A failure after the first is reported as a success with `queued`, and the notifier or the next link post adds the missing copy unless that board already has it.
+- **An upgrade no longer leaves the session without a notifier.** When the manifest version changes, the notifier now restarts itself on the new code instead of exiting. It drops its own `daemon.json` first: `exec` keeps the pid, and end-to-end testing showed the new start otherwise finding "itself" alive and starting nothing. `daemon stop`, a disabled plugin, a refused Herdr version and an unreachable server still stop it.
+- `wipe --reason` containing `{` crashed after the board had been moved to the archive, leaving no `board_cleared` note. The note is now built before anything moves, and the reason is stored verbatim.
+
+## 0.18.0 (2026-09-19)
+
+- **Launch permissions, YOLO by default.** Synapse-managed launches add `--dangerously-skip-permissions` (Claude Code), `--dangerously-bypass-approvals-and-sandbox` (Codex), `--auto` (OpenCode) or `--approve` (Pi, project resources for that run). `native` adds nothing and leaves each agent's own settings in charge. Resolution is member override, then team default, then `yolo`.
+- `create --permissions` / `--member-permissions`, `herdr-synapse permissions [--default MODE | NAME MODE|inherit]` and console `/permissions` set it; `who` shows the saved next-launch mode. Only the operator or a delegate may change it. It applies to spawns, exact-session resumes, restores, model restarts, OpenCode clear restarts and swaps, never to a running process; a queued restart whose policy changed is refused rather than launched with stale flags.
+
 ## 0.17.0 (2026-09-18)
 
 - Create a fresh Claude Code, Codex, OpenCode, or Pi agent to replace a member whose provider allowance is exhausted. The member menu's `0` action, console `/swap`, and CLI `swap` retain its configuration and team history, launch a new conversation in a new tab, and queue an orientation with a saved-information handoff. No existing replacement or final response from the outgoing agent is required.
 - Swaps retain previous conversation references and native model settings, persist recovery progress, fence old controls, and support preview, status, retry, and cancellation before takeover. The source pane closes even when its agent is blocked; startup failures keep a reserved pane for inspection and retry.
 - Reserve the `letta` kind name advertised by Herdr 0.9.1.
+- **Pi is a fully supported harness.** Resume, idle nudge, safe `!`, running `!!` (Pi's native steering queue), blocking asks, model and thinking level, a context gauge from the active model's runtime window (token counts labelled estimated), compact (`/compact`) and clear (`/new`). `hooks install pi` installs the Synapse telemetry extension beside Herdr's own Pi integration.
+- **Restore a saved team.** `s` on a team row in `prefix+t`, or `restore <team>`, opens a `team:<name>` tab with panes for the missing members, resumes their recorded conversations or starts fresh, and keeps names, roles, the manager, model settings, instructions, board history and links. Agents already running are skipped.
+- **`!!all text`** attempts forced direct delivery to every current agent, each with its own recorded outcome.
+- The Teams view groups unassigned agents by Herdr tab (name and stable id), folds each group, keeps pane ids visible, and `g` verifies and focuses an agent's pane.
+- Every member needs a Mission when a team is created.
+- Member documents can sync automatically: `project sync auto` applies saved edits and notifies the member, `project sync manual` requires `instructions <name> --adopt`. New teams start in auto; conflicting edits are preserved and reported.
+- Fresh CLI-created Claude Code, Codex and OpenCode conversations get the member's full name as their native session title.
+- Inter-team messages are bold magenta with `[⇄ TEAM IN]` / `[⇄ TEAM OUT]` badges.
 
 ## 0.16.0 (2026-09-09)
 

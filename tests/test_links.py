@@ -200,6 +200,58 @@ class CrossPostTests(Rig):
         taken = [t for t in order if t in ("alpha", "beta")]
         self.assertEqual(taken[-2:], ["alpha", "beta"])
 
+    def test_a_send_cut_short_between_the_boards_is_finished_once_and_never_duplicated(self):
+        """Regression: the two copies were two bare appends, so a failure between
+        them left the message on one board only and a retry duplicated it."""
+        real_append = store.BoardStore.append
+
+        def beta_locked(board, record, *a, **kw):
+            if board.team.name == "beta" and isinstance(record.get("link"), dict):
+                raise HerdrTeamError("board_locked", "beta's board is locked")
+            return real_append(board, record, *a, **kw)
+
+        with mock.patch.object(store.BoardStore, "append", beta_locked):
+            code, payload, err = self.cli(["post", "--to", "team:beta", "cut short"], env=self.as_manager())
+        self.assertEqual(code, 0, err)  # half landed: a success, so the manager does not retry
+        self.assertEqual(payload["link"]["queued"], "beta")
+        self.assertIsNone(payload["link"]["delivered_seq"])
+        message_id = payload["link"]["id"]
+        copies = lambda team: [r for r in self.board(team) if isinstance(r.get("link"), dict) and r["link"].get("id") == message_id]
+        self.assertEqual((len(copies("alpha")), len(copies("beta"))), (1, 0))
+        self.assertEqual(len(os.listdir(links.outbox_dir(self.ts.session))), 2)  # journal + its lock
+        # a young journal may belong to a send still running: left alone
+        self.assertEqual(links.flush_outbox(self.ts.session), [])
+        later = __import__("time").time() + links.OUTBOX_GRACE_S + 1
+        [report] = links.flush_outbox(self.ts.session, now=later)
+        self.assertEqual(list(report["appended"]), ["beta"])
+        self.assertEqual((len(copies("alpha")), len(copies("beta"))), (1, 1))
+        self.assertEqual(copies("beta")[0]["to"], [B_MANAGER])
+        self.assertEqual(os.listdir(links.outbox_dir(self.ts.session)), [])
+        self.assertEqual(links.flush_outbox(self.ts.session, now=later), [])
+        self.assertEqual((len(copies("alpha")), len(copies("beta"))), (1, 1))
+
+    def test_a_first_copy_that_fails_leaves_nothing_to_finish(self):
+        def locked(board, record, *a, **kw):
+            raise HerdrTeamError("board_locked", "locked")
+
+        with mock.patch.object(store.BoardStore, "append", locked):
+            code, _payload, err = self.cli(["post", "--to", "team:beta", "x"], env=self.as_manager())
+        self.assertEqual((code, err["code"]), (5, "board_locked"))
+        self.assertEqual(os.listdir(links.outbox_dir(self.ts.session)), [])
+
+    def test_a_journal_whose_copy_already_landed_is_not_appended_again(self):
+        """A process killed after the second append but before removing its journal."""
+        code, payload, err = self.cli(["post", "--to", "team:beta", "landed"], env=self.as_manager())
+        self.assertEqual(code, 0, err)
+        delivered = next(r for r in self.board("beta") if r["seq"] == payload["link"]["delivered_seq"])
+        store.write_json(links.outbox_dir(self.ts.session) / (payload["link"]["id"] + ".json"), {
+            "v": 1, "id": payload["link"]["id"], "created": 0,
+            "copies": [{"team": "beta", "since": delivered["seq"] - 1, "record": {k: v for k, v in delivered.items() if k not in ("seq", "ts")}}],
+        })
+        [report] = links.flush_outbox(self.ts.session)
+        self.assertEqual(report["appended"], {})
+        self.assertEqual(len([r for r in self.board("beta") if isinstance(r.get("link"), dict) and r["link"].get("id") == payload["link"]["id"]]), 1)
+
     def test_board_teams_is_the_inter_team_lens(self):
         self.cli(["post", "--to", "team:beta", "x"], env=self.as_manager())
         self.cli(["post", "--to", A_PEER, "local"], env=self.as_manager())

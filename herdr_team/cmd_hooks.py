@@ -150,14 +150,7 @@ def _addressed_unread(records: List[Dict[str, Any]], name: str, cursor: int, see
         seq = record.get("seq")
         if not isinstance(seq, int) or seq <= cursor or seq in individually_seen or seq in retracted:
             continue
-        if record.get("from") == name or record.get("kind") == "retract" or store.is_direct_line(record):
-            continue
-        if record.get("kind") == "system" and record.get("event") in ("nudged", "toast"):
-            continue
-        to = record.get("to")
-        if isinstance(to, str):
-            to = [to]
-        if isinstance(to, list) and (name in to or "all" in to):
+        if store.is_member_awareness(record, name):
             out.append(record)
     return out
 

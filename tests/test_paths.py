@@ -172,6 +172,26 @@ class StateRootTests(unittest.TestCase):
         res = paths.resolve_state_root(dict(self.env, HERDR_PLUGIN_STATE_DIR=os.fspath(derived)), self.config)
         self.assertEqual((res.source, res.path), (paths.STATE_SOURCE_PLUGIN, derived))
 
+    def test_only_installation_sources_may_be_recorded_in_the_pointer(self):
+        """Regression: a rig's HERDR_TEAM_STATE_DIR once became the real pointer.
+
+        A named test session under the real config dir shares its pointer with
+        the default session, so a per-process redirection written there sent
+        every plugin pane and the next daemon start to an empty temp dir.
+        """
+        recordable = {
+            paths.STATE_SOURCE_TEAM_ARG: False,
+            paths.STATE_SOURCE_OVERRIDE: False,
+            paths.STATE_SOURCE_TEAM_DIR: False,
+            paths.STATE_SOURCE_PLUGIN: True,
+            paths.STATE_SOURCE_POINTER: True,
+            paths.STATE_SOURCE_XDG: True,
+        }
+        for source, expected in recordable.items():
+            with self.subTest(source=source):
+                res = paths.StateRootResolution(Path("/x"), source)
+                self.assertIs(paths.pointer_recordable(res), expected)
+
     def test_team_dir_env_beats_plugin_state_dir(self):
         env = dict(self.env, HERDR_PLUGIN_STATE_DIR="/plug/state", HERDR_TEAM_DIR="/root/sessions/default/teams/alpha")
         res = paths.resolve_state_root(env, self.config)

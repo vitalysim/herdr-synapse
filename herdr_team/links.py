@@ -17,8 +17,11 @@ scope.
 """
 from __future__ import annotations
 
+import os
+import time
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from herdr_team import roster as _roster
@@ -237,3 +240,116 @@ def summary(session: SessionPaths, team: str, include_broken: bool = False) -> L
         other = link.other(team)
         out.append({"team": other, "manager": manager_of(session, other), "state": state(session, link), "id": link.id, "note": link.note})
     return out
+
+
+# --------------------------------------------------------------------------
+# one message, two boards: the outbox
+#
+# The delivered copy and the mirror are two appends to two boards under two
+# locks, so a failure between them (a lock timeout, a dissolve, a full disk)
+# once left a message on one board only, and a manager who retried it
+# duplicated the half that had landed. Each send is journalled first; the
+# journal is removed once both copies are on their boards, and ``flush_outbox``
+# (the notifier, or the next link post) finishes any that were cut short.
+
+#: A journal younger than this belongs to a send that may still be running.
+OUTBOX_GRACE_S = 30.0
+
+
+def outbox_dir(session: SessionPaths) -> Path:
+    return session.root / "link-outbox"
+
+
+def _outbox_files(session: SessionPaths, message_id: str) -> Tuple[Path, Path]:
+    stem = outbox_dir(session) / message_id
+    return stem.with_suffix(".json"), stem.with_suffix(".lock")
+
+
+def _landed(team_paths: Any, message_id: str, since: int) -> bool:
+    for record in store.BoardStore(team_paths).read(since_seq=since, include_retracted=True):
+        link = record.get("link")
+        if isinstance(link, dict) and link.get("id") == message_id:
+            return True
+    return False
+
+
+def send(session: SessionPaths, message_id: str, copies: List[Tuple[str, Dict[str, Any]]]) -> Tuple[Dict[str, int], Optional[str], Optional[HerdrTeamError]]:
+    """Append each ``(team, record)`` in order, journalled; ``(seqs, failed_team, error)``.
+
+    A failure on the first copy leaves nothing behind (the journal is
+    dropped, the send can simply be retried). A failure after that keeps the
+    journal, so the remaining copies are completed later and never twice.
+    """
+    journal, lock_path = _outbox_files(session, message_id)
+    entry = {
+        "v": 1, "id": message_id, "created": time.time(),
+        "copies": [{"team": team, "since": store.BoardStore(session.team(team)).max_seq(), "record": record} for team, record in copies],
+    }
+    seqs: Dict[str, int] = {}
+    with store.FileLock(lock_path, code="link_outbox_locked"):
+        store.write_json(journal, entry)
+        for team, record in copies:
+            try:
+                seqs[team] = int(store.BoardStore(session.team(team)).append(record))
+            except HerdrTeamError as err:
+                if not seqs:
+                    _remove(journal, lock_path)
+                return seqs, team, err
+        _remove(journal, lock_path)
+    return seqs, None, None
+
+
+def _remove(*files: Path) -> None:
+    for path in files:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+
+def flush_outbox(session: SessionPaths, now: Optional[float] = None) -> List[Dict[str, Any]]:
+    """Finish journalled sends that stopped half way; one report per journal acted on."""
+    directory = outbox_dir(session)
+    try:
+        names = sorted(n for n in os.listdir(directory) if n.endswith(".json"))
+    except OSError:
+        return []
+    now = time.time() if now is None else now
+    reports: List[Dict[str, Any]] = []
+    for name in names:
+        journal, lock_path = _outbox_files(session, name[: -len(".json")])
+        lock = store.FileLock(lock_path, timeout=0.0, code="link_outbox_locked")
+        try:
+            lock.acquire()
+        except HerdrTeamError:
+            continue  # the sender still holds it
+        try:
+            entry = store.read_json(journal, default=None)
+            if not isinstance(entry, dict) or not isinstance(entry.get("copies"), list):
+                _remove(journal, lock_path)
+                continue
+            if now - float(entry.get("created") or 0) < OUTBOX_GRACE_S:
+                continue
+            report: Dict[str, Any] = {"id": entry.get("id"), "appended": {}, "dropped": [], "pending": []}
+            for copy in entry["copies"]:
+                team = copy.get("team")
+                record = copy.get("record")
+                if not isinstance(team, str) or not isinstance(record, dict):
+                    continue
+                team_paths = session.team(team)
+                if not team_paths.root.is_dir():
+                    report["dropped"].append(team)  # dissolved since: nobody left to read it
+                    continue
+                try:
+                    if not _landed(team_paths, str(entry.get("id")), int(copy.get("since") or 0)):
+                        report["appended"][team] = int(store.BoardStore(team_paths).append(record))
+                except HerdrTeamError as err:
+                    report["pending"].append({"team": team, "error": err.code})
+            if not report["pending"]:
+                _remove(journal)
+            reports.append(report)
+        finally:
+            lock.release()
+            if not journal.exists():
+                _remove(lock_path)
+    return reports

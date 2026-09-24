@@ -651,7 +651,8 @@ class RetryTableTests(unittest.TestCase):
         self.assertEqual(a.action, "wait")
 
     def test_other_results(self):
-        self.assertEqual(next_action([{"ts_ms": NOW, "result": "landed_in_turn"}], NOW).action, "retry")
+        # an in-turn landing is queued by the harness: it waits for the re-nudge schedule like any landing
+        self.assertEqual(next_action([{"ts_ms": NOW, "result": "landed_in_turn"}], NOW).action, "wait")
         a = next_action([{"ts_ms": NOW, "result": "hung"}], NOW)
         self.assertEqual((a.action, a.not_before_ms), ("wait", NOW + 60000))
         self.assertEqual(next_action([{"ts_ms": NOW, "result": "pane_stuck"}], NOW).not_before_ms, NOW + 60000)

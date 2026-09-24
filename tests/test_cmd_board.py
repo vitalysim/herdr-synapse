@@ -518,12 +518,38 @@ class TaskAndAck(unittest.TestCase):
             env = ts.env_with(HERDR_PANE_ID="w2:p1")
             code, payload, err = json_out(run_cli(["--json", "ack"], env, api))
             self.assertEqual(code, 0, err)
-            self.assertEqual(payload, {"team": "alpha", "member": "alpha-reviewer", "cursor": 2, "charter_seq_acked": 1, "instructions_seq_acked": 0, "rules_seq_acked": 0})
+            # Nothing was read yet: the documents are acknowledged, the two posts stay unread.
+            self.assertEqual(payload, {"team": "alpha", "member": "alpha-reviewer", "cursor": 0, "charter_seq_acked": 1, "instructions_seq_acked": 0, "rules_seq_acked": 0, "unread": 2})
             doc = store.read_json(ts.team.team_json)
             member = [m for m in doc["members"] if m["name"] == "alpha-reviewer"][0]
             self.assertEqual(member["charter_seq_acked"], 1)
             self.assertIsNotNone(member["briefed_at"])
-            self.assertEqual(store.read_json(ts.team.cursor("alpha-reviewer"))["seq"], 2)
+            self.assertEqual(store.read_json(ts.team.cursor("alpha-reviewer"))["seq"], 0)
+            json_out(run_cli(["--json", "board", "--new"], env, api))
+            code, payload, err = json_out(run_cli(["--json", "ack"], env, api))
+            self.assertEqual((payload["cursor"], payload["unread"]), (2, 0))
+
+    def test_ack_never_skips_a_post_that_arrived_after_board_new(self):
+        """Regression: ``ack`` jumped to the board max, so a post landing between
+        ``board --new`` and ``ack`` was marked read unseen and its nudge dropped."""
+        with TempState() as ts:
+            api = pane_api()
+            env = ts.env_with(HERDR_PANE_ID="w2:p1")
+            run_cli(["--json", "--team", "alpha", "post", "one"], ts.env, api)
+            json_out(run_cli(["--json", "board", "--new"], env, api))
+            run_cli(["--json", "--team", "alpha", "post", "--to", "alpha-worker", "not for the reviewer"], ts.env, api)
+            run_cli(["--json", "--team", "alpha", "post", "--to", "alpha-reviewer", "arrived late"], ts.env, api)
+            run_cli(["--json", "--team", "alpha", "post", "--to", "alpha-worker", "after it"], ts.env, api)
+            code, payload, err = json_out(run_cli(["--json", "ack"], env, api))
+            self.assertEqual(code, 0, err)
+            # Slides over #2 (addressed to someone else) and stops before #3.
+            self.assertEqual((payload["cursor"], payload["unread"]), (2, 1))
+            code, out, _ = run_cli(["ack"], env, api)
+            self.assertIn("run herdr-synapse board --new", out)
+            code, payload, err = json_out(run_cli(["--json", "board", "--new"], env, api))
+            self.assertEqual([p["text"] for p in payload["posts"]], ["arrived late"])
+            code, payload, err = json_out(run_cli(["--json", "ack"], env, api))
+            self.assertEqual((payload["cursor"], payload["unread"]), (4, 0))
 
     def test_ack_from_hook_refused(self):
         with TempState() as ts:

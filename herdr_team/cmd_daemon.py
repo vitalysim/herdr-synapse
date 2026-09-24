@@ -48,7 +48,7 @@ def _info_json(info: Any) -> Optional[Dict[str, Any]]:
 
 def _write_pointer(layout: paths.Layout) -> Optional[str]:
     """Record the state root for this config dir (plan 4.1); best effort, never fatal."""
-    if layout.state_root.source == paths.STATE_SOURCE_TEAM_ARG:
+    if not paths.pointer_recordable(layout.state_root):
         return None
     try:
         return os.fspath(paths.write_pointer(layout.config_dir, layout.state_root.path))

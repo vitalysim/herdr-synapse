@@ -10,6 +10,7 @@ import sys
 import threading
 import time
 import unittest
+import unittest.mock
 from pathlib import Path
 
 from herdr_team import cmd_board, daemon as D
@@ -221,8 +222,10 @@ class DetachTests(unittest.TestCase):
         self.assertFalse(payload["started"])
         self.assertEqual(payload["daemon"]["pid"], started["daemon"]["pid"])
         self.assertEqual(payload["session_dir"], os.fspath(self.ts.session.root))
-        self.assertEqual(os.path.realpath(payload["pointer"]), os.path.realpath(paths.pointer_file(self.ts.config_dir)))
-        self.assertEqual(os.path.realpath(paths.read_pointer(paths.canonicalize(self.ts.config_dir))), os.path.realpath(self.ts.state_root))
+        # The rig's HERDR_TEAM_STATE_DIR is a per-process redirection: it must
+        # never become the pointer every session under this config dir follows.
+        self.assertIsNone(payload["pointer"])
+        self.assertIsNone(paths.read_pointer(paths.canonicalize(self.ts.config_dir)))
         code, payload, err = run_cli(["daemon", "status"])
         self.assertEqual(code, 0, err)
         self.assertTrue(payload["alive"])
@@ -252,6 +255,41 @@ class DetachTests(unittest.TestCase):
         self.assertEqual(result["error"]["code"], "herdr_version_mismatch")
         self.assertFalse(D.daemon_alive(self.ts.session))
         self.assertTrue(store.daemon_lock(self.ts.session).try_acquire())
+
+
+class SelfRestartTests(unittest.TestCase):
+    """Regression: an upgrade exit left the session with no notifier until someone ran ``daemon start``."""
+
+    def test_only_a_detached_upgrade_exit_restarts(self):
+        from types import SimpleNamespace
+
+        upgraded = SimpleNamespace(detached=True, stop_reason=D.STOP_MANIFEST_CHANGED)
+        argv = D.restart_argv(upgraded)
+        self.assertEqual(argv[1:], ["daemon", "start"])
+        self.assertTrue(argv[0].endswith(os.path.join("bin", "herdr-synapse")))
+        for reason in ("signal 15", "plugin disabled", "version mismatch", "server unreachable", "max iterations", None):
+            self.assertIsNone(D.restart_argv(SimpleNamespace(detached=True, stop_reason=reason)), reason)
+        self.assertIsNone(D.restart_argv(SimpleNamespace(detached=False, stop_reason=D.STOP_MANIFEST_CHANGED)))
+        with unittest.mock.patch.dict(os.environ, {"HERDR_TEAM_NO_SELF_RESTART": "1"}):
+            self.assertIsNone(D.restart_argv(upgraded))
+
+    def test_the_exec_does_not_find_itself_alive(self):
+        """E2E 2026-09-23: execv keeps the pid, so ``daemon start`` saw itself in daemon.json and started nothing."""
+        with TempState() as ts:
+            d, _api, _clock = make_daemon(ts)
+            d.write_info(started=True)  # this very process, as the exec'd CLI will be
+            self.assertTrue(D.daemon_alive(ts.session))
+            D.forget_self(ts.session)
+            self.assertFalse(D.daemon_alive(ts.session))
+
+    def test_the_version_watcher_stops_with_the_restarting_reason(self):
+        with TempState() as ts:
+            d, _api, clock = make_daemon(ts)
+            d.version_watch_s = 0
+            with unittest.mock.patch.object(D, "read_manifest_version", return_value="999.0.0"):
+                d.watch_version(1.0)  # first differing read
+                d.watch_version(2.0)  # confirmed
+            self.assertEqual(d.stop_reason, D.STOP_MANIFEST_CHANGED)
 
 
 class StartGateTests(unittest.TestCase):
@@ -517,8 +555,29 @@ class LedgerReplayTests(unittest.TestCase):
         self.assertNotIn("agent.prompt", [m for m, _ in api.calls])
         pending = d.teams["alpha"].pending["alpha-reviewer"]
         self.assertIsNotNone(pending.landed_ms)
-        self.assertEqual(led.counts()["open_intents"], 1)
+        self.assertEqual(led.counts()["open_intents"], 0, "replayed once and closed")
         self.assertTrue(any("counts as sent" in line for line in d.logged))
+
+    def test_an_open_intent_is_not_replayed_again_nor_onto_other_posts(self):
+        """Regression: an intent left open swallowed the member's next nudge on every restart."""
+        old = post(self.ts, "alpha-reviewer", text="old")
+        led = ledger.Ledger(self.ts.team)
+        led.record_intent(ledger.Attempt("old-1", "alpha-reviewer", "codex", [old], False, False, False, True, 0.0, 0.0, 1))
+        store.Cursors(self.ts.team).advance("alpha-reviewer", old, "term_r1", "cli")  # the old post was read
+        d1, _api1, _clock1 = make_daemon(self.ts)
+        d1.on_connected()
+        self.assertEqual(led.counts()["open_intents"], 0)
+        del d1
+        fresh = post(self.ts, "alpha-reviewer", text="new work")
+        d2, api2, clock2 = make_daemon(self.ts)
+        d2.on_connected()
+        self.assertEqual(d2.teams["alpha"].open_intents, {})
+        for _ in range(20):
+            clock2.advance(5)
+            d2.tick()
+        prompts = [p for m, p in api2.calls if m == "agent.prompt"]
+        self.assertEqual(len(prompts), 1, "the new post is nudged, not swallowed")
+        self.assertIn("(seq {})".format(fresh), prompts[0]["text"])
 
     def test_post_tailed_before_a_restart_is_nudged_by_the_next_daemon(self):
         """M5 ND-12: the old daemon tailed the post (watermark saved) and died inside the stable window; the post must not be lost."""
@@ -1019,6 +1078,33 @@ class DeliveryTests(unittest.TestCase):
         d2._rebuild_pending(team2)
         self.assertEqual(sorted(team2.pending), ["alpha-reviewer", "alpha-worker"])
 
+    def test_cold_start_requeues_what_the_live_tail_queues(self):
+        """Regression: the rebuild had its own routing table that forgot manager
+        broadcasts and member-named system events, so a restart dropped them."""
+        doc = store.read_json(self.ts.team.team_json)
+        for m in doc["members"]:
+            if m["name"] == "alpha-worker":
+                m["manager"] = True
+        store.write_json(self.ts.team.team_json, doc)
+        self.d.scan_teams(force=True)
+        broadcast = post(self.ts, "all", text="split: reviewer takes the parser", author="alpha-worker")
+        warning = store.BoardStore(self.ts.team).append({
+            "from": "system", "kind": "system", "event": "context_high", "to": ["alpha-reviewer", "all"],
+            "text": "alpha-reviewer is at 90% of its context window", "origin": {"via": "daemon", "verified": True},
+        })
+        self.d.tick()
+        live = {name: list(p.seqs) for name, p in self.d.teams["alpha"].pending.items()}
+        self.assertIn(broadcast, live.get("alpha-reviewer", []), live)
+        self.assertIn(warning, live.get("alpha-reviewer", []), live)
+        d2, _api2, _clock2 = make_daemon(self.ts)
+        d2.on_connected()
+        team2 = d2.teams["alpha"]
+        team2.pending.clear()
+        team2.watermark = warning
+        d2._rebuild_pending(team2)
+        rebuilt = {name: list(p.seqs) for name, p in team2.pending.items()}
+        self.assertEqual(rebuilt, live)
+
     def test_agent_broadcast_nudges_nobody_unless_urgent(self):
         post(self.ts, "all")
         self.d.tick()
@@ -1044,7 +1130,10 @@ class DeliveryTests(unittest.TestCase):
         events = [r.get("event") for r in store.BoardStore(self.ts.team).read()]
         self.assertIn("retracted", events)
 
-    def test_landed_in_turn_backs_off_and_retries(self):
+    def test_landed_in_turn_is_a_landing_on_the_renudge_schedule(self):
+        """Regression: an in-turn landing was retried as a transient failure,
+        re-typing roughly every minute until the 30-minute TTL. Every supported
+        harness queues in-turn text, so it follows the landed schedule."""
         seq = post(self.ts, "alpha-reviewer")
         self.api.set_response("agent.prompt", lambda params: {"type": "agent_prompted", "agent": fake_agent("w2:p1", "term_r1", "codex", "alpha-reviewer", status="working", state_change_seq=1)})
         self.d.tick()
@@ -1053,9 +1142,16 @@ class DeliveryTests(unittest.TestCase):
         counts = self.d.teams["alpha"].ledger.counts()
         self.assertEqual(counts["landed_in_turn"], 1)
         pending = self.d.teams["alpha"].pending["alpha-reviewer"]
-        self.assertIsNone(pending.landed_ms)
-        self.assertEqual(pending.transient_failures, 1)
+        self.assertIsNotNone(pending.landed_ms)
+        self.assertEqual(pending.transient_failures, 0)
         self.assertEqual(pending.seqs, [seq])
+        nudged = [r for r in store.BoardStore(self.ts.team).read() if r.get("event") == "nudged"]
+        self.assertEqual(len(nudged), 1)
+        self.assertTrue(nudged[0].get("in_turn"))
+        # Unread for the whole TTL: one landing plus at most the three scheduled re-nudges.
+        self.run_ticks(400)
+        self.assertLessEqual(len(self.prompts()), 1 + len(D.RENUDGE_AFTER_S))
+        self.assertNotIn("alpha-reviewer", self.d.teams["alpha"].pending)
 
     def test_wrong_occupant_response_is_classified(self):
         post(self.ts, "alpha-reviewer")
