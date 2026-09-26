@@ -54,8 +54,8 @@ def plan_restore(team: roster.Team, agents: List[Dict[str, Any]], panes: List[Di
                     if source and source[0] != member.kind:
                         raise HerdrTeamError("session_mismatch", "recorded conversation belongs to a different agent kind", EXIT_REFUSED)
                 policy = permissions.effective(team.config, member)
-                argv = (models.resume_argv(member.kind, member.session, model, effort, policy) if member.session
-                        else models.fresh_argv(member.kind, model, effort, permissions=policy))
+                argv = (models.resume_argv(member.kind, member.session, model, effort, policy, member.profile) if member.session
+                        else models.fresh_argv(member.kind, model, effort, permissions=policy, profile=member.profile))
                 if not member.session:
                     argv[0] = next((spec[2][0] for spec in roster.RESUME_COMMANDS.values() if spec[0] == member.kind), argv[0])
                 if member.cwd and not os.path.isdir(member.cwd):

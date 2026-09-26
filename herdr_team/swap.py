@@ -40,7 +40,8 @@ def stale_job(member: Dict[str, Any], job: Dict[str, Any]) -> bool:
     return active(member) or not isinstance(seq, int) or seq <= operation.get("cutoff_seq", 0)
 
 
-def plan(team: roster.Team, name: str, kind: str, setting: Optional[str], env: Dict[str, str]) -> Dict[str, Any]:
+def plan(team: roster.Team, name: str, kind: str, setting: Optional[str], env: Dict[str, str], profile: Optional[str] = None,
+         unlisted: bool = False) -> Dict[str, Any]:
     member = team.find(name)
     if member is None or member.is_human or member.status == "left":
         raise HerdrTeamError("member_not_found", "{} is not an agent member".format(name), EXIT_REFUSED)
@@ -49,20 +50,28 @@ def plan(team: roster.Team, name: str, kind: str, setting: Optional[str], env: D
         raise HerdrTeamError("swap_kind_unsupported", "choose {}".format(", ".join(KINDS)), EXIT_REFUSED)
     # Saved overrides are native to their harness. Never carry them across kinds.
     saved = next((p for p in reversed(member.agent_history) if p.get("kind") == kind), {})
-    dest = {"kind": kind, "model": saved.get("model"), "effort": saved.get("effort")}
+    dest = {"kind": kind, "model": saved.get("model"), "effort": saved.get("effort"), "profile": saved.get("profile")}
     if kind == member.kind:
-        dest.update(model=member.model, effort=member.effort)
+        dest.update(model=member.model, effort=member.effort, profile=member.profile)
     if setting:
         model, effort = models.parse_setting(setting)
         dest.update(model=model, effort=effort)
+    if profile:
+        dest.update(profile=profile)
     model, effort = models.effective_setting(team.config, dest)
     models.validate(kind, model, effort)
-    argv = models.fresh_argv(kind, model, effort, permissions=permissions.effective(team.config, member))
+    from herdr_team import harnesses
+
+    # a profile named for this swap must exist for that harness; one carried over from before is trusted as it was
+    dest["profile"] = harnesses.check_profile(kind, dest.get("profile"), member.cwd, env, unlisted=unlisted or not profile)
+    if setting:
+        harnesses.check_model(kind, model, effort, member.cwd, env, unlisted=unlisted)
+    argv = models.fresh_argv(kind, model, effort, permissions=permissions.effective(team.config, member), profile=dest["profile"])
     if not shutil.which(argv[0], path=env.get("PATH", os.defpath)):
         raise HerdrTeamError("command_not_found", "{} is not on PATH".format(argv[0]), EXIT_REFUSED)
     if not member.cwd or not os.path.isdir(member.cwd):
         raise HerdrTeamError("cwd_missing", "member working directory is missing", EXIT_REFUSED)
-    return {"member": name, "name": name, "role": member.role, "kind": kind, "model": model, "effort": effort,
+    return {"member": name, "name": name, "role": member.role, "kind": kind, "model": model, "effort": effort, "profile": dest["profile"],
             "argv": argv, "cwd": member.cwd, "source": member.to_json(),
             "permissions": permissions.view(team.config, dict(kind=kind, permissions=member.permissions)),
             "workspace_id": member.workspace_id, "fresh": True}
@@ -251,7 +260,7 @@ def execute(book: roster.Roster, api: Any, name: str, op: Dict[str, Any], author
                 history.append(dict(state["source"], replaced_at=roster.now_iso()))
                 member.update(kind=target.kind, terminal_id=target.terminal_id, pane_id=target.pane_id,
                               workspace_id=target.workspace_id, tab_id=target.tab_id, session=target.agent_session,
-                              model=dest["model"], effort=dest["effort"], managed=True, status="active",
+                              model=dest["model"], effort=dest["effort"], profile=dest.get("profile"), managed=True, status="active",
                               generation=int(state["source"].get("generation") or 1) + 1,
                               verified_kind=roster._kind_verified(book.layout, target.kind),
                               briefed_at=None, briefing_seq=None, charter_seq_acked=None,

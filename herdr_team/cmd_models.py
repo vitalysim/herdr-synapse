@@ -21,6 +21,7 @@ import os
 from typing import Any, Dict, List, Optional, Tuple
 
 from herdr_team import charter as _charter
+from herdr_team import harnesses as _harnesses
 from herdr_team import identity as _identity
 from herdr_team import permissions as _permissions
 from herdr_team import models as _models
@@ -49,7 +50,7 @@ def member_view(doc: Dict[str, Any], member: Dict[str, Any], observed: Optional[
     model, effort = _models.effective_setting(config, member)
     model_src, effort_src = _models.source_of(config, member)
     return {
-        "name": member.get("name"), "kind": member.get("kind"),
+        "name": member.get("name"), "kind": member.get("kind"), "profile": member.get("profile"),
         "model": model, "effort": effort, "setting": _models.label(model, effort),
         "model_source": model_src, "effort_source": effort_src,
         "observed": observed,
@@ -84,8 +85,8 @@ def running_argv(api: Any, member: Dict[str, Any]) -> Optional[List[str]]:
     return _models.foreground_argv(member.get("kind"), processes)
 
 
-def model_authority(layout: Any, team_name: str, doc: Dict[str, Any], author: Any, target: str, on_self: bool) -> str:
-    """Who is changing whose model: ``operator``, ``manager``, or ``self``; anything else is refused and audited."""
+def model_authority(layout: Any, team_name: str, doc: Dict[str, Any], author: Any, target: str, on_self: bool, action: str = "model set") -> str:
+    """Who is changing whose model (or profile): ``operator``, ``manager``, or ``self``; anything else is refused and audited."""
     if on_self:
         if not author.is_member:
             raise HerdrTeamError("not_a_member", "--self runs from a member's own pane; you are {}".format(author.name), EXIT_UNREACHABLE, {"author": author.name})
@@ -94,20 +95,33 @@ def model_authority(layout: Any, team_name: str, doc: Dict[str, Any], author: An
         return "self"
     if author.trusted_human or getattr(author, "operator", False):
         if getattr(author, "operator", False) and not author.is_human:
-            _identity.audit(layout, team_name, "operator_action", author, {"action": "model set", "member": target})
+            _identity.audit(layout, team_name, "operator_action", author, {"action": action, "member": target})
         return "operator"
     if author.is_member:
         row = next((m for m in doc.get("members") or [] if isinstance(m, dict) and m.get("name") == author.name), None)
         if row is not None and row.get("manager"):
             return "manager"
-    _identity.audit(layout, team_name, "author_mismatch", author, {"action": "model set", "member": target})
+    _identity.audit(layout, team_name, "author_mismatch", author, {"action": action, "member": target})
     if author.is_human:
-        raise HerdrTeamError("author_mismatch", _identity.authority_refusal("model set", author), EXIT_REFUSED, {"action": "model set", "author": author.name, "via": author.via})
+        raise HerdrTeamError("author_mismatch", _identity.authority_refusal(action, author), EXIT_REFUSED, {"action": action, "author": author.name, "via": author.via})
     raise HerdrTeamError(
         "author_mismatch",
-        "model set is for the operator, the team manager, or the member itself (--self); {} is neither, so post a request to the manager".format(author.name),
-        EXIT_REFUSED, {"action": "model set", "author": author.name, "via": author.via},
+        "{} is for the operator, the team manager, or the member itself (--self); {} is neither, so post a request to the manager".format(action, author.name),
+        EXIT_REFUSED, {"action": action, "author": author.name, "via": author.via},
     )
+
+
+def restart_control(kind: str, session: Any, model: Optional[str], effort: Optional[str], profile: Optional[str],
+                    current_argv: Optional[List[str]], mode: str) -> Dict[str, Any]:
+    """The control block of a controlled restart: exit the harness, resume its session with this setting and profile.
+
+    The notifier rebuilds exactly this from the record before it acts, so
+    every field that shapes the argv is recorded here.
+    """
+    preserved = _models.preserved_launch_args(kind, current_argv, mode, profile)
+    argv = _models.restart_argv(kind, session, model, effort, current_argv, permissions=mode, profile=profile)  # session_unknown / session_unsupported surface here
+    return {"action": "restart", "kind": kind, "permissions": mode, "model": model, "effort": effort, "profile": profile,
+            "exit": _models.exit_keystroke(kind), "argv": argv, "preserved": preserved, "after": _models.post_start_keystrokes(kind, effort)}
 
 
 # --------------------------------------------------------------------------
@@ -120,6 +134,7 @@ def _add_models_arguments(parser: argparse.ArgumentParser) -> None:
     setter = sub.add_parser("set", help="set the default for a kind: models set claude opus@medium")
     setter.add_argument("kind")
     setter.add_argument("setting", metavar="MODEL[@EFFORT]")
+    setter.add_argument("--unlisted", action="store_true", help="accept a model the harness does not list here")
     clearer = sub.add_parser("clear", help="drop the default for a kind")
     clearer.add_argument("kind")
 
@@ -148,6 +163,7 @@ def _run_models(args: argparse.Namespace) -> int:
     if action == "set":
         model, effort = _models.parse_setting(args.setting)
         _models.validate(kind, model, effort)
+        _harnesses.check_model(kind, model, effort, None, dict(getattr(args, "env", None) or {}), unlisted=bool(getattr(args, "unlisted", False)))
 
     def mutate(t: _roster.Team) -> None:
         models = t.config.get("models") if isinstance(t.config.get("models"), dict) else {}
@@ -175,6 +191,7 @@ def _add_model_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--self", dest="on_self", action="store_true", help="act on your own pane (members only)")
     parser.add_argument("--apply", choices=APPLY_MODES, help="live (Claude model/effort or OpenCode effort), next (at the next resume), restart (exit, resume, then finish any native UI selection)")
     parser.add_argument("--reason", metavar="TEXT", help="why, for the board record")
+    parser.add_argument("--unlisted", action="store_true", help="accept a model the harness does not list here")
 
 
 def _run_model(args: argparse.Namespace) -> int:
@@ -224,6 +241,8 @@ def _run_model(args: argparse.Namespace) -> int:
         effort = _models._token(args.effort, "effort")
     kind = str(member.get("kind") or "")
     _models.validate(kind, model, effort)
+    _harnesses.check_model(kind, model, effort, member.get("cwd") if isinstance(member.get("cwd"), str) else None,
+                           dict(getattr(args, "env", None) or {}), unlisted=args.unlisted)
     apply = args.apply or ("live" if kind == "claude" or (kind == "opencode" and model is None and effort is not None) else "next")
     if apply == "live" and _models.live_keystrokes(kind, model, effort) is None:
         raise HerdrTeamError("model_apply_unsupported", "{} cannot apply that setting as an exact live command; use --apply restart or --apply next".format(kind), EXIT_REFUSED, {"kind": kind, "apply": apply})
@@ -231,7 +250,12 @@ def _run_model(args: argparse.Namespace) -> int:
     if apply == "restart":
         # Planned before anything is written: a member with no recorded
         # session cannot be resumed, and must not be left half-changed.
-        _models.resume_argv(kind, member.get("session"), model or _models.effective_setting(doc.get("config"), member)[0], effort or _models.effective_setting(doc.get("config"), member)[1], _permissions.effective(doc.get("config"), member))
+        _models.resume_argv(kind, member.get("session"), model or _models.effective_setting(doc.get("config"), member)[0], effort or _models.effective_setting(doc.get("config"), member)[1], _permissions.effective(doc.get("config"), member),
+                            member.get("profile") if isinstance(member.get("profile"), str) else None)
+    if apply != "next":
+        # The notifier carries out a live or restart change; without one the
+        # change is refused before anything is written, not recorded half-done.
+        require_daemon(layout.session)
     current_argv = running_argv(api, member) if apply == "restart" else None
 
     def mutate(t: _roster.Team) -> None:
@@ -259,17 +283,11 @@ def _run_model(args: argparse.Namespace) -> int:
                                "apply": apply, "by": who, "job": None, "record_seq": None}
     if apply == "next":
         return emit(args, payload, "{}: {} recorded; it applies at the next resume or restart (or pass --apply restart)".format(name, setting))
-    # live or restart: a control job the notifier acts on once the member is idle
-    require_daemon(layout.session)
+    # live or restart: a control job the notifier (checked above) acts on once the member is idle
     if apply == "restart":
-        session = member.get("session")
         mode = _permissions.effective(updated.config, row)
-        preserved = _models.preserved_launch_args(kind, current_argv, mode)
-        argv = _models.restart_argv(kind, session, eff_model, eff_effort, current_argv, permissions=mode)  # session_unknown / session_unsupported surface here
-        after = _models.post_start_keystrokes(kind, eff_effort)
-        control = {"action": "restart", "kind": kind, "permissions": mode, "model": eff_model, "effort": eff_effort,
-                   "exit": _models.exit_keystroke(kind), "argv": argv, "preserved": preserved, "after": after}
-        line = "restart {}: {}".format(name, " ".join(argv))
+        control = restart_control(kind, member.get("session"), eff_model, eff_effort, row.profile if row is not None else None, current_argv, mode)
+        line = "restart {}: {}".format(name, " ".join(control["argv"]))
     else:
         keystrokes = _models.live_keystrokes(kind, eff_model if model is not None else None, eff_effort if effort is not None else None) or []
         if not keystrokes:
@@ -288,7 +306,105 @@ def _run_model(args: argparse.Namespace) -> int:
     return emit(args, payload, "{}: {} recorded; the notifier types {} when it is idle".format(name, setting, " then ".join(repr(k) for k in control["keystrokes"])))
 
 
+# --------------------------------------------------------------------------
+# profile: which of the harness's own agents or profiles a member runs as
+
+
+def profile_view(member: Dict[str, Any]) -> Dict[str, Any]:
+    kind = str(member.get("kind") or "")
+    return {"name": member.get("name"), "kind": kind, "profile": member.get("profile"),
+            "selectable": kind in _models.PROFILE_FLAGS, "flag": _models.PROFILE_FLAGS.get(kind)}
+
+
+def _add_profile_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("member", nargs="?", help="the member (default: every member, read-only)")
+    parser.add_argument("profile", nargs="?", metavar="PROFILE", help="an OpenCode or Claude Code agent, or a Codex profile (see: herdr-synapse available <harness>)")
+    parser.add_argument("--clear", action="store_true", help="back to the harness's default")
+    parser.add_argument("--self", dest="on_self", action="store_true", help="act on your own pane (members only)")
+    parser.add_argument("--apply", choices=("next", "restart"),
+                        help="next (default): at the next resume or restart; restart: the notifier exits it when idle and resumes its session with the profile")
+    parser.add_argument("--unlisted", action="store_true", help="accept a profile the harness does not list here")
+    parser.add_argument("--reason", metavar="TEXT", help="why, for the board record")
+
+
+def _run_profile(args: argparse.Namespace) -> int:
+    from herdr_team.cmd_board import (
+        _open_team, agent_members, board_append, build_record, check_write_session, enqueue_job, member_generation,
+        member_or_raise, require_daemon,
+    )
+
+    if args.on_self and args.profile is None and args.member is not None and not args.clear:
+        # ``profile --self plan``: the one positional is the profile, not a name
+        args.member, args.profile = None, args.member
+    if args.profile is not None and args.clear:
+        raise UsageError("name a profile or pass --clear, not both")
+    reading = args.profile is None and not args.clear
+    restart = args.apply == "restart"
+    layout, api, author, team_name, team, doc = _open_team(args, require_server=restart, write=not reading)
+    if args.member is None and not args.on_self:
+        rows = [profile_view(m) for m in agent_members(doc)]
+
+        def human() -> str:
+            lines = ["{:34s} {:9s} {}".format(str(r["name"]), str(r["kind"]), r["profile"] or ("harness default" if r["selectable"] else "-"))
+                     for r in rows]
+            return "\n".join(lines) if lines else "no agent members"
+
+        return emit(args, {"team": team_name, "members": rows}, human)
+    name = args.member or (author.name if args.on_self else None)
+    if not name:
+        raise UsageError("which member? herdr-synapse profile <name> [<profile>] (or --self)")
+    member = member_or_raise(doc, name, team_name)
+    name = str(member.get("name"))
+    if reading:
+        view = profile_view(member)
+        return emit(args, dict(view, team=team_name), "{}: {}".format(name, view["profile"] or ("harness default" if view["selectable"] else "{} has no profiles".format(view["kind"]))))
+
+    who = model_authority(layout, team_name, doc, author, name, args.on_self, action="profile set")
+    kind = str(member.get("kind") or "")
+    cwd = member.get("cwd") if isinstance(member.get("cwd"), str) else None
+    profile = None if args.clear else _harnesses.check_profile(kind, args.profile, cwd, dict(getattr(args, "env", None) or {}), unlisted=args.unlisted)
+    check_write_session(args, layout, team_name)
+    mode = _permissions.effective(doc.get("config"), member)
+    model, effort = _models.effective_setting(doc.get("config"), member)
+    control: Optional[Dict[str, Any]] = None
+    if restart:
+        # Planned before anything is written: no notifier to carry it out, or no
+        # recorded session to resume, refuses the change instead of half-applying it.
+        control = restart_control(kind, member.get("session"), model, effort, profile, running_argv(api, member), mode)
+        require_daemon(layout.session)
+
+    def mutate(t: _roster.Team) -> None:
+        row = t.find(name)
+        if row is None:
+            raise HerdrTeamError("member_not_found", "{!r} is not in team {!r}".format(name, team_name), EXIT_REFUSED, {"name": name})
+        row.profile = profile
+
+    _roster.update_team(team, mutate)
+    _identity.audit(layout, team_name, "profile_set", author, {"member": name, "profile": profile, "apply": args.apply or "next", "by": who})
+    by = "the operator" if who == "operator" else ("the team manager {}".format(author.name) if who == "manager" else "itself")
+    text = "{} now runs {} as {}{} (set by {}; applies {})".format(
+        name, kind, "profile " + profile if profile else "the harness default", ": {}".format(args.reason) if args.reason else "", by,
+        "now, by a restart of its session" if restart else "at its next resume or restart")
+    _roster.append_system_record(team, "profile_changed", text, to=[name, "all"],
+                                 extra={"member": name, "profile": profile, "requested_by": author.name, "apply": args.apply or "next", "reason": args.reason},
+                                 socket=os.fspath(layout.socket))
+    payload: Dict[str, Any] = {"team": team_name, "member": name, "kind": kind, "profile": profile, "apply": args.apply or "next", "by": who,
+                               "job": None, "record_seq": None}
+    if control is None:
+        return emit(args, payload, "{}: {} recorded; it applies at the next resume or restart (or pass --apply restart)".format(
+            name, "profile " + profile if profile else "harness default"))
+    record = build_record(author, [name], "direct", "restart {}: {}".format(name, " ".join(control["argv"])), urgent=False,
+                          socket_path=os.fspath(layout.socket), from_gen=member_generation(doc, author))
+    record["control"] = control
+    seq = board_append(team, record)
+    job = enqueue_job(team, "control", name, author, extra={"seq": seq, "action": "restart"})
+    payload.update({"job": job, "record_seq": seq, "control": control})
+    return emit(args, payload, "{}: {} recorded; the notifier exits it when idle and resumes its session with it".format(
+        name, "profile " + profile if profile else "harness default"))
+
+
 COMMANDS: List[Command] = [
     Command("models", "team defaults for model and effort per kind (show | set <kind> <model>[@<effort>] | clear <kind>)", _add_models_arguments, _run_models),
     Command("model", "which model and effort a member runs with; set it (operator, manager, or --self)", _add_model_arguments, _run_model),
+    Command("profile", "which of its harness's own agents or profiles a member runs as; set it (operator, manager, or --self)", _add_profile_arguments, _run_profile),
 ]

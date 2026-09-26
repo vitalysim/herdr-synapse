@@ -416,8 +416,16 @@ class CreateNew(unittest.TestCase):
         self.assertEqual(cmd_roster.agent_start_argv("t-qa", "codex", "w9:p3"), ["agent", "start", "t-qa", "--kind", "codex", "--pane", "w9:p3", "--timeout", "60000"])
 
     def test_spawn_spec(self):
-        self.assertEqual(cmd_roster.parse_spawn_spec("reviewer:codex"), ("reviewer", "codex", None))
-        self.assertEqual(cmd_roster.parse_spawn_spec("worker:claude:/tmp/a:b"), ("worker", "claude", "/tmp/a:b"))
+        self.assertEqual(cmd_roster.parse_spawn_spec("reviewer:codex"), ("reviewer", "codex", None, None))
+        self.assertEqual(cmd_roster.parse_spawn_spec("worker:claude:/tmp/a:b"), ("worker", "claude", None, "/tmp/a:b"))
+        self.assertEqual(cmd_roster.parse_spawn_spec("skeptic:opencode/plan"), ("skeptic", "opencode", "plan", None))
+        self.assertEqual(cmd_roster.parse_spawn_spec("writer:claude/drafter:/tmp/w"), ("writer", "claude", "drafter", "/tmp/w"))
+        self.assertEqual(cmd_roster.parse_spawn_spec("ops:codex/fast"), ("ops", "codex", "fast", None))
+        for bad, code in (("x:pi/plan", "profile_unsupported"), ("x:opencode/", None), ("x:opencode/-rf", None), ("x:opencode/a b", None)):
+            with self.assertRaises(Exception, msg=bad) as caught:
+                cmd_roster.parse_spawn_spec(bad)
+            if code:
+                self.assertEqual(caught.exception.code, code)
         code = None
         try:
             cmd_roster.parse_spawn_spec("worker:nokind")

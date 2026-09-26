@@ -47,7 +47,9 @@ KINDS: Tuple[str, ...] = ("claude", "codex", "opencode", "pi")
 #: any token is accepted and passed through.
 EFFORTS: Dict[str, Optional[Tuple[str, ...]]] = {
     "claude": ("low", "medium", "high", "xhigh", "max"),
-    "codex": ("minimal", "low", "medium", "high", "xhigh"),
+    # The union across Codex models; each model accepts a subset, which
+    # ``harnesses.check_model`` reads from Codex's own model cache.
+    "codex": ("minimal", "low", "medium", "high", "xhigh", "max", "ultra"),
     "opencode": None,
     "pi": ("off", "minimal", "low", "medium", "high", "xhigh", "max"),
 }
@@ -56,6 +58,18 @@ EFFORTS: Dict[str, Optional[Tuple[str, ...]]] = {
 #: a superset of ``KINDS``. Keep the spelling aligned with the installed harness
 #: CLIs; these are argv elements passed directly to Herdr, never shell fragments.
 UNRESTRICTED_ARGS = _permissions.YOLO_ARGS
+
+#: The flag that selects a harness's named setup, its *profile* in Synapse's
+#: words: an OpenCode or Claude Code agent, or a Codex config profile
+#: (``$CODEX_HOME/<name>.config.toml``). Every flag takes the name as its one
+#: value and combines with the kind's resume form. ``harnesses`` lists the names.
+#: Kimi 0.29 has ``--agent`` too, but refuses it outside ``kimi -p`` with an
+#: experimental switch (live, 2026-09-26), so a member cannot use it.
+PROFILE_FLAGS: Dict[str, str] = {"opencode": "--agent", "claude": "--agent", "codex": "-p"}
+#: Spellings of the same selector a live argv may carry; dropped from a
+#: restart's preserved flags when the roster names the profile itself.
+_PROFILE_SPELLINGS: Dict[str, Tuple[str, ...]] = {"opencode": ("--agent",), "claude": ("--agent",), "codex": ("-p", "--profile")}
+_PROFILE_OK = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-:")
 
 #: What ends the harness cleanly, so the notifier can resume it with new flags.
 EXIT_KEYSTROKE: Dict[str, str] = {"claude": "/exit", "codex": "/quit", "opencode": "/exit", "pi": "/quit"}
@@ -161,11 +175,35 @@ def validate(kind: Any, model: Optional[str], effort: Optional[str]) -> None:
         )
 
 
-def launch_args(kind: Any, model: Optional[str], effort: Optional[str], permissions: str = "yolo") -> List[str]:
-    """Model flags and the saved permission policy (YOLO by default)."""
+def validate_profile(kind: Any, profile: Any) -> Optional[str]:
+    """A profile name the kind can take, or None; refuses a kind with no selector and an unsafe name."""
+    if profile is None:
+        return None
+    text = str(profile).strip()
+    if not text:
+        return None
+    key = str(kind or "").strip()
+    if key not in PROFILE_FLAGS:
+        raise HerdrTeamError(
+            "profile_unsupported",
+            "a {} agent has no profiles Synapse can select; profiles exist for {}".format(key or "?", ", ".join(sorted(PROFILE_FLAGS))),
+            EXIT_REFUSED, {"kind": key, "supported": sorted(PROFILE_FLAGS)},
+        )
+    if len(text) > MAX_TOKEN_CHARS or text.startswith("-") or any(ch not in _PROFILE_OK for ch in text):
+        raise UsageError("profile {!r} is not a profile name (letters, digits, . _ - : only)".format(text))
+    return text
+
+
+def profile_args(kind: Any, profile: Optional[str]) -> List[str]:
+    name = validate_profile(kind, profile)
+    return [PROFILE_FLAGS[str(kind).strip()], name] if name else []
+
+
+def launch_args(kind: Any, model: Optional[str], effort: Optional[str], permissions: str = "yolo", profile: Optional[str] = None) -> List[str]:
+    """Profile, model flags and the saved permission policy (YOLO by default)."""
     validate(kind, model, effort)
     key = str(kind or "").strip()
-    out: List[str] = []
+    out: List[str] = profile_args(key, profile)
     if key == "claude":
         if model:
             out += ["--model", model]
@@ -188,14 +226,14 @@ def launch_args(kind: Any, model: Optional[str], effort: Optional[str], permissi
     return out
 
 
-def resume_argv(kind: Any, session: Any, model: Optional[str], effort: Optional[str], permissions: str = "yolo") -> List[str]:
+def resume_argv(kind: Any, session: Any, model: Optional[str], effort: Optional[str], permissions: str = "yolo", profile: Optional[str] = None) -> List[str]:
     """``roster.resume_argv(session)`` with the setting's flags appended."""
     from herdr_team import roster as _roster
 
     if kind == "pi" and (not isinstance(session, dict) or session.get("kind") != "path"
                          or not os.path.isabs(str(session.get("value") or ""))):
         raise HerdrTeamError("resume_unsupported", "Pi requires its recorded absolute session path", EXIT_REFUSED)
-    return list(_roster.resume_argv(session)) + launch_args(kind, model, effort, permissions)
+    return list(_roster.resume_argv(session)) + launch_args(kind, model, effort, permissions, profile)
 
 
 def foreground_argv(kind: Any, processes: Any) -> Optional[List[str]]:
@@ -220,12 +258,14 @@ def foreground_argv(kind: Any, processes: Any) -> Optional[List[str]]:
     return None
 
 
-def preserved_launch_args(kind: Any, current_argv: Any, permissions: str = "yolo") -> List[str]:
+def preserved_launch_args(kind: Any, current_argv: Any, permissions: str = "yolo", profile: Optional[str] = None) -> List[str]:
     """Allowlisted runtime-policy flags from a live harness argv.
 
     Session, model and effort selectors are intentionally absent from the
     allowlist because the restart builds those from the roster. Unknown flags
-    are dropped instead of being copied into a durable board record.
+    are dropped instead of being copied into a durable board record. A live
+    profile selector is kept only while the roster names none: once it does,
+    the roster's profile is the one the restart passes.
     """
     key = str(kind or "").strip()
     mode = _permissions.validate(permissions)
@@ -234,6 +274,8 @@ def preserved_launch_args(kind: Any, current_argv: Any, permissions: str = "yolo
         return []
     if mode == "native":
         specs = {flag: arity for flag, arity in specs.items() if flag != "--dangerously-bypass-hook-trust"}
+    if profile:
+        specs = {flag: arity for flag, arity in specs.items() if flag not in _PROFILE_SPELLINGS.get(key, ())}
     argv = [str(arg) for arg in current_argv]
     out: List[str] = []
     index = 1 if argv else 0
@@ -266,7 +308,8 @@ def preserved_launch_args(kind: Any, current_argv: Any, permissions: str = "yolo
     return out
 
 
-def restart_argv(kind: Any, session: Any, model: Optional[str], effort: Optional[str], current_argv: Any = None, permissions: str = "yolo") -> List[str]:
+def restart_argv(kind: Any, session: Any, model: Optional[str], effort: Optional[str], current_argv: Any = None, permissions: str = "yolo",
+                 profile: Optional[str] = None) -> List[str]:
     """Exact controlled-resume argv plus safe live policy flags.
 
     Codex's version chooser is a legitimate startup blocker, but a notifier
@@ -275,17 +318,18 @@ def restart_argv(kind: Any, session: Any, model: Optional[str], effort: Optional
     retain the user's normal update behavior.
     """
     key = str(kind or "").strip()
-    out = resume_argv(key, session, model, effort, permissions)
+    out = resume_argv(key, session, model, effort, permissions, profile)
     if key == "codex":
         out += ["-c", "check_for_update_on_startup=false"]
-    return out + preserved_launch_args(key, current_argv, permissions)
+    return out + preserved_launch_args(key, current_argv, permissions, profile)
 
 
-def fresh_argv(kind: Any, model: Optional[str], effort: Optional[str], current_argv: Any = None, permissions: str = "yolo") -> List[str]:
-    """A fresh harness argv with its setting and safe live policy retained."""
+def fresh_argv(kind: Any, model: Optional[str], effort: Optional[str], current_argv: Any = None, permissions: str = "yolo",
+               profile: Optional[str] = None) -> List[str]:
+    """A fresh harness argv with its profile, setting and safe live policy retained."""
     key = str(kind or "").strip()
     validate(key, model, effort)
-    return [key] + launch_args(key, model, effort, permissions) + preserved_launch_args(key, current_argv, permissions)
+    return [key] + launch_args(key, model, effort, permissions, profile) + preserved_launch_args(key, current_argv, permissions, profile)
 
 
 def live_keystrokes(kind: Any, model: Optional[str], effort: Optional[str]) -> Optional[List[str]]:

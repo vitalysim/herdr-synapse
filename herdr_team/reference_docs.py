@@ -58,6 +58,7 @@ MODULE_TITLES = {
     "herdr_team.cmd_work": "Work items",
     "herdr_team.cmd_facts": "Facts and contradictions",
     "herdr_team.cmd_recall": "Recall",
+    "herdr_team.cmd_available": "What you can build a team from",
     "herdr_team.cmd_templates": "Templates",
     "herdr_team.cmd_mission": "Mission control",
     "herdr_team.cmd_remote": "Phone reach",

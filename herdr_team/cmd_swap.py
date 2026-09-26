@@ -16,6 +16,8 @@ def _arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("member")
     parser.add_argument("--to", choices=swap.KINDS, help="type of fresh agent to create")
     parser.add_argument("--model", help="destination model[@effort] (default: saved or team settings)")
+    parser.add_argument("--profile", metavar="NAME", help="destination profile: one of the harness's own agents or profiles (default: the member's, when the harness stays the same)")
+    parser.add_argument("--unlisted", action="store_true", help="accept a profile or model the harness does not list here")
     parser.add_argument("--handoff-file", metavar="PATH", help="optional operator handoff note, up to 8 KiB")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="preview without creating or stopping anything")
@@ -57,7 +59,7 @@ def _run(args: argparse.Namespace) -> int:
         except (OSError, UnicodeError) as err:
             raise UsageError("cannot read handoff note: {}".format(err))
     if args.dry_run:
-        spec = swap.plan(book.load(), member.name, args.to, args.model, env)
+        spec = swap.plan(book.load(), member.name, args.to, args.model, env, args.profile, args.unlisted)
         if not roster._kind_verified(layout, args.to):
             raise HerdrTeamError("kind_untrusted", "trust or probe {} before swapping to it".format(args.to), EXIT_REFUSED)
         swap.source_pane(api, spec["source"])
@@ -89,7 +91,7 @@ def _run(args: argparse.Namespace) -> int:
                 return emit(args, {"team": team_name, "member": args.member, "swap": op},
                             "swap cancelled; source configuration retained. If its pane was closed, use herdr-synapse resume {}".format(args.member))
         else:
-            spec = swap.plan(book.load(), args.member, args.to, args.model, env)
+            spec = swap.plan(book.load(), args.member, args.to, args.model, env, args.profile, args.unlisted)
             if not roster._kind_verified(layout, args.to):
                 raise HerdrTeamError("kind_untrusted", "trust or probe {} before swapping to it".format(args.to), EXIT_REFUSED)
             swap.source_pane(api, spec["source"])

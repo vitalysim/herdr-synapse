@@ -38,7 +38,7 @@ assumption about what the deliverable is.
 ```
 team red-dev · 3 members · view:on · nudges:on · toasts:herdr · unread(you):0
 charter #1: Ship the HTML report for susfind
-runtime: safe !:ready · Herdr 0.9.1/p22 · Synapse 0.19.1 · daemon 0.19.1
+runtime: safe !:ready · Herdr 0.9.1/p22 · Synapse 0.20.0 · daemon 0.20.0
 
 ○  red-dev-claude-dev     claude-dev      claude    w1:p1  idle     "report.py: templates done"   manager  model opus@medium
 ◐  red-dev-codex-reviewer codex-reviewer  codex     w1:p2  working  "reviewing report.py"         ↪1 (not_idle)
@@ -58,8 +58,14 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
 **Teams**
 
 - **Teams, roles, names.** Pick live agents into a team with `prefix+t`, or
-  spawn fresh ones into new panes, give each a role, a unique name and a required Mission,
+  start fresh ones into new panes, give each a role, a unique name and a required Mission,
   choose a model on supported harnesses, and set a charter every member knows.
+- **Know what you can start.** `herdr-synapse available` lists the agents
+  running in no team and every harness installed here, each with its
+  profiles (OpenCode and Claude Code agents, Codex profiles) and the models it
+  can run with your logins. `--spawn skeptic:opencode/plan` starts a member
+  with one; `prefix+t`, `n` does the same from the popup. Typos in a profile,
+  a model or an effort are refused with the choices, before any pane opens.
   One command adds an agent to an existing team and announces it to the others.
   Herdr's Agents sidebar gives each team one of six stable colours (the palette
   repeats after six teams).
@@ -523,12 +529,102 @@ its context is not broken by the move.
    directory your agents already share). Then `prefix+f` shows what the team
    knows and what is still missing.
 
+Nothing running yet? See what you can start, then start it:
+
+```bash
+herdr-synapse available                      # harnesses, their profiles and models
+herdr-synapse create hunt --new --project ~/work/app \
+    --spawn lead:claude --spawn skeptic:opencode/plan \
+    --brief lead="Plan and review." --brief skeptic="Try to break every change." \
+    --model skeptic=opencode/claude-fable-5
+```
+
 Default key bindings: `prefix+t` teams view, `prefix+u` console, `prefix+m`
 compose popup, `prefix+y` team view in the sidebar, `prefix+i` usage limits,
 `prefix+f` team knowledge, `prefix+d` mission control.
 
 The [complete command and shortcut reference](docs/reference.md) lists every
 CLI parameter, plugin action, console command, and key used inside each view.
+
+## What you can build a team from
+
+Four words, each with one meaning:
+
+| Word | Means | Examples |
+| --- | --- | --- |
+| agent | something running in a pane | what `prefix+t` lists |
+| harness | the program a member runs | Claude Code, Codex, OpenCode, Pi |
+| profile | a harness's own named setup | OpenCode `plan`, a Claude Code agent in `.claude/agents/`, a Codex profile |
+| role | the member's job in the team | reviewer, researcher, writer |
+
+`available` answers "what can I build a team from?":
+
+```
+$ herdr-synapse available --cwd ~/research/churn
+Running agents in no team (add with: create <team> --member <pane>:<role>)
+  w1:p3    opencode  idle     /Users/me/research/churn
+
+Harnesses you can start: --spawn <role>:<harness>[/<profile>]  --model <role>=<model>[@<effort>]
+  claude    2.1.283            yolo --dangerously-skip-permissions
+      profiles  drafter, editor, monitor, publisher, reply-scout
+      models    opus, sonnet, haiku, fable, claude-fable-5-1, … (26 in all)  (or any name claude takes)
+      efforts   low medium high xhigh max
+  codex     0.157.0            yolo --dangerously-bypass-approvals-and-sandbox
+      profiles  none defined (-p NAME reads $CODEX_HOME/NAME.config.toml)
+      models    gpt-6-astra, gpt-6-sol, gpt-6-luna, gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna, gpt-daybreak-blue-latest, gpt-5.5
+      efforts   low medium high xhigh max ultra  (each model takes its own subset: herdr-synapse available codex)
+  opencode  1.18.32            yolo --auto
+      profiles  build, plan  (subagents, not selectable: explore, general)
+      models    557 across deepinfra, opencode, opencode-go, openrouter → herdr-synapse available opencode --provider deepinfra
+```
+
+`herdr-synapse available opencode --search opus` shows one harness in full;
+`--json` gives an agent the same answer. Each list comes from the harness
+itself: OpenCode's `opencode agent list` and `opencode models`, Claude Code's
+agent folders (the project's and yours), Codex's profile files and its own
+model cache (with each model's efforts), and `pi --list-models`. Nothing calls
+a provider. Project agents depend on the directory, so pass `--cwd` for the
+folder your members will work in.
+
+A member's profile is part of its launch, like its model:
+
+```bash
+herdr-synapse create hunt --new --spawn skeptic:opencode/plan --spawn writer:claude/drafter …
+herdr-synapse profile                        # every member's profile
+herdr-synapse profile hunt-writer editor --apply restart
+herdr-synapse profile hunt-writer --clear    # back to the harness default
+```
+
+| Harness | Selected with | Listed from |
+| --- | --- | --- |
+| OpenCode | `--agent NAME` | `opencode agent list` (its subagents cannot run a session and are refused) |
+| Claude Code | `--agent NAME` | `<project>/.claude/agents/*.md`, `~/.claude/agents/*.md` |
+| Codex | `-p NAME` | `$CODEX_HOME/NAME.config.toml` |
+
+Codex quietly ignores a profile it does not have and starts with its defaults,
+which is why Synapse checks the name first. Any Codex profile also makes Codex
+run without its shared background server (its own startup warning says so).
+Kimi has an `--agent` flag, but Kimi 0.29 accepts it only in its experimental
+print mode, not in the interactive TUI a member runs, so Synapse offers no Kimi
+profiles.
+
+The profile is kept by `resume`, `restore`, controlled restarts and a swap
+within the same harness; it never crosses harnesses. Who may change it is the
+same as for a model: you or a delegate, the manager, or a member for itself
+with `--self`. A profile's own rules still apply under YOLO: OpenCode's `plan`
+stays read-only with `--auto`, and a Claude Code agent's `tools:` list still
+limits what it can use.
+
+`create`, `add`, `model`, `models set`, `profile` and `swap` check a profile, a
+model and an effort against these lists before anything changes, and refuse a
+typo with the closest choices. A harness that cannot answer checks nothing.
+`--unlisted` skips the lists, for a model newer than a harness's cache.
+
+In `prefix+t`, `n` starts a new member: choose the harness, then its profile.
+The new member appears under **new agents to start** beside any running agents
+you pick, and the wizard asks its role, Mission and model (with that harness's
+models shown and checked) as it does for the others. It is named
+`<team>-<role>` when it starts in its own pane.
 
 ## Team templates
 
@@ -550,6 +646,7 @@ herdr-synapse create q4-churn --template research-sprint --new --project ~/resea
 | `vuln-hunt` | lead (manager), hunter, validator (reviews) | findings count only once the validator reproduces them |
 | `feature-team` | lead (manager), implementer, reviewer | disagreements observed; acceptance evidence recommended |
 
+A role can name a profile: `- skeptic: opencode/plan — reviews and never edits`.
 Anything you pass yourself wins: your own `--charter`, `--spawn`, `--brief` or
 `--instructions`. Live agents work too: `--member <pane>:<role>` takes the role's
 Mission and instructions. `herdr-synapse template save <name>` turns the current
@@ -564,6 +661,7 @@ or share as a folder of Markdown.
 | --- | --- |
 | Enter | on a member: the action menu below; on a tab without picked agents: fold it; on picked agents: start the team wizard; on a team with agents picked: add them to it |
 | Space, `a` | pick an unassigned agent; `a` picks or clears them all; on a tab or team row Space folds it |
+| `n` | start a new member: choose a harness, then one of its profiles; Space or `x` on it removes it |
 | `g` | verify and focus the highlighted agent's pane, then close the Teams view |
 | `b` | open that team's board |
 | `s` | restore that team's missing agents into a new named tab |
@@ -746,8 +844,9 @@ authority alone does not grant that permission.
 | Amp, Mastra Code | Nothing: their documentation says they run tools without approval prompts by default | Own settings |
 | Droid, Grok, Kiro, Cline, Antigravity CLI | No switch Synapse can use yet | Own settings |
 
-The first four rows are live-verified end to end. Gemini, Kimi and Cursor flags
-were read from the installed binaries' own `--help`; the rest come from each
+The first four rows are live-verified end to end, and Kimi's flag was seen in a
+live Synapse launch (its footer reads `yolo`). Gemini and Cursor flags were
+read from the installed binaries' own `--help`; the rest come from each
 vendor's documentation or source and have not been run here, so `permissions`
 labels them "not yet live-verified". If one refuses its flag, set that member to
 `native` and it launches with its own settings. Some are left out on purpose:
@@ -790,7 +889,7 @@ herdr-synapse model --self opus@high                   # a member, for itself
 | Kind | At launch and on `resume` | While running | Effort words |
 | --- | --- | --- | --- |
 | Claude Code | `--model`, `--effort`, `--dangerously-skip-permissions` | `/model` and `/effort` typed by the notifier when idle | `low medium high xhigh max` |
-| Codex | `-m`, `-c model_reasoning_effort`, `--dangerously-bypass-approvals-and-sandbox` | picker only: applies at the next resume, or now with `--apply restart` | `minimal low medium high xhigh` |
+| Codex | `-m`, `-c model_reasoning_effort`, `--dangerously-bypass-approvals-and-sandbox` | picker only: applies at the next resume, or now with `--apply restart` | `low medium high xhigh max`, `ultra` on some models; each model's own set is read from Codex (`available codex`) |
 | OpenCode | `-m provider/model`, `--auto`; effort is selected with `/variants` after startup | effort switches live with `/variants`; model applies at the next resume or with `--apply restart` | provider-specific |
 | Pi | `--model provider/model`, `--thinking`, `--approve` | next resume or controlled restart; confirmed against runtime telemetry | `off minimal low medium high xhigh max`, subject to the model |
 
@@ -1419,7 +1518,7 @@ just written it; a schedule that fails toasts you and wakes nobody.
 
 ## Status
 
-Current source version: 0.19.1, skill v11.
+Current source version: 0.20.0, skill v11.
 
 Claude Code 2.1.267, Codex 0.153.4 and OpenCode 1.18.30 were exercised together
 in one disposable Herdr 0.9.0/p22 session. Formation, exact-session resume, idle
@@ -1447,8 +1546,30 @@ as members. The run covered:
 - `template save`.
 
 That run found five defects, all fixed with regression tests before release.
+The 0.20 features were run on 2026-09-26 in a disposable Herdr 0.9.1 session
+with Claude Code 2.1.283, Codex 0.157.0, OpenCode 1.18.32, Pi 0.85.1 and Kimi
+0.29.0:
+
+- `available` listed each harness's profiles and models, read from the harness;
+- `create` refused an unknown profile, a subagent and an effort the model does
+  not take before any pane opened;
+- the `prefix+t` `n` path built a team of two new members on a real terminal,
+  refusing a model typo and a repeated role on the way; OpenCode came up as
+  `plan` on the chosen model, Claude Code as its `tester` agent on Haiku;
+- a Codex profile applied its model; an unknown one was silently ignored by
+  Codex, which is what the check prevents;
+- `resume` and `profile --apply restart` switched a Claude member between two
+  agents on the same conversation.
+
+That run found a restart failure on Herdr 0.9.1 (the exited agent's name held a
+moment too long), a record written before a refusal, Kimi's `--agent` being
+unusable in its TUI, and four display faults in the popup; all are fixed with
+tests.
+
 Not yet exercised live:
 
+- a Codex profile switch by `profile --apply restart`, and the popup inside a
+  real `prefix+t` Herdr client rather than a plain pane;
 - the hosted ntfy.sh, Telegram and Slack services;
 - OpenCode and Pi members using the 0.19 features;
 - 0.19 on Linux;

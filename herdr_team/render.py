@@ -682,6 +682,9 @@ def render_who(
         policy = member.get("permissions")
         if isinstance(policy, dict):
             tags.append("next launch " + _safe_token(policy.get("mode") or "?", 8))
+        profile = member.get("profile")
+        if isinstance(profile, str) and profile:
+            tags.append("profile " + _safe_token(profile, 40))
         setting = member.get("setting")
         if isinstance(setting, str) and setting:
             tags.append("model " + _safe_token(setting, 40))
@@ -763,6 +766,9 @@ def render_me(member: Dict[str, Any], team_doc: Dict[str, Any]) -> str:
     if isinstance(member.get("setting"), str) and member.get("setting"):
         lines.append("model and effort: {} ({} model, {} effort); change yours with herdr-synapse model --self <model>[@<effort>]".format(
             _safe_token(member.get("setting"), 40), _safe_token(member.get("model_source") or "harness", 8), _safe_token(member.get("effort_source") or "harness", 8)))
+    if isinstance(member.get("profile"), str) and member.get("profile"):
+        lines.append("profile: {} ({}'s own named setup; herdr-synapse profile shows the team's)".format(
+            _safe_token(member.get("profile"), 40), _safe_token(member.get("kind") or "the harness", 16)))
     if member.get("instructions_stale"):
         lines.append("your instructions changed since you last acknowledged them; read them, then run herdr-synapse ack")
     if isinstance(member.get("session"), str) and member.get("session"):

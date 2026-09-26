@@ -50,6 +50,7 @@ COMMAND_MODULES: Tuple[str, ...] = (
     "herdr_team.cmd_work",
     "herdr_team.cmd_facts",
     "herdr_team.cmd_recall",
+    "herdr_team.cmd_available",
     "herdr_team.cmd_templates",
     "herdr_team.cmd_mission",
     "herdr_team.pi_support",

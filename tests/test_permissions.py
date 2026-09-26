@@ -46,7 +46,7 @@ class PermissionTests(unittest.TestCase):
         """Beyond the four core harnesses, every kind the CLI can spawn with a known switch starts in YOLO."""
         self.assertEqual(set(permissions.YOLO_EVIDENCE), set(permissions.YOLO_ARGS))
         self.assertTrue(set(permissions.YOLO_ARGS) <= set(roster.KIND_LABELS), set(permissions.YOLO_ARGS) - set(roster.KIND_LABELS))
-        self.assertEqual({k for k, v in permissions.YOLO_EVIDENCE.items() if v == "live"}, set(models.KINDS))
+        self.assertEqual({k for k, v in permissions.YOLO_EVIDENCE.items() if v == "live"}, set(models.KINDS) | {"kimi"})
         self.assertTrue(set(permissions.YOLO_EVIDENCE.values()) <= {"live", "help", "docs"})
         for kind in sorted(set(permissions.YOLO_ARGS) - set(models.KINDS)):
             flags = list(permissions.YOLO_ARGS[kind])
@@ -56,7 +56,8 @@ class PermissionTests(unittest.TestCase):
                 self.assertEqual(models.fresh_argv(kind, None, None), [kind] + flags)
                 view = permissions.view({}, {"kind": kind})
                 self.assertEqual((view["mode"], view["flags"], view["evidence"]), ("yolo", flags, permissions.YOLO_EVIDENCE[kind]))
-                self.assertIn("not yet live-verified", view["effect"])
+                if permissions.YOLO_EVIDENCE[kind] != "live":
+                    self.assertIn("not yet live-verified", view["effect"])
                 self.assertEqual(permissions.view({"permissions": "native"}, {"kind": kind})["flags"], [])
                 for source, (agent, ref_kinds, template) in roster.RESUME_COMMANDS.items():
                     if agent != kind:

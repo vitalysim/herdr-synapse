@@ -281,6 +281,8 @@ SYSTEM_EVENTS = (
     "work_ready", "work_cancelled",
     "fact_added", "fact_retired", "fact_disputed", "fact_conflict", "fact_resolved", "contradictions_changed",
     "schedule_failed", "schedule_missed",
+    # 0.20: a member's harness profile
+    "profile_changed",
 )
 #: Every key of a stored record in file order (docs/cli.md section 10).
 RECORD_KEYS = (

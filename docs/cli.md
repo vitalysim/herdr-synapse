@@ -32,13 +32,13 @@ Recorded conversations resume by exact ID using the member's effective model/eff
 
 ## Create a replacement agent
 
-`herdr-synapse [--team TEAM] swap MEMBER --to claude|codex|opencode|pi [--model MODEL[@EFFORT]] [--handoff-file PATH] [--dry-run]` creates a new instance and fresh conversation for an existing logical member. It never selects an unrelated live agent. The picker member action `0` and `/swap MEMBER KIND [MODEL[@EFFORT]]` use this backend. The CLI invocation authorizes closing the outgoing pane; the interactive surfaces show a confirmation first.
+`herdr-synapse [--team TEAM] swap MEMBER --to claude|codex|opencode|pi [--model MODEL[@EFFORT]] [--profile NAME] [--unlisted] [--handoff-file PATH] [--dry-run]` creates a new instance and fresh conversation for an existing logical member. It never selects an unrelated live agent. The picker member action `0` and `/swap MEMBER KIND [MODEL[@EFFORT]]` use this backend. The CLI invocation authorizes closing the outgoing pane; the interactive surfaces show a confirmation first.
 
 Preflight checks the destination executable, settings, directory, trust, operator authority, and outgoing pane identity. A dry run does not start the daemon or allocate panes. Source panes with multiple views of one terminal are refused. Source identity is checked again immediately before close; this uses existing pane APIs, not an atomic conditional-stop method. Calling from the outgoing pane is refused.
 
 The operation creates a labelled `swap:<operation-id-prefix>` tab in the source workspace, closes the outgoing pane without typing a command into its dialog, launches the destination, transfers membership, and queues its briefing. A current daemon is required; a running older plugin daemon is replaced through the normal daemon startup path. A detected destination with a login or provider dialog still needs operator attention before it can receive its briefing. Completion means the fresh instance is bound and its briefing queued, not that a provider has accepted a model request.
 
-The member name, role, Mission, instruction documents/revisions, manager flag, project directory, board history/read cursors, links, delivery preferences, and existing operator-grant expiry survive. Model settings are selected for the destination kind from an explicit setting, previous saved settings for that kind, team defaults, then harness defaults. Source-native model arguments and conversation IDs do not carry into a fresh destination launch. The member generation increments once at takeover, and briefing/instruction acknowledgments reset. A missing initial destination session ID remains null until reported.
+The member name, role, Mission, instruction documents/revisions, manager flag, project directory, board history/read cursors, links, delivery preferences, and existing operator-grant expiry survive. Model settings are selected for the destination kind from an explicit setting, previous saved settings for that kind, team defaults, then harness defaults. Source-native model arguments and conversation IDs do not carry into a fresh destination launch. The profile follows the same rule: `--profile NAME` (checked against the destination harness's list), else the member's own when the harness stays the same, else the one last used with that harness; a profile never crosses harnesses. The member generation increments once at takeover, and briefing/instruction acknowledgments reset. A missing initial destination session ID remains null until reported.
 
 `Member.swap` is optional durable operation data: `{id, phase, source, destination, created_at, requested_by, cutoff_seq, handoff, note, pane, ...}`. Phases are `prepared`, `stopping`, `starting`, `briefing`, `complete`, `failed`, `cancelled`; a failure retains `resume_phase` and `error`. `Member.agent_history` stores previous agent configurations and exact conversation references. `Member.session_history` (optional, up to 20) keeps the exact references of earlier conversations of the same agent that a restart or clear replaced; only `search --history` reads it. Existing roster documents need no migration. Runtime identity writes are fenced while an operation is unfinished, including after the CLI or daemon restarts. The operation shares the restore lock during execution.
 
@@ -46,7 +46,7 @@ Normal board requests remain available. Old direct typing/control/probe jobs are
 
 `swap MEMBER --status` returns the last operation and agent history. `--retry` continues an unfinished operation using its reserved pane and original settings; a layout-response timeout recovers the tab by its unique label. `--cancel` is available before takeover: close an owned reserved replacement and retain the original member configuration/session reference. If the source is gone, the member becomes missing and can be resumed from a shell. After takeover, retry finishes briefing setup. Both paths refuse to close a changed or unrelated replacement pane. If the source moved or changed, cancellation leaves it untouched and releases the member for explicit rebinding.
 
-JSON execution returns `{team, member, swap}`; failures during execution also include `error` and exit 1. Preflight/authority errors use the standard error object on stderr. Dry-run JSON includes `{team, member, name, role, kind, model, effort, argv, cwd, workspace_id, fresh:true, dry_run:true}`. Status also includes `agent_history`. Progress goes to stderr. `agent_swapped` records completion and `swap_control_cancelled` records discarded controls on the board. No automatic provider failover or transcript conversion is performed.
+JSON execution returns `{team, member, swap}`; failures during execution also include `error` and exit 1. Preflight/authority errors use the standard error object on stderr. Dry-run JSON includes `{team, member, name, role, kind, model, effort, profile, argv, cwd, workspace_id, fresh:true, dry_run:true}`. Status also includes `agent_history`. Progress goes to stderr. `agent_swapped` records completion and `swap_control_cancelled` records discarded controls on the board. No automatic provider failover or transcript conversion is performed.
 
 Conventions used below:
 
@@ -152,9 +152,21 @@ is recorded in `post` output and in records' `from` / `origin`:
 create <team> [--charter "<text>" | --charter-file <path>] [--ref <path>]…
        --member <target>[:<role>[:<name>]]… --brief <name|role>="<Mission>"…
        [--from-workspace <id>] [--names plain] [--rename] [--steal] [--reuse]
-create <team> --new [--workspace] [--charter …] --spawn <role>:<kind>[:<cwd>]… [--names plain]
-       --brief <name|role>="<Mission>"… [--model <role|kind>=<model>[@<effort>]]…
+create <team> --new [--workspace] [--charter …] --spawn <role>:<harness>[/<profile>][:<cwd>]… [--names plain]
+       --brief <name|role>="<Mission>"… [--model <role|kind>=<model>[@<effort>]]… [--unlisted]
 ```
+
+- `--spawn <role>:<harness>[/<profile>]`: the harness is any kind Herdr can
+  start; the profile is one of that harness's own named setups (section 9c,
+  `profile`). `herdr-synapse available` lists both, with the models.
+- Before any pane is laid out, a profile and every `--model` are checked
+  against the harness's own lists for the member's directory: an unknown
+  profile is `profile_unknown` (1), a subagent `profile_not_selectable` (1), a
+  harness with no profiles `profile_unsupported` (1), an unlisted model
+  `model_unlisted` (1) with `suggestions`, and an effort the named model does
+  not take `effort_unsupported` (1) with its `efforts`. A harness that cannot
+  answer checks nothing. `--unlisted` skips the lists (a model newer than a
+  harness's cache, for example).
 
 - `--model`: `role=` or `name=` sets that member's own model and effort —
   with `--new --spawn` the agent starts with the flags; with `--member` (a
@@ -1180,7 +1192,10 @@ setting, a write.
 - **Setting** `<model>[@<effort>]`, either half optional (`opus@medium`, `opus`,
   `@high`); `--effort` is the effort half on its own. Harness-native
   vocabulary, validated per kind: Claude `low|medium|high|xhigh|max`, Codex
-  `minimal|low|medium|high|xhigh`, OpenCode any token (provider-specific).
+  `minimal|low|medium|high|xhigh|max|ultra` (each model takes a subset, read
+  from Codex's own `models_cache.json`), OpenCode any token (provider-specific).
+  The model and the effort are also checked against the harness's own list as
+  `create` does (`model_unlisted`, `effort_unsupported`; `--unlisted` skips it).
   Another kind: `model_unsupported` (1). Unknown effort: `effort_unknown` (1)
   with the vocabulary in `efforts`.
 - **Authority**: the operator or a delegate (anyone), the team manager
@@ -1217,6 +1232,52 @@ setting, a write.
   keystroke.
 
 JSON (write): `{"team","member","kind","model","effort","setting","apply","by","job","record_seq","control"}`.
+A restart's `control` also carries the member's `profile`, which the argv includes.
+
+### `profile [<member>] [<profile> | --clear] [--self] [--apply next|restart] [--unlisted] [--reason TEXT]`
+
+Which of its harness's own named setups a member launches with (0.20): an
+OpenCode or Claude Code agent (`--agent NAME`) or a Codex profile (`-p NAME`,
+`$CODEX_HOME/NAME.config.toml`). Kimi 0.29 refuses `--agent` outside its
+experimental print mode, so it has none; Codex ignores a profile it does not
+have, and any Codex profile runs Codex without its shared background server. With no arguments, every member's;
+with a member, that member's; with a profile or `--clear`, a write.
+
+- **Check**: the name must be one the harness lists for the member's directory
+  (`profile_unknown`, `profile_not_selectable`, `profile_unsupported`, all 1);
+  `--unlisted` skips the check.
+- **Authority**: as `model`: the operator or a delegate, the manager, or the
+  member itself with `--self`; anything else `author_mismatch` (1), audited.
+- **Record**: the roster row's `profile`; audit `profile_set`; a
+  `profile_changed` system record to `[member, all]`.
+- **`--apply`**: `next` (default) applies at the next `resume`, restore, swap
+  within the same harness, or controlled restart; `restart` queues the same
+  restart control as `model --apply restart`, with the new profile in its argv,
+  and is refused (`daemon_down`, nothing written) while no notifier runs.
+  A stored profile replaces any profile selector the running process had.
+
+JSON (write): `{"team","member","kind","profile","apply","by","job","record_seq","control"}`.
+
+### `available [<harness>] [--cwd DIR] [--provider NAME] [--search TEXT] [--all]`
+
+What you can build a team from, read-only and open to anyone. Without a
+harness: the agents running in this session that are in no team (`running`,
+null when Herdr cannot be asked), and every harness installed here
+(`harnesses`), each with `version`, `yolo` flags, `profiles` (with `source`
+and `selectable`) and `models` (`id`, `provider`, `efforts`,
+`default_effort`, `context`, `thinking`, `hidden`), `models_source` and
+`models_authoritative`. With a harness: that one in full, the models filtered
+by `--provider` and `--search`; `--all` adds hidden models and harnesses that
+are not installed. `--cwd` is the directory the members will work in, because
+project profiles and OpenCode's models depend on it.
+
+Where each answer comes from: OpenCode `opencode agent list` (internal agents
+dropped, subagents marked) and `opencode models`; Claude Code
+`<project>/.claude/agents/*.md` and `~/.claude/agents/*.md`, with the model
+aliases and the names Synapse knows (not authoritative: Claude takes any
+name); Codex `$CODEX_HOME/*.config.toml` and `$CODEX_HOME/models_cache.json`;
+Pi `pi --list-models`. Nothing calls a provider. JSON:
+`{"cwd","running":[{"pane_id","kind","state","cwd"}],"harnesses":[…],"trusted":[…]}`.
 
 ## 9d. Links between teams
 

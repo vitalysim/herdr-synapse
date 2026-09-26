@@ -603,7 +603,7 @@ binaries and then live-verified on 2026-09-11):
 | Kind | At launch (and on `resume`) | Live | Effort words |
 | --- | --- | --- | --- |
 | Claude Code 2.1.268 | `--model <alias\|name>`, `--effort <e>`, `--dangerously-skip-permissions`; `claude --resume <id> …` | `/model <m>` and `/effort <e>` both take an argument: the notifier types them | `low medium high xhigh max` |
-| Codex 0.153.4 | `-m <model>`, `-c model_reasoning_effort="<e>"`, `--dangerously-bypass-approvals-and-sandbox`; on `codex resume <id>` too | `/model` is a picker: no keystroke. `--apply restart` exits (`/quit`) and resumes with the flags | `minimal low medium high xhigh` |
+| Codex 0.153.4 | `-m <model>`, `-c model_reasoning_effort="<e>"`, `--dangerously-bypass-approvals-and-sandbox`; on `codex resume <id>` too | `/model` is a picker: no keystroke. `--apply restart` exits (`/quit`) and resumes with the flags | `minimal low medium high xhigh`; since 0.20 also `max` and `ultra`, and each model's own subset is read from Codex 0.157's `models_cache.json` |
 | OpenCode 1.18.30 | `-m provider/model`, `--auto`; `--session <id>` too; effort is selected after startup | `/variants` accepts the effort selection live; a model change uses `/exit` and a controlled restart | provider-specific; any token |
 
 Herdr's `agent.start` hands `args` to the binary verbatim
@@ -641,6 +641,43 @@ origin (as `compact`), so a popup or an outside shell can record and
 **Seeing it:** `who` tags `model opus@medium` and, when the harness reports
 something else, `runs claude-sonnet-5`; `model` with no arguments is the table
 with sources; `me`, `orient`, and the session briefing name the member's own.
+
+## 5e-2. Harnesses, profiles and models you can start (0.20.0)
+
+**What it is.** `herdr-synapse available` lists the agents running in no team
+and every installed harness with its profiles and models, each read from the
+harness itself (see `docs/cli.md`, `available`). A *profile* is a harness's
+own named setup: an OpenCode or Claude Code agent (`--agent NAME`) or a Codex
+profile (`-p NAME`). `--spawn role:harness/profile` starts a
+member with one; `profile <member> <name>` changes it (next launch, or
+`--apply restart`). `create`, `add`, `model`, `models set`, `profile` and
+`swap` refuse a profile, model or effort the harness does not list, before
+anything changes, and name the closest choices; `--unlisted` skips the check.
+In `prefix+t`, `n` adds a member to start: harness, then profile, then the
+usual role, Mission and model prompts, with that harness's models shown.
+
+**Live (2026-09-26, disposable Herdr 0.9.1 session):** the popup's `n` path
+built a team of `opencode/plan` and `claude/tester` members; OpenCode's footer
+read "Plan auto · Big Pickle", Claude's header "@tester · Haiku 4.5"; a Codex
+profile applied its model; `profile --apply restart` resumed the Claude member's
+conversation as `tester2` and back, after the notifier waited out Herdr 0.9.1
+holding the exited agent's name. Kimi refuses `--agent` in its TUI, so it
+has no profiles.
+
+**Verified on this machine (2026-09-26, read-only, no tokens):** OpenCode
+1.18.32 listed `build`, `plan` and the subagents `explore`, `general` and 557
+models across four providers; Claude Code 2.1.283 found the project agents of
+two repositories (5 and 38); Codex 0.157.0 listed 8 visible models with their
+efforts from its cache; Pi 0.85.1 listed 22 models. OpenCode's internal
+`compaction`, `summary` and `title` agents are dropped.
+
+**Test it:**
+
+- [ ] `herdr-synapse available` shows your running unassigned agents and your harnesses.
+- [ ] `herdr-synapse available opencode --search opus` lists only matching models.
+- [ ] `create t --new --spawn a:opencode/nope --brief a=x` is refused with `profile_unknown` and no pane opens.
+- [ ] `create t --new --spawn a:codex --model a=gpt-5.5@max --brief a=x` is refused with `effort_unsupported`.
+- [ ] `prefix+t`, `n`, pick OpenCode, pick `plan`: the row appears under "new agents to start".
 
 ## 5f. Teams talking to teams (0.15.0)
 

@@ -80,8 +80,9 @@ class SettingTests(unittest.TestCase):
             models.launch_args("gemini", "pro", None)
         self.assertEqual((caught.exception.code, caught.exception.details["supported"]), ("model_unsupported", ["claude", "codex", "opencode", "pi"]))
         with self.assertRaises(HerdrTeamError) as caught:
-            models.validate("codex", None, "max")
-        self.assertEqual((caught.exception.code, caught.exception.details["efforts"]), ("effort_unknown", ["minimal", "low", "medium", "high", "xhigh"]))
+            models.validate("codex", None, "turbo")
+        self.assertEqual((caught.exception.code, caught.exception.details["efforts"]), ("effort_unknown", ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"]))
+        models.validate("codex", None, "max")  # current Codex models take max, and some ultra (0.20)
         with self.assertRaises(HerdrTeamError) as caught:
             models.validate("claude", None, "minimal")
         self.assertEqual(caught.exception.code, "effort_unknown")
@@ -591,6 +592,62 @@ class RestartJobTests(ControlRig):
         briefs = [store.read_json(p) for p in self.ts.team.jobs_dir.glob("*.json") if store.read_json(p).get("kind") == "brief"]
         self.assertEqual([j["member"] for j in briefs], [MEMBER])
 
+    def test_a_profile_restart_is_validated_and_named_on_the_board(self):
+        argv = models.restart_argv("codex", sess("0199-reviewer"), "gpt-5.6-luna", "high", ["codex"], permissions="yolo", profile="fast")
+        self.assertEqual(argv[3:5], ["-p", "fast"])
+        self.control(MEMBER, {"action": "restart", "kind": "codex", "model": "gpt-5.6-luna", "effort": "high", "exit": "/quit",
+                              "argv": argv, "preserved": [], "profile": "fast", "permissions": "yolo"})
+        self.settle()
+        self.assertEqual(self.team.rt(MEMBER).restart["profile"], "fast")
+        self.pane_is_empty()
+        self.api.set_cli_result(["agent", "start"], self.STARTED, request_id="cli:agent:start")
+        self.api.set_response("agent.get", {"type": "agent_info", "agent": fake_agent("w2:p1", "term_r1", "codex", MEMBER, launch_pending=True)})
+        self.clock.advance(2)
+        self.d.advance_restarts(self.clock() * 1000)
+        self.d._apply_changes(self.team, [(MEMBER, {"session": sess("0199-reviewer"), "briefed_at": None})])
+        self.assertIn("as profile fast", self.records("model_applied")[0]["text"])
+        # the same restart with the profile left out of the argv is refused before anything is typed
+        forged = [a for a in argv if a not in ("-p", "fast")]
+        self.control(MEMBER, {"action": "restart", "kind": "codex", "model": "gpt-5.6-luna", "effort": "high", "exit": "/quit",
+                              "argv": forged, "preserved": [], "profile": "fast", "permissions": "yolo"})
+        self.settle()
+        self.assertTrue(any("refused" in r.get("text", "") for r in self.records("typed")))
+
+    def test_the_exited_agents_name_still_held_on_its_own_pane_is_waited_out(self):
+        """Live on Herdr 0.9.1 (2026-09-26): the name outlives the exit by a moment, and the first start was refused."""
+        held = "agent name {} is already used; candidates: terminal_id=term_r1 pane_id=w2:p1".format(MEMBER)
+        self.request()
+        self.settle()
+        rt = self.team.rt(MEMBER)
+        self.pane_is_empty()
+        self.api.set_cli_error(["agent", "start"], "agent_name_taken", held)
+        self.clock.advance(2)
+        self.d.advance_restarts(self.clock() * 1000)
+        self.assertEqual(rt.restart["phase"], "exiting")  # back to "the pane is empty": start again next tick
+        self.assertEqual(self.records("restart_failed"), [])
+        self.api.set_cli_result(["agent", "start"], self.STARTED, request_id="cli:agent:start")
+        self.api.set_response("agent.get", {"type": "agent_info", "agent": fake_agent("w2:p1", "term_r1", "codex", MEMBER, launch_pending=True)})
+        self.clock.advance(1)
+        self.d.advance_restarts(self.clock() * 1000)
+        self.assertEqual(len([a for a in self.api.runs if a[:2] == ["agent", "start"]]), 2)
+        self.assertIn(rt.restart["phase"], ("starting", "started"))
+        self.assertEqual(self.records("restart_failed"), [])
+
+    def test_a_name_held_elsewhere_or_for_too_long_fails_the_restart(self):
+        from herdr_team import launch
+
+        self.assertFalse(launch.name_held_by_own_pane("agent_name_taken: candidates: terminal_id=t pane_id=w9:p9", "w2:p1"))
+        self.assertFalse(launch.name_held_by_own_pane("agent_name_taken: candidates: pane_id=w2:p1 pane_id=w9:p9", "w2:p1"))
+        self.assertFalse(launch.name_held_by_own_pane("timeout waiting for startup", "w2:p1"))
+        self.request()
+        self.settle()
+        self.pane_is_empty()
+        self.api.set_cli_error(["agent", "start"], "agent_name_taken", "agent name x is already used; candidates: terminal_id=term_r1 pane_id=w2:p1")
+        for _ in range(3):
+            self.clock.advance(D.RESTART_NAME_WAIT_S / 2 + 0.5)
+            self.d.advance_restarts(self.clock() * 1000)
+        self.assertEqual(len(self.records("restart_failed")), 1)
+
     def test_an_agent_that_never_exits_fails_the_restart_and_is_left_alone(self):
         self.request()
         self.settle()
@@ -813,7 +870,7 @@ class PickerCreateTests(unittest.TestCase):
         type_line(model, "Review this work.")
         tui_model.picker_apply_key(model, "ENTER")
         row = tui_model.selected_rows(model)[0]
-        bad = "@max" if row.kind == "codex" else "@minimal"
+        bad = "@turbo" if row.kind == "codex" else "@minimal"
         type_line(model, bad)
         tui_model.picker_apply_key(model, "ENTER")
         self.assertEqual(model.member_field, "model")

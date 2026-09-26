@@ -187,6 +187,24 @@ def refresh_rows(model: PickerModel, api: Any, layout: Optional[Layout]) -> None
         model.cursor = min(model.cursor, max(0, len(tui_model.picker_tree(model)) - 1))
 
 
+def load_catalog(model: PickerModel, cwd: str, env: Dict[str, str]) -> None:
+    """What this machine can start, read once per popup; ``n`` opens the harness list afterwards."""
+    from herdr_team import harnesses
+
+    where = cwd if cwd and os.path.isdir(cwd) else os.getcwd()
+    model.status = "looking at the harnesses on this machine…"
+    try:
+        model.catalog = harnesses.catalog(cwd=where, env=env, with_version=False)
+    except Exception as err:  # noqa: BLE001 - a probe that breaks must not take the popup down
+        model.catalog = []
+        model.error = "could not list the harnesses: {}".format(err)
+        model.status = None
+        return
+    model.catalog_cwd = where
+    model.status = None
+    tui_model.open_new_harness(model)
+
+
 def refresh_status_from_who(model: PickerModel, layout: Optional[Layout]) -> None:
     """Cheap tick refresh: agent status of listed rows from ``who.json`` (no socket)."""
     if layout is None:
@@ -240,16 +258,48 @@ def load_rules_file(model: PickerModel, path: str) -> None:
     model.status = "loaded {} ({} lines)".format(path, len(model.rules_lines))
 
 
-def create_args(spec: Dict[str, Any]) -> List[str]:
-    """``herdr-synapse create`` argv for a picker spec."""
-    args: List[str] = ["create", str(spec["team"])]
+def live_members(spec: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return [m for m in spec.get("members") or [] if not m.get("spawn")]
+
+
+def new_members(spec: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return [m for m in spec.get("members") or [] if m.get("spawn")]
+
+
+def _team_setup_args(spec: Dict[str, Any]) -> List[str]:
+    args: List[str] = []
     if spec.get("charter"):
         args += ["--charter", str(spec["charter"])]
     if spec.get("rules"):
         args += ["--rules", str(spec["rules"])]
     if spec.get("project"):
         args += ["--project", str(spec["project"])]
-    for member in spec.get("members") or []:
+    return args
+
+
+def spawn_args(spec: Dict[str, Any], first: bool) -> List[str]:
+    """``create --new`` for the picker's new members: with the charter when it creates the team, ``--reuse`` after live members did."""
+    args: List[str] = ["create", str(spec["team"])] + (_team_setup_args(spec) if first else ["--reuse"]) + ["--new"]
+    if spec.get("workspace"):
+        args += ["--workspace", str(spec["workspace"])]
+    for member in new_members(spec):
+        where = spec.get("project") or member.get("cwd")
+        args += ["--spawn", "{}:{}{}{}".format(member["role"], member["kind"], "/" + member["profile"] if member.get("profile") else "",
+                                               ":" + str(where) if where else "")]
+        # keyed by role: the wizard keeps the new members' roles distinct, and create names them <team>-<role>
+        if member.get("brief"):
+            args += ["--brief", "{}={}".format(member["role"], member["brief"])]
+        if member.get("setting"):
+            args += ["--model", "{}={}".format(member["role"], member["setting"])]
+    return args
+
+
+def create_args(spec: Dict[str, Any]) -> List[str]:
+    """The first ``herdr-synapse create`` of a picker spec: the live agents with the charter, or only new members."""
+    if not live_members(spec):
+        return spawn_args(spec, first=True)
+    args: List[str] = ["create", str(spec["team"])] + _team_setup_args(spec)
+    for member in live_members(spec):
         target = "{}:{}:{}".format(member["target"], member["role"], member["name"])
         args += ["--member", target]
         if member.get("brief"):
@@ -359,6 +409,20 @@ def _loop(stdscr: Any, model: PickerModel, api: Any, layout: Optional[Layout], e
                 continue
             if intent.kind == "load_file":
                 pending_path = ""
+                continue
+            if intent.kind == "load_catalog":
+                # the probes block for a few seconds with no redraw, so say so first
+                model.status = "looking at the harnesses on this machine…"
+                model.error = None
+                height, width = stdscr.getmaxyx()
+                draw_lines(stdscr, tui_model.picker_lines(model, width, height), None)
+                load_catalog(model, str(intent.args.get("cwd") or ""), dict(env or os.environ))
+                height, width = stdscr.getmaxyx()
+                draw_lines(stdscr, tui_model.picker_lines(model, width, height), None)
+                try:
+                    curses.flushinp()
+                except curses.error:
+                    pass
                 continue
             if intent.kind == "team_restore":
                 if not actions:
@@ -681,7 +745,7 @@ def execute_add(spec: Dict[str, Any], env: Dict[str, str]) -> int:
     from herdr_team.console import run_cli
 
     added: List[Dict[str, Any]] = []
-    for member in spec.get("members") or []:
+    for member in live_members(spec):
         rc, out, err = run_cli(add_args(spec, member), env)
         if err:
             err = dict(err)
@@ -689,7 +753,15 @@ def execute_add(spec: Dict[str, Any], env: Dict[str, str]) -> int:
             sys.stderr.write(json.dumps(err, ensure_ascii=False) + "\n")
             return rc or EXIT_REFUSED
         added.append(out if isinstance(out, dict) else {"name": member.get("name")})
-    sys.stdout.write(json.dumps({"team": spec.get("team"), "mode": "add", "added": added}, ensure_ascii=False) + "\n")
+    started = None
+    if new_members(spec):
+        rc, started, err = run_cli(spawn_args(spec, first=False), env)
+        if err:
+            err = dict(err)
+            err["added_before_failure"] = [m.get("member", {}).get("name") if isinstance(m.get("member"), dict) else m.get("name") for m in added]
+            sys.stderr.write(json.dumps(err, ensure_ascii=False) + "\n")
+            return rc or EXIT_REFUSED
+    sys.stdout.write(json.dumps({"team": spec.get("team"), "mode": "add", "added": added, "started": started}, ensure_ascii=False) + "\n")
     return EXIT_OK
 
 
@@ -703,6 +775,15 @@ def execute_create(spec: Dict[str, Any], env: Dict[str, str]) -> int:
     if err:
         sys.stderr.write(json.dumps(err, ensure_ascii=False) + "\n")
         return rc or EXIT_REFUSED
+    if live_members(spec) and new_members(spec):
+        # the live agents formed the team; the new members join it in their own panes
+        rc2, started, err = run_cli(spawn_args(spec, first=False), env)
+        if err:
+            err = dict(err)
+            err["team_created_with"] = [m.get("name") for m in live_members(spec)]
+            sys.stderr.write(json.dumps(err, ensure_ascii=False) + "\n")
+            return rc2 or EXIT_REFUSED
+        out = {"created": out, "started": started}
     sys.stdout.write(json.dumps(out, ensure_ascii=False) + "\n")
     return rc
 

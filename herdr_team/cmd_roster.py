@@ -31,6 +31,7 @@ from herdr_team import api as _api
 from herdr_team import store as _store
 from herdr_team import permissions as _permissions
 from herdr_team import models as _models
+from herdr_team import harnesses as _harnesses
 from herdr_team import links as _links
 from herdr_team import charter as _charter
 from herdr_team import cli as _cli
@@ -444,17 +445,20 @@ def _member_json(member: _roster.Member, renamed: bool = False) -> Dict[str, Any
 # create --new: layout and agent start (pure builders, live calls through api)
 
 
-def parse_spawn_spec(spec: str) -> Tuple[str, str, Optional[str]]:
-    """``<role>:<kind>[:<cwd>]``; the cwd may contain colons."""
+def parse_spawn_spec(spec: str) -> Tuple[str, str, Optional[str], Optional[str]]:
+    """``<role>:<harness>[/<profile>][:<cwd>]`` -> (role, kind, profile, cwd); the cwd may contain colons."""
     parts = spec.split(":", 2)
     if len(parts) < 2 or not parts[0] or not parts[1]:
-        raise UsageError("--spawn expects <role>:<kind>[:<cwd>]")
+        raise UsageError("--spawn expects <role>:<harness>[/<profile>][:<cwd>]")
     role = _roster.validate_role(parts[0])
-    kind = parts[1]
+    kind, _sep, profile = parts[1].partition("/")
     if kind not in _roster.KIND_LABELS:
         raise HerdrTeamError("kind_unknown", "{!r} is not an agent kind the installed Herdr can start".format(kind), EXIT_REFUSED, {"kind": kind, "kinds": sorted(_roster.KIND_LABELS)})
+    if _sep and not profile:
+        raise UsageError("--spawn {}: name the profile after the slash, or drop the slash for the harness default".format(spec))
+    profile_name = _models.validate_profile(kind, profile) if profile else None
     cwd = parts[2] if len(parts) == 3 and parts[2] else None
-    return role, kind, cwd
+    return role, kind, profile_name, cwd
 
 
 def build_layout_request(team: str, leaves: List[Dict[str, Any]], team_dir: str, workspace_id: Optional[str] = None) -> Dict[str, Any]:
@@ -537,7 +541,7 @@ def _spawn_member(layout: Layout, api: Any, team: _roster.Team, team_paths: Team
         workspace_id=pane_id.split(":")[0] if ":" in pane_id else None, tab_id=None, label=label, cwd=leaf.get("cwd"),
         brief=_roster._sanitize_brief(brief) if brief else None, managed=True, status="starting", generation=1, delivery="nudge",
         verified_kind=_roster._kind_verified(layout, kind), joined_at=_roster.now_iso(), last_seen_at=None,
-        model=leaf.get("model"), effort=leaf.get("effort"), permissions=leaf.get("permissions"),
+        model=leaf.get("model"), effort=leaf.get("effort"), permissions=leaf.get("permissions"), profile=leaf.get("profile"),
     )
     saved, _prev = roster.add_member(member, steal=args.steal, socket=os.fspath(layout.socket))
     team.members = saved.members
@@ -547,7 +551,7 @@ def _spawn_member(layout: Layout, api: Any, team: _roster.Team, team_paths: Team
         _charter.initialize_instructions(layout, team.team, author, member.name, initial_instructions)
     out: Dict[str, Any] = {"member": _member_json(member, False), "job": None}
     from . import session_names
-    launch_args = _models.launch_args(kind, leaf.get("launch_model"), leaf.get("launch_effort"), _permissions.effective(team.config, member))
+    launch_args = _models.launch_args(kind, leaf.get("launch_model"), leaf.get("launch_effort"), _permissions.effective(team.config, member), member.profile)
     naming = None
     try:
         launch_args, naming = session_names.prepare(kind, name, launch_args)
@@ -647,13 +651,15 @@ def _add_create_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--use", action="store_true", help="make this team the default even when another team exists")
     parser.add_argument("--new", action="store_true", help="lay out fresh panes and start agents (--spawn)")
     parser.add_argument("--workspace", metavar="ID", help="workspace for --new (default: the current one)")
-    parser.add_argument("--spawn", action="append", default=[], metavar="ROLE:KIND[:CWD]")
+    parser.add_argument("--spawn", action="append", default=[], metavar="ROLE:HARNESS[/PROFILE][:CWD]",
+                        help="start a member: its role, the harness, optionally one of the harness's profiles (see: herdr-synapse available)")
     parser.add_argument("--permissions", choices=_permissions.MODES, help="team launch default: yolo (default) or native agent settings")
     parser.add_argument("--member-permissions", action="append", default=[], metavar="NAME|ROLE=MODE", help="per-member yolo/native override; repeat as needed")
     parser.add_argument("--manager", metavar="NAME", help="the member that coordinates the team (see: herdr-synapse manager)")
     parser.add_argument("--model", action="append", default=[], metavar="ROLE|KIND=MODEL[@EFFORT]",
                         help="a member's model and effort (by --spawn role), or the team default for a kind (claude=opus@medium, codex=gpt-5.6-luna@high)")
     parser.add_argument("--template", metavar="NAME", help="start from a team template (herdr-synapse template list): charter, rules, roles, missions and settings; your own flags win")
+    parser.add_argument("--unlisted", action="store_true", help="accept a profile or model the harness does not list here (see: herdr-synapse available)")
 
 
 def parse_model_args(items: List[str]) -> Tuple[Dict[str, Tuple[Optional[str], Optional[str]]], Dict[str, Tuple[Optional[str], Optional[str]]]]:
@@ -730,6 +736,8 @@ def _run_create(args: argparse.Namespace) -> int:
     if existing_paths.team_json.is_file() and not args.reuse:
         raise HerdrTeamError("team_exists", "team {!r} already exists (use --reuse)".format(team_name), EXIT_REFUSED, {"team": team_name})
     model_defaults, model_members = parse_model_args(list(getattr(args, "model", None) or []))
+    for default_kind, (default_model, default_effort) in model_defaults.items():
+        _harnesses.check_model(default_kind, default_model, default_effort, None, env, unlisted=args.unlisted)
     existing_models = {}
     if existing_paths.team_json.is_file():
         existing_config = _roster.load_team(existing_paths).config
@@ -744,7 +752,8 @@ def _run_create(args: argparse.Namespace) -> int:
     if args.new:
         roles_seen: List[str] = []
         for item in args.spawn:
-            role, kind, cwd = parse_spawn_spec(item)
+            role, kind, profile, cwd = parse_spawn_spec(item)
+            where = os.path.expanduser(cwd) if cwd else os.getcwd()
             if names_plain and role in roles_seen:
                 raise HerdrTeamError("name_invalid", "--names plain needs distinct roles; role {!r} repeats".format(role), EXIT_REFUSED, {"role": role})
             roles_seen.append(role)
@@ -756,8 +765,11 @@ def _run_create(args: argparse.Namespace) -> int:
             launch_model = override[0] or default[0] or None
             launch_effort = override[1] or default[1] or None
             _models.validate(kind, launch_model, launch_effort)  # a kind with no verified flags is refused before anything is laid out
+            # the harness's own lists, before any pane exists: a typo is refused with the choices
+            profile = _harnesses.check_profile(kind, profile, where, env, unlisted=args.unlisted)
+            _harnesses.check_model(kind, launch_model, launch_effort, where, env, unlisted=args.unlisted)
             spawn.append({"role": role, "kind": kind, "cwd": cwd, "name": name, "model": override[0], "effort": override[1],
-                          "launch_model": launch_model, "launch_effort": launch_effort})
+                          "launch_model": launch_model, "launch_effort": launch_effort, "profile": profile})
         if not spawn:
             raise UsageError("--new needs at least one --spawn")
     if args.new and model_members:
@@ -791,6 +803,8 @@ def _run_create(args: argparse.Namespace) -> int:
                 # (``resume`` and ``who`` use it) and applied later, live for
                 # Claude through ``model``, at the next resume otherwise.
                 _models.validate(spec.resolved.kind if spec.resolved else None, *override)
+                if spec.resolved is not None:
+                    _harnesses.check_model(spec.resolved.kind, override[0], override[1], spec.resolved.cwd, env, unlisted=args.unlisted)
                 spec.setting = override
     if model_members:
         raise UsageError("--model names {}, which is not a member being added".format(", ".join(sorted(model_members))))
@@ -1008,6 +1022,7 @@ def _add_add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--steal", action="store_true")
     parser.add_argument("--rename", action="store_true")
     parser.add_argument("--model", metavar="MODEL[@EFFORT]", help="record the member's model and effort (applies at its next resume; see herdr-synapse model)")
+    parser.add_argument("--unlisted", action="store_true", help="accept a model the harness does not list here")
 
 
 def _record_setting(layout: Layout, team_name: str, member: _roster.Member, setting: Tuple[Optional[str], Optional[str]]) -> _roster.Member:
@@ -1038,6 +1053,10 @@ def _run_add(args: argparse.Namespace) -> int:
     spec.brief = briefs[spec.final_name]
     spec.initial_instructions = initial[spec.final_name]
     setting = _models.parse_setting(args.model) if getattr(args, "model", None) else (None, None)
+    if setting != (None, None) and spec.resolved is not None:
+        # before the join, so a refused setting leaves the team untouched
+        _models.validate(spec.resolved.kind, *setting)
+        _harnesses.check_model(spec.resolved.kind, setting[0], setting[1], spec.resolved.cwd, env_of(args), unlisted=args.unlisted)
     member, job = perform_join(layout, api, team, spec, args.steal, args.rename, env_of(args), author)
     if setting != (None, None):
         _models.validate(member.kind, *setting)
@@ -1118,11 +1137,11 @@ _execvp = os.execvp
 def resume_plan(team_name: str, member: _roster.Member, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """What ``resume`` would run for ``member``: the argv (with its model and effort flags), the directory, and the recorded session."""
     model, effort = _models.effective_setting(config, member)
-    argv = _models.resume_argv(member.kind, member.session, model, effort, _permissions.effective(config, member))
+    argv = _models.resume_argv(member.kind, member.session, model, effort, _permissions.effective(config, member), member.profile)
     cwd = member.cwd if isinstance(member.cwd, str) and member.cwd and os.path.isdir(member.cwd) else None
     return {
         "team": team_name, "member": member.name, "kind": member.kind,
-        "session": dict(member.session or {}), "argv": argv, "command": " ".join(shlex.quote(a) for a in argv),
+        "session": dict(member.session or {}), "argv": argv, "command": " ".join(shlex.quote(a) for a in argv), "profile": member.profile,
         "cwd": cwd, "cwd_missing": member.cwd if member.cwd and cwd is None else None,
         "model": model, "effort": effort, "setting": _models.label(model, effort),
         "permissions": _permissions.view(config, member),
@@ -1631,7 +1650,7 @@ def _run_me(args: argparse.Namespace) -> int:
     own_model, own_effort = _models.effective_setting(doc.get("config"), me)
     model_src, effort_src = _models.source_of(doc.get("config"), me)
     payload.update({"model": own_model, "effort": own_effort, "setting": _models.label(own_model, own_effort),
-                    "model_source": model_src, "effort_source": effort_src})
+                    "model_source": model_src, "effort_source": effort_src, "profile": me.get("profile")})
     payload["links"] = _links.summary(layout.session, team_name)
     from herdr_team import work as _work
 
@@ -1731,6 +1750,9 @@ def _who_payload(args: argparse.Namespace, layout: Layout, api: Any, team_name: 
             # written before the designation still names the right member.
             m["manager"] = bool(member_doc.get("manager"))
             m["permissions"] = _permissions.view(doc.get("config"), member_doc)
+            m["profile"] = member_doc.get("profile")
+            if not m.get("setting"):
+                m["setting"] = _models.label(*_models.effective_setting(doc.get("config"), member_doc))
     kinds = _who_kinds(layout, members)
     if args.role:
         members = [m for m in members if m.get("role") == args.role]

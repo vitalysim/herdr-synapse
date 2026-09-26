@@ -32,9 +32,18 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Sequence, Tuple, Union
 
+from herdr_team import harnesses as _harnesses
 from herdr_team import paths
 from herdr_team.api import RunResult, parse_cli_json
 from herdr_team.errors import HerdrTeamError, exit_code_for
+
+
+def _no_harness(argv: Sequence[str], cwd: Optional[str], env: Optional[Dict[str, str]]) -> Tuple[int, str]:
+    """Harness probes in tests: nothing on PATH answers unless a test installs its own fake."""
+    return -1, ""
+
+
+_harnesses.RUN = _no_harness
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 
@@ -397,6 +406,7 @@ class TempState:
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def __enter__(self) -> "TempState":
+        _harnesses.clear_cache()
         return self
 
     def __exit__(self, *exc: Any) -> None:

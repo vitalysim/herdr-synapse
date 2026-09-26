@@ -157,6 +157,9 @@ DISPUTE_POLL_S = 30.0
 #: come back and re-report its session.
 RESTART_EXIT_S = 30.0
 RESTART_START_S = 90.0
+#: How long a restart keeps starting its agent again while Herdr still holds
+#: the exited agent's name on the same pane (``launch.name_held_by_own_pane``).
+RESTART_NAME_WAIT_S = 10.0
 #: Minimum gap between two swept nudges for one member. A broadcast never
 #: interrupts on its own, so this is the pace at which a chatty team's
 #: announcements reach an idle teammate: one nudge, not one per post.
@@ -180,6 +183,7 @@ SYSTEM_EVENT_DELIVERY: Dict[str, Dict[str, Any]] = {
     "manager_changed": {"wake": "all", "toast": True},
     "context_high": {"wake": "named"},
     "model_changed": {"wake": "named"},
+    "profile_changed": {"wake": "named"},
     "link_established": {"wake": "named"},
     "link_broken": {"wake": "named"},
     "link_read": {},  # a receipt for the sending console; nobody is woken
@@ -3613,12 +3617,13 @@ class Daemon:
             preserved = [str(a) for a in raw_preserved if str(a)] if isinstance(raw_preserved, list) else []
             after = [str(k).strip() for k in raw_after if str(k).strip()] if isinstance(raw_after, list) else []
             kind = str(member.get("kind") or "")
+            profile = control_doc.get("profile") if isinstance(control_doc.get("profile"), str) and control_doc.get("profile") else None
             try:
                 expected_exit = _models.exit_keystroke(kind)
-                safe_preserved = _models.preserved_launch_args(kind, [kind] + preserved, mode)
+                safe_preserved = _models.preserved_launch_args(kind, [kind] + preserved, mode, profile)
                 expected_argv = _models.restart_argv(
                     kind, member.get("session"), control_doc.get("model"), control_doc.get("effort"),
-                    [kind] + preserved, permissions=mode,
+                    [kind] + preserved, permissions=mode, profile=profile,
                 )
             except HerdrTeamError:
                 expected_exit, expected_argv, safe_preserved = "", [], []
@@ -3629,7 +3634,7 @@ class Daemon:
                 return
             lines = [exit_key]
             extra = {"permissions": mode, "model": control_doc.get("model"), "effort": control_doc.get("effort"), "argv": argv,
-                     "preserved": preserved, "after": after, "session": member.get("session")}
+                     "preserved": preserved, "after": after, "session": member.get("session"), "profile": profile}
         else:
             try:
                 kind = str(member.get("kind") or "")
@@ -3643,7 +3648,8 @@ class Daemon:
                 current_argv = self._foreground_argv(member)
                 extra = {"fresh_restart": True, "permissions": mode, "model": model, "effort": effort,
                          "setting": _models.label(model, effort),
-                         "argv": _models.fresh_argv(kind, model, effort, current_argv, permissions=mode),
+                         "argv": _models.fresh_argv(kind, model, effort, current_argv, permissions=mode,
+                                                    profile=latest_member.get("profile") if isinstance(latest_member.get("profile"), str) else None),
                          "after": _models.post_start_keystrokes(kind, effort)}
         pending = Pending(first_ms=now, kind="control", lines=list(lines), force=True, seqs=[])
         pending.control = dict({"action": action, "keystroke": lines[0], "keystrokes": list(lines), "requested_by": (record or {}).get("from"), "kind": member.get("kind")}, **extra)
@@ -3792,7 +3798,8 @@ class Daemon:
             rt.restart = {"phase": "exiting", "since_ms": now, "argv": list(control.get("argv") or []), "kind": str(member.get("kind") or ""),
                           "pane_id": pane_id, "model": control.get("model"), "effort": control.get("effort"),
                           "after": list(control.get("after") or []), "requested_by": rt.control_pending["requested_by"],
-                          "session": control.get("session"), "permissions": control.get("permissions", "yolo")}
+                          "session": control.get("session"), "permissions": control.get("permissions", "yolo"),
+                          "profile": control.get("profile")}
         elif action == "clear" and control.get("fresh_restart"):
             rt.restart = {"phase": "exiting", "since_ms": now, "action": "clear",
                           "argv": list(control.get("argv") or []), "kind": str(member.get("kind") or ""),
@@ -4019,6 +4026,14 @@ class Daemon:
             if handle is not None and handle.done():
                 ok, text = handle.result()
                 state["handle"] = None
+                if not ok and _launch.name_held_by_own_pane(text, pane_id):
+                    first = state.get("name_wait_ms")
+                    if first is None:
+                        state["name_wait_ms"] = now
+                        self.log("{}: {}'s name is still held by the agent that just exited; starting it again shortly".format(team.name, name))
+                    if now - float(state.get("name_wait_ms") or now) < RESTART_NAME_WAIT_S * 1000.0:
+                        state["phase"] = "exiting"  # the pane is empty, so the next tick starts it again
+                        return
                 if not ok:
                     self._restart_failed(team, name, rt, "agent start failed: {}".format(text[:200] or "unknown error"), now)
                     return
@@ -4160,7 +4175,9 @@ class Daemon:
             self.log("{}: {} resumed; selecting its OpenCode variant ({})".format(team.name, name, "; ".join(repr(k) for k in after)))
             self.who_dirty = True
             return
-        self._append_system(team, "model_applied", "{} restarted with {} (its session was resumed, asked by {})".format(name, setting or "its recorded setting", state.get("requested_by") or "human"),
+        with_profile = " as profile {}".format(state.get("profile")) if isinstance(state.get("profile"), str) and state.get("profile") else ""
+        self._append_system(team, "model_applied", "{} restarted with {}{} (its session was resumed, asked by {})".format(
+            name, setting or "its recorded setting", with_profile, state.get("requested_by") or "human"),
                             [name, "all"], {"member": name, "setting": setting, "restarted": True})
         if update.get("briefed_at", False) is None:
             try:
@@ -5615,6 +5632,7 @@ class Daemon:
                     "manager": bool(member.get("manager")),
                     "model": member.get("model"),
                     "effort": member.get("effort"),
+                    "profile": member.get("profile"),
                     "permissions": _permissions.view(team.roster.get("config"), member) if member.get("kind") != "human" else None,
                     "model_effective": _models.effective_setting(team.roster.get("config"), member)[0],
                     "setting": _models.label(*_models.effective_setting(team.roster.get("config"), member)),

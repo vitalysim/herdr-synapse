@@ -46,7 +46,8 @@ YOLO_ARGS = {
 #: and mastracode (no approval prompts by default, so there is nothing to add).
 YOLO_EVIDENCE = {
     "claude": "live", "codex": "live", "opencode": "live", "pi": "live",
-    "gemini": "help", "cursor": "help", "kimi": "help",
+    # Kimi's flag was seen live in a Synapse launch (its footer read "yolo", 2026-09-26).
+    "kimi": "live", "gemini": "help", "cursor": "help",
     "copilot": "docs", "qwen": "docs", "hermes": "docs", "kilo": "docs", "devin": "docs",
     "qodercli": "docs", "letta": "docs", "omp": "docs", "maki": "docs", "muse": "docs",
 }

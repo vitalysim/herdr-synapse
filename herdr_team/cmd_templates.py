@@ -47,7 +47,7 @@ def _show(args: argparse.Namespace) -> int:
             lines.append(template.description)
         lines.append("")
         for role in template.roles:
-            lines.append("role {} ({}): {}".format(role.name, role.kind, role.mission or role.about or "-"))
+            lines.append("role {} ({}{}): {}".format(role.name, role.kind, "/" + role.profile if role.profile else "", role.mission or role.about or "-"))
         if template.settings:
             lines.append("settings: " + ", ".join("{}={}".format(k, v) for k, v in template.settings.items()))
         if template.vocabulary:
@@ -79,7 +79,8 @@ def _save(args: argparse.Namespace) -> int:
             continue
         seen_roles[role] = True
         document = _charter.get_instructions(layout, team_name, str(member.get("name"))) or ""
-        template.roles.append(T.Role(name=role, kind=str(member.get("kind") or "claude"), document=document))
+        template.roles.append(T.Role(name=role, kind=str(member.get("kind") or "claude"), document=document,
+                                     profile=str(member["profile"]) if isinstance(member.get("profile"), str) and member.get("profile") else None))
         if member.get("manager"):
             template.settings["manager"] = role
     contradictions = _facts.contradictions_config(doc)

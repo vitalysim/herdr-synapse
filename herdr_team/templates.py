@@ -47,6 +47,8 @@ class Role:
     kind: str
     about: str = ""
     document: str = ""  # the instructions document text
+    #: One of the harness's own agents or profiles (``- skeptic: opencode/plan — ...``); None for its default.
+    profile: Optional[str] = None
 
     @property
     def mission(self) -> str:
@@ -70,7 +72,7 @@ class Template:
         return {
             "name": self.name, "title": self.title, "description": self.description, "source": self.source,
             "charter": self.charter, "rules": self.rules, "settings": dict(self.settings),
-            "roles": [{"role": r.name, "kind": r.kind, "about": r.about, "mission": r.mission} for r in self.roles],
+            "roles": [{"role": r.name, "kind": r.kind, "profile": r.profile, "about": r.about, "mission": r.mission} for r in self.roles],
             "vocabulary": dict(self.vocabulary), "path": os.fspath(self.path) if self.path else None,
         }
 
@@ -150,7 +152,8 @@ def parse(name: str, directory: Path, source: str) -> Template:
             template.settings[key] = value
     for role_name, rest in _bullets(sections.get("roles", "")):
         kind, _sep, about = rest.partition("—") if "—" in rest else rest.partition(" - ")
-        role = Role(name=role_name.strip().lower(), kind=kind.strip().lower(), about=about.strip())
+        kind_name, _slash, profile = kind.strip().partition("/")
+        role = Role(name=role_name.strip().lower(), kind=kind_name.strip().lower(), about=about.strip(), profile=profile.strip() or None)
         role_md = directory / "roles" / (role.name + ".md")
         try:
             role.document = role_md.read_text(encoding="utf-8")
@@ -172,6 +175,13 @@ def _check(template: Template) -> None:
             problems.append("role {!r} is not a valid role name".format(role.name))
         if not role.kind:
             problems.append("role {} names no agent kind".format(role.name))
+        elif role.profile:
+            from herdr_team import models as _models
+
+            try:
+                _models.validate_profile(role.kind, role.profile)
+            except (HerdrTeamError, UsageError) as err:
+                problems.append("role {}: {}".format(role.name, err))
     manager = template.settings.get("manager")
     if manager and manager not in names:
         problems.append("manager {!r} is not one of its roles".format(manager))
@@ -234,7 +244,7 @@ def fill_create_args(args: Any, template: Template) -> List[str]:
     if getattr(args, "rules", None) is None and getattr(args, "rules_file", None) is None and template.rules:
         args.rules = template.rules
     if getattr(args, "new", False) and not getattr(args, "spawn", None):
-        args.spawn = ["{}:{}".format(r.name, r.kind) for r in template.roles]
+        args.spawn = ["{}:{}{}".format(r.name, r.kind, "/" + r.profile if r.profile else "") for r in template.roles]
     given_briefs = {v.partition("=")[0].strip() for v in getattr(args, "brief", []) or []}
     given_docs = {v.partition("=")[0].strip() for v in getattr(args, "instructions", []) or []}
     for role in template.roles:
@@ -312,7 +322,8 @@ def render(template: Template) -> Dict[str, str]:
         lines += ["## Rules", "", template.rules, ""]
     if template.settings:
         lines += ["## Settings", ""] + ["- {}: {}".format(k, v) for k, v in template.settings.items()] + [""]
-    lines += ["## Roles", ""] + ["- {}: {}{}".format(r.name, r.kind, " — " + r.about if r.about else "") for r in template.roles] + [""]
+    lines += ["## Roles", ""] + ["- {}: {}{}{}".format(r.name, r.kind, "/" + r.profile if r.profile else "", " — " + r.about if r.about else "")
+                                 for r in template.roles] + [""]
     if template.vocabulary:
         lines += ["## Vocabulary", ""] + ["- {}: {}".format(k, v) for k, v in template.vocabulary.items()] + [""]
     files = {"team.md": "\n".join(lines).rstrip() + "\n"}

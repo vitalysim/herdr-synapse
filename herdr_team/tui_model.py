@@ -2408,6 +2408,10 @@ class PickerRow:
     terminal_id: str = ""
     #: The agent's working directory, used to prefill the project stage.
     cwd: str = ""
+    #: A member to start (``n``), not an agent that runs yet: ``kind`` is the harness (0.20).
+    spawn: bool = False
+    #: One of that harness's own agents or profiles; "" for its default.
+    profile: str = ""
 
 
 @dataclass
@@ -2455,6 +2459,16 @@ class PickerModel:
     rules_lines: List[str] = field(default_factory=list)
     member_index: int = 0
     member_field: str = "role"  # role | name | brief | model
+    #: Members to start (``n``): a harness and an optional profile each, no pane yet (0.20).
+    new_rows: List[PickerRow] = field(default_factory=list)
+    new_counter: int = 0
+    #: What this machine can start (``harnesses.Harness`` rows), loaded by the runtime on the first ``n``.
+    catalog: Optional[List[Any]] = None
+    #: The directory the catalog was read for: project profiles depend on it, and new members start there.
+    catalog_cwd: str = ""
+    new_kind: str = ""
+    new_kind_index: int = 0
+    new_profile_index: int = 0
     status: Optional[str] = None
     paste_mode: bool = False
     # -- the team tree (the select stage) and the member actions on it
@@ -2681,6 +2695,10 @@ def picker_tree(model: PickerModel) -> List[PickerNode]:
                 member=tree_member(member, charter, who.get(name), row),
                 row=row,
             ))
+    if model.new_rows:
+        nodes.append(PickerNode(kind="new_section", key="section:new", label="new agents to start", count=len(model.new_rows)))
+        for row in model.new_rows:
+            nodes.append(PickerNode(kind="new", key="new:" + row.pane_id, label=new_label(row), row=row))
     free = [r for r in visible_rows(model) if not r.claimed_by]
     if model.rosters:
         nodes.append(PickerNode(kind="section", key="section:unassigned", label="not in a team"))
@@ -2796,7 +2814,8 @@ def selectable(row: PickerRow) -> bool:
 
 
 def selected_rows(model: PickerModel) -> List[PickerRow]:
-    return [r for r in model.rows if r.selected]
+    """The live agents picked, then the members to start (always part of the selection until removed)."""
+    return [r for r in model.rows if r.selected] + [r for r in model.new_rows if r.selected]
 
 
 def normalize_team_name(raw: str) -> str:
@@ -2850,7 +2869,7 @@ def suggest_name(base: str, taken: Iterable[str], cap: int = MAX_MEMBER_NAME_CHA
 def taken_names(model: PickerModel, exclude: Optional[PickerRow] = None) -> Set[str]:
     """Live agent names plus names already chosen for other selected rows."""
     names: Set[str] = set()
-    for row in model.rows:
+    for row in list(model.rows) + list(model.new_rows):
         if row is exclude:
             continue
         if row.name:
@@ -2894,10 +2913,13 @@ def create_spec(model: PickerModel) -> Dict[str, Any]:
                 "brief": row.brief or None,
                 "setting": row.setting or None,
                 "renamed": bool(row.name and row.name != row.member_name),
+                "spawn": row.spawn,
+                "profile": row.profile or None,
+                "cwd": row.cwd or None,
             }
         )
     return {"team": model.team_name, "charter": model.charter or None, "rules": model.rules or None, "project": model.project or None,
-            "naming": "prefixed", "members": members, "mode": model.mode}
+            "naming": "prefixed", "members": members, "mode": model.mode, "workspace": model.focused_workspace}
 
 
 def _set_input(model: PickerModel, text: str) -> None:
@@ -2919,6 +2941,11 @@ def _begin_member_field(model: PickerModel) -> None:
     row = rows[model.member_index]
     if model.member_field == "role":
         _set_input(model, row.role or default_role(row))
+    elif model.member_field == "name" and row.spawn:
+        # ``create --new`` names a member it starts <team>-<role>; nothing to type
+        row.member_name = default_member_name(model, row) or ""
+        model.member_field = "brief"
+        _set_input(model, row.brief or "")
     elif model.member_field == "name":
         if row.member_name:
             _set_input(model, row.member_name)
@@ -3000,6 +3027,10 @@ def picker_apply_key(model: PickerModel, key: str) -> Optional[Intent]:
         return _charter_key(model, key)
     if model.stage == "members":
         return _members_key(model, key)
+    if model.stage == "new_harness":
+        return _new_harness_key(model, key)
+    if model.stage == "new_profile":
+        return _new_profile_key(model, key)
     if model.stage == "confirm":
         if key == "ENTER":
             return Intent("create", create_spec(model))
@@ -3047,6 +3078,17 @@ def _select_key(model: PickerModel, key: str) -> Optional[Intent]:
     if key == "END":
         model.cursor = max(0, len(nodes) - 1)
         return None
+    if key == "n":
+        return _begin_new(model, node)
+    if node is not None and node.kind in ("new", "new_section"):
+        if node.kind == "new" and key in (" ", "SPACE", "x", "BACKSPACE", "DELETE") and node.row is not None:
+            model.new_rows = [r for r in model.new_rows if r is not node.row]
+            model.status = "removed the new {}".format(new_label(node.row))
+            return None
+        if key == "ENTER":
+            return _advance_from_select(model)
+        if key in (" ", "SPACE", "x"):
+            return None
     if key == "r":
         return Intent("refresh")
     if key == "w":
@@ -3350,7 +3392,7 @@ def _toggle_agent(model: PickerModel, row: Optional[PickerRow]) -> None:
 
 def _advance_from_select(model: PickerModel) -> Optional[Intent]:
     if not selected_rows(model):
-        model.error = "select at least one agent (Space toggles, a selects all)"
+        model.error = "select at least one agent (Space toggles, a selects all), or press n to start a new one"
         return None
     if model.existing_teams:
         model.stage = "target"
@@ -3359,6 +3401,7 @@ def _advance_from_select(model: PickerModel) -> Optional[Intent]:
         return None
     model.mode = "create"
     model.stage = "name"
+    model.status = None
     _set_input(model, model.team_name)
     return None
 
@@ -3585,6 +3628,130 @@ def _finish_project(model: PickerModel) -> Optional[Intent]:
     return None
 
 
+def new_label(row: PickerRow) -> str:
+    return "{}{}".format(row.kind or "?", "/" + row.profile if row.profile else "")
+
+
+def installed_harnesses(model: PickerModel) -> List[Any]:
+    return [h for h in (model.catalog or []) if getattr(h, "installed", False)]
+
+
+def harness_for(model: PickerModel, kind: Optional[str]) -> Optional[Any]:
+    return next((h for h in model.catalog or [] if getattr(h, "kind", None) == kind), None)
+
+
+def profile_choices(model: PickerModel, kind: str) -> List[Tuple[str, str]]:
+    """``(profile, label)`` rows of the profile stage: the harness default first, then what it lists."""
+    harness = harness_for(model, kind)
+    out: List[Tuple[str, str]] = [("", "the harness default")]
+    for profile in (getattr(harness, "profiles", None) or []):
+        if profile.selectable:
+            desc = " ".join(str(profile.description or "").split())
+            out.append((profile.name, profile.name + ("  " + desc if desc else "")))
+    return out
+
+
+def model_hint(model: PickerModel, row: PickerRow) -> Optional[str]:
+    """One line naming what this harness can run, when the catalog is loaded."""
+    harness = harness_for(model, row.kind)
+    listing = getattr(harness, "models", None)
+    if listing is None or not listing.models:
+        return None
+    visible = [m for m in listing.models if not m.hidden]
+    names = [m.id for m in visible[:6]]
+    more = len(visible) - len(names)
+    efforts = sorted({e for m in visible for e in (m.efforts or [])}, key=lambda e: (list(harness.efforts or []) + [e]).index(e))
+    return "{} runs: {}{}{} (herdr-synapse available {})".format(
+        row.kind, ", ".join(names), ", … {} more".format(more) if more > 0 else "",
+        "; efforts " + " ".join(efforts) if efforts else "", row.kind)
+
+
+def _begin_new(model: PickerModel, node: Optional[PickerNode]) -> Optional[Intent]:
+    """``n``: choose a harness to start a new member with; the runtime loads the list on first use."""
+    if model.catalog is None:
+        cwd = ""
+        if node is not None and node.row is not None and node.row.cwd:
+            cwd = node.row.cwd
+        else:
+            cwd = next((r.cwd for r in selected_rows(model) if r.cwd), "")
+        return Intent("load_catalog", {"cwd": cwd})
+    return open_new_harness(model)
+
+
+def open_new_harness(model: PickerModel) -> None:
+    rows = installed_harnesses(model)
+    if not rows:
+        model.error = "no harness Herdr can start is on PATH here"
+        model.stage = "select"
+        return None
+    model.new_kind_index = min(max(0, model.new_kind_index), len(rows) - 1)
+    model.stage = "new_harness"
+    model.status = None
+    model.error = None
+    return None
+
+
+def _move_index(index: int, count: int, key: str, page: int) -> int:
+    if key in ("UP", "k"):
+        index -= 1
+    elif key in ("DOWN", "j"):
+        index += 1
+    elif key == "PGUP":
+        index -= max(1, page)
+    elif key == "PGDN":
+        index += max(1, page)
+    elif key == "HOME":
+        index = 0
+    elif key == "END":
+        index = count - 1
+    return min(max(0, index), max(0, count - 1))
+
+
+def _new_harness_key(model: PickerModel, key: str) -> Optional[Intent]:
+    rows = installed_harnesses(model)
+    model.error = None
+    if key in ("ESC", "q") or not rows:
+        model.stage = "select"
+        return None
+    if key in ("UP", "k", "DOWN", "j", "PGUP", "PGDN", "HOME", "END"):
+        model.new_kind_index = _move_index(model.new_kind_index, len(rows), key, model.page_rows)
+        return None
+    if key == "ENTER":
+        harness = rows[min(model.new_kind_index, len(rows) - 1)]
+        model.new_kind = harness.kind
+        if len(profile_choices(model, harness.kind)) > 1:
+            model.new_profile_index = 0
+            model.stage = "new_profile"
+            return None
+        _add_new_row(model, harness.kind, "")
+    return None
+
+
+def _new_profile_key(model: PickerModel, key: str) -> Optional[Intent]:
+    choices = profile_choices(model, model.new_kind)
+    model.error = None
+    if key in ("ESC", "q"):
+        model.stage = "new_harness"
+        return None
+    if key in ("UP", "k", "DOWN", "j", "PGUP", "PGDN", "HOME", "END"):
+        model.new_profile_index = _move_index(model.new_profile_index, len(choices), key, model.page_rows)
+        return None
+    if key == "ENTER":
+        _add_new_row(model, model.new_kind, choices[min(model.new_profile_index, len(choices) - 1)][0])
+    return None
+
+
+def _add_new_row(model: PickerModel, kind: str, profile: str) -> None:
+    model.new_counter += 1
+    row = PickerRow(pane_id="new-{}".format(model.new_counter), workspace_id=model.focused_workspace or "", tab_id="", kind=kind,
+                    name=None, agent_status="new", launch_pending=False, selected=True, spawn=True, profile=profile,
+                    cwd=model.catalog_cwd)
+    model.new_rows.append(row)
+    model.stage = "select"
+    focus_node(model, "new:" + row.pane_id)
+    model.status = "new {} added; n adds another, Enter continues".format(new_label(row))
+
+
 def _members_key(model: PickerModel, key: str) -> Optional[Intent]:
     rows = selected_rows(model)
     if not rows:
@@ -3595,7 +3762,7 @@ def _members_key(model: PickerModel, key: str) -> Optional[Intent]:
         if model.member_field == "model":
             model.member_field = "brief"
         elif model.member_field == "brief":
-            model.member_field = "name"
+            model.member_field = "role" if row.spawn else "name"
         elif model.member_field == "name":
             model.member_field = "role"
         elif model.member_index > 0:
@@ -3620,6 +3787,9 @@ def _members_key(model: PickerModel, key: str) -> Optional[Intent]:
             err = validate_role_local(role)
             if err:
                 model.error = err
+                return None
+            if row.spawn and any(r.spawn and r is not row and r.role == role for r in rows):
+                model.error = "another new member already has role {}; give each new member its own role".format(role)
                 return None
             if role != row.role:
                 row.member_name = ""
@@ -3651,10 +3821,19 @@ def _members_key(model: PickerModel, key: str) -> Optional[Intent]:
                 from herdr_team.errors import HerdrTeamError as _Err
 
                 try:
-                    _models.validate(row.kind, *_models.parse_setting(value))
+                    parsed = _models.parse_setting(value)
+                    _models.validate(row.kind, *parsed)
                 except _Err as err:
                     model.error = err.message
                     return None
+                harness = harness_for(model, row.kind)
+                if harness is not None:
+                    from herdr_team import harnesses as _harnesses
+
+                    problem = _harnesses.model_problem(str(row.kind), harness.models, *parsed)
+                    if problem is not None:
+                        model.error = problem.message
+                        return None
             row.setting = value
             model.member_index += 1
             model.member_field = "role"
@@ -4031,7 +4210,7 @@ def _tree_lines(model: PickerModel, width: int, height: int) -> List[str]:
     if model.scope_workspace:
         scope = "  unassigned: {}".format(model.scope_workspace)
     picked = len(selected_rows(model))
-    keys = "Enter acts | Space picks | s restore team | g go to pane | b board | c connect | v map | f folder | x dissolve | w scope | a all | r refresh | Esc quit"
+    keys = "Enter acts | Space picks | s restore team | g go to pane | b board | c connect | v map | f folder | x dissolve | w scope | a all | n new agent | r refresh | Esc quit"
     head = "{} team{} · {} agent{}{}".format(teams, "" if teams == 1 else "s", agents, "" if agents == 1 else "s", scope)
     if picked:
         head += " · {} selected".format(picked)
@@ -4054,6 +4233,12 @@ def _tree_lines(model: PickerModel, width: int, height: int) -> List[str]:
             lines.append(truncate_columns("{}{} ({})".format(pointer, node.label, free), width))
         elif node.kind == "tab":
             lines.append(truncate_columns(pointer + "  " + _tab_header(model, node), width))
+        elif node.kind == "new_section":
+            lines.append(truncate_columns("{}{} ({})".format(pointer, node.label, len(model.new_rows)), width))
+        elif node.kind == "new":
+            row = node.row
+            lines.append(truncate_columns("{}  [+] new {:<24} {}".format(
+                pointer, node.label, "role {}".format(row.role) if row is not None and row.role else "starts in a new pane"), width))
         else:
             row = node.row
             mark = "[x]" if row is not None and row.selected else "[ ]"
@@ -4079,7 +4264,7 @@ def _tree_detail(model: PickerModel, nodes: List[PickerNode]) -> str:
     """The line under the list: what Enter would do to the row under the cursor."""
     node = nodes[model.cursor] if nodes else None
     if node is None:
-        return "no agents; start one in a pane, then press r"
+        return "no agents yet: n starts a new one, or start one in a pane and press r"
     if node.kind == "team":
         if selected_rows(model):
             return "Enter adds the selected agents to {}".format(node.team)
@@ -4097,6 +4282,11 @@ def _tree_detail(model: PickerModel, nodes: List[PickerNode]) -> str:
         return "Enter opens actions for {}{} · goal: {}".format(node.label, location, headline(goal, 40) if goal else "(none yet)")
     if node.kind == "section":
         return "agents that belong to no team; Space picks them, Enter continues"
+    if node.kind == "new_section":
+        return "members to start in new panes; n adds another, Enter continues"
+    if node.kind == "new":
+        return "a new {} member{}; Space or x removes it, n adds another, Enter continues".format(
+            node.row.kind if node.row is not None else "?", " with profile " + node.row.profile if node.row is not None and node.row.profile else "")
     if node.kind == "tab":
         if selected_rows(model):
             return "Enter continues with the agents you picked · Space folds tab {}".format(node.label)
@@ -4255,14 +4445,45 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
         lines.append("  <dir>/.herdr-synapse/{}/ ; leave empty for no folder".format(model.team_name))
         lines.append(INPUT_PROMPT + model.input)
         has_input = True
+    elif model.stage == "new_harness":
+        rows = installed_harnesses(model)
+        lines.append("Start a new member: which harness? (Enter picks, Esc back)")
+        lines.append("from {}".format(model.catalog_cwd or "here"))
+        options = []
+        for index, harness in enumerate(rows):
+            profiles = [p.name for p in (harness.profiles or []) if p.selectable]
+            models_count = len([m for m in harness.models.models if not m.hidden]) if harness.models is not None else 0
+            bits = []
+            if profiles:
+                bits.append("{} profile{}".format(len(profiles), "" if len(profiles) == 1 else "s"))
+            if models_count:
+                bits.append("{} model{}".format(models_count, "" if models_count == 1 else "s"))
+            if model.trusted_kinds is not None and harness.kind not in model.trusted_kinds:
+                bits.append("not trusted for delivery yet")
+            options.append([("> " if index == model.new_kind_index else "  ") + "{:<10} {}".format(harness.kind, " · ".join(bits))])
+        lines.extend(_option_window(options, model.new_kind_index, max(1, height - len(lines) - 2)))
+    elif model.stage == "new_profile":
+        choices = profile_choices(model, model.new_kind)
+        lines.append("New {} member: which profile? (Enter picks, Esc back)".format(model.new_kind))
+        lines.append("a profile is one of {}'s own agents or configurations".format(model.new_kind))
+        options = [[truncate_columns(("> " if index == model.new_profile_index else "  ") + label, width)] for index, (_name, label) in enumerate(choices)]
+        lines.extend(_option_window(options, model.new_profile_index, max(1, height - len(lines) - 2)))
     elif model.stage == "members":
         rows = selected_rows(model)
         row = rows[min(model.member_index, len(rows) - 1)]
         joining = " (adding to team {})".format(model.team_name) if model.mode == "add" else ""
-        lines.append("Member {}/{}: {} {} {}{}".format(model.member_index + 1, len(rows), row.pane_id, row.kind or "?", row.name or "(unnamed)", joining))
+        if row.spawn:
+            named = row.member_name or (default_member_name(model, row) if row.role else None) or "{}-<role>".format(model.team_name or "<team>")
+            lines.append("Member {}/{}: new {} · named {} when it starts{}".format(model.member_index + 1, len(rows), new_label(row), named, joining))
+        else:
+            lines.append("Member {}/{}: {} {} {}{}".format(model.member_index + 1, len(rows), row.pane_id, row.kind or "?", row.name or "(unnamed)", joining))
         lines.append("Enter accepts the value shown, Ctrl-U clears it, Esc goes back")
         prompt = {"role": "role", "name": "name", "brief": "Mission / brief for {} (required)".format(row.member_name or "this member"),
                   "model": "model@effort for {} (optional, e.g. opus@medium or @high; Enter keeps the harness default)".format(row.member_name or "this member")}[model.member_field]
+        if model.member_field == "model":
+            hint = model_hint(model, row)
+            if hint:
+                lines.append(hint)
         lines.append(prompt + ":")
         lines.append(INPUT_PROMPT + model.input)
         has_input = True
@@ -4275,9 +4496,14 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
             lines.append("Create team {}? (Enter creates, Esc back)".format(model.team_name))
             lines.append("charter: {}".format(headline(model.charter, 60) if model.charter else "(none, set later with charter set)"))
             lines.append("rules: {}".format(headline(model.rules, 60) if model.rules else "(none, set later with knowledge set)"))
+        kind_width = max([10] + [len(new_label(r)) for r in selected_rows(model) if r.spawn])
         for row in selected_rows(model):
-            lines.append("  {:<8} {:<10} {:<14} {}{}{}".format(row.pane_id, row.kind or "?", row.role, row.member_name,
-                                                              "  brief: " + headline(row.brief, 30) if row.brief else "", "  model: " + row.setting if row.setting else ""))
+            lines.append("  {:<8} {:<{kw}} {:<14} {}{}{}".format("new" if row.spawn else row.pane_id, new_label(row) if row.spawn else (row.kind or "?"),
+                                                              row.role, row.member_name,
+                                                              "  brief: " + headline(row.brief, 30) if row.brief else "", "  model: " + row.setting if row.setting else "",
+                                                              kw=kind_width))
+        if any(row.spawn for row in selected_rows(model)):
+            lines.append("new members start in their own panes in a team:{} tab, then are briefed".format(model.team_name))
         if model.trusted_kinds is not None:
             untrusted = sorted({str(row.kind) for row in selected_rows(model) if row.kind and row.kind not in model.trusted_kinds})
             for kind in untrusted:

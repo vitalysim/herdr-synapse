@@ -9,6 +9,7 @@ there.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import time as _time
 from typing import Any, Dict, List, Optional, Sequence
@@ -81,6 +82,22 @@ def _start_agent(api: Any, name: str, kind: str, pane_id: str, sleep: Any = None
             sleeper(AGENT_START_RETRY_S)
             continue
         raise HerdrTeamError("agent_start_failed", "agent start {} in {} failed: {}".format(name, pane_id, text.strip()[:300]), EXIT_REFUSED, {"pane_id": pane_id, "name": name})
+
+
+_NAME_HOLDER = re.compile(r"pane_id=([A-Za-z0-9:_.-]+)")
+
+
+def name_held_by_own_pane(text: str, pane_id: str) -> bool:
+    """``agent_name_taken`` naming only ``pane_id`` as the holder: the name of the agent that just exited there.
+
+    Herdr 0.9.1 releases an exited agent's name a moment after its pane
+    empties, so a restart that starts the same name in the same pane at once
+    can find it still held by itself. Any other holder is a real conflict.
+    """
+    if "agent_name_taken" not in (text or ""):
+        return False
+    holders = _NAME_HOLDER.findall(text)
+    return bool(holders) and all(holder == pane_id for holder in holders)
 
 
 def _pane_terminal(api: Any, pane_id: str) -> Optional[str]:

@@ -408,6 +408,10 @@ class Member:
     #: to the team default for the kind, then to the harness's own default.
     model: Optional[str] = None
     effort: Optional[str] = None
+    #: The harness's named setup this member launches with (0.20): an OpenCode
+    #: or Claude Code agent, or a Codex profile (``models.PROFILE_FLAGS``).
+    #: None means the harness's own default.
+    profile: Optional[str] = None
     #: Next-launch override; None inherits the team default, which defaults to YOLO.
     permissions: Optional[str] = None
     previous_names: List[Dict[str, Any]] = field(default_factory=list)
@@ -455,6 +459,8 @@ class Member:
             obj["model"] = self.model
         if self.effort:
             obj["effort"] = self.effort
+        if self.profile:
+            obj["profile"] = self.profile
         if self.permissions is not None:
             obj["permissions"] = self.permissions
         if self.previous_names:
@@ -506,6 +512,7 @@ class Member:
             manager=bool(obj.get("manager", False)),
             model=str(obj["model"]) if isinstance(obj.get("model"), str) and obj.get("model") else None,
             effort=str(obj["effort"]) if isinstance(obj.get("effort"), str) and obj.get("effort") else None,
+            profile=str(obj["profile"]) if isinstance(obj.get("profile"), str) and obj.get("profile") else None,
             permissions=obj.get("permissions"),
             previous_names=[dict(p) for p in previous if isinstance(p, dict)],
             swap=obj.get("swap") if isinstance(obj.get("swap"), dict) else None,
