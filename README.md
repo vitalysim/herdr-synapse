@@ -293,7 +293,14 @@ What the conditional cells mean:
   Claude switches both live. OpenCode switches effort live through its variant
   picker; model changes use a controlled restart. Codex applies both at resume
   or controlled restart, as does Pi. All four paths preserve the member's exact session
-  and were live-verified.
+  and were live-verified. The models each harness offers are read from the
+  harness (`available`): Codex's own model cache (with each model's efforts),
+  `opencode models`, `pi --list-models`; Claude takes any name, so Synapse
+  shows the names it knows without refusing others.
+- **Profiles:** OpenCode and Claude Code agents (`--agent`) and Codex profiles
+  (`-p`); a Claude agent switch through `profile --apply restart` was
+  live-verified. Kimi's `--agent` works only in its experimental print mode, so
+  Kimi has none, and no other kind has one Synapse can select.
 - **Context gauge:** Codex supplies its effective window at runtime. OpenCode
   supplies the active provider/model and its standard catalog limit, but custom
   `opencode.json` limit overrides are not read yet. Claude supplies exact usage
@@ -436,6 +443,7 @@ herdr-synapse skill check           # the skill is installed and current
 herdr-synapse hooks check claude    # SessionStart=yes, UserPromptSubmit=yes, Stop=yes
 herdr-synapse daemon status         # notifier alive, socket, teams
 herdr-synapse doctor                # warns about anything missing, including stale sidebar rows
+herdr-synapse available             # the harnesses, profiles and models you can start
 ```
 
 Then end to end, with two agents running:
@@ -655,7 +663,7 @@ or share as a folder of Markdown.
 
 ## The teams view
 
-`prefix+t` shows every team with its members underneath and the unassigned agents below, grouped by their Herdr tab name and stable tab ID so duplicate names remain easy to locate. Each tab group is collapsible and each agent row keeps its pane ID visible. Each team header names its manager and the teams it is linked to; each manager row is marked `★`.
+`prefix+t` shows every team with its members underneath, any new agents you are about to start (`n`), and the unassigned agents below, grouped by their Herdr tab name and stable tab ID so duplicate names remain easy to locate. Each tab group is collapsible and each agent row keeps its pane ID visible. Each team header names its manager and the teams it is linked to; each manager row is marked `★`.
 
 | Key | What it does |
 | --- | --- |
@@ -789,13 +797,17 @@ The replacement starts a **fresh conversation**. Its briefing includes the
 saved member instructions and recent relevant board context; project files
 stay in place. The old agent does not need to produce a final summary.
 Native conversation history is not converted between agents. Previous
-conversation references and model settings are retained for recovery.
+conversation references, model settings and profiles are retained for recovery.
+A swap within the same harness keeps the member's profile; `--profile NAME`
+picks one for the destination harness (checked against its list), and a
+profile never crosses harnesses.
 
 The equivalent CLI supports preview, an optional handoff note, and recovery:
 
 ```bash
 herdr-synapse --team hunt swap hunt-reviewer --to codex --dry-run
 herdr-synapse --team hunt swap hunt-reviewer --to codex --handoff-file handoff.md
+herdr-synapse --team hunt swap hunt-reviewer --to opencode --profile plan
 herdr-synapse --team hunt swap hunt-reviewer --status
 herdr-synapse --team hunt swap hunt-reviewer --retry
 ```
@@ -898,11 +910,20 @@ then the harness default. The setting travels with the session: `resume`
 reopens the member with the same flags, and Herdr's `agent.start` receives
 them as arguments, never as a shell string.
 
+`herdr-synapse available <harness>` lists the models this machine can run with
+that harness, and for Codex the efforts each model takes. `create`, `add`,
+`model` and `models set` refuse a model or an effort the harness does not list
+and name the closest ones; `--unlisted` passes it anyway, for a model newer
+than the harness's own list.
+
 The permission policy below applies independently of model choice. YOLO is the default; `native` omits Synapse’s bypass flags. An already-running agent added to a team keeps its current mode until a Synapse-managed launch.
 
 `--apply restart` exits the agent cleanly and resumes its own session with the
-new flags; the member is never marked missing while that is in progress, and
-both the exit and the return are bounded. Controlled restarts preserve the
+new flags and its profile; the member is never marked missing while that is in
+progress, and both the exit and the return are bounded. It needs the notifier,
+and is refused before anything changes when none runs. On Herdr 0.9.1 the
+notifier also waits out the moment Herdr keeps the exited agent's name before
+it starts the agent again. Controlled restarts preserve the
 harness's allowlisted non-permission flags, rebuild the saved permission policy, and Codex restarts suppress its update
 picker so the requested model cannot be stranded behind a startup screen. Who
 may change a setting: the
@@ -912,7 +933,9 @@ team, and `who` shows the configured setting beside what the harness actually
 reports, so a request that never took effect is visible rather than assumed.
 
 The same setting is asked for in the `prefix+t` wizard after role, name and
-brief, is action 9 in a member's menu, and is `/model` in the console.
+brief (a new member has no name to type; it is named `<team>-<role>`), with the
+harness's models shown and checked when the popup has read them; it is action
+9 in a member's menu, and `/model` in the console.
 
 ## The team folder
 
@@ -963,9 +986,10 @@ opt-in that nudges.
 
 ## Letting an agent run the team
 
-Everything in this README is one CLI, so an agent can drive it: create a team,
-spawn its members into fresh panes, hand out roles, briefs and models, post
-the work, link up with another team's manager, and read the board back. The
+Everything in this README is one CLI, so an agent can drive it: see what it
+can start (`herdr-synapse available --json`), create a team, spawn its members
+into fresh panes, hand out roles, briefs, profiles and models, post the work,
+link up with another team's manager, and read the board back. The
 documents that carry your authority are the exception: the charter, the team
 rules, and each member's instructions are yours, and a member is refused when
 it tries to write them. Removing or renaming an existing member also requires
@@ -1138,8 +1162,8 @@ herdr-synapse who                      # each member now shows its session
 | You want the old conversation back | `herdr-synapse resume <name>` from a shell pane |
 
 `resume` runs the exact command Herdr's own restore would use, in the
-member's directory and with the member's model flags, and the pane becomes
-that agent:
+member's directory and with the member's profile and model flags, and the pane
+becomes that agent:
 
 ```bash
 herdr-synapse resume vuln-hunt-reviewer           # e.g. codex resume 01a077d4-…
@@ -1446,8 +1470,8 @@ but a durable ledger tombstone prevents the sweep from recreating it forever;
 `nudge --force` explicitly retries it.
 
 System events follow one delivery table: a charter or rules change wakes
-every idle member, a context warning or a model change reaches the member it
-names through the same gates, a link announcement reaches both managers, and
+every idle member, a context warning or a model or profile change reaches the
+member it names through the same gates, a link announcement reaches both managers, and
 receipts wake nobody. They remain visible board awareness, but never fall
 through the catch-up sweep or hold Claude's Stop hook open as if they were
 peer mail.
@@ -1497,6 +1521,11 @@ just written it; a schedule that fails toasts you and wakes nobody.
   restarted, cleared or swapped since its claim is refused
   (`attempt_fenced`). Only a named reviewer approves an item, or you in its
   place.
+- `available` and the model and profile checks only read what the harnesses
+  already keep on this machine: their list commands, caches and agent folders.
+  They never call a provider or start an agent. A profile, model or effort a
+  harness does not list is refused before anything starts, unless you pass
+  `--unlisted`.
 - Emergency stop: `herdr-synapse daemon stop`. Nothing is typed anywhere after
   that. `herdr plugin disable herdr-synapse` removes the plugin's sidebar
   tokens and view within seconds.
