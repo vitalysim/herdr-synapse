@@ -24,3 +24,7 @@ Rules:
   (`herdr-synapse fact add ... --source ...`).
 
 `herdr-synapse work next` lists the items waiting for you.
+
+When `me` says `whiteboard: on` and the work is a drawing, point at what is
+wrong with a comment on that element (`herdr-synapse canvas comment E-7
+"@owner <what to fix>"`) rather than redrawing it.

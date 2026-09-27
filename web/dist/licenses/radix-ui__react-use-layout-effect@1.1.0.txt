@@ -1,0 +1,5 @@
+@radix-ui/react-use-layout-effect 1.1.0
+license: MIT
+homepage: https://radix-ui.com/primitives
+
+This package ships no licence file. Its package.json declares: MIT.

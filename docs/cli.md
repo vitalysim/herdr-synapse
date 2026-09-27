@@ -260,7 +260,8 @@ rebinds a member to another terminal.
 
 ### `resume <name> [--print]` (human only)
 
-The argv carries the member's effective model and effort flags (section 9c);
+The argv carries the member's effective model and effort flags (section 9c),
+and, while the team's canvas is on, the canvas MCP flags (section 9n);
 `--print` shows them.
 
 Reopens a member's **own** harness session in the pane you run it from.
@@ -638,8 +639,14 @@ From a member pane. JSON:
  "brief":"…"|null,"charter":{"seq":3,"headline":"…"}|null,"teammates":[{"name","role","kind","status"}],
  "unread":2,"cursor":41,"verified":true,"via":"cli","skill_version":1,"skill_installed":1|null,"skill_ok":true,
  "cli":"/abs/path/herdr-synapse","notifier":"alive","session":"…f01a83b5a560"|null,
- "instructions_path":"…","knowledge_path":"…","board_path":"…","instructions_stale":false}
+ "instructions_path":"…","knowledge_path":"…","board_path":"…","instructions_stale":false,
+ "whiteboard":{"team":"vuln-hunt","layer":true,"enabled":true,"viz_enabled":true,"on":true,"viz":true,"version":42|null,
+               "line":"whiteboard: on · live visuals on · canvas v42; how to draw: herdr-synapse skill get --reference canvas"}}
 ```
+
+`whiteboard.line` is also a line of `me`, `orient`, the Claude session-start
+context and `brief --format context`: `whiteboard: off`, `whiteboard: off for
+this team`, or the `on` form above (`version` only while on; section 9n).
 
 `session` is the tail of the harness session id the roster holds for you
 (the full record is `session` in `team.json`); human output shows it with the
@@ -1528,10 +1535,14 @@ popup, Enter focuses an agent card's pane, otherwise shows its `argv`.
 
 ## 9k. Skill guides
 
-`skill get [worker|manager|reviewer|librarian] [--reference work|facts|recall|coordination] [--list]`
+`skill get [worker|manager|reviewer|librarian] [--reference work|facts|recall|coordination|canvas] [--list]`
 prints a guide from `<plugin>/skill-guides`, headed `<!-- herdr-synapse <guide>
 guide, skill vN -->`. The default is `manager` for the team manager and `worker`
 otherwise. The installed `SKILL.md` stays the safety floor and tells agents to load it.
+The `canvas` reference is listed and served only while the caller's team canvas
+is on (a person with no team: while the layer is on); otherwise `--reference
+canvas` refuses `reference_unknown`, so an agent is never taught a tool it
+cannot use.
 
 ## 9l. Schedules
 
@@ -1740,8 +1751,16 @@ Never fails on warnings; `ok:false` only on hard problems. JSON:
  "toast_delivery":"terminal","daemon":{…as daemon status…},
  "teams":[{"team","members","missing":n}],"console":{"open":bool,"pane_id"},
  "remote":{…as remote status, without the session fields…}|null,
+ "whiteboard":{"session":{"enabled","by","via","at"},"teams":{"<team>":{"enabled","viz","on","viz_on","by","at"}},
+               "page":{"running":true,"pid","port","url","writable","idle_minutes"}|{"running":false},
+               "watched":[{"name","pane_id","team"}],"warnings":["…"]},
  "warnings":["…"],"errors":["…"]}
 ```
+
+`whiteboard` reports the three switch levels, the page server and the watched
+agents (section 9n). Its warnings join the list: a page server running while
+the layer is off or unused for a day, and agents watched while the sidebar
+rows lack `$team_doing` or while the layer is off.
 
 Among the warnings: a paired phone channel (section 9e), what it sends, and
 whether it is outbound-only; and a team whose `project_dir` has been deleted or has become
@@ -1758,7 +1777,7 @@ of failing, so the config blocks always print.
 
 ### `keys print` / `keys check`
 
-`print` → `{"snippet":"<toml>","keys":{"team-up":"prefix+t","compose":"prefix+m","console":"prefix+u","toggle-view":"prefix+y","usage":"prefix+i","knowledge":"prefix+f"}}`.
+`print` → `{"snippet":"<toml>","keys":{"team-up":"prefix+t","compose":"prefix+m","console":"prefix+u","toggle-view":"prefix+y","usage":"prefix+i","knowledge":"prefix+f","mission":"prefix+d","whiteboard":"prefix+a"}}`.
 `check` runs `herdr config check` → `{"ok":bool,"collisions":[{"key","bound_to"}],"output":"…"}`.
 
 ### `skill install [--force]` / `skill check`
@@ -2039,6 +2058,474 @@ No CLI author ever carries `via: "remote"`, and `Author.trusted_human` does
 not accept it, so it never passes an authority gate: it cannot change a
 charter, rules, grants, links, or this policy.
 
+## 9n. Whiteboard, canvas and watch (0.21)
+
+A visual layer over the teams: a shared canvas per team that agents and the
+operator draw on, a local page that shows it with the team's generated views,
+and watch, which shows what any flagged agent is doing. The build contract is
+`.local/prd/canvas-contracts.md`; this section is the user-facing command and
+JSON contract.
+
+### Switches
+
+| Level | Stored in | Default | Who flips it | Command |
+| --- | --- | --- | --- | --- |
+| the layer, this Herdr session | `<session>/features.json` `{"v":1,"whiteboard":{"enabled","by","via","at"}}` | **off** | the operator in person | `whiteboard enable` / `disable` |
+| one team's canvas | `team.json` `config.whiteboard.enabled` | on (absent = on) | the operator or a delegate | `whiteboard team on` / `off` |
+| one team's live visuals (`viz`) | `team.json` `config.whiteboard.viz` | on (absent = on) | the operator or a delegate | `whiteboard viz on` / `off` |
+| one agent's watch | `<session>/watch.json` | not watched | the operator in person | `watch` / `unwatch` |
+
+A team's canvas is on when the layer is on and its own switch is; its live
+visuals when the canvas is on and the viz switch is. Watch needs only the
+layer.
+
+Off means off. With the layer off the page server is not running and cannot
+start, no watch polling runs and no `team_doing` token is shown, every
+`canvas` command and MCP tool refuses `whiteboard_off` (details `scope:
+"session"`) and changes nothing, `look` included, the page API answers 403,
+`me`/`orient`/the briefing say `whiteboard: off`, `skill get` neither lists
+nor serves the `canvas` reference, and members Synapse starts get no MCP
+flags. Nothing stored is deleted. A team switched off is the same for that
+team (`scope: "team"`). Viz off refuses `viz` operations with `viz_off`;
+existing `viz` elements stay and show as their still or placeholder.
+
+Commands that work while off: `whiteboard status`, `enable`, `team on|off`,
+`viz on|off`, `clear`, `purge`, `views`, and `watch list`.
+
+### `whiteboard [status]`
+
+Anyone. JSON:
+
+```json
+{"session":{"enabled":true,"by":"human","via":"console","at":"…"},
+ "teams":{"alpha":{"enabled":true,"viz":true,"on":true,"viz_on":true,"by":null,"at":null,
+                   "canvas":{"version":42,"elements":18,"comments_open":2,"claims_active":1,"updated_at":"…"}|null}},
+ "server":{"v":1,"pid":4242,"port":51234,"start_time":"…","started_at":"…","started_by":{…},"writable":true,"version":"0.21.0","beat_at":"…",
+           "page_at":"…","streams":1,"alive":true,"url":"http://127.0.0.1:51234/","beat_age_s":4.2}|null,
+ "watched":2}
+```
+
+### `whiteboard enable` / `whiteboard disable` (the operator in person)
+
+A trusted human origin only (console, popup, a verified shell, outside
+Herdr); a delegate is refused `author_mismatch`, audited. `disable` also stops
+the page server and clears every watched pane's `team_doing` token, even when
+the layer was already off. When the effective switch of a team changes, that
+team's board gets one `whiteboard_state` record. JSON:
+`{"enabled","changed","by","via","at","notices":{"<team>":<seq>},"server_stopped","tokens_cleared","warnings":[…]}`.
+
+### `whiteboard team on|off` / `whiteboard viz on|off` (the operator or a delegate)
+
+Writes `team.json` `config.whiteboard` (`enabled` or `viz`, plus `by`, `via`,
+`at`) under the roster lock and bumps its revision; a no-op writes nothing.
+A change agents can see posts `whiteboard_state` (nothing while the layer is
+off). JSON `{"team","switch":{"team","layer","enabled","viz_enabled","on","viz"},"changed":["enabled"|"viz"],"notice_seq":<seq>|null,"by":"operator"|"delegate"}`.
+A member without a delegation is refused `author_mismatch`.
+
+### `whiteboard open [--no-browser]` / `whiteboard stop` (people only)
+
+`open` refuses `whiteboard_off` while the layer is off; members and hooks are
+refused `author_mismatch`. It starts the page server if none runs, mints a
+one-use opening ticket (120 s) and opens `http://127.0.0.1:<port>/?ticket=…`
+in the browser with Python's `webbrowser`. Over SSH (`SSH_CONNECTION`,
+`SSH_CLIENT` or `SSH_TTY` set), or when no browser opens, it prints the URL and
+`ssh -L <port>:127.0.0.1:<port> <user>@<host>` to run on the machine with the
+browser. JSON `{"url","port","pid","writable","started","browser":"opened"|"skipped"|"ssh"|"failed","ssh_hint":"…"|null,"ticket_ttl_s":120}`.
+
+The page can draw only when the server was started by a trusted human
+(`writable`); otherwise it is read-only. The plugin action
+`herdr-synapse.whiteboard` (default `prefix+a`) runs as the plugin, which
+cannot vouch for a person, so it opens the `whiteboard` popup, whose command
+(`whiteboard open --popup`) resolves as the operator through the popup tier.
+The popup closes at once when a browser opened, and otherwise shows the URL
+until Enter.
+
+`stop` sends SIGTERM to the pid in `<session>/whiteboard.json` after checking
+its recorded start time. JSON `{"stopped":bool}`. `whiteboard-serve [--port N]`
+(hidden) is the server in the foreground, the command `open` spawns.
+
+### `whiteboard views`
+
+Any member of the team or the operator; works while off (it reads team data
+only). Prints the generated team views as one JSON object (the page's Team
+tab):
+
+```json
+{"team":"alpha","generated_at":"…",
+ "work":{"nodes":[{"id":"W-1","title":"…","status":"in_progress","owner":"alpha-worker","attempt":2,"ready":false,"waiting_on":["W-2"],"review":false}],
+         "edges":[{"from":"W-2","to":"W-1"}]},
+ "facts":{"subjects":[{"about":"Competitor X","facts":[{"id":"F-7","attribute":"price","statement":"…","author":"…","support":2,"status":"current","superseded_by":null,"disputes":["D-1"]}]}],
+          "disputes":[{"id":"D-1","facts":["F-7","F-9"],"mode":"debate","open":true,"about":"…","attribute":"…"}]},
+ "topology":{"team":"alpha","manager":"alpha-lead","members":[{"name","role","kind","profile","status","agent_status","pane_id","color"}],
+             "links":[{"team":"beta","state":"active","manager":"beta-lead"}]},
+ "timeline":[{"seq":12,"ts":"…","kind":"request","event":null,"from":"human","to":["alpha-worker"],"text":"≤ 160 chars"}],
+ "lanes":{"needs_you":[…],"blocked":[…],"working":[…],"done":[…],"idle":[…]},
+ "canvas":{"version":42,"elements":18,"comments_open":2,"claims_active":1,"updated_at":"…"}|null}
+```
+
+Edges run from a dependency to the item that waits on it. A fact's `status`
+is `current`, `retired` or `superseded`; `disputes` lists its open ones and
+`support` counts the distinct members behind it. Subjects are sorted, facts
+with no subject last (`about: null`). `timeline` is the newest 200 board
+records, oldest first, secrets redacted and text clipped. `lanes` is mission
+control for this team (section 9j). `color` is the member's canvas colour
+once it has drawn. `canvas` is null while the team's canvas is off. Every part
+degrades to empty on an unreadable file. Live states come from `who.json`;
+when it has no row for the team, one `agent.list` fills them in.
+
+### `whiteboard clear` (the operator or a delegate) / `whiteboard purge [--all-teams] [--yes]` (the operator in person)
+
+`clear` moves the team's canvas (events, scene, assets, stills) to
+`whiteboard/archive/<utc>/`; ids keep counting. JSON `{"team","archived","version"}`.
+`purge` deletes the stored canvas of this team, or of every team, for good;
+it asks first on a terminal and otherwise refuses `confirmation_required`
+without `--yes`. JSON `{"purged":["alpha"],"teams":["alpha"]}`.
+
+### `canvas …`
+
+Identity as for `post`; members write only as verified members of their own
+team; unverified callers, hooks and startup processes can read only.
+
+```
+canvas look [--region R | --around ID] [--since N|last] [--image] [--grid] [--exact]
+canvas draw [--file PATH|-] [--op JSON]... [--atomic]
+canvas comment AT TEXT [--mention NAME]... [--reply-to C-n] [--intent TEXT]
+canvas claim REGION LABEL [--intent TEXT]
+canvas release [K-n]
+canvas legend SYMBOL MEANING [--intent TEXT] | canvas legend --remove G-n
+canvas portrait (--from-todo | --step TEXT... [--current N]) [--title TEXT]
+canvas changes [--since N|last]
+canvas resolve C-n
+canvas undo B-n
+canvas lock REGION [--label TEXT]            (operator)
+canvas unlock X-n                            (operator)
+canvas send ID... --to NAME [--note TEXT]    (operator)
+canvas export [--format json|md|svg|png] [--region R] [--out PATH]
+canvas helper [--print]
+canvas mcp
+```
+
+**Space.** Canvas units, y down, a grid cell is 20 units. `c<col>r<row>`
+names the point at a cell's top-left (`c17r6` = 340,120); a point is also
+`"x,y"`, `[x,y]` or an element (its centre); a region is `"c10r4:c40r22"`,
+`"x0,y0,x1,y1"`, `[x0,y0,x1,y1]` or an element (its bounds).
+`|x|,|y| ≤ 1,000,000`, sizes up to 20,000. Each author gets a home region
+`[i*1000, -1000, i*1000+800, -400]` the first time it draws; an element with
+no placement goes to the next free slot there. Placement is one of `at`,
+`right_of`, `left_of`, `below`, `above` (with `gap`, default 40) or `inside`.
+
+**Ids.** `E-n` elements (frames too), `C-n` comments, `K-n` claims, `X-n`
+locks, `G-n` legend entries, `B-n` batches, per team, never reused. An op's
+`id` is an alias scoped to its author (`^[A-Za-z][A-Za-z0-9_.-]{0,63}$`, not
+`X-9` shaped); references resolve canonical id, then the author's own alias,
+then an alias exactly one other author uses.
+
+**Operations** (a batch is `{"ops":[…],"atomic":false}` or a list; every op
+has `op` and a one-line `intent`, required from agents; text is cleaned like a
+post, and secrets or marker text refuse):
+
+| `op` | Does | Who |
+| --- | --- | --- |
+| `shape` | box, ellipse, diamond, note or text (`kind`, `text`, placement, `w`, `h`, style); a text's `w` is the width it wraps at and its height follows its lines | writer |
+| `arrow` | `from`/`to` element or point, `label`, `head`, `tail`, `curve`; or `points` | writer |
+| `frame` | a titled frame: placement + size, `children`, or a `region` | writer |
+| `pen` | a freehand stroke: 2..500 `points` (cells or coordinates, optional pressure), `closed`, `style` smooth/straight | writer |
+| `path` | SVG path data (commands and numbers only), `scale` | writer |
+| `svg` | sanitised SVG markup ≤ 100 KB, `sketchy` | writer |
+| `graph` | nodes and edges laid out (`layered`, `radial`, `force`, `grid`) as native shapes | writer |
+| `mermaid` | a flowchart becomes native shapes; other diagrams render on the page | writer |
+| `chart` | a Vega-Lite spec over a file in the team's `artifacts/` (no `url`/`href` keys) | writer |
+| `viz` | HTML and JavaScript for a sealed frame (`libs` ⊆ d3, three, p5; `data` or `data_path`); `synapse.width`/`height` are the frame's size and a lone fixed-size `<canvas>` or `<svg>` is scaled to it; `viz_off` unless the team's viz is on | writer |
+| `image` | a PNG or JPEG from `artifacts/`, `whiteboard/renders/` or the author's cwd (bytes checked) | writer |
+| `comment` | a pinned comment; `@name` and `mentions` post `canvas_sent` | writer |
+| `claim` / `release` | a five-minute region claim (three per author) | writer / own |
+| `legend` | a recorded convention (`symbol`, `meaning`), or `remove` | writer |
+| `move`, `restyle`, `edit`, `delete` | change elements (a text's `w` in a `move` sets the width it wraps at; an edit or a new size measures it again); `if_version` refuses `canvas_stale` | editor |
+| `portrait` | the author's plan as a frame of steps in its home | self |
+| `resolve` | close a comment | its author, a mentioned member, manager, operator |
+| `lock` / `unlock` | an operator region lock | operator |
+| `undo` | restore what a batch touched; an element the undoer could not edit directly now (the operator's arrow the batch re-routed) is left as it is, with an `undo_skipped` warning | its author; manager for agents' batches; operator |
+
+Writer: a verified member, the operator, or a delegate. Editor: the element's
+author, the manager for any agent's element, the operator for anything; the
+human's elements are the operator's alone. Operations inside an operator lock
+refuse `canvas_locked`; inside another author's claim they apply with a
+`inside_claim` warning; overlapping text gets an `overlap` warning, and an
+element that crosses a frame's edge a `frame_edge` warning. `inside` a
+frame (on a new element or a `move`) makes the element its child; the frame
+grows to fit only for its editor and never into a lock, so placing something
+too big inside someone else's frame refuses `element_not_yours`.
+
+**Result** (`draw --json`, the MCP `structuredContent`, the page's `POST /ops`):
+
+```json
+{"team":"alpha","version":44,"batch":"B-12","atomic":false,
+ "applied":[{"index":0,"op":"claim","ids":["K-3"]},{"index":1,"op":"frame","ids":["E-2"],"alias":"drivers"}],
+ "refused":[{"index":5,"op":"pen","code":"canvas_locked","message":"…","details":{"lock":"X-1"}}],
+ "aliases":{"drivers":"E-2"},
+ "warnings":[{"index":4,"code":"inside_claim","message":"…","ids":["E-5"]}],
+ "notices":{"canvas_changed":51,"canvas_sent":[52]}}
+```
+
+Exit 0 when at least one op applied; `canvas_refused` (1, details = the
+result) when every op was refused or an atomic batch was. Batch-level errors
+raise: `whiteboard_off`, `author_unverified`, `canvas_limit` (over 100 ops or
+512 KB), `canvas_rate` (over 300 ops, or 8 MB written to the log, a minute per
+agent, `retry_after_s`), `canvas_busy` (5, the canvas lock). One agent op that
+would write over 2 MB to the log (a move or restyle over many large elements;
+every touched element is logged whole) refuses `canvas_limit`
+(`MAX_OP_CHANGE_BYTES`).
+
+**`look`** lists the region in full, the rest one line each, far clusters by
+author and direction, then the claims, locks, legend and the comments that
+mention the reader; `--since` adds the changes; `--image` renders a PNG with
+element ids (and `--grid` cell labels) through `resvg` when it is installed
+(`image_error: "resvg_missing"` otherwise); `--exact` asks an open page for
+Excalidraw's own export (5 s, else the server render). JSON
+`{"team","version","reader","switch","region","region_cells","level","elements","elsewhere","clusters","omitted","since","changes","claims","locks","legend","comments_for_you","image","svg","image_error","exact","text"}`.
+`look --since last` and `changes` advance the reader's cursor.
+
+Storage, per team under `whiteboard/`: `events.jsonl` (one event per applied
+op, the source of truth), `scene.json`, `cursors/`, `assets/`, `stills/`,
+`renders/`, `exports/`, `notices.json`, `rate.json`, `mcp.json`, `archive/`.
+Nothing is written into the project folder. Every canvas write runs under
+`whiteboard/canvas.lock` (a timeout is `canvas_busy`, exit 5); board records
+are posted only after it is released.
+
+An event (`canvas changes --json`, the page's `ops` stream):
+
+```json
+{"v":1,"seq":43,"ts":"…","batch":"B-12",
+ "author":{"name":"alpha-worker","kind":"member","agent":"claude","via":"mcp","verified":true},
+ "op":"shape","index":3,"intent":"the biggest driver","ids":["E-3","E-2"],
+ "changes":[{"target":"element","action":"add","id":"E-3","value":{…}},{"target":"element","action":"update","id":"E-2","value":{…}}]}
+```
+
+`seq` is the canvas version after the event; folding `changes` in order
+rebuilds the scene. `ids` lists every id the op created or changed, in the
+order of the result's applied ids. An `undo` event also carries `undoes` (the
+`B-` id it reverted), a `portrait` event `portrait: {"current","total"}`, and
+the first event after `whiteboard clear` (`op: "clear"`, no changes) carries
+`counters`, so ids keep counting when the scene is rebuilt from the log.
+
+A `path` element stores `d` normalised: absolute commands, moved so the
+path's own bounds start at 0,0. Its `x`,`y`,`w`,`h` is the placed bounding
+box, and it draws as `translate(x,y) scale(scale)` followed by `d`; a resize
+keeps the aspect ratio by changing `scale`. `if_version` is accepted on every
+op and enforced on `move`, `restyle`, `edit` and `delete`.
+
+`canvas send ID... --to NAME [--note TEXT]` (the operator) renders the
+elements' bounds plus 40 with their ids and posts `canvas_sent` to that
+member; an unknown member refuses `member_not_found`. JSON
+`{"seq","image","svg","elements"}`.
+
+`canvas export` prints the text listing by default (`--format md`); `json` is
+the scene, `svg` and `png` the server render (`--region R`, `--no-marks`
+drops the id badges, `--grid` adds cell dots and names). `--out PATH` writes a
+file instead of printing; `--format png` without `--out` prints the path of
+the render under `whiteboard/renders/`, and refuses `render_unavailable` when
+`resvg` is missing (`$HERDR_SYNAPSE_RESVG`, else `PATH`).
+
+`canvas helper` prints the path of `sketch.py`, a standalone, stdlib-only
+Python helper that builds batches (`--print` prints its source):
+
+```python
+from sketch import Sketch
+s = Sketch(default_intent="map the churn drivers")
+f = s.frame("Churn drivers", at="c10r4", w=600, h=360)
+price = s.shape("note", "Price rise in March", inside=f)
+s.print()   # python3 plan.py | herdr-synapse canvas draw --file -
+```
+
+Each method returns the op's alias. Generated aliases are tagged per run
+(`s<4 characters>.<n>`, for example `s3f9.1`), so running the same script
+twice does not collide with `alias_taken`; `Sketch(prefix=…)` sets the tag.
+
+### The MCP server (`canvas mcp`) and launch-time injection
+
+`canvas mcp` is a stdio MCP server (newline-delimited JSON-RPC 2.0; protocol
+versions 2025-06-18, 2025-03-26, 2024-11-05) named `synapse-canvas`, with
+tools `canvas_look`, `canvas_draw`, `canvas_comment`, `canvas_claim`,
+`canvas_legend` and `canvas_changes`. Each result carries the CLI's text and
+its JSON as `structuredContent`; `canvas_look` with `image` adds the PNG. It
+acts only as a verified member of the team its `--team` names; anything else
+fails `not_a_member`.
+
+Members Synapse starts get it at launch while their team's canvas is on,
+without editing any harness configuration:
+
+| Kind | Appended last to its launch argv |
+| --- | --- |
+| `claude` | `--mcp-config <session>/teams/<team>/whiteboard/mcp.json` |
+| `codex` | `-c mcp_servers.synapse_canvas.command="<plugin>/bin/herdr-synapse"` `-c mcp_servers.synapse_canvas.args=["--socket","<socket>","--team","<team dir>","canvas","mcp"]` |
+| any other kind, Pi included | nothing (the CLI works for every kind; Pi has no `--mcp-config` and exits on an unknown flag) |
+
+`mcp.json` is `{"mcpServers":{"synapse_canvas":{"type":"stdio","command":…,"args":[…]}}}`.
+`create --spawn`, `resume`, `restore` (resumed and fresh) and `swap` build the
+same flags. A controlled restart (`model --apply restart`, `profile --apply
+restart`) carries them from the live argv through its `preserved` flags, and
+only values that are Synapse's own (an absolute `…/whiteboard/mcp.json`, or
+`mcp_servers.synapse_canvas.command|args`): a user's inline `--mcp-config`
+JSON or another `-c` override is dropped. A member started while the canvas
+was off has no MCP tools until it is relaunched; a member whose canvas is
+switched off later keeps the server, whose calls then return `whiteboard_off`.
+In YOLO mode the tools run without prompts; in `native` mode the harness asks
+once.
+
+### The page
+
+A stdlib HTTP server bound to `127.0.0.1` only, on a random free port,
+recorded in `<session>/whiteboard.json` and logging to `whiteboard.log`. It
+stops on `whiteboard stop`, on `disable`, and after 30 minutes with no page
+open. The opening ticket is exchanged once for an `HttpOnly`,
+`SameSite=Strict` cookie and never stays in the address bar; every request
+checks `Host` and `Origin`, every write a CSRF header; the page runs under a
+strict Content-Security-Policy with no remote loads. Agent `viz` code runs only
+in `<iframe sandbox="allow-scripts">` documents served from `/viz/<team>/<id>`
+with their own policy (`connect-src 'none'`); the vendored d3, three and p5 are
+served from `/viz-lib/`. The page itself (Excalidraw, Mermaid, Vega-Lite) is
+prebuilt in `web/dist/` with its licences and a hash list, so nothing needs
+Node to run it. Tabs: Canvas, Team (the views above), Activity (watch cards),
+and Diagrams (every mermaid, chart, viz and svg element with its source).
+
+Security model, in full (a speed bump against the obvious routes, not a
+sandbox against a process running as the same user):
+
+- Loopback only: the server binds `127.0.0.1`, never `0.0.0.0`.
+- The opening ticket is 32 random bytes, valid for 120 s and once; its hash
+  is stored in `<session>/whiteboard-tickets/` (files 0600). `GET /?ticket=`
+  answers `303` to `/` with `synapse_wb=<session>; HttpOnly; SameSite=Strict;
+  Path=/`. Page sessions live in memory (at most 64), so a restarted server
+  needs a new ticket.
+- Every request: `Host` must be `127.0.0.1:<port>` or `localhost:<port>`
+  (`bad_host`); a present `Origin` must be the server's own (`bad_origin`);
+  `Sec-Fetch-Site: cross-site` or `same-site` is refused (`bad_origin`),
+  because another page on another localhost port counts as same-site and
+  would carry the cookie. Every `POST` needs `Origin` and the session's CSRF
+  token in `X-Synapse-CSRF` (`bad_csrf`). No CORS headers except on
+  `/viz-lib/`.
+- The page's CSP allows only its own origin and `wasm-unsafe-eval` (no
+  inline script, no `unsafe-eval`, no remote origins); assets are served
+  under `sandbox`; `/viz/<team>/<id>` documents run under `sandbox
+  allow-scripts` with `connect-src 'none'`, and load scripts only from
+  `/viz-lib/`.
+- The page writes as the operator only when the server was started by the
+  operator in person and the ticket was minted for them; otherwise every
+  write, including stills and exports, answers `403 read_only`. `look
+  --exact` therefore needs a writable page open. `whiteboard open` by the
+  operator restarts a running read-only server as a writable one.
+
+`whiteboard open` passes the starter to the `whiteboard-serve` process in two
+environment variables: `HERDR_SYNAPSE_WB_WRITABLE` (`1` or `0`, default
+read-only) and `HERDR_SYNAPSE_WB_BY` (JSON `{"name","via","verified"}`), plus
+`HERDR_TEAM_STATE_DIR` so the child resolves the same state root.
+
+The JSON API lives under `/api/`: `session`, `teams`, and per team
+`/api/teams/<t>/` `scene`, `changes?since=N`, `ops` (POST), `send` (POST),
+`uploads` (POST, PNG or JPEG), `stills/<id>?v=N` (POST), `exports/<id>`
+(POST), `assets/<name>`, `artifact?path=`, `text?ids=E-1,C-2`, `views`; plus
+`/api/activity?team=` and the event stream `/api/stream?team=&since=` (`hello`,
+`scene`, `ops`, `state`, `views`, `activity`, `export_request`, `bye`).
+Errors are `{"code","message",…}` with these statuses:
+
+| Status | Codes |
+| --- | --- |
+| 400 | `usage`, `op_invalid`, `element_unknown`, `svg_refused`, `chart_refused`, `mention_unknown`, `secret_detected`, `echo_rejected` |
+| 401 | `not_signed_in` |
+| 403 | `whiteboard_off`, `viz_off`, `read_only`, `author_mismatch`, `author_unverified`, `operator_only`, `element_not_yours`, `canvas_locked`, `path_refused`, `not_a_member`, `bad_host`, `bad_origin`, `bad_csrf` |
+| 404 | `team_not_found`, `member_not_found`, `artifacts_unset`, `not_found` |
+| 405 | `method_not_allowed` |
+| 409 | `canvas_stale`, `canvas_refused`, `alias_taken` |
+| 413 | `canvas_limit`, `image_refused`, `body_too_large` (bodies over 6 MB) |
+| 415 | `unsupported_media_type` |
+| 429 | `canvas_rate` |
+| 503 | `canvas_busy`, `page_not_built`, `too_many_streams` (more than 8) |
+| 500 | anything else, as `internal`, logged without a traceback to the page |
+
+`whiteboard open` itself can refuse `whiteboard_start_failed` (the server did
+not write `whiteboard.json` within 5 s; see `whiteboard.log`).
+
+Rebuilding the page needs Node: `cd web && npm ci && npm run build`. The
+post-build step regenerates `dist/MANIFEST.json`, `dist/manifest.sha256` and
+`dist/licenses/`. Commit `web/dist/` and `web/package-lock.json`;
+`web/.gitignore` ignores `node_modules/`.
+
+### `watch …` / `unwatch TARGET`
+
+```
+watch TARGET                  flag an agent (pane id, agent name, or member name); operator in person
+watch show [TARGET]           activity cards (operator; the manager for its own team's members)
+watch list                    the watched agents
+unwatch TARGET                drop the flag and clear its sidebar token
+```
+
+Who: `watch TARGET` and `unwatch TARGET` are the operator in person;
+`watch show` is the operator, or a manager or delegate for its own team's
+members (it appends a `watch_show` audit record); `watch list` is anyone. A
+target is a pane id, a member name (the hinted team first), a Herdr agent
+name, a terminal id, or a recorded watch entry; `watch` with no words is
+`watch list`. An unknown target, one that is not running, or a shell pane
+refuses `agent_not_found` (exit 1). Every form except `watch list` refuses
+`whiteboard_off` while the layer is off. `unwatch` on an agent that is not
+watched exits 0 with `removed: null`.
+
+`watch.json`: `{"v":1,"agents":[{"terminal_id","pane_id","name","kind","team","by","at"}]}`,
+keyed by terminal id (a moved pane keeps its watch), at most 20
+(`watch_limit`). Each watched agent's reader offsets and last card live in
+`<session>/watch-cache/<terminal_id>.json`; the notifier sweeps cache files
+older than a day. A card:
+
+```json
+{"key":"term_w1","terminal_id":"term_w1","pane_id":"w2:p2","name":"alpha-worker","team":"alpha","role":"worker","kind":"claude","profile":null,
+ "watched":true,"state":"working","headline":"Pulling Q3 exports",
+ "plan":{"steps":[{"text":"fetch Q3 exports","status":"in_progress"}],"current":2,"total":7,"source":"todo"}|null,
+ "actions":[{"icon":"run","text":"python pull.py","at":"…"}],"files":["src/pull.py"],"context":{"percent":41.0,"used":82000,"window":200000}|null,
+ "last_prompt":"…","doing":"▶ 2/7 fetch Q3 exports","reader":"claude","reader_error":null|"unknown","reader_note":"…"|null,"updated_at":"…"}
+```
+
+`state` is `working`, `idle`, `done`, `blocked`, `unknown` or `not_running`.
+`plan.source` is `todo` (Claude), `update_plan` (Codex) or `opencode_todo`;
+Pi and other kinds have no plan. `reader_error` is `unknown` when a reader
+failed or the transcript format drifted (the card still has its title and
+state); `reader_note` explains it, for example that no harness session was
+reported yet and `herdr integration install codex` would help.
+
+Cards are read from what each harness already writes (terminal title, Claude
+and Pi transcripts, the Codex rollout, OpenCode's database), incrementally and
+at most 512 KB per agent per refresh (1 MB on the first look at an agent); only tool names and short arguments are
+shown, never output, and every string passes the board's secret patterns plus
+the shapes a command line carries (`NAME_PASSWORD=…`, password flags,
+`user:pass`, credentials in a URL, an `Authorization` header, more key
+prefixes). The notifier stamps a watched pane's `team_doing` token (source
+`herdr-synapse:watch`, 60 s TTL, refreshed every 15 s, ≤ 32 columns) while the
+layer is on; for a command it shows only the program (`$ psql`, `$ git
+commit`), never its arguments, because every agent can read pane tokens; `setup --print-config` puts `$team_doing` on a row of its own.
+`o` on an agent row in `prefix+t` toggles watch.
+
+### Board records
+
+All three are `from: system`, `kind: system`:
+
+| `event` | Delivery | When |
+| --- | --- | --- |
+| `canvas_changed` | awareness, never a wake | one per author per minute: `alpha-worker drew on the canvas: 3 notes, 2 arrows, 1 pen stroke, moved 2 (v38–v42). Look: herdr-synapse canvas look --since 37`; `extra.canvas` has `author`, `from`, `to`, `counts`, `batches` |
+| `canvas_sent` | a named, idle-gated nudge; a toast when `human` is addressed | a comment's `@mention`, or the operator's "Send to…": the text form and a PNG path; an agent's words are quoted as a peer's request |
+| `whiteboard_state` | awareness | a switch flip changed what a team's members may do; `extra.whiteboard` has `before`, `after`, `by` |
+
+### Error codes
+
+| Code | Exit | Meaning |
+| --- | --- | --- |
+| `whiteboard_off` | 1 | the layer or the team is off (`details.scope`: `session` or `team`) |
+| `viz_off` | 1 | the team's live visuals are off |
+| `canvas_locked`, `element_not_yours`, `operator_only`, `element_unknown`, `alias_taken`, `op_invalid`, `canvas_stale` | 1 | op refusals (in `refused`) |
+| `canvas_limit`, `canvas_rate`, `canvas_refused` | 1 | size, rate, or every op refused |
+| `canvas_busy` | 5 | the canvas lock timed out |
+| `svg_refused`, `chart_refused`, `image_refused`, `path_refused`, `artifacts_unset`, `mention_unknown` | 1 | content refusals |
+| `portrait_no_plan`, `render_unavailable`, `watch_limit`, `agent_not_found`, `member_not_found`, `confirmation_required` | 1 | command refusals |
+| `whiteboard_start_failed`, `whiteboard_not_running` | 1 | the page server did not start / is not running |
+| `read_only`, `not_signed_in`, `bad_host`, `bad_origin`, `bad_csrf`, `page_not_built` | — | page HTTP (403, 401, 403, 403, 403, 503) |
+
 ## 10. Shared record grammar
 
 Board record (plan 6.1), all keys always present:
@@ -2170,6 +2657,8 @@ policy under each agent’s `permissions`; create output uses `launch_permission
 to distinguish it from the persisted member override.
 
 Saved policy applies to create, resume, restore, swap and controlled restarts.
+The canvas MCP flags (section 9n) follow the same paths and are appended after
+the permission flags.
 Pending swaps lock their policy until completion/cancellation. Stale queued
 restart argv is rejected if the policy changes. Running agents are unchanged.
 An outdated daemon must be replaced successfully before a new policy is saved.

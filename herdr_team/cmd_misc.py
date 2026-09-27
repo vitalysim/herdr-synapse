@@ -69,10 +69,12 @@ VIEW_LABEL_MAX_TWO = 27
 FULL_SCREEN_KINDS = frozenset({"claude", "opencode", "codex", "kilo", "omp"})
 DEFAULT_MUTE = "10m"
 
-KEYS: Dict[str, str] = {"team-up": "prefix+t", "compose": "prefix+m", "console": "prefix+u", "toggle-view": "prefix+y", "usage": "prefix+i", "knowledge": "prefix+f", "mission": "prefix+d"}
-KEY_DESCRIPTIONS: Dict[str, str] = {"team-up": "team up: pick agents", "compose": "post to the team board", "console": "open the team console", "toggle-view": "toggle the team agents view", "usage": "usage limits across agents", "knowledge": "team knowledge bases", "mission": "mission control: what needs you across teams"}
+KEYS: Dict[str, str] = {"team-up": "prefix+t", "compose": "prefix+m", "console": "prefix+u", "toggle-view": "prefix+y", "usage": "prefix+i", "knowledge": "prefix+f", "mission": "prefix+d",
+                        "whiteboard": "prefix+a"}
+KEY_DESCRIPTIONS: Dict[str, str] = {"team-up": "team up: pick agents", "compose": "post to the team board", "console": "open the team console", "toggle-view": "toggle the team agents view", "usage": "usage limits across agents", "knowledge": "team knowledge bases", "mission": "mission control: what needs you across teams",
+                                    "whiteboard": "open the team whiteboard page"}
 #: The order the bindings are printed in.
-KEY_ACTIONS = ("team-up", "compose", "console", "toggle-view", "usage", "knowledge", "mission")
+KEY_ACTIONS = ("team-up", "compose", "console", "toggle-view", "usage", "knowledge", "mission", "whiteboard")
 
 #: The token a stale sidebar block is missing; ``doctor`` looks for it.
 COLOR_SLOT_TOKEN = "$team_c1"
@@ -89,21 +91,28 @@ COLOR_ROW = "  " + ", ".join(
        for key, hex_value in zip(_roster.CONTEXT_TOKENS, ("#7f849c", "#fabd2f", "#fb4934"))]
 )
 COLOR_ROW = "  [" + COLOR_ROW.strip() + "],"
+#: The watch ``doing`` token (0.21, ``activity.DOING_TOKEN``): what a watched agent is doing now,
+#: on a row of its own because it can take the full width. Herdr drops a row whose tokens all
+#: lack a value, so unwatched agents show no empty line.
+DOING_TOKEN = "$team_doing"
+DOING_ROW = '  [{{ token = "{}", fg = "#a6e3a1" }}],'.format(DOING_TOKEN)
 
 SIDEBAR_SNIPPET = """[ui.sidebar.agents]
 rows = [
   ["state_icon", "agent"],
 {color_row}
+{doing_row}
   ["workspace", "tab"],
 ]
 [ui.sidebar.agents.rows_by_agent]
 claude = [
   ["state_icon", "agent"],
 {color_row}
+{doing_row}
   ["terminal_title_stripped"],
   ["workspace", "tab"],
 ]
-""".format(color_row=COLOR_ROW)
+""".format(color_row=COLOR_ROW, doing_row=DOING_ROW)
 
 OPTIONAL_SNIPPET = """[ui]
 # Distinct static glyphs for blocked, working, done, idle, and unknown (changes every agent's marks).
@@ -362,6 +371,13 @@ def sidebar_missing_context(config_dir: Path) -> bool:
     return "[ui.sidebar.agents]" in text and COLOR_SLOT_TOKEN in text and CONTEXT_TOKEN not in text
 
 
+def _config_text(config_dir: Path) -> Optional[str]:
+    try:
+        return (config_dir / "config.toml").read_text(encoding="utf-8")
+    except (OSError, ValueError):
+        return None
+
+
 def _run_setup(args: argparse.Namespace) -> int:
     if not args.print_config:
         raise UsageError("setup --print-config prints the config blocks; setup never edits config")
@@ -562,6 +578,11 @@ def _run_doctor(args: argparse.Namespace) -> int:
         console_lifecycle = _cmd_ui.reconcile_console(layout, api, env)
         for note in console_lifecycle.get("closed") or []:
             warnings.append("closed a dead console shell in {}".format(note))
+    from herdr_team import cmd_whiteboard as _whiteboard
+
+    # The visual layer (0.21): the session switch, each team's canvas and viz, the page server, watched agents.
+    whiteboard = _whiteboard.doctor_report(layout, _config_text(layout.config_dir))
+    warnings.extend(whiteboard["warnings"])
     daemon = daemon_status(layout.session)
     if not daemon["alive"]:
         warnings.append("notifier daemon not running ({})".format(daemon.get("reason")))
@@ -596,7 +617,7 @@ def _run_doctor(args: argparse.Namespace) -> int:
         "herdr": herdr, "socket": socket_info, "slug": layout.slug, "config_dir": os.fspath(layout.config_dir),
         "state_root": state_root, "pointer": pointer, "plugin": plugin, "toast_delivery": delivery, "toast_probe": toast_probe,
         "daemon": daemon, "teams": teams, "console": {"open": console_open, "pane_id": console.get("pane_id"), "lifecycle": console_lifecycle},
-        "remote": remote_view, "warnings": warnings, "errors": errors,
+        "remote": remote_view, "whiteboard": whiteboard, "warnings": warnings, "errors": errors,
     }
 
     def human() -> str:
@@ -619,6 +640,7 @@ def _run_doctor(args: argparse.Namespace) -> int:
         for t in teams:
             lines.append("team {}: {} members, {} missing, {}/{} with Missions".format(t["team"], t["members"], t["missing"], t["missions"], t["members"]))
         lines.append("console: {}".format("open in {}".format(console.get("pane_id")) if console_open else "closed"))
+        lines.extend(_whiteboard_doctor_lines(whiteboard))
         for w in warnings:
             lines.append("warning: {}".format(w))
         for e in errors:
@@ -627,6 +649,26 @@ def _run_doctor(args: argparse.Namespace) -> int:
         return "\n".join(lines)
 
     return emit(args, payload, human)
+
+
+def _whiteboard_doctor_lines(report: Dict[str, Any]) -> List[str]:
+    """``doctor``'s human lines for the visual layer: one per switch level, the page server, and the watch."""
+    layer = report.get("session") or {}
+    lines = ["whiteboard: {} for this session{}".format(
+        "on" if layer.get("enabled") else "off", " (by {} via {})".format(layer.get("by"), layer.get("via")) if layer.get("by") else "")]
+    for name, row in sorted((report.get("teams") or {}).items()):
+        lines.append("  team {}: canvas {}, live visuals {}{}".format(
+            name, "on" if row.get("enabled") else "off", "on" if row.get("viz") else "off",
+            "" if row.get("on") or not row.get("enabled") else " (waiting for the session switch)"))
+    page = report.get("page") or {}
+    if page.get("running"):
+        lines.append("  page server: pid {} port {}, {}{}".format(page.get("pid"), page.get("port"), "writable" if page.get("writable") else "read-only",
+                                                              ", idle {} min".format(page["idle_minutes"]) if page.get("idle_minutes") is not None else ""))
+    else:
+        lines.append("  page server: not running")
+    watched = report.get("watched") or []
+    lines.append("  watched agents: {}".format(", ".join(str(w.get("name") or w.get("pane_id")) for w in watched) if watched else "none"))
+    return lines
 
 
 # --------------------------------------------------------------------------

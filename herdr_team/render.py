@@ -805,6 +805,10 @@ def render_me(member: Dict[str, Any], team_doc: Dict[str, Any]) -> str:
         lines.append("teammates: none yet")
     if member.get("unread") is not None:
         lines.append("unread: {} (cursor {})".format(_safe_token(member.get("unread"), 12), _safe_token(member.get("cursor"), 12)))
+    whiteboard = member.get("whiteboard") if isinstance(member.get("whiteboard"), dict) else None
+    if whiteboard and isinstance(whiteboard.get("line"), str) and whiteboard.get("line"):
+        # ``features.me_line``: whether the canvas is on for this team, live visuals, the version, and where to learn it.
+        lines.append(_safe_text(whiteboard["line"]))
     work = member.get("work") if isinstance(member.get("work"), dict) else {}
     for row in (work.get("owned") or [])[:8]:
         lines.append("work {} [{}{}] {}".format(_safe_token(row.get("id"), 12), _safe_token(row.get("status"), 20),

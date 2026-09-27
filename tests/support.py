@@ -32,6 +32,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Sequence, Tuple, Union
 
+from herdr_team import canvas_render as _canvas_render
 from herdr_team import harnesses as _harnesses
 from herdr_team import paths
 from herdr_team.api import RunResult, parse_cli_json
@@ -44,6 +45,8 @@ def _no_harness(argv: Sequence[str], cwd: Optional[str], env: Optional[Dict[str,
 
 
 _harnesses.RUN = _no_harness
+# resvg's arguments must not depend on the fonts of the machine running the tests.
+_canvas_render.FONT_DIRS = ()
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 

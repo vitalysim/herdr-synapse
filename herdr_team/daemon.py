@@ -120,6 +120,14 @@ ASK_POPUP_RETRY_S = 30.0
 #: The ``team_context`` sidebar token fades if the notifier stops reading, the
 #: same health signal ``team_task`` uses.
 CONTEXT_TTL_MS = 120000
+#: Watch (0.21, ``herdr_team.activity``): an unchanged ``team_doing`` line is
+#: restamped this often (its TTL is 60 s, the refresh itself every 15 s), and the
+#: read caches of agents nobody watches are swept this often.
+WATCH_RESTAMP_S = 30.0
+WATCH_PRUNE_S = 3600.0
+#: How often pending ``canvas_changed`` summaries are flushed (contract 9.1), so
+#: a quiet author's last strokes are still announced.
+CANVAS_NOTICE_POLL_S = 30.0
 #: How long a typed ``/compact`` or ``/clear`` may go unobserved before the
 #: daemon gives up waiting for its effect. Not a completion timer: the job is
 #: closed by what actually happens (a new session, a new phase, a context that
@@ -198,6 +206,9 @@ SYSTEM_EVENT_DELIVERY: Dict[str, Dict[str, Any]] = {
     "contradictions_changed": {},
     "schedule_failed": {"toast": True},
     "schedule_missed": {},
+    "canvas_changed": {},  # one coalesced line per author per minute: awareness, drawing never wakes
+    "canvas_sent": {"wake": "named", "toast": True},  # a canvas @mention or the operator's "send to member"
+    "whiteboard_state": {},  # the layer, a team's canvas or its viz switched: awareness
 }
 URGENT_SYSTEM_EVENTS = tuple(e for e, d in SYSTEM_EVENT_DELIVERY.items() if d.get("wake") == "all")
 NAMED_SYSTEM_EVENTS = tuple(e for e, d in SYSTEM_EVENT_DELIVERY.items() if d.get("wake") == "named")
@@ -1508,6 +1519,12 @@ class Daemon:
         self.ask_next_ms: Optional[float] = None
         #: Phone reach (``herdr_team.remote``): idle and I/O-free until ``remote.json`` exists.
         self.remote = _remote.RemoteRelay(layout, log=self.log)
+        #: Watch (0.21): when the ``team_doing`` refresh last ran, the tokens this daemon set
+        #: (``{terminal_id: (pane_id, value, stamped_ms)}``), and when the read caches were last swept.
+        self.watch_ms: Optional[float] = None
+        self.watch_stamps: Dict[str, Tuple[str, Optional[str], float]] = {}
+        self.watch_prune_ms: Optional[float] = None
+        self.canvas_notice_ms: Optional[float] = None
         self.who_dirty = True
         self.last_who_ms: Optional[float] = None
         self.last_heartbeat_ms: Optional[float] = None
@@ -1911,6 +1928,8 @@ class Daemon:
         # After the tail, so a post ingested this tick is already counted, and
         # before the evaluator, so a swept pending is acted on in the same pass.
         self._phase("poll_context", lambda: self.poll_all_context(now))
+        self._phase("watch", lambda: self.refresh_watch(now))
+        self._phase("canvas_notices", lambda: self.flush_canvas_notices(now))
         self._phase("asks", lambda: self.raise_asks(now))
         self._phase("sweep_unread", lambda: self.sweep_all_unread(now))
         self._phase("link_receipts", lambda: self.poll_link_receipts(now))
@@ -1985,6 +2004,7 @@ class Daemon:
                 pane_id = member.get("pane_id")
                 if isinstance(pane_id, str) and member.get("terminal_id"):
                     self._clear_tokens(pane_id)
+        self._clear_watch_stamps(list(self.watch_stamps))
         try:
             self.api.request("agent.view.clear", {"source": "plugin:" + PLUGIN_ID}, timeout=5.0)
         except HerdrTeamError:
@@ -3561,6 +3581,110 @@ class Daemon:
             rt.context_stamp_ms = now
         except HerdrTeamError as err:
             self.log("{}: context token for {} failed: {}".format(team.name, member.get("name"), err.code))
+
+    # -- watch (0.21) ------------------------------------------------------------------
+
+    def refresh_watch(self, now: float) -> None:
+        """Stamp the ``team_doing`` sidebar token on every watched agent (contract 14.3).
+
+        Every ``activity.DOING_REFRESH_S`` while the whiteboard layer is on:
+        one card per watched agent, built from the ``agent.list`` rows this
+        loop already holds and an incremental, bounded read of that agent's
+        own conversation store, restamped only when its line changed or its
+        TTL needs a refresh. Nothing is read for an agent nobody watches, and
+        with the layer off nothing is read at all. The tokens this daemon set
+        are cleared when the layer goes off or an agent is unwatched.
+        """
+        from herdr_team import activity as _activity
+        from herdr_team import features as _features
+
+        if self.watch_ms is not None and now - self.watch_ms < _activity.DOING_REFRESH_S * 1000.0:
+            return
+        self.watch_ms = now
+        if not _features.layer_enabled(self.session):
+            self._clear_watch_stamps(list(self.watch_stamps))
+            return
+        entries = _activity.watched(self.session)
+        wanted = {entry["terminal_id"] for entry in entries}
+        self._clear_watch_stamps([t for t in self.watch_stamps if t not in wanted])
+        if self.watch_prune_ms is None or now - self.watch_prune_ms >= WATCH_PRUNE_S * 1000.0:
+            self.watch_prune_ms = now
+            keep = set(wanted) | {str(m.get("terminal_id")) for t in self.teams.values() for m in t.members() if m.get("terminal_id")}
+            _activity.prune_cache(self.session, keep)
+        if not entries:
+            return
+        if self.agents:
+            _activity.sync_watch(self.session, self.agents)
+        members: Dict[str, Tuple[str, Dict[str, Any]]] = {}
+        for team in self.teams.values():
+            for member in team.members():
+                terminal = member.get("terminal_id")
+                if isinstance(terminal, str) and member.get("status") != "left" and member.get("kind") != "human":
+                    members.setdefault(terminal, (team.name, member))
+        for entry in entries:
+            terminal = entry["terminal_id"]
+            try:
+                card = _activity.card(self.layout, _activity.target_for(entry, members.get(terminal)), now=time.time(),
+                                      live=self.agents.get(terminal), env=self.env, watched_ids=wanted)
+            except Exception as err:  # noqa: BLE001 - one unreadable transcript must not stop the others
+                self.log("watch: cannot read {}: {}: {}".format(entry.get("name") or terminal, type(err).__name__, err))
+                continue
+            self._stamp_watch(terminal, card, now)
+
+    def _stamp_watch(self, terminal: str, card: Dict[str, Any], now: float) -> None:
+        """One ``team_doing`` stamp (or clear) for one watched agent's card."""
+        from herdr_team import activity as _activity
+
+        pane = card.get("pane_id") if card.get("state") != "not_running" else None
+        value = card.get("doing") if pane else None
+        previous = self.watch_stamps.get(terminal)
+        if previous is not None and previous[0] != pane:
+            self._clear_watch_stamps([terminal])  # the pane moved or the agent exited: clear where it was
+            previous = None
+        if not isinstance(pane, str) or not pane:
+            return
+        if value is None and (previous is None or previous[1] is None):
+            return  # nothing to say and nothing said
+        if previous is not None and previous[1] == value and value is not None and now - previous[2] < WATCH_RESTAMP_S * 1000.0:
+            return
+        command = _activity.doing_token_commands([dict(card, pane_id=pane, doing=value)])[0]
+        try:
+            self.api.request("pane.report_metadata", command.params(), timeout=5.0)
+        except HerdrTeamError as err:
+            self.log("watch: doing token on {} failed: {}".format(pane, err.code))
+            return
+        self.watch_stamps[terminal] = (pane, value, now)
+
+    def _clear_watch_stamps(self, terminals: List[str]) -> None:
+        from herdr_team import activity as _activity
+
+        for terminal in terminals:
+            stamp = self.watch_stamps.pop(terminal, None)
+            if stamp is not None and stamp[1] is not None:
+                _activity.clear_token(self.api, stamp[0])
+
+    def flush_canvas_notices(self, now: float) -> None:
+        """Post the pending ``canvas_changed`` summaries whose minute has passed (``canvas.flush_notices``), every 30 s.
+
+        Only for teams whose canvas is on; the canvas is imported lazily and
+        any failure is logged, so a broken canvas never touches delivery.
+        """
+        if self.canvas_notice_ms is not None and now - self.canvas_notice_ms < CANVAS_NOTICE_POLL_S * 1000.0:
+            return
+        self.canvas_notice_ms = now
+        from herdr_team import features as _features
+
+        if not self.teams or not _features.layer_enabled(self.session):
+            return
+        for team in list(self.teams.values()):
+            try:
+                if not _features.team_switch(self.session, team.paths, team.roster).on:
+                    continue
+                from herdr_team import canvas as _canvas
+
+                _canvas.flush_notices(self.layout, team.paths)
+            except Exception as err:  # noqa: BLE001 - the canvas is optional; one bad team must not stop the tick
+                self.log("{}: canvas notices failed: {}: {}".format(team.name, type(err).__name__, err))
 
     @staticmethod
     def _keystroke_for(kind: Any, action: str) -> str:

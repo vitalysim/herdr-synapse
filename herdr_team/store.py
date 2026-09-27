@@ -283,6 +283,9 @@ SYSTEM_EVENTS = (
     "schedule_failed", "schedule_missed",
     # 0.20: a member's harness profile
     "profile_changed",
+    # 0.21: the whiteboard (``features``, ``canvas``): coalesced drawing awareness, a named
+    # canvas wake (a comment's @mention, the operator's "send to member"), a switch flip
+    "canvas_changed", "canvas_sent", "whiteboard_state",
 )
 #: Every key of a stored record in file order (docs/cli.md section 10).
 RECORD_KEYS = (

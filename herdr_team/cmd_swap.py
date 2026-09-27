@@ -59,7 +59,7 @@ def _run(args: argparse.Namespace) -> int:
         except (OSError, UnicodeError) as err:
             raise UsageError("cannot read handoff note: {}".format(err))
     if args.dry_run:
-        spec = swap.plan(book.load(), member.name, args.to, args.model, env, args.profile, args.unlisted)
+        spec = swap.plan(book.load(), member.name, args.to, args.model, env, args.profile, args.unlisted, layout=layout)
         if not roster._kind_verified(layout, args.to):
             raise HerdrTeamError("kind_untrusted", "trust or probe {} before swapping to it".format(args.to), EXIT_REFUSED)
         swap.source_pane(api, spec["source"])
@@ -91,7 +91,7 @@ def _run(args: argparse.Namespace) -> int:
                 return emit(args, {"team": team_name, "member": args.member, "swap": op},
                             "swap cancelled; source configuration retained. If its pane was closed, use herdr-synapse resume {}".format(args.member))
         else:
-            spec = swap.plan(book.load(), args.member, args.to, args.model, env, args.profile, args.unlisted)
+            spec = swap.plan(book.load(), args.member, args.to, args.model, env, args.profile, args.unlisted, layout=layout)
             if not roster._kind_verified(layout, args.to):
                 raise HerdrTeamError("kind_untrusted", "trust or probe {} before swapping to it".format(args.to), EXIT_REFUSED)
             swap.source_pane(api, spec["source"])

@@ -39,12 +39,14 @@ PLAN_SIDEBAR_SNIPPET = """[ui.sidebar.agents]
 rows = [
   ["state_icon", "agent"],
   [{ token = "$team_c1", fg = "#fb4934" }, { token = "$team_c2", fg = "#b8bb26" }, { token = "$team_c3", fg = "#83a598" }, { token = "$team_c4", fg = "#d3869b" }, { token = "$team_c5", fg = "#fabd2f" }, { token = "$team_c6", fg = "#8ec07c" }, { token = "$team_role", dim = true }, { token = "$team_task", fg = "#89b4fa" }, { token = "$team_context", fg = "#7f849c" }, { token = "$team_context_warn", fg = "#fabd2f" }, { token = "$team_context_crit", fg = "#fb4934" }],
+  [{ token = "$team_doing", fg = "#a6e3a1" }],
   ["workspace", "tab"],
 ]
 [ui.sidebar.agents.rows_by_agent]
 claude = [
   ["state_icon", "agent"],
   [{ token = "$team_c1", fg = "#fb4934" }, { token = "$team_c2", fg = "#b8bb26" }, { token = "$team_c3", fg = "#83a598" }, { token = "$team_c4", fg = "#d3869b" }, { token = "$team_c5", fg = "#fabd2f" }, { token = "$team_c6", fg = "#8ec07c" }, { token = "$team_role", dim = true }, { token = "$team_task", fg = "#89b4fa" }, { token = "$team_context", fg = "#7f849c" }, { token = "$team_context_warn", fg = "#fabd2f" }, { token = "$team_context_crit", fg = "#fb4934" }],
+  [{ token = "$team_doing", fg = "#a6e3a1" }],
   ["terminal_title_stripped"],
   ["workspace", "tab"],
 ]
@@ -182,11 +184,11 @@ class SetupAndKeys(unittest.TestCase):
     def test_keys_print(self):
         with TempState() as ts:
             code, payload, _ = json_out(run_cli(["--json", "keys", "print"], ts.env))
-            self.assertEqual(payload["keys"], {"team-up": "prefix+t", "compose": "prefix+m", "console": "prefix+u", "toggle-view": "prefix+y", "usage": "prefix+i", "knowledge": "prefix+f", "mission": "prefix+d"})
+            self.assertEqual(payload["keys"], {"team-up": "prefix+t", "compose": "prefix+m", "console": "prefix+u", "toggle-view": "prefix+y", "usage": "prefix+i", "knowledge": "prefix+f", "mission": "prefix+d", "whiteboard": "prefix+a"})
             snippet = payload["snippet"]
-            self.assertEqual(snippet.count("[[keys.command]]"), 7)
-            self.assertEqual(snippet.count('type = "plugin_action"'), 7)
-            for action in ("herdr-synapse.team-up", "herdr-synapse.compose", "herdr-synapse.console", "herdr-synapse.toggle-view", "herdr-synapse.usage", "herdr-synapse.mission"):
+            self.assertEqual(snippet.count("[[keys.command]]"), 8)
+            self.assertEqual(snippet.count('type = "plugin_action"'), 8)
+            for action in ("herdr-synapse.team-up", "herdr-synapse.compose", "herdr-synapse.console", "herdr-synapse.toggle-view", "herdr-synapse.usage", "herdr-synapse.mission", "herdr-synapse.whiteboard"):
                 self.assertIn('command = "{}"'.format(action), snippet)
             code, out, _ = run_cli(["keys", "print"], ts.env)
             self.assertEqual(out.strip(), snippet.strip())

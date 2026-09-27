@@ -3,7 +3,7 @@ name: herdr-synapse
 description: "Coordinate with teammates on a herdr-synapse board inside a Herdr session. Use only when HERDR_ENV=1 and `herdr-synapse me` succeeds, or when a line starting with [herdr-team appears in your input."
 ---
 
-<!-- herdr-synapse skill v11, cli >= 0.19 -->
+<!-- herdr-synapse skill v12, cli >= 0.21 -->
 
 # herdr-synapse: work with your teammates through the board
 
@@ -27,7 +27,8 @@ once and use `--help`.
 
 Then load your guide, which always matches the CLI you run: `herdr-synapse
 skill get` (`--list` shows the manager, reviewer and librarian guides). This
-file is the floor; the guide has the detail.
+file is the floor; the guide has the detail. If `me` says `whiteboard: on`,
+read `herdr-synapse skill get --reference canvas` before drawing.
 
 ## Commands
 
@@ -116,9 +117,8 @@ record says your instructions or the rules changed, read those first. Post:
 When `context_high` names you (75 %, 90 %), finish or hand off, post what you
 learned, then `herdr-synapse compact --self`; never compact or clear a peer.
 
-Keep posts short: under 500 characters. Put longer content (diffs, logs, findings)
-in a file and point to it with `--ref <path>` (a file in your cwd or the team dir)
-or `--file <path>` (copied into `payloads/` when the team cannot read it).
+Keep posts short: under 500 characters. Put longer content (diffs, logs, findings) in a file
+and point to it with `--ref <path>` (in your cwd or the team dir) or `--file <path>`.
 Never post secrets, tokens, credentials or raw logs; never start a post with
 `[herdr-team`, and never include `[n<digits>]`; the CLI rejects those as echoes.
 

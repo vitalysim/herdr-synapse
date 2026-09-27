@@ -89,4 +89,4 @@ task in hand, record what you learned as facts, then `herdr-synapse compact
 ## References
 
 `herdr-synapse skill get --reference <name>` prints one of: work, facts,
-recall, coordination.
+recall, coordination, and canvas while `me` says `whiteboard: on`.

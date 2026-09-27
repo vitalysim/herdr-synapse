@@ -1,0 +1,29 @@
+{
+  "name": "herdr-synapse-whiteboard",
+  "version": "0.21.0",
+  "private": true,
+  "description": "The herdr-synapse whiteboard page: the team canvas, generated team views and activity cards, served from web/dist by herdr_team/whiteboard_server.py.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "vite build && node scripts/postbuild.mjs",
+    "dev": "vite"
+  },
+  "dependencies": {
+    "@excalidraw/excalidraw": "0.18.1",
+    "d3": "7.9.0",
+    "mermaid": "11.17.2",
+    "p5": "1.11.13",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "svg2roughjs": "3.2.3",
+    "three": "0.186.1",
+    "vega": "6.4.0",
+    "vega-interpreter": "2.3.2",
+    "vega-lite": "6.4.3"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "6.1.1",
+    "vite": "8.3.1"
+  }
+}

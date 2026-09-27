@@ -57,6 +57,9 @@ COMMAND_MODULES: Tuple[str, ...] = (
     "herdr_team.cmd_search",
     "herdr_team.cmd_schedule",
     "herdr_team.cmd_remote",
+    "herdr_team.cmd_whiteboard",
+    "herdr_team.cmd_canvas",
+    "herdr_team.cmd_watch",
 )
 
 

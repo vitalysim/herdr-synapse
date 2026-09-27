@@ -4,9 +4,9 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
-from herdr_team import permissions
+from herdr_team import features, permissions
 from herdr_team import models, roster, store
 from herdr_team import cmd_roster as commands
 from herdr_team.cli import Command, api_for, emit, layout_for
@@ -27,8 +27,13 @@ def _rows(api: Any, method: str, key: str) -> List[Dict[str, Any]]:
     return result[key]
 
 
-def plan_restore(team: roster.Team, agents: List[Dict[str, Any]], panes: List[Dict[str, Any]], env: Dict[str, str]) -> List[Dict[str, Any]]:
-    """Identity evidence wins over cached status; pane IDs alone never identify a member."""
+def plan_restore(team: roster.Team, agents: List[Dict[str, Any]], panes: List[Dict[str, Any]], env: Dict[str, str],
+                 mcp: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    """Identity evidence wins over cached status; pane IDs alone never identify a member.
+
+    ``mcp`` is ``features.mcp_spec`` for the team: resumed and fresh members
+    both get the canvas MCP flags while its canvas is on.
+    """
     result = []
     for member in team.agents():
         from herdr_team import swap
@@ -54,8 +59,8 @@ def plan_restore(team: roster.Team, agents: List[Dict[str, Any]], panes: List[Di
                     if source and source[0] != member.kind:
                         raise HerdrTeamError("session_mismatch", "recorded conversation belongs to a different agent kind", EXIT_REFUSED)
                 policy = permissions.effective(team.config, member)
-                argv = (models.resume_argv(member.kind, member.session, model, effort, policy, member.profile) if member.session
-                        else models.fresh_argv(member.kind, model, effort, permissions=policy, profile=member.profile))
+                argv = (models.resume_argv(member.kind, member.session, model, effort, policy, member.profile, mcp=mcp) if member.session
+                        else models.fresh_argv(member.kind, model, effort, permissions=policy, profile=member.profile, mcp=mcp))
                 if not member.session:
                     argv[0] = next((spec[2][0] for spec in roster.RESUME_COMMANDS.values() if spec[0] == member.kind), argv[0])
                 if member.cwd and not os.path.isdir(member.cwd):
@@ -158,11 +163,12 @@ def _run(args: argparse.Namespace) -> int:
     commands._human_only(layout, name, author, "restore")
     book = roster.Roster(layout, name)
     book.load()  # Refuse missing/dissolved teams before creating a lock directory.
+    mcp = features.mcp_spec(layout, book.paths)
     if args.dry_run:
-        items = plan_restore(book.load(), _rows(api, "agent.list", "agents"), _rows(api, "pane.list", "panes"), env)
+        items = plan_restore(book.load(), _rows(api, "agent.list", "agents"), _rows(api, "pane.list", "panes"), env, mcp=mcp)
         return emit(args, {"team": name, "dry_run": True, "members": items}, "\n".join("{}: {} ({})".format(i["name"], i["status"], i.get("mode", i.get("reason", ""))) for i in items))
     with store.FileLock(book.paths.root / "restore.lock", timeout=0, code="restore_busy"):
-        items = plan_restore(book.load(), _rows(api, "agent.list", "agents"), _rows(api, "pane.list", "panes"), env)
+        items = plan_restore(book.load(), _rows(api, "agent.list", "agents"), _rows(api, "pane.list", "panes"), env, mcp=mcp)
         pending = [i for i in items if i["status"] == "planned"]
         commands._ensure_daemon(layout, env)
         workspace = args.workspace or env.get("HERDR_WORKSPACE_ID")

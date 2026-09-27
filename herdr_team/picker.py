@@ -2,7 +2,8 @@
 
 ``agent list`` rows grouped by the names from ``tab.list`` and sorted by
 workspace, tab, then pane, greyed when ``launch_pending``; Space toggles, ``w`` scopes to the current workspace,
-``a`` selects all, ``g`` focuses the highlighted agent's pane; then team name, charter (multi-line, ``Ctrl-O`` loads a
+``a`` selects all, ``g`` focuses the highlighted agent's pane, ``o`` watches or unwatches it (0.21, through
+``herdr-synapse watch``/``unwatch``); then team name, charter (multi-line, ``Ctrl-O`` loads a
 file), per member role, name, and brief; confirm screen; the popup exits
 and the action performs create, rename, label, tokens, briefing jobs, view.
 When teams exist, a target stage follows the selection: a numbered list of
@@ -25,7 +26,7 @@ import json
 import os
 import sys
 import time
-from typing import Any, Dict, List, Optional, Sequence, Set
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from herdr_team import paths as _paths
 from herdr_team import store
@@ -120,7 +121,21 @@ def build_model(api: Any, context: Dict[str, Any], layout: Optional[Layout] = No
     model.existing_team_sizes = {team: len([m for m in members if m.get("kind") != "human" and m.get("status") != "left"]) for team, members in rosters.items()}
     model.trusted_kinds = trusted_kinds(layout)
     model.scope_workspace = focused if focused and any(r.workspace_id == focused for r in rows) else None
+    model.watched, model.watch_layer = watch_state(layout)
     return model
+
+
+def watch_state(layout: Optional[Layout]) -> Tuple[Set[str], Optional[bool]]:
+    """``(watched terminal ids, whiteboard layer on)`` for the ``o`` key; unknown (None) without a session."""
+    if layout is None:
+        return set(), None
+    try:
+        from herdr_team import activity as _activity
+        from herdr_team import features as _features
+
+        return {entry["terminal_id"] for entry in _activity.watched(layout.session)}, _features.layer_enabled(layout.session)
+    except (HerdrTeamError, OSError, ValueError):
+        return set(), None
 
 
 def _team_links(layout: Optional[Layout], teams: List[str]) -> Dict[str, List[Dict[str, Any]]]:
@@ -181,6 +196,7 @@ def refresh_rows(model: PickerModel, api: Any, layout: Optional[Layout]) -> None
     model.folders = fresh.folders
     model.links = fresh.links
     model.managers = fresh.managers
+    model.watched, model.watch_layer = fresh.watched, fresh.watch_layer
     model.collapsed &= set(model.rosters)
     model.collapsed_tabs &= {row.tab_id or "{}:tab?".format(row.workspace_id or "unknown") for row in model.rows}
     if not tui_model.focus_node(model, keep_key):
@@ -491,13 +507,14 @@ def run(layout: Layout, api: Any, env: Dict[str, str], actions: bool = True) -> 
 
 
 #: Member actions the tree can run while the popup stays open.
-ACTION_INTENTS = ("agent_focus", "member_rename", "member_goal", "member_send_goal", "member_remove", "member_focus", "member_resume", "member_manager", "member_model", "team_folder_set", "team_board_open", "team_dissolve", "team_link")
+ACTION_INTENTS = ("agent_focus", "agent_watch", "member_rename", "member_goal", "member_send_goal", "member_remove", "member_focus", "member_resume", "member_manager", "member_model", "team_folder_set", "team_board_open", "team_dissolve", "team_link")
 #: ``remove`` and ``rename`` do several socket round trips plus a lock wait; the console's 20 s is too
 #: tight for them, and a timeout kills the CLI mid-change (M8 review).
 ACTION_TIMEOUT_S = 45.0
 
 ACTION_LABELS = {
     "agent_focus": "going to {member}",
+    "agent_watch": "updating the watch on {member}",
     "member_rename": "renaming {member}",
     "member_goal": "saving the goal for {member}",
     "member_send_goal": "sending the goal to {member}",
@@ -712,6 +729,9 @@ def execute_action(intent: Any, model: PickerModel, api: Any, layout: Optional[L
         model.status = "focused {}".format(pane_id)
         return False
 
+    if intent.kind == "agent_watch":
+        return execute_watch(intent, model, api, layout, env)
+
     if not member_still_matches(layout, intent):
         model.error = "{} changed while this was open; press r to refresh".format(intent.args.get("member"))
         model.stage = "select"
@@ -737,6 +757,62 @@ def execute_action(intent: Any, model: PickerModel, api: Any, layout: Optional[L
         tui_model.focus_node(model, "team:{}".format(intent.args["team"]))
     else:
         tui_model.focus_node(model, "member:{}/{}".format(intent.args["team"], intent.args["member"]))
+    return True
+
+
+def watch_args(intent: Any) -> List[str]:
+    """``watch <pane>`` for an agent that runs now; ``unwatch <terminal>``, which finds the flag even after a pane move."""
+    args = intent.args
+    if args.get("watch"):
+        return ["watch", str(args.get("pane_id") or args.get("terminal_id") or "")]
+    return ["unwatch", str(args.get("terminal_id") or args.get("pane_id") or "")]
+
+
+def watch_failure_status(intent: Any, err: Dict[str, Any]) -> str:
+    code = str(err.get("code") or "error")
+    member = str(intent.args.get("member") or "")
+    if code == "whiteboard_off":
+        return tui_model.WATCH_OFF_HINT
+    if code == "watch_limit":
+        return "at most {} agents can be watched; stop watching one first (o on a watched row)".format(err.get("max") or 20)
+    if code == "agent_not_found":
+        return "{} is not running any more; press r to refresh".format(member)
+    if code == "author_mismatch":
+        return "watching agents is for the operator in person"
+    if code == "cli_timeout":
+        return "watch took too long; press r to see what happened"
+    return "{}: {}".format(code, err.get("message") or code)
+
+
+def execute_watch(intent: Any, model: PickerModel, api: Any, layout: Optional[Layout], env: Dict[str, str]) -> bool:
+    """``o``: watch or unwatch through the CLI, after checking the pane still hosts the same agent; the popup stays open."""
+    from herdr_team.console import run_cli
+
+    pane_id = str(intent.args.get("pane_id") or "")
+    expected = str(intent.args.get("terminal_id") or "")
+    member = str(intent.args.get("member") or pane_id)
+    if intent.args.get("watch") and pane_id:
+        try:
+            found = api.request("agent.get", {"target": pane_id})
+            agent = found.get("agent") if isinstance(found, dict) else None
+        except HerdrTeamError as err_obj:
+            model.error = "cannot watch {}: {}".format(member, err_obj.message)
+            return True
+        if not isinstance(agent, dict) or (expected and str(agent.get("terminal_id") or "") != expected):
+            model.error = "{} changed while this was open; press r to refresh".format(pane_id)
+            return True
+    rc, out, err = run_cli(watch_args(intent), env, timeout=ACTION_TIMEOUT_S)
+    if err:
+        model.error = watch_failure_status(intent, err)
+        return True
+    model.error = None
+    if intent.args.get("watch"):
+        model.watched.add(expected)
+        doing = ((out or {}).get("card") or {}).get("doing") if isinstance(out, dict) else None
+        model.status = "watching {}{}".format(member, "; its sidebar row shows: {}".format(doing) if doing else "; its sidebar row shows what it is doing")
+    else:
+        model.watched.discard(expected)
+        model.status = "stopped watching {}".format(member)
     return True
 
 

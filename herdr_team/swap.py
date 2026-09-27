@@ -5,9 +5,11 @@ import copy
 import os
 import shutil
 import uuid
+from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Dict, Optional
 
-from herdr_team import models, permissions, roster, store
+from herdr_team import features, models, paths, permissions, roster, store
 from herdr_team.errors import EXIT_REFUSED, HerdrTeamError
 
 KINDS = models.KINDS
@@ -40,8 +42,40 @@ def stale_job(member: Dict[str, Any], job: Dict[str, Any]) -> bool:
     return active(member) or not isinstance(seq, int) or seq <= operation.get("cutoff_seq", 0)
 
 
+def _team_location(team: roster.Team) -> Optional[Any]:
+    """The session dir and socket a loaded ``team.json`` names: the two fields ``features.mcp_spec`` reads.
+
+    ``team.json`` records both when the team is created; the session slug is
+    the socket's structural slug, as ``paths.resolve_layout`` derives it. None
+    when they do not name a readable session.
+    """
+    try:
+        if not team.socket or not team.state_dir:
+            return None
+        session = paths.session_paths(Path(team.state_dir), paths.session_slug(team.socket))
+    except (HerdrTeamError, OSError, ValueError):
+        return None
+    return SimpleNamespace(session=session, socket=paths.canonicalize(team.socket))
+
+
+def canvas_spec(team: roster.Team, layout: Any = None) -> Optional[Dict[str, Any]]:
+    """``features.mcp_spec`` for the team being swapped into, or None (canvas off, or its location unknown)."""
+    where = layout if layout is not None else _team_location(team)
+    if where is None:
+        return None
+    try:
+        return features.mcp_spec(where, where.session.team(team.team))
+    except HerdrTeamError:
+        return None
+
+
 def plan(team: roster.Team, name: str, kind: str, setting: Optional[str], env: Dict[str, str], profile: Optional[str] = None,
-         unlisted: bool = False) -> Dict[str, Any]:
+         unlisted: bool = False, layout: Any = None) -> Dict[str, Any]:
+    """The fresh agent that would take ``name`` over: its argv (canvas MCP flags included while the team's canvas is on) and settings.
+
+    ``layout`` is optional; without it the team's session comes from its own
+    ``team.json`` (``_team_location``).
+    """
     member = team.find(name)
     if member is None or member.is_human or member.status == "left":
         raise HerdrTeamError("member_not_found", "{} is not an agent member".format(name), EXIT_REFUSED)
@@ -66,7 +100,8 @@ def plan(team: roster.Team, name: str, kind: str, setting: Optional[str], env: D
     dest["profile"] = harnesses.check_profile(kind, dest.get("profile"), member.cwd, env, unlisted=unlisted or not profile)
     if setting:
         harnesses.check_model(kind, model, effort, member.cwd, env, unlisted=unlisted)
-    argv = models.fresh_argv(kind, model, effort, permissions=permissions.effective(team.config, member), profile=dest["profile"])
+    argv = models.fresh_argv(kind, model, effort, permissions=permissions.effective(team.config, member), profile=dest["profile"],
+                             mcp=canvas_spec(team, layout))
     if not shutil.which(argv[0], path=env.get("PATH", os.defpath)):
         raise HerdrTeamError("command_not_found", "{} is not on PATH".format(argv[0]), EXIT_REFUSED)
     if not member.cwd or not os.path.isdir(member.cwd):

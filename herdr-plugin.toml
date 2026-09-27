@@ -1,6 +1,6 @@
 id = "herdr-synapse"
 name = "Herdr Synapse"
-version = "0.20.0"
+version = "0.21.0"
 min_herdr_version = "0.8.2"
 description = "Teams of agents in one Herdr session: roster, charter, shared board, idle-gated nudges"
 platforms = ["macos", "linux"]
@@ -49,6 +49,12 @@ id = "mission"
 title = "Mission control: what needs you across teams"
 contexts = ["global"]
 command = ["./bin/herdr-synapse", "ui", "mission"]
+
+[[actions]]
+id = "whiteboard"
+title = "Open the team whiteboard"
+contexts = ["global"]
+command = ["./bin/herdr-synapse", "whiteboard", "open"]
 
 [[actions]]
 id = "toggle-view"
@@ -127,3 +133,11 @@ placement = "popup"
 width = "90%"
 height = 30
 command = ["./bin/herdr-synapse", "mission-pane"]
+
+[[panes]]
+id = "whiteboard"
+title = "Whiteboard"
+placement = "popup"
+width = "80%"
+height = 12
+command = ["./bin/herdr-synapse", "whiteboard", "open", "--popup"]

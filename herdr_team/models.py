@@ -26,6 +26,14 @@ The same flags are rebuilt on exact-session resume, controlled model restart,
 and OpenCode clear/restart instead of depending on a previous process argv.
 An explicit native permission policy omits these flags.
 
+While a team's canvas is on (0.21), a member Synapse starts also gets the
+canvas MCP server at launch: ``features.mcp_launch_args`` appends Claude
+Code's ``--mcp-config <file>`` or Codex's two ``-c
+mcp_servers.synapse_canvas.*`` overrides **last**, so every launch path builds
+the same flags (Pi has no such flag and uses the CLI). A controlled restart never recomputes them; it carries the
+live ones through ``preserved_launch_args``, which keeps a value only when
+``features.is_preserved_mcp_value`` recognises it as Synapse's own.
+
 Pi has no built-in tool permission prompts; ``--approve`` trusts project
 resources for this run without changing global trust decisions.
 
@@ -38,6 +46,7 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, List, Optional, Tuple
 
+from herdr_team import features as _features
 from herdr_team import permissions as _permissions
 from herdr_team.errors import EXIT_REFUSED, HerdrTeamError, UsageError
 
@@ -199,8 +208,14 @@ def profile_args(kind: Any, profile: Optional[str]) -> List[str]:
     return [PROFILE_FLAGS[str(kind).strip()], name] if name else []
 
 
-def launch_args(kind: Any, model: Optional[str], effort: Optional[str], permissions: str = "yolo", profile: Optional[str] = None) -> List[str]:
-    """Profile, model flags and the saved permission policy (YOLO by default)."""
+def launch_args(kind: Any, model: Optional[str], effort: Optional[str], permissions: str = "yolo", profile: Optional[str] = None,
+                mcp: Optional[Dict[str, Any]] = None) -> List[str]:
+    """Profile, model flags, the saved permission policy (YOLO by default), then the canvas MCP flags.
+
+    ``mcp`` is ``features.mcp_spec(...)`` for the member's team, None while
+    its canvas is off; its flags go last so ``session_names.prepare`` can
+    still append ``--name`` (which also ends Claude's variadic ``--mcp-config``).
+    """
     validate(kind, model, effort)
     key = str(kind or "").strip()
     out: List[str] = profile_args(key, profile)
@@ -223,17 +238,19 @@ def launch_args(kind: Any, model: Optional[str], effort: Optional[str], permissi
         if effort:
             out += ["--thinking", effort]
     out += _permissions.launch_args(key, permissions)
+    out += _features.mcp_launch_args(key, mcp)
     return out
 
 
-def resume_argv(kind: Any, session: Any, model: Optional[str], effort: Optional[str], permissions: str = "yolo", profile: Optional[str] = None) -> List[str]:
-    """``roster.resume_argv(session)`` with the setting's flags appended."""
+def resume_argv(kind: Any, session: Any, model: Optional[str], effort: Optional[str], permissions: str = "yolo", profile: Optional[str] = None,
+                mcp: Optional[Dict[str, Any]] = None) -> List[str]:
+    """``roster.resume_argv(session)`` with the setting's flags (and the canvas MCP flags, when given) appended."""
     from herdr_team import roster as _roster
 
     if kind == "pi" and (not isinstance(session, dict) or session.get("kind") != "path"
                          or not os.path.isabs(str(session.get("value") or ""))):
         raise HerdrTeamError("resume_unsupported", "Pi requires its recorded absolute session path", EXIT_REFUSED)
-    return list(_roster.resume_argv(session)) + launch_args(kind, model, effort, permissions, profile)
+    return list(_roster.resume_argv(session)) + launch_args(kind, model, effort, permissions, profile, mcp=mcp)
 
 
 def foreground_argv(kind: Any, processes: Any) -> Optional[List[str]]:
@@ -277,10 +294,20 @@ def preserved_launch_args(kind: Any, current_argv: Any, permissions: str = "yolo
     if profile:
         specs = {flag: arity for flag, arity in specs.items() if flag not in _PROFILE_SPELLINGS.get(key, ())}
     argv = [str(arg) for arg in current_argv]
+    mcp_flags = _features.PRESERVED_MCP_FLAGS.get(key, ())
     out: List[str] = []
     index = 1 if argv else 0
     while index < len(argv):
         token = argv[index]
+        # Synapse's own canvas injection (0.21): kept only when the value is
+        # recognisably ours, so a user's inline --mcp-config JSON (which may
+        # hold secrets) or an unrelated -c override is dropped like any
+        # unknown flag. Checked first because Codex's -c has no other entry.
+        mcp = _mcp_pair(key, mcp_flags, argv, index)
+        if mcp is not None:
+            kept, index = mcp
+            out.extend(kept)
+            continue
         matched = False
         for flag, arity in specs.items():
             if token == flag:
@@ -308,6 +335,41 @@ def preserved_launch_args(kind: Any, current_argv: Any, permissions: str = "yolo
     return out
 
 
+def _mcp_pair(kind: str, flags: Tuple[str, ...], argv: List[str], index: int) -> Optional[Tuple[List[str], int]]:
+    """``(kept tokens, next index)`` when ``argv[index]`` is one of the kind's MCP flags, else None.
+
+    Both spellings are read: ``flag value`` (arity 1) and ``flag=value``.
+    A value ``features.is_preserved_mcp_value`` does not accept is consumed
+    and dropped.
+    """
+    token = argv[index]
+    for flag in flags:
+        if token == flag:
+            if index + 1 >= len(argv) or argv[index + 1].startswith("-"):
+                return [], index + 1  # no value: the next flag is examined on its own
+            value = argv[index + 1]
+            return ([token, value] if _features.is_preserved_mcp_value(kind, flag, value) else []), index + 2
+        if token.startswith(flag + "="):
+            value = token[len(flag) + 1:]
+            return ([token] if _features.is_preserved_mcp_value(kind, flag, value) else []), index + 1
+    return None
+
+
+def _without_mcp(kind: str, preserved: List[str]) -> List[str]:
+    """``preserved`` minus Synapse's canvas flags, for a launch that injects its own."""
+    flags = _features.PRESERVED_MCP_FLAGS.get(kind, ())
+    out: List[str] = []
+    index = 0
+    while index < len(preserved):
+        pair = _mcp_pair(kind, flags, preserved, index)
+        if pair is not None:
+            index = pair[1]
+            continue
+        out.append(preserved[index])
+        index += 1
+    return out
+
+
 def restart_argv(kind: Any, session: Any, model: Optional[str], effort: Optional[str], current_argv: Any = None, permissions: str = "yolo",
                  profile: Optional[str] = None) -> List[str]:
     """Exact controlled-resume argv plus safe live policy flags.
@@ -325,11 +387,18 @@ def restart_argv(kind: Any, session: Any, model: Optional[str], effort: Optional
 
 
 def fresh_argv(kind: Any, model: Optional[str], effort: Optional[str], current_argv: Any = None, permissions: str = "yolo",
-               profile: Optional[str] = None) -> List[str]:
-    """A fresh harness argv with its profile, setting and safe live policy retained."""
+               profile: Optional[str] = None, mcp: Optional[Dict[str, Any]] = None) -> List[str]:
+    """A fresh harness argv with its profile, setting and safe live policy retained.
+
+    With ``mcp`` the canvas flags come from that spec, never also from the
+    live argv, so they appear once.
+    """
     key = str(kind or "").strip()
     validate(key, model, effort)
-    return [key] + launch_args(key, model, effort, permissions, profile) + preserved_launch_args(key, current_argv, permissions, profile)
+    preserved = preserved_launch_args(key, current_argv, permissions, profile)
+    if mcp:
+        preserved = _without_mcp(key, preserved)
+    return [key] + launch_args(key, model, effort, permissions, profile, mcp=mcp) + preserved
 
 
 def live_keystrokes(kind: Any, model: Optional[str], effort: Optional[str]) -> Optional[List[str]]:

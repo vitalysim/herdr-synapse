@@ -551,7 +551,12 @@ def _spawn_member(layout: Layout, api: Any, team: _roster.Team, team_paths: Team
         _charter.initialize_instructions(layout, team.team, author, member.name, initial_instructions)
     out: Dict[str, Any] = {"member": _member_json(member, False), "job": None}
     from . import session_names
-    launch_args = _models.launch_args(kind, leaf.get("launch_model"), leaf.get("launch_effort"), _permissions.effective(team.config, member), member.profile)
+    from herdr_team import features as _features
+
+    # The canvas MCP server, only while this team's canvas is on (0.21); the
+    # same spec every other launch path uses, so a restart's re-check matches.
+    launch_args = _models.launch_args(kind, leaf.get("launch_model"), leaf.get("launch_effort"), _permissions.effective(team.config, member), member.profile,
+                                      mcp=_features.mcp_spec(layout, team_paths))
     naming = None
     try:
         launch_args, naming = session_names.prepare(kind, name, launch_args)
@@ -1134,10 +1139,13 @@ def _add_resume_arguments(parser: argparse.ArgumentParser) -> None:
 _execvp = os.execvp
 
 
-def resume_plan(team_name: str, member: _roster.Member, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """What ``resume`` would run for ``member``: the argv (with its model and effort flags), the directory, and the recorded session."""
+def resume_plan(team_name: str, member: _roster.Member, config: Optional[Dict[str, Any]] = None, mcp: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """What ``resume`` would run for ``member``: the argv (with its model and effort flags), the directory, and the recorded session.
+
+    ``mcp`` is ``features.mcp_spec`` for the team (None while its canvas is off).
+    """
     model, effort = _models.effective_setting(config, member)
-    argv = _models.resume_argv(member.kind, member.session, model, effort, _permissions.effective(config, member), member.profile)
+    argv = _models.resume_argv(member.kind, member.session, model, effort, _permissions.effective(config, member), member.profile, mcp=mcp)
     cwd = member.cwd if isinstance(member.cwd, str) and member.cwd and os.path.isdir(member.cwd) else None
     return {
         "team": team_name, "member": member.name, "kind": member.kind,
@@ -1168,7 +1176,9 @@ def _run_resume(args: argparse.Namespace) -> int:
     member = doc.find(args.name)
     if member is None or member.is_human:
         raise HerdrTeamError("member_not_found", "{!r} is not in team {!r}".format(args.name, team_name), EXIT_REFUSED, {"name": args.name, "team": team_name, "roster": doc.names()})
-    plan = resume_plan(team_name, member, doc.config)
+    from herdr_team import features as _features
+
+    plan = resume_plan(team_name, member, doc.config, mcp=_features.mcp_spec(layout, layout.team(team_name)))
     if args.print_only:
         return emit(args, plan, plan["command"] + ("  # in " + plan["cwd"] if plan["cwd"] else ""))
     pane_id = env.get("HERDR_PANE_ID") or ""
@@ -1652,6 +1662,9 @@ def _run_me(args: argparse.Namespace) -> int:
     payload.update({"model": own_model, "effort": own_effort, "setting": _models.label(own_model, own_effort),
                     "model_source": model_src, "effort_source": effort_src, "profile": me.get("profile")})
     payload["links"] = _links.summary(layout.session, team_name)
+    from herdr_team import cmd_whiteboard as _whiteboard
+
+    payload["whiteboard"] = _whiteboard.switch_view(layout.session, team_paths, doc)
     from herdr_team import work as _work
 
     payload["work"] = _work.member_view(_work.load(team_paths), author.name)
@@ -1959,6 +1972,9 @@ def _run_brief(args: argparse.Namespace) -> int:
         if member.get("brief"):
             lines.append("your brief: {}".format(member["brief"]))
         lines.append("teammates: " + ", ".join("{} ({})".format(m.get("name"), m.get("role")) for m in members_of(doc) if m.get("name") != member["name"] and m.get("status") != "left"))
+        from herdr_team import cmd_whiteboard as _whiteboard
+
+        lines.append(_whiteboard.switch_view(layout.session, team_paths, doc)["line"])
         records = board_read_all(team_paths)
         lines.append("unread posts for you: {}".format(unread_for(team_paths, records, member["name"])))
         out = getattr(args, "stdout", None) or sys.stdout

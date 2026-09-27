@@ -1,0 +1,3 @@
+# The built page is kept byte for byte: dist/manifest.sha256 hashes every file, and a repository
+# that normalises line endings (the Herdr fork's "* text=auto eol=lf") rewrote two CRLF licences.
+dist/** -text

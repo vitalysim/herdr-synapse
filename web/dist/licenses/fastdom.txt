@@ -1,0 +1,6 @@
+fastdom 1.0.12
+license: MIT
+homepage: https://github.com/wilsonpage/fastdom
+
+This package ships no licence file. Its package.json declares: MIT.
+Author: Wilson Page

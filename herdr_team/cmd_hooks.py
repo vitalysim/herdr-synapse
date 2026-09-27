@@ -456,6 +456,21 @@ def _folder_lines(doc: Dict[str, Any], team_name: str, name: str) -> List[str]:
         os.fspath(own), os.fspath(targets["knowledge"]), os.fspath(targets["artifacts"]))]
 
 
+def _whiteboard_line(team: paths.TeamPaths, doc: Dict[str, Any]) -> str:
+    """``whiteboard: off`` / ``on · live visuals on · canvas v42; how to draw: ...`` (0.21).
+
+    Always present, so a member told the canvas is off is not left guessing
+    whether it missed the line; never raises, because a briefing must not
+    fail on the visual layer.
+    """
+    from herdr_team import cmd_whiteboard as _whiteboard
+
+    try:
+        return _whiteboard.switch_view(paths.session_of_team(team), team, doc or None)["line"]
+    except (HerdrTeamError, OSError, ValueError):
+        return "whiteboard: off"
+
+
 def brief_context(team: paths.TeamPaths, team_name: str, member: Dict[str, Any]) -> str:
     """The SessionStart context: charter, own brief, roster, unread count."""
     doc = _read_team_doc(team) or {}
@@ -520,6 +535,7 @@ def brief_context(team: paths.TeamPaths, team_name: str, member: Dict[str, Any])
     if own_setting:
         lines.append("your model and effort: {} (herdr-synapse model --self <model>[@<effort>] changes them; the manager may too).".format(own_setting))
     lines.extend(_folder_lines(doc, team_name, name))
+    lines.append(_whiteboard_line(team, doc))
     operation = member.get("swap") or {}
     if operation.get("phase") in ("briefing", "complete"):
         lines.append("You are a freshly created replacement for this team member. Inspect the current working tree before continuing; the previous conversation is separate.")

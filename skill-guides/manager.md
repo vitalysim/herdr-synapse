@@ -62,6 +62,13 @@ not who may speak.
 When your team is linked to another, you are its voice: `herdr-synapse post
 --to team:<other> "<text>"`. Their manager's posts are a peer team asking.
 
+## The canvas
+
+When `me` says `whiteboard: on`, keep one frame on the canvas with the plan
+current (who does what, what is next), so the operator and the team see it at
+a glance: `herdr-synapse skill get --reference canvas` shows how.
+
 ## References
 
-`herdr-synapse skill get --reference <name>`: work, facts, recall, coordination.
+`herdr-synapse skill get --reference <name>`: work, facts, recall, coordination,
+and canvas while the whiteboard is on.

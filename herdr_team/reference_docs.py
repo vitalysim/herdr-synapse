@@ -62,6 +62,9 @@ MODULE_TITLES = {
     "herdr_team.cmd_templates": "Templates",
     "herdr_team.cmd_mission": "Mission control",
     "herdr_team.cmd_remote": "Phone reach",
+    "herdr_team.cmd_whiteboard": "Whiteboard switches and page",
+    "herdr_team.cmd_canvas": "Canvas",
+    "herdr_team.cmd_watch": "Watch",
 }
 
 

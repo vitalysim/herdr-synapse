@@ -5,7 +5,7 @@ Internals, conventions, and the status log for people changing the plugin. The u
 ## Layout
 
 ```
-herdr-plugin.toml        manifest (plan section 10): startup, 8 actions, 3 event hooks, 6 panes
+herdr-plugin.toml        manifest (plan section 10): startup, 10 actions, 3 event hooks, 8 panes
 bin/herdr-synapse           sh launcher: HERDR_TEAM_PYTHON > python3 > /usr/bin/python3, refuses < 3.9
 bin/hook                 sh gate for manifest events: exit 0 in ~15 ms when daemon.json names a live pid
 console.sh               console pane wrapper: prints the relaunch hint and waits on failure
@@ -22,7 +22,16 @@ herdr_team/
   gate.py nudge.py ledger.py daemon.py                        notifier
   hooks.py claude_settings.py                                 event reconciler and Claude hooks
   tui_model.py console.py picker.py compose.py                UIs (curses console, picker, compose popups)
+  features.py            the whiteboard switches (session layer, team canvas, viz) and the launch-time MCP spec
+  canvas.py              the team canvas: Synapse Sketch ops, events.jsonl and scene.json, look, notices, assets
+  canvas_layout.py canvas_mermaid.py   graph layouts and the Mermaid flowchart subset parser (used by canvas.py)
+  canvas_render.py       SVG sanitiser, scene to SVG (id badges, grid), PNG through resvg (the RUN hook)
+  canvas_mcp.py          the stdio MCP server (`canvas mcp`) injected at launch for members Synapse starts
+  sketch.py              standalone, stdlib-only batch builder for agents (`canvas helper`)
+  whiteboard_server.py   the loopback page server: tickets, cookie, CSP, JSON API, SSE, sealed viz frames
+  views.py activity.py   generated team views (the page's Team tab); watch cards and the team_doing token
 hooks/claude/            the Claude Code hook shim (written by the hooks implementer)
+web/                     the whiteboard page sources (Vite, React, Excalidraw); web/dist/ is the checked-in build
 skills/herdr-synapse/SKILL.md   printed by `herdr-synapse --skill`
 docs/reference.md        complete user-facing command and shortcut reference
 docs/cli.md              implementation and JSON command contract
@@ -59,7 +68,15 @@ python3 -m herdr_team.reference_docs --check
 ./bin/herdr-synapse --version
 ./bin/herdr-synapse --skill
 ./bin/herdr-synapse <command> --help
+cd web && npm ci && npm run build                   # only when web/src changes: rebuilds web/dist, MANIFEST.json, licences
 ```
+
+Canvas tests fake `resvg` through `canvas_render.RUN` and `find_resvg` (and
+`tests/support.py` pins `canvas_render.FONT_DIRS` to none, so resvg's font
+arguments never depend on the machine's fonts), the
+page server's process through `whiteboard_server.SPAWN`, and the browser
+through `cmd_whiteboard.OPEN_BROWSER`; `tests/test_canvas_e2e.py` runs the
+whole path (switch, draw, look, mention, page server on loopback) in one test.
 
 Rules for code in this package:
 
@@ -71,9 +88,15 @@ Rules for code in this package:
   output, and a timeout. Every socket call has a client-side timeout. The
   one exemption is `charter edit`, which hands the terminal to
   `$VISUAL`/`$EDITOR` until the human quits it.
-- Exactly three `flock` files, all through `herdr_team.store`:
-  `<session>/daemon.lock`, `<team>/team.lock`,
-  `~/.claude/settings.json.herdr-team.lock`. Nobody else imports `fcntl`.
+- Every `flock` goes through `herdr_team.store.FileLock`; nobody else
+  imports `fcntl`. The core three are `<session>/daemon.lock`,
+  `<team>/team.lock` and `~/.claude/settings.json.herdr-team.lock`; narrower
+  ones exist for restore, links, recall, session names and the remote
+  (`grep FileLock`). The canvas adds `<team>/whiteboard/canvas.lock`
+  (`canvas_busy`, exit 5) for every canvas write. `flock` is not re-entrant
+  and `BoardStore.append` takes `team.lock` itself, so never post to the
+  board while holding `canvas.lock`: `canvas.apply_ops` posts after
+  releasing it.
 - `time.monotonic()` for windows, rate limits, and backoffs; wall clock only
   for TTLs and timestamps.
 - Directories 0700, files 0600, `lstat` before every managed path, symlinks
@@ -116,8 +139,11 @@ owner's 17 agents. Until milestone M10:
 <STATE>/sessions/<slug>/                      slug: default | <session name> | sock-<sha1[:8]>
   daemon.lock daemon.json daemon.log hooks.log view.json console.json kinds.json who.json
   panes/<terminal_id>.json
+  features.json watch.json watch-cache/ whiteboard.json whiteboard.log whiteboard-tickets/   (0.21, the visual layer)
   teams/<team>/ team.json team.lock board.seq board.jsonl charter.md archive/ cursors/ payloads/
                 briefings/ notifier/{ledger.jsonl,state.json,jobs/} mute.json audit.jsonl
+                whiteboard/{canvas.lock,events.jsonl,scene.json,cursors/,assets/,stills/,renders/,exports/,
+                            notices.json,rate.json,mcp.json,archive/}
   _archive/<team>-<ts>/
 <config_dir>/plugins/config/herdr-synapse/{state-dir, allowed-sockets}
 ```
@@ -127,6 +153,33 @@ State root resolution (`herdr-synapse doctor` prints it): `--team <path>` →
 pointer file → `${XDG_STATE_HOME:-$HOME/.local/state}/<app>/plugins/herdr-synapse`.
 
 ## Status
+
+- 2026-09-26, 0.21.0 (the whiteboard, canvas and watch; contract
+  `.local/prd/canvas-contracts.md`): built by four parallel builders and one
+  integration pass. Suite: 2630 tests green under Homebrew python 3.14 and
+  Apple python 3.9. `tests/test_canvas_e2e.py` runs the whole path in one
+  process (switch, a member's batch, look with a faked resvg, the mention's
+  nudge, MCP, the page server started by `whiteboard open`, a page edit, off).
+  A real-process smoke with a temp state root and a dead socket (enable, draw,
+  `look --image` through the installed resvg 0.47, `open`, ticket to cookie,
+  scene, views, a forged `Host`, `disable` stopping the server) passed.
+  Pi gets no MCP flag (0.85.1 has no `--mcp-config` and exits on an unknown
+  flag; found by reading its source), so Pi members use the canvas CLI.
+  Review fixes (`tests/test_canvas_review_fixes.py`): undo skips elements the
+  undoer cannot edit and unbinds what pointed at what it deletes; `inside`
+  grows a frame only for its editor and never into a lock, and a `move …
+  inside` adopts; moves and resizes stay within `MAX_COORD`; a malformed op
+  is that op's `op_invalid`, never a crash; the force layout is bounded,
+  snapped to a grid and computed before `canvas.lock`; agent ops are capped
+  in log bytes (per op and per minute) and the log is read backwards in
+  linear time; SVG `<use>` loops, deep trees and expansions refuse; chart
+  specs past 64 levels refuse; purge keeps `mcp.json`; `portrait
+  --from-todo` checks the switch first; watch redaction covers command-line
+  secret shapes and `team_doing` shows only the program. Still open: log
+  compaction independent of `clear` (the byte caps bound its growth rate).
+  Not yet exercised live: contract section 20 (Codex's MCP flags,
+  Claude forwarding `HERDR_PANE_ID` to MCP servers, the page in a real Herdr
+  session, `look --exact` against a real browser).
 
 Integration pass of 2026-09-04 (the plugin was developed inside a fork of Herdr; this log moved here with it):
 

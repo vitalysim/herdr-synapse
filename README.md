@@ -155,6 +155,10 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
 
 **Operations**
 
+- **A whiteboard, when you want one.** Off until you turn it on. Then each
+  team gets a shared canvas that its agents and you draw on together, a page
+  that draws the team's work, facts and people, and a watch that shows what
+  any agent is doing on its sidebar row. See [Whiteboard and watch](#whiteboard-and-watch).
 - **Mission control and templates.** `prefix+d` shows what needs you across every
   team. `create --template research-sprint | content-campaign | vuln-hunt |
   feature-team` starts a whole team, and `template save` keeps yours.
@@ -431,8 +435,9 @@ reloading. The block gives you the key bindings and the sidebar rows that show
 each member's team, role and current task, using a six-colour team palette.
 
 If you pasted the block before 0.19, it lacks the `prefix+d` binding for
-mission control. `herdr-synapse keys print` prints the current bindings; add
-the missing one and reload.
+mission control; before 0.21, the `prefix+a` binding for the whiteboard and the
+`$team_doing` sidebar row that watch uses. `herdr-synapse keys print` prints the
+current bindings; add the missing ones (or re-paste the whole block) and reload.
 
 ### Verify
 
@@ -549,7 +554,8 @@ herdr-synapse create hunt --new --project ~/work/app \
 
 Default key bindings: `prefix+t` teams view, `prefix+u` console, `prefix+m`
 compose popup, `prefix+y` team view in the sidebar, `prefix+i` usage limits,
-`prefix+f` team knowledge, `prefix+d` mission control.
+`prefix+f` team knowledge, `prefix+d` mission control, `prefix+a` the
+whiteboard page.
 
 The [complete command and shortcut reference](docs/reference.md) lists every
 CLI parameter, plugin action, console command, and key used inside each view.
@@ -743,6 +749,100 @@ lanes:
 
 Each card carries the command that deals with it. In the popup, Enter on an
 agent jumps to its pane; on anything else it shows the command.
+
+## Whiteboard and watch
+
+A visual layer for your teams, **off until you turn it on**. When it is on:
+
+- every team has a **shared canvas**, an infinite hand-drawn board (Excalidraw)
+  that its agents and you draw on together, shown on a local page;
+- the page's **Team** tab draws what the team already knows: the work graph,
+  the fact map with its disputes, who is on the team and linked to it, the
+  board as a timeline, and the mission-control lanes;
+- **watch** shows what any flagged agent is doing, in a team or not: its plan
+  and current step, recent actions and files touched, on the page and as one
+  line on its sidebar row.
+
+```bash
+herdr-synapse whiteboard enable        # you, in person; every team is on from now
+herdr-synapse whiteboard open          # or prefix+a: opens the page in your browser
+herdr-synapse --team hunt whiteboard team off   # one team without it
+herdr-synapse whiteboard status        # the switches, the page server, what is watched
+herdr-synapse watch w3:p2              # or `o` on an agent row in prefix+t
+herdr-synapse whiteboard disable       # everything stops; nothing drawn is lost
+```
+
+**Three switches.** The session switch (`enable`/`disable`) is yours alone,
+from your own shell, the console or a popup; an agent cannot turn it on, even
+with a delegation. Once it is on, every team's canvas is on unless you, or an
+agent you delegated to, switch that team off (`whiteboard team off`). Each
+team's **live visuals** are on too, with the same per-team opt-out
+(`whiteboard viz off`). Every switch that changes what agents may do is
+announced on the team's board. Off means nothing runs: no page server, no
+watching, no canvas commands (they refuse `whiteboard_off`), nothing taught to
+agents, and nothing deleted (`whiteboard purge` does that).
+
+**How agents draw.** They send small batches of operations: frames, notes,
+boxes and arrows placed on a labelled grid or next to each other, freehand pen
+strokes, SVG illustrations, graphs laid out for them, Mermaid diagrams,
+Vega-Lite charts over a file in the team's `artifacts/`, and comments that
+point at an element and `@mention` a teammate or you. Every mark carries its
+author and a one-line intent, shown when you hover it. They read the canvas
+back as text (`canvas look`, with element ids, bounds, text and connections,
+and only what changed since they last looked) and, when they can read images,
+as a rendered picture with the ids drawn on. Claude Code, Codex and Pi members
+that Synapse starts while the canvas is on also get the same tools over MCP;
+every other agent kind uses the `canvas` CLI. The skill tells an agent to
+read `herdr-synapse skill get --reference canvas` when `me` says
+`whiteboard: on`, and that reference teaches when to draw and how, with one
+example per kind of drawing.
+
+**Working together.** An agent claims a region before drawing in it, records a
+convention in the legend before relying on it ("red cross = I disagree"), and
+keeps a small portrait of its own plan in its corner. Drawing never wakes
+anyone; the board gets one line per author per minute. A comment that
+mentions someone is a normal, idle-gated nudge. You lead: draw anywhere, lock
+a region, undo any agent's batch, resolve comments, hide an agent's marks,
+and select a few elements and "Send to…" a member, who receives the text form
+and a picture of them. Your marks reach agents as the operator's requests and
+their marks reach each other as a peer's requests; neither is an order.
+
+**Live visuals.** An agent can also put a live visual on the canvas: an
+animation, a force layout, an interactive explorer, written in HTML and
+JavaScript with d3, three.js or p5.js served from your machine. It runs in a
+sealed frame on your page and nowhere else. They are on by default whenever a
+team's canvas is on; `whiteboard viz off` switches them off for that team,
+and existing ones then show as a still picture.
+
+**The page.** `prefix+a` (or `whiteboard open`) starts a small server on
+`127.0.0.1` and opens it. Over SSH, `whiteboard open` prints the URL and the
+`ssh -L` line to forward it. The page stops after 30 minutes with nobody on
+it, or with `whiteboard stop` or `disable`. It has four tabs: Canvas, Team,
+Activity (watched agents) and Diagrams (every chart, diagram and live visual
+with its source). The page ships prebuilt in `web/dist/`, so running it needs
+only Python; rebuilding it after changing `web/src/` needs Node
+(`cd web && npm ci && npm run build`).
+
+**Watch.** `o` on any agent row in `prefix+t`, or `herdr-synapse watch
+<pane|name>`, flags an agent. Synapse reads what its harness already writes
+(its terminal title, transcript, to-do list, OpenCode's database), costs no
+tokens and changes nothing in the agent. Its sidebar row gains a line such as
+`▶ 3/7 run the migration tests` or `✎ invoice.py` (re-paste the block from
+`setup --print-config` once to get the `$team_doing` row), and the page's
+Activity tab shows its plan, recent actions and files. `watch show` prints
+the same in the terminal.
+
+**Security in plain words.** Nothing leaves your machine. The page listens
+only on `127.0.0.1`; the link `whiteboard open` prints works once and is
+exchanged for a cookie other sites cannot use, and every request is checked
+for where it came from. The page loads nothing from the internet. An agent's
+SVG is rebuilt from a list of safe elements, and its live visuals run in a
+sandboxed frame with no network, no cookies and no access to the page or to
+other frames. Only a page you opened from a verified origin can draw; one
+opened from an unverified shell is read-only. Watch shows tool names and
+short arguments, never output, with secrets redacted. As with the rest of
+Synapse, this is a guard against the obvious routes, not a sandbox against
+software running as you.
 
 ## Teams that talk to each other
 
@@ -1526,6 +1626,11 @@ just written it; a schedule that fails toasts you and wakes nobody.
   They never call a provider or start an agent. A profile, model or effort a
   harness does not list is refused before anything starts, unless you pass
   `--unlisted`.
+- The whiteboard is off until you turn it on in person, and off means
+  nothing listens. Its page listens on `127.0.0.1` only, opens with a one-use
+  link, loads nothing from the network, and can draw only when you opened it
+  from a verified origin. Agents' live visuals run in a sandboxed frame with
+  no network; their marks and comments are a peer's requests, never your word.
 - Emergency stop: `herdr-synapse daemon stop`. Nothing is typed anywhere after
   that. `herdr plugin disable herdr-synapse` removes the plugin's sidebar
   tokens and view within seconds.
@@ -1539,7 +1644,7 @@ just written it; a schedule that fails toasts you and wakes nobody.
 - [docs/cli.md](docs/cli.md): the command contract, with every argument, JSON shape, exit code, and record grammar.
 - [docs/development.md](docs/development.md): internals, conventions, state layout, and the status log.
 - [skills/herdr-synapse/SKILL.md](skills/herdr-synapse/SKILL.md): what agents are taught, printed by `herdr-synapse --skill`.
-- [skill-guides/](skill-guides/): the worker, manager, reviewer and librarian guides, and the work, facts, recall and coordination references, served to agents by `herdr-synapse skill get`.
+- [skill-guides/](skill-guides/): the worker, manager, reviewer and librarian guides, and the work, facts, recall, coordination and canvas references, served to agents by `herdr-synapse skill get` (canvas only while the whiteboard is on).
 - [templates/](templates/): the built-in team templates, each a folder of Markdown you can copy and adapt.
 - [CHANGELOG.md](CHANGELOG.md): what changed in each release, and why.
 - [CONTRIBUTING.md](CONTRIBUTING.md): bug reports, pull requests, and validation.
@@ -1547,7 +1652,7 @@ just written it; a schedule that fails toasts you and wakes nobody.
 
 ## Status
 
-Current source version: 0.20.0, skill v11.
+Current source version: 0.21.0, skill v12.
 
 Claude Code 2.1.267, Codex 0.153.4 and OpenCode 1.18.30 were exercised together
 in one disposable Herdr 0.9.0/p22 session. Formation, exact-session resume, idle
@@ -1597,6 +1702,9 @@ tests.
 
 Not yet exercised live:
 
+- the 0.21 whiteboard, canvas, MCP tools and watch, which so far are covered by
+  the automated suite only (the live checks are C35 to C44 in
+  [docs/capabilities.md](docs/capabilities.md));
 - a Codex profile switch by `profile --apply restart`, and the popup inside a
   real `prefix+t` Herdr client rather than a plain pane;
 - the hosted ntfy.sh, Telegram and Slack services;

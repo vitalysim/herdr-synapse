@@ -275,10 +275,42 @@ def _default_role(args: argparse.Namespace) -> str:
     return "worker"
 
 
+def _canvas_visible(args: argparse.Namespace) -> bool:
+    """Whether the caller may be taught the canvas (0.21): its team's canvas is on; a person with no team, the session layer.
+
+    Anything unresolvable counts as off: an agent is never taught a tool it
+    cannot use.
+    """
+    from herdr_team import features
+    from herdr_team.cli import layout_for
+    from herdr_team.cmd_board import _open_team
+
+    try:
+        layout, _api, _author, _team_name, team, doc = _open_team(args, require_server=False)
+        return features.team_switch(layout.session, team, doc).on
+    except HerdrTeamError as err:
+        if err.code not in ("team_not_found", "team_required", "team_ambiguous"):
+            return False
+    try:
+        return features.layer_enabled(layout_for(args).session)
+    except (HerdrTeamError, OSError):
+        return False
+
+
+def _hidden_references(args: argparse.Namespace) -> List[str]:
+    """References this caller is not served: ``canvas`` while its canvas is off."""
+    from herdr_team import features
+
+    return [] if _canvas_visible(args) else [features.SKILL_REFERENCE]
+
+
 def run_skill_get(args: argparse.Namespace) -> int:
     """Print a version-matched guide: the installed SKILL.md stays a stable safety floor, the detail comes from here."""
     root = paths.skill_guides_dir()
     references = sorted(p.stem for p in (root / "references").glob("*.md")) if (root / "references").is_dir() else []
+    if args.list or args.reference:
+        hidden = _hidden_references(args)
+        references = [name for name in references if name not in hidden]
     if args.list:
         return emit(args, {"roles": list(ROLES), "references": references, "version": SKILL_VERSION},
                     "guides: {}\nreferences: {}\nprint one: herdr-synapse skill get <guide> | skill get --reference <name>".format(", ".join(ROLES), ", ".join(references)))

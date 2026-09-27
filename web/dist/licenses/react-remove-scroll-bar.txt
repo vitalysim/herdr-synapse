@@ -1,0 +1,5 @@
+react-remove-scroll-bar 2.3.8
+license: MIT
+
+This package ships no licence file. Its package.json declares: MIT.
+Author: Anton Korzunov <thekashey@gmail.com>

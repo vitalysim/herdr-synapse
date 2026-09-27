@@ -2496,6 +2496,10 @@ class PickerModel:
     swap_kind_index: int = 0
     #: A destructive action waiting for ``y``; mirrors ``ConsoleModel.pending_confirm``.
     pending_action: Optional["Intent"] = None
+    #: Terminal ids the operator watches (``activity.watched``), and whether the whiteboard layer is on
+    #: (None when unknown); ``o`` toggles a watch and watched rows carry ``WATCH_MARK`` (0.21).
+    watched: Set[str] = field(default_factory=set)
+    watch_layer: Optional[bool] = None
 
     # ``edit_key`` expects ``cursor``; the picker's list cursor already uses
     # that name, so the text cursor is ``cursor_pos`` and this shim maps it.
@@ -3045,6 +3049,49 @@ def picker_apply_key(model: PickerModel, key: str) -> Optional[Intent]:
     return None
 
 
+#: A watched agent's row (``o`` in the tree, 0.21), and what ``o`` says while the whiteboard layer is off.
+WATCH_MARK = "\u25c9"
+ASCII_WATCH_MARK = "@"
+WATCH_OFF_HINT = "whiteboard is off: herdr-synapse whiteboard enable"
+
+
+def node_terminal(node: PickerNode) -> str:
+    """The terminal a member or agent row stands for: the live row's, else the roster's."""
+    if node.row is not None and node.row.terminal_id:
+        return node.row.terminal_id
+    return str((node.member or {}).get("terminal_id") or "") if node.kind == "member" else ""
+
+
+def watch_mark(model: PickerModel, node: PickerNode) -> str:
+    """Two columns in front of a member or agent row: the watch mark and a space, or blank."""
+    if node.kind in ("member", "agent") and node_terminal(node) in model.watched:
+        return (ASCII_WATCH_MARK if model.ascii_only else WATCH_MARK) + " "
+    return "  "
+
+
+def _watch_key(model: PickerModel, node: PickerNode) -> Optional[Intent]:
+    """``o``: watch the agent under the cursor, in a team or not, or stop watching it (through the CLI)."""
+    if node.kind not in ("member", "agent"):
+        model.error = "put the cursor on an agent to watch it"
+        return None
+    if model.watch_layer is False:
+        model.error = WATCH_OFF_HINT
+        return None
+    terminal = node_terminal(node)
+    watching = bool(terminal) and terminal in model.watched
+    row = node.row
+    if not watching and (row is None or row.launch_pending or not terminal):
+        model.error = "{} is not running; watch it once its agent is up".format(node.label)
+        return None
+    return Intent("agent_watch", {
+        "pane_id": row.pane_id if row is not None else "",
+        "terminal_id": terminal,
+        "member": node.label,
+        "team": node.team,
+        "watch": not watching,
+    })
+
+
 def _select_key(model: PickerModel, key: str) -> Optional[Intent]:
     """The team tree: move, fold, pick unassigned agents, or open a member's actions."""
     nodes = picker_tree(model)
@@ -3113,6 +3160,8 @@ def _select_key(model: PickerModel, key: str) -> Optional[Intent]:
         return None
     if node is None:
         return None
+    if key == "o":
+        return _watch_key(model, node)
     if key == "s":
         if node.kind != "team":
             model.error = "put the cursor on a team to restore it"
@@ -3353,7 +3402,7 @@ def picker_styles(model: PickerModel, lines: List[str]) -> List[str]:
     """A style key per rendered line: the manager's row is ``STYLE_MANAGER`` in the tree, everything else plain."""
     if model.stage != "select":
         return [STYLE_PLAIN] * len(lines)
-    marker = re.compile(r"^(?:> |  )  \S+ (\u2605|\*) ")
+    marker = re.compile(r"^(?:> |  )(?:  |\u25c9 |@ )\S+ (\u2605|\*) ")
     return [STYLE_MANAGER if marker.match(line) else STYLE_PLAIN for line in lines]
 
 
@@ -4210,7 +4259,7 @@ def _tree_lines(model: PickerModel, width: int, height: int) -> List[str]:
     if model.scope_workspace:
         scope = "  unassigned: {}".format(model.scope_workspace)
     picked = len(selected_rows(model))
-    keys = "Enter acts | Space picks | s restore team | g go to pane | b board | c connect | v map | f folder | x dissolve | w scope | a all | n new agent | r refresh | Esc quit"
+    keys = "Enter acts | Space picks | s restore team | g go to pane | o watch | b board | c connect | v map | f folder | x dissolve | w scope | a all | n new agent | r refresh | Esc quit"
     head = "{} team{} · {} agent{}{}".format(teams, "" if teams == 1 else "s", agents, "" if agents == 1 else "s", scope)
     if picked:
         head += " · {} selected".format(picked)
@@ -4227,7 +4276,7 @@ def _tree_lines(model: PickerModel, width: int, height: int) -> List[str]:
         if node.kind == "team":
             lines.append(truncate_columns(pointer + _team_header(model, node, width - 2), width))
         elif node.kind == "member":
-            lines.append(truncate_columns(pointer + "  " + roster_line(node.member or {}, max(20, width - 4), model.ascii_only, None, None, show_role=True), width))
+            lines.append(truncate_columns(pointer + watch_mark(model, node) + roster_line(node.member or {}, max(20, width - 4), model.ascii_only, None, None, show_role=True), width))
         elif node.kind == "section":
             free = len([r for r in visible_rows(model) if not r.claimed_by])
             lines.append(truncate_columns("{}{} ({})".format(pointer, node.label, free), width))
@@ -4247,8 +4296,9 @@ def _tree_lines(model: PickerModel, width: int, height: int) -> List[str]:
                 note = "  (launching)"
             elif row is not None and row.agent_status == "blocked":
                 note = "  (blocked)"
-            lines.append(truncate_columns("{}{} {:<8} {:<10} {:<20} {}{}".format(
-                pointer, mark, row.pane_id if row else "?", (row.kind if row else None) or "?",
+            watch = watch_mark(model, node) if model.watched else ""
+            lines.append(truncate_columns("{}{} {}{:<8} {:<10} {:<20} {}{}".format(
+                pointer, mark, watch, row.pane_id if row else "?", (row.kind if row else None) or "?",
                 (row.name if row else None) or "(unnamed)", row.agent_status if row else "unknown", note), width))
     if not nodes:
         lines.append("  no agents in scope")
@@ -4258,6 +4308,13 @@ def _tree_lines(model: PickerModel, width: int, height: int) -> List[str]:
         lines.append(truncate_columns("  {}  (PgUp/PgDn)".format(arrows), width))
     lines.append(truncate_columns(_tree_detail(model, nodes), width))
     return lines
+
+
+def _watch_hint(model: PickerModel, node: PickerNode) -> str:
+    """`` · o watches it`` (or ``stops watching``) while the whiteboard layer is on; nothing otherwise."""
+    if model.watch_layer is not True:
+        return ""
+    return " · o stops watching" if node_terminal(node) in model.watched else " · o watches it"
 
 
 def _tree_detail(model: PickerModel, nodes: List[PickerNode]) -> str:
@@ -4279,7 +4336,7 @@ def _tree_detail(model: PickerModel, nodes: List[PickerNode]) -> str:
     if node.kind == "member":
         goal = str((node.member or {}).get("brief") or "")
         location = " · g goes to pane {}".format(node.row.pane_id) if node.row is not None else ""
-        return "Enter opens actions for {}{} · goal: {}".format(node.label, location, headline(goal, 40) if goal else "(none yet)")
+        return "Enter opens actions for {}{}{} · goal: {}".format(node.label, location, _watch_hint(model, node), headline(goal, 40) if goal else "(none yet)")
     if node.kind == "section":
         return "agents that belong to no team; Space picks them, Enter continues"
     if node.kind == "new_section":
@@ -4295,7 +4352,7 @@ def _tree_detail(model: PickerModel, nodes: List[PickerNode]) -> str:
     row = node.row
     if row is not None:
         tab = row.tab_label or row.tab_id or "unknown"
-        return "pane {} in tab {} · g goes there · Space picks it, Enter continues".format(row.pane_id, tab)
+        return "pane {} in tab {} · g goes there{} · Space picks it, Enter continues".format(row.pane_id, tab, _watch_hint(model, node))
     return "Space picks it, Enter continues with the agents you picked"
 
 

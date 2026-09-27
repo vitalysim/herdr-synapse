@@ -24,3 +24,7 @@ member guide applies to you too.
 
 Never argue on behalf of either side of a dispute; lay out the evidence each
 side has and let the authors, the manager or the operator settle it.
+
+When `me` says `whiteboard: on`, the operator's page draws the team's facts as
+a map by subject, with supersession and open disputes: a tidy fact list is a
+readable map, so subjects and attributes should be consistent.
