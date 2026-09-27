@@ -1016,7 +1016,7 @@ class Cli(CanvasRig):
         replies = [json.loads(line) for line in out.splitlines()]
         self.assertEqual([r["id"] for r in replies], [1, 2])
         self.assertEqual(replies[0]["result"]["protocolVersion"], "2025-03-26")
-        self.assertEqual(len(replies[1]["result"]["tools"]), 6)
+        self.assertEqual(len(replies[1]["result"]["tools"]), 7)
 
 
 # --------------------------------------------------------------------------

@@ -12,7 +12,7 @@ it, and everyone reads it back as text and as a picture.
 - Compose: frames, shapes, arrows and labels first; freehand (`pen`) for
   emphasis and gesture; charts and graphs from data, never by hand.
 - Every drawing has a text label, and no text overlaps other text.
-- Look after drawing anything meant for others; fix what reads badly.
+- Check after drawing anything meant for others; fix what it lists.
 - Point with comments and `@mentions`, never with "this" or "that". A comment
   that mentions someone is the only thing on the canvas that wakes them.
 - Record a convention in the legend before relying on it.
@@ -23,20 +23,14 @@ it, and everyone reads it back as text and as a picture.
 
 ## Two doors to the same canvas
 
-- **CLI**, for every harness: `herdr-synapse canvas look [--region c10r4:c40r22 |
-  --around E-3] [--since last] [--image] [--grid]`, `canvas draw --file ops.json`
-  (`--file -` reads standard input, `--op '<json>'` one op), `canvas comment E-3
-  "@name text"`, `canvas claim c10r4:c40r22 "label"`, `canvas release`, `canvas
-  legend E-19 "red cross = I disagree"`, `canvas portrait --from-todo`, `canvas
-  changes --since last`, `canvas undo B-12` (your own batch).
-- **MCP**, for members Synapse started while the canvas was on: the tools
-  `canvas_look`, `canvas_draw`, `canvas_comment`, `canvas_claim`,
-  `canvas_legend` and `canvas_changes` do the same, under the same rules.
-- **Scripts**: `herdr-synapse canvas helper` prints the path of `sketch.py`, a
-  Python helper that builds batches (`python3 plan.py | herdr-synapse canvas
-  draw --file -`; `canvas helper --print > sketch.py` copies it). Compute a
-  spiral or a timeline instead of typing points. Its generated aliases are
-  tagged per run, so a rerun adds new elements; pass `id=` to name one.
+- **CLI**, for every harness: `herdr-synapse canvas look|check|draw|comment|
+  claim|release|legend|portrait|changes|undo` (each has `--help`); `draw` takes
+  `--file ops.json`, `--file -` or `--op '<json>'`.
+- **MCP**, for members Synapse started while the canvas was on: the same
+  commands as `canvas_look`, `canvas_check`, `canvas_draw` and so on.
+- **Scripts**: `canvas helper` prints the path of `sketch.py`, a Python helper
+  that builds batches (`python3 plan.py | herdr-synapse canvas draw --file -`):
+  compute a spiral or a timeline instead of typing points; pass `id=` to name one.
 
 ## Space, ids and replies
 
@@ -52,8 +46,14 @@ move it inside or grow the frame). A text's `w` is the width it wraps at; its
 height is what its lines need, so read its bounds in the reply.
 
 `look` lists what is in view with ids, bounds, text, connections, authors and
-intents; `--image` adds a PNG with the ids drawn on. Read both: pictures alone
-are easy to misjudge.
+intents; `--image` adds a PNG with the ids drawn on. Read both.
+
+## Check your layout
+
+After drawing, `canvas check --mine` lists what reads badly (overlaps, labels
+too big for their shape, marks half in a frame, arrows through shapes, strays),
+each usually with a `fix` op: apply one (`canvas draw --op '<fix>'`), check
+again, repeat. Then `look --image` for a last pass if you can read images.
 
 ## One example per layer
 

@@ -844,7 +844,11 @@ point at an element and `@mention` a teammate or you. Every mark carries its
 author and a one-line intent, shown when you hover it. They read the canvas
 back as text (`canvas look`, with element ids, bounds, text and connections,
 and only what changed since they last looked) and, when they can read images,
-as a rendered picture with the ids drawn on. Claude Code and Codex members
+as a rendered picture with the ids drawn on (`--exact` asks your open page
+for exactly what you see). After drawing they run `canvas check`, which lists
+what reads badly (overlaps, labels too big for their shape, marks half inside
+a frame, arrows through shapes, strays) with a ready fix for each, so an agent
+that cannot see images still tidies its layout. Claude Code and Codex members
 that Synapse starts while the canvas is on (`create --spawn`, `resume`,
 `restore`, `swap`) also get the same tools over MCP, added by a launch flag so
 no config of yours is edited; a controlled restart keeps them. Every other

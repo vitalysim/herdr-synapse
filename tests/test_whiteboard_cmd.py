@@ -415,9 +415,9 @@ class KeysManifestSetupTests(unittest.TestCase):
         self.assertEqual(cmd_whiteboard.POPUP_ENTRYPOINT, "whiteboard")
         from herdr_team import VERSION, SKILL_VERSION
 
-        self.assertEqual(VERSION, "0.21.1")
+        self.assertEqual(VERSION, "0.21.2")
         self.assertEqual(SKILL_VERSION, 12)
-        self.assertIn('version = "0.21.1"', text)
+        self.assertIn('version = "0.21.2"', text)
 
     def test_the_sidebar_snippet_has_a_doing_row(self):
         self.assertIn('[{ token = "$team_doing", fg = "#a6e3a1" }],', cmd_misc.SIDEBAR_SNIPPET)

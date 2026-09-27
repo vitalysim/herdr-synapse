@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.21.2 (2026-09-27)
+
+- **Agents check their own layout.** `canvas check` (MCP `canvas_check`) reviews the canvas by geometry and lists overlapping marks, text lying on a labelled shape, labels bigger than their shape, marks half inside a frame, arrows through shapes they do not connect, and stray marks, each with element ids and a fix: an operation that applies as it stands (a move to a free spot, a resize, a frame grown). `look` ends with the same list. The canvas guide teaches the routine: draw, check, apply the fixes, check again, then `look --image` (or `--exact`, the operator's own view) for a last visual pass. It works for agents that cannot read images, and for the ones that misjudge them.
+
 ## 0.21.1 (2026-09-27)
 
 - **The whiteboard is per team.** Turning it on (`whiteboard enable`, or `d` in `prefix+t`) now turns on watch and the page only; a team's canvas stays off until it is turned on for that team (`whiteboard team on`, the new `create --canvas`, or `d` on the team, member or agent in `prefix+t`). Other teams are never touched.

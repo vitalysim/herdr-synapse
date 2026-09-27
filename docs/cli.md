@@ -2293,7 +2293,21 @@ element ids (and `--grid` cell labels) through `resvg` when it is installed
 (`image_error: "resvg_missing"` otherwise); `--exact` asks an open page for
 Excalidraw's own export (5 s, else the server render). JSON
 `{"team","version","reader","switch","region","region_cells","level","elements","elsewhere","clusters","omitted","since","changes","claims","locks","legend","comments_for_you","image","svg","image_error","exact","text"}`.
-`look --since last` and `changes` advance the reader's cursor.
+`look --since last` and `changes` advance the reader's cursor. `look` ends
+with the layout problems in view (at most 8; `canvas check` lists them all).
+
+**`check [--region R | --around ID] [--mine]`** reviews the layout by geometry,
+for agents that cannot read images and for those that misjudge them:
+`overlap` (two marks partly on top of each other; one wholly inside another is
+a grouping), `text_on_label` (text lying on a labelled shape), `label_overflow`
+(a shape's label needs more room than the shape, measured as the renderer
+wraps it), `frame_edge` (a mark half inside a frame), `arrow_through` (an arrow
+crossing a mark it does not connect) and `stray` (a mark 1500+ units from the
+rest). Each problem has `ids`, a `message`, `yours`, and `fix`: an operation
+that applies as it stands (`move … to` a free spot, a resize, a frame grown,
+or `inside` a frame) or null. JSON
+`{"team","version","reader","region","mine","problems":[{"code","ids","message","fix","yours"}],"text"}`.
+Reads only; the reader's own problems come first.
 
 Storage, per team under `whiteboard/`: `events.jsonl` (one event per applied
 op, the source of truth), `scene.json`, `cursors/`, `assets/`, `stills/`,
@@ -2355,8 +2369,8 @@ twice does not collide with `alias_taken`; `Sketch(prefix=…)` sets the tag.
 
 `canvas mcp` is a stdio MCP server (newline-delimited JSON-RPC 2.0; protocol
 versions 2025-06-18, 2025-03-26, 2024-11-05) named `synapse-canvas`, with
-tools `canvas_look`, `canvas_draw`, `canvas_comment`, `canvas_claim`,
-`canvas_legend` and `canvas_changes`. Each result carries the CLI's text and
+tools `canvas_look`, `canvas_check`, `canvas_draw`, `canvas_comment`,
+`canvas_claim`, `canvas_legend` and `canvas_changes`. Each result carries the CLI's text and
 its JSON as `structuredContent`; `canvas_look` with `image` adds the PNG. It
 acts only as a verified member of the team its `--team` names; anything else
 fails `not_a_member`.

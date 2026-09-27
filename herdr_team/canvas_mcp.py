@@ -7,9 +7,9 @@ at launch from the flags in section 12 (``features.mcp_launch_args``), pinned
 to one session socket and one team dir.
 
 Methods: ``initialize``, ``notifications/initialized``, ``ping``,
-``tools/list`` and ``tools/call``. The six tools (``canvas_look``,
-``canvas_draw``, ``canvas_comment``, ``canvas_claim``, ``canvas_legend``,
-``canvas_changes``) are thin doors onto ``herdr_team.canvas``: each result
+``tools/list`` and ``tools/call``. The seven tools (``canvas_look``,
+``canvas_check``, ``canvas_draw``, ``canvas_comment``, ``canvas_claim``,
+``canvas_legend``, ``canvas_changes``) are thin doors onto ``herdr_team.canvas``: each result
 carries the CLI's human text as ``content`` and the CLI's ``--json`` object
 as ``structuredContent``; a ``HerdrTeamError`` becomes ``isError: true``
 with its code, so an agent sees the same refusals through either door.
@@ -41,7 +41,7 @@ from herdr_team.paths import TeamPaths
 SERVER_INFO_NAME = "synapse-canvas"
 PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 DEFAULT_PROTOCOL = PROTOCOL_VERSIONS[0]
-TOOL_NAMES = ("canvas_look", "canvas_draw", "canvas_comment", "canvas_claim", "canvas_legend", "canvas_changes")
+TOOL_NAMES = ("canvas_look", "canvas_check", "canvas_draw", "canvas_comment", "canvas_claim", "canvas_legend", "canvas_changes")
 IDENTITY_CACHE_S = 30.0
 MAX_INLINE_IMAGE_BYTES = 1536 * 1024
 
@@ -143,13 +143,23 @@ def tool_definitions() -> List[Dict[str, Any]]:
          "description": ("See the team canvas: elements in the region in full, the rest one line each, far groups as counts, plus "
                          "active claims, locks, the legend and comments that mention you. since: \"last\" adds what changed since you "
                          "last looked. image: true also renders a PNG with element ids marked (grid: true adds cell names). "
-                         "Look after drawing anything meant for others."),
+                         "Look after drawing anything meant for others. The listing ends with layout problems; canvas_check lists them all."),
          "inputSchema": schema({
              "region": dict(text, description='"c10r4:c40r22", "x0,y0,x1,y1" or an element id'),
              "around": dict(text, description="an element or comment id; shows 200 units around it"),
              "since": dict(text, description='"last" or a version number'),
              "image": {"type": "boolean"}, "grid": {"type": "boolean"},
              "exact": {"type": "boolean", "description": "ask an open whiteboard page for the engine's own picture"},
+         })},
+        {"name": "canvas_check",
+         "description": ("Check the canvas layout (or a region): overlapping marks, text on a labelled shape, labels that do not fit "
+                         "their shape, marks half inside a frame, arrows through shapes, stray marks. Each problem has element ids and, "
+                         "when there is an obvious one, a fix: an operation to pass to canvas_draw as it stands. Run it after drawing, "
+                         "fix what it lists, run it again, then canvas_look with image: true for a last visual pass."),
+         "inputSchema": schema({
+             "region": dict(text, description='"c10r4:c40r22", "x0,y0,x1,y1" or an element id'),
+             "around": dict(text, description="an element or comment id; checks 200 units around it"),
+             "mine": {"type": "boolean", "description": "only problems that involve your own marks"},
          })},
         {"name": "canvas_draw",
          "description": ("Apply a batch of drawing operations in order (under about 40). Draw when a picture is clearer than text; claim "
@@ -245,6 +255,13 @@ def _tool_look(session: McpSession, args: Dict[str, Any]) -> Tuple[Dict[str, Any
     return result, result["text"], extra
 
 
+def _tool_check(session: McpSession, args: Dict[str, Any]) -> Tuple[Dict[str, Any], str, List[Dict[str, Any]]]:
+    author, team, doc = session.identity()
+    result = C.check(session.layout, team, author.name, region=_place(_str(args, "region")), around=_str(args, "around"),
+                     mine=_flag(args, "mine"), doc=doc)
+    return result, result["text"], []
+
+
 def _tool_draw(session: McpSession, args: Dict[str, Any]) -> Tuple[Dict[str, Any], str, List[Dict[str, Any]]]:
     ops = args.get("ops")
     if not isinstance(ops, list):
@@ -297,7 +314,7 @@ def _tool_changes(session: McpSession, args: Dict[str, Any]) -> Tuple[Dict[str, 
 
 
 _TOOLS: Dict[str, Callable[[McpSession, Dict[str, Any]], Tuple[Dict[str, Any], str, List[Dict[str, Any]]]]] = {
-    "canvas_look": _tool_look, "canvas_draw": _tool_draw, "canvas_comment": _tool_comment,
+    "canvas_look": _tool_look, "canvas_check": _tool_check, "canvas_draw": _tool_draw, "canvas_comment": _tool_comment,
     "canvas_claim": _tool_claim, "canvas_legend": _tool_legend, "canvas_changes": _tool_changes,
 }
 

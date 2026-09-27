@@ -96,6 +96,12 @@ def _look(args: argparse.Namespace) -> int:
     return emit(args, result, result["text"])
 
 
+def _check(args: argparse.Namespace) -> int:
+    layout, _api, _author, team, doc, author = _open(args, write=False)
+    result = C.check(layout, team, _reader(author), region=_json_arg(args.region), around=args.around, mine=bool(args.mine), doc=doc)
+    return emit(args, result, result["text"])
+
+
 def _changes(args: argparse.Namespace) -> int:
     layout, _api, _author, team, doc, author = _open(args, write=False)
     result = C.read_changes(layout, team, _reader(author), since=args.since or "last", advance=_may_advance(author), doc=doc)
@@ -314,13 +320,14 @@ def _mcp(args: argparse.Namespace) -> int:
 # argparse
 
 _ACTIONS = {
-    "look": _look, "draw": _draw, "comment": _comment, "claim": _claim, "release": _release, "legend": _legend,
+    "look": _look, "check": _check, "draw": _draw, "comment": _comment, "claim": _claim, "release": _release, "legend": _legend,
     "portrait": _portrait, "changes": _changes, "resolve": _resolve, "undo": _undo, "lock": _lock, "unlock": _unlock,
     "send": _send, "export": _export, "helper": _helper, "mcp": _mcp,
 }
 
 _SPECS = (
     ("look", "the canvas as text (the region in full, the rest one line each), changes since you looked, and optionally an image"),
+    ("check", "layout problems (overlaps, labels that do not fit, marks half in a frame, arrows through shapes, strays), each with a fix to apply"),
     ("draw", "apply a batch of operations from --file PATH, --file - (stdin) or --op JSON"),
     ("comment", "pin a comment to an element, a comment (a reply) or a point; @name mentions wake that member"),
     ("claim", "tell the team where you are about to draw (expires after 5 minutes)"),
@@ -354,6 +361,11 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
     p.add_argument("--image", action="store_true", help="also render a PNG with id marks (needs resvg; the SVG is written either way)")
     p.add_argument("--grid", action="store_true", help="add cell dots and names to the image")
     p.add_argument("--exact", action="store_true", help="ask an open whiteboard page for the engine's own export (falls back after 5 s)")
+    p = parsers["check"]
+    where = p.add_mutually_exclusive_group()
+    where.add_argument("--region", metavar="R", help='"c10r4:c40r22", "x0,y0,x1,y1", [x0,y0,x1,y1] or an element id')
+    where.add_argument("--around", metavar="ID", help="an element or comment and 200 units around it")
+    p.add_argument("--mine", action="store_true", help="only problems that involve your own marks")
     p = parsers["draw"]
     p.add_argument("--file", metavar="PATH|-", help='a batch: {"ops": [...], "atomic": false} or a list of operations; - reads standard input')
     p.add_argument("--op", action="append", metavar="JSON", help="one operation as JSON (repeatable, applied after --file)")
@@ -414,7 +426,7 @@ def _run(args: argparse.Namespace) -> int:
 
 
 COMMANDS: List[Command] = [
-    Command("canvas", "the team canvas: look, draw, comment, claim, legend, portrait, changes (whiteboard must be on)", _add_arguments, _run,
+    Command("canvas", "the team canvas: look, check, draw, comment, claim, legend, portrait, changes (whiteboard must be on)", _add_arguments, _run,
             description="Look at, draw on, and point at the team's shared canvas. Agents send Synapse Sketch operations; "
                         "see herdr-synapse skill get --reference canvas."),
 ]

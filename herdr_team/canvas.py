@@ -45,6 +45,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Sequence, Set, Tuple
 
+from herdr_team import canvas_check as _check
 from herdr_team import canvas_layout as _layout
 from herdr_team import canvas_mermaid as _mermaid
 from herdr_team import canvas_render as _render
@@ -3532,6 +3533,10 @@ def look_text(result: Dict[str, Any]) -> str:
     if for_you:
         lines.append("for you:")
         lines += ["  " + describe(c, reader, full=True) for c in for_you]
+    found = result.get("problems") or []
+    if found:
+        lines.append("problems ({}; each fix is an operation you can apply):".format(len(found)))
+        lines += _check.problem_lines(found, _check.LOOK_MAX)
     if result.get("image"):
         lines.append("image: {}".format(result["image"]))
     elif result.get("image_error"):
@@ -3557,6 +3562,38 @@ def _exact_export(layout: Any, team: TeamPaths, region: Sequence[float], grid: b
     except OSError:
         pass
     return None
+
+
+def check(layout: Any, team: TeamPaths, reader: str, region: Any = None, around: Optional[str] = None, mine: bool = False,
+          doc: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Every layout problem on the canvas (or in a region), each with ids and a fix to apply (``canvas_check``)."""
+    doc = doc if isinstance(doc, dict) else store.RosterStore(team).load()
+    _features.require_on(layout.session, team, doc)
+    if around is not None and region is not None:
+        raise _error("usage", "use --region or --around, not both")
+    state = _load_state(team)
+    state.drop_expired(time.time())
+    elements = state.to_scene(time.time())["elements"]
+
+    def lookup(ref: str, field: str) -> Dict[str, Any]:
+        return _lookup_in(state, ref, reader, field)
+
+    box: Optional[List[int]] = None
+    if around is not None:
+        x0, y0, x1, y1 = bounds(lookup(around, "around"))
+        box = [_round(x0 - AROUND_MARGIN), _round(y0 - AROUND_MARGIN), _round(x1 + AROUND_MARGIN), _round(y1 + AROUND_MARGIN)]
+    elif region is not None:
+        box = _region(region, "region", lookup)
+    found = _check.problems(elements, reader, box)
+    if mine:
+        found = [p for p in found if p["yours"]]
+    head = "canvas of {} · v{} · {}".format(team.name, state.version, "{} problem{}".format(len(found), "" if len(found) == 1 else "s") if found else "no layout problems")
+    lines = [head + (" in {}".format(region_cells(box)) if box else "") + (" (yours only)" if mine else "")]
+    lines += _check.problem_lines(found)
+    if found:
+        lines.append("apply a fix: {} canvas draw --op '<fix>' (or canvas_draw); then check again, and look --image for a last visual pass".format(CLI))
+    return {"team": team.name, "version": state.version, "reader": reader, "region": box, "mine": bool(mine),
+            "problems": found, "text": "\n".join(lines)}
 
 
 def look(layout: Any, team: TeamPaths, reader: str, region: Any = None, around: Optional[str] = None, since: Any = None,
@@ -3618,6 +3655,7 @@ def look(layout: Any, team: TeamPaths, reader: str, region: Any = None, around: 
         "claims": scene["claims"], "locks": scene["locks"], "legend": scene["legend"],
         "comments_for_you": [el for el in elements if el.get("type") == "comment" and not el.get("resolved") and reader in (el.get("mentions") or [])],
         "image": None, "svg": None, "image_error": None, "exact": False,
+        "problems": _check.problems(elements, reader, box),
     }
     if image:
         if exact:

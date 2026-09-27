@@ -1114,7 +1114,7 @@ herdr-synapse whiteboard [-h] [--json] [--team NAME|PATH] [--session NAME] [--so
 #### Canvas
 
 <details>
-<summary><code>canvas</code> — the team canvas: look, draw, comment, claim, legend, portrait, changes (whiteboard must be on)</summary>
+<summary><code>canvas</code> — the team canvas: look, check, draw, comment, claim, legend, portrait, changes (whiteboard must be on)</summary>
 
 ```text
 herdr-synapse canvas [-h] [--json] [--team NAME|PATH] [--session NAME] [--socket PATH] [--session-mismatch-ok] <action> ...

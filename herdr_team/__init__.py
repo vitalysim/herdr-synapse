@@ -4,6 +4,6 @@ Python 3.9+ standard library only. See ``docs/cli.md`` for the command
 contract and ``README.md`` for the module map.
 """
 
-VERSION = "0.21.1"
+VERSION = "0.21.2"
 SKILL_VERSION = 12
 PLUGIN_ID = "herdr-synapse"
