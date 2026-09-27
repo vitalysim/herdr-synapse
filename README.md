@@ -38,7 +38,7 @@ assumption about what the deliverable is.
 ```
 team red-dev · 3 members · view:on · nudges:on · toasts:herdr · unread(you):0
 charter #1: Ship the HTML report for susfind
-runtime: safe !:ready · Herdr 0.9.1/p22 · Synapse 0.20.0 · daemon 0.20.0
+runtime: safe !:ready · Herdr 0.9.1/p22 · Synapse 0.21.0 · daemon 0.21.0
 
 ○  red-dev-claude-dev     claude-dev      claude    w1:p1  idle     "report.py: templates done"   manager  model opus@medium
 ◐  red-dev-codex-reviewer codex-reviewer  codex     w1:p2  working  "reviewing report.py"         ↪1 (not_idle)
@@ -206,6 +206,7 @@ The coordination layer itself does not depend on a harness adapter:
 | Board and collaboration | ✓ | ✓ | Posts, kinds, replies, references, attachments, receipts, filters and the agent skill use the same board format for every kind. |
 | Team-to-team coordination | ✓ | ✓ | Links, topology, cross-team posts and receipts are harness-independent; both teams need a manager. |
 | Instructions and knowledge | ✓ | ✓ | Project folder, rules, per-member instructions, findings and artifact watching work for every kind; automatic delivery of a change follows the delivery row below. |
+| Whiteboard and watch | ✓ | ✓ | The canvas, its CLI, the page and watch work for every kind. Claude Code and Codex members Synapse starts also get the canvas as MCP tools. Watch reads plans, recent actions and files from Claude Code, Codex, OpenCode and Pi; other kinds show their title and state. |
 | Human interaction and UI | ✓ | ✓ | Teams view, console, compose, sidebar tokens, focus/peek and the operator ask queue are shared. Whether an agent's shell tool can remain blocked for an answer is listed below. |
 | Operations and safety | ✓ | ✓ | Export, archive, wipe, audit, notifier statistics, mute/pause, health checks and operator gates are agent-independent. |
 | Work, facts and recall | ✓ | ✓ | Work items, briefs, settlements, reviews, facts, disputes and the recall index are team records, identical for every kind; the posts they make are delivered like any other. |
@@ -343,6 +344,11 @@ Boards, teams, nudges, and explicit `!!` delivery work across those supported
 Herdr lines. Race-free `!name text` additionally requires the running server
 to expose `agent.prompt_if_idle`; the console and `daemon status` show that
 capability directly and offer `@name text` when it is unavailable.
+
+The whiteboard's pictures (what an agent sees when it looks at the canvas as
+an image) need [`resvg`](https://github.com/linebender/resvg) on `PATH`
+(`brew install resvg`, or `cargo install resvg`). Without it agents read the
+canvas as text only; nothing else needs it.
 
 Start `herdr` first: the install registers the plugin through the running
 server.
@@ -494,7 +500,7 @@ version changes, so after that one upgrade run `herdr-synapse daemon start`
 (or use `herdr-synapse update`, which restarts it for you).
 
 Agents learn new commands from the skill. After an update that raises the
-skill version (0.19 ships v11), `herdr-synapse skill check` lists the stale
+skill version (0.21 ships v12), `herdr-synapse skill check` lists the stale
 copies and `skill install` refreshes them, and an agent's own `me` warns it
 while its installed skill differs from the CLI.
 
@@ -772,6 +778,29 @@ herdr-synapse watch w3:p2              # or `o` on an agent row in prefix+t
 herdr-synapse whiteboard disable       # everything stops; nothing drawn is lost
 ```
 
+**A team, or one agent.** `enable` is once per Herdr session, from your own
+shell, not an agent's pane. After that:
+
+- **Watch needs no team.** Flag any agent in any pane (`watch <pane>` or `o`
+  in `prefix+t`); its sidebar row, `watch show` and the page's Activity tab
+  follow it.
+- **A canvas belongs to a team, and a team can be one agent.** Every team you
+  already have gets its canvas as soon as the layer is on. For a single agent,
+  make it a team of one:
+
+```bash
+# an agent already running in pane w1:p3
+herdr-synapse create sketch --member w1:p3:artist --brief artist="Draw what I ask on the canvas."
+# or a fresh one, which also gets the canvas as MCP tools
+herdr-synapse create sketch --new --spawn artist:claude --brief artist="Draw what I ask on the canvas."
+```
+
+Then ask on the board (`@<member> sketch the login flow on the canvas`), or
+draw on the page yourself and `@mention` it in a comment. An agent you started
+yourself draws through the CLI. To give a Claude Code or Codex member the MCP
+tools too, quit it and run `herdr-synapse --team sketch resume <member>` in
+that pane: the same conversation reopens with the tools added.
+
 **Three switches.** The session switch (`enable`/`disable`) is yours alone,
 from your own shell, the console or a popup; an agent cannot turn it on, even
 with a delegation. Once it is on, every team's canvas is on unless you, or an
@@ -790,9 +819,12 @@ point at an element and `@mention` a teammate or you. Every mark carries its
 author and a one-line intent, shown when you hover it. They read the canvas
 back as text (`canvas look`, with element ids, bounds, text and connections,
 and only what changed since they last looked) and, when they can read images,
-as a rendered picture with the ids drawn on. Claude Code, Codex and Pi members
-that Synapse starts while the canvas is on also get the same tools over MCP;
-every other agent kind uses the `canvas` CLI. The skill tells an agent to
+as a rendered picture with the ids drawn on. Claude Code and Codex members
+that Synapse starts while the canvas is on (`create --spawn`, `resume`,
+`restore`, `swap`) also get the same tools over MCP, added by a launch flag so
+no config of yours is edited; a controlled restart keeps them. Every other
+agent, Pi included, and any agent you started yourself uses the `canvas` CLI,
+which does the same. The skill tells an agent to
 read `herdr-synapse skill get --reference canvas` when `me` says
 `whiteboard: on`, and that reference teaches when to draw and how, with one
 example per kind of drawing.
@@ -1700,10 +1732,34 @@ moment too long), a record written before a refusal, Kimi's `--agent` being
 unusable in its TUI, and four display faults in the popup; all are fixed with
 tests.
 
+The 0.21 whiteboard was run on 2026-09-26 and 27 in a disposable Herdr 0.9.1
+session with Claude Code on Haiku and Codex 0.157.0:
+
+- a Claude Code member started with the canvas on drew a scene over MCP (a
+  claim, a frame, shapes, pen strokes, a move, the release, each with its
+  intent) and read it back as text and as a picture with the ids drawn on;
+- a Codex member drew and looked through the same MCP tools;
+- the board got one grouped `canvas_changed` line, not one per stroke;
+- the page, in headless Chrome, showed the canvas, the side panel and a live
+  visual running in its sealed frame, and refused a request with no ticket,
+  one naming a foreign host, and a path outside the page;
+- watch showed a real member's plan, recent actions and context, and its
+  sidebar line;
+- a person's text edit on the page reached the canvas as the operator's, with
+  the text as typed.
+
+That run found watch showing only an agent's last two actions (transcript
+lines carrying images are that large), labels with an emoji or a symbol
+drawn as boxes in the picture on macOS, text wrapped differently by the
+canvas, the picture and the page (and clipped when the page measured it
+before its font loaded), and live visuals drawn at a fixed size sitting in a
+corner of their frame; all are fixed with tests.
+
 Not yet exercised live:
 
-- the 0.21 whiteboard, canvas, MCP tools and watch, which so far are covered by
-  the automated suite only (the live checks are C35 to C44 in
+- OpenCode and Pi members drawing through the `canvas` CLI, watch on OpenCode
+  and Pi, the whiteboard on Linux, and the page in a person's own browser
+  (the remaining live checks are C35 to C44 in
   [docs/capabilities.md](docs/capabilities.md));
 - a Codex profile switch by `profile --apply restart`, and the popup inside a
   real `prefix+t` Herdr client rather than a plain pane;
