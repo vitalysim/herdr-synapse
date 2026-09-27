@@ -1,0 +1,1098 @@
+#!/usr/bin/env python3
+"""Canvas QA: apply golden scenes to a throwaway team, check them, render them, and count what reads badly.
+
+Each scene file (``tests/fixtures/canvas_scenes/*.json``) is ``{"name", "about", "ops": [...]}``, or
+``"batches": [[...], ...]`` for scenes that need several batches. For every scene this tool:
+
+1. builds a temporary state root with one team and its canvas turned on (the real HOME, socket and
+   state are never touched), and applies the ops as a member through ``canvas.apply_ops``;
+2. runs the layout check (``canvas.check``) and counts its problems by code;
+3. renders the whole scene with the real resvg and the real fonts (the PNG agents get from ``look``);
+4. probes every text it can find with pixels: for each labelled shape, free text and arrow label it
+   renders that element's text alone (everything but ``<text>`` stripped) over the region around it,
+   and the scene with every text stripped, then measures:
+
+   * ``overflow``: ink outside the element's own outline (a box's rectangle, an ellipse, a diamond),
+     beyond ``--tolerance`` units;
+   * ``collision``: ink on another solid mark the element does not sit inside (a label under a door,
+     a caption on a neighbour's box); for arrow labels this is tracked separately;
+   * ``contrast``: the WCAG ratio between the ink's core pixels and what is under them (4.5:1, or 3:1
+     from 24 units up); run once per theme the renderer supports;
+   * ``lines``: the line breaks the server drew (a ``<text>`` per line), to compare with the page's.
+
+5. reads what the whole render cannot show: characters resvg found no font for (``tofu``, from its
+   warnings: the boxes stay inside their shape, so no pixel probe sees them), and frame titles and
+   arrow-label pills that reach past the picture's edge (``cut_off``).
+
+With ``--page`` it also serves each scene's whiteboard page on loopback, opens it in a throwaway
+headless Chrome (its own profile, killed afterwards), reads the line breaks Excalidraw drew, compares
+them with the server's (blank lines and indentation included; emoji differences the server makes on
+purpose, ``canvas_render.render_text``, excused by rule), reads the page's own fit audit
+(``page_overflow``: a label wider or taller than the room its container gives it), and saves light and
+dark screenshots of the page.
+
+It prints one line per scene (``--json`` for everything) and exits 0 when every gated count is zero,
+1 when any is not, 2 when a scene is invalid (an op refused, a bad file), and 3 when resvg is missing.
+
+    python3 tools/canvas_qa.py                          # every golden scene, output under .local/qa/canvas
+    python3 tools/canvas_qa.py tests/fixtures/canvas_scenes/house.json --out /tmp/qa --json
+    python3 tools/canvas_qa.py house --page-lines page-lines.json   # compare with lines read off the page
+    python3 tools/canvas_qa.py --page                   # also read the page's line breaks in headless Chrome
+    python3 tools/canvas_qa.py house --serve 120        # also serve the scene to a browser for 120 s
+
+Stdlib only; it imports ``herdr_team`` from this checkout.
+"""
+from __future__ import annotations
+
+import argparse
+import inspect
+import json
+import math
+import os
+import re
+import shutil
+import struct
+import sys
+import tempfile
+import time
+import xml.etree.ElementTree as ET
+import zlib
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+
+REPO = Path(__file__).resolve().parent.parent
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+
+from herdr_team import canvas as C  # noqa: E402
+from herdr_team import canvas_check as K  # noqa: E402
+from herdr_team import canvas_render as R  # noqa: E402
+from herdr_team import features, paths, store  # noqa: E402
+
+SCENES_DIR = REPO / "tests" / "fixtures" / "canvas_scenes"
+OUT_DIR = REPO / ".local" / "qa" / "canvas"
+TEAM = "qa"
+MEMBER = "qa-drawer"
+
+#: Kinds whose ``text`` is drawn inside their outline; arrows carry a label pill at their midpoint.
+LABELLED = ("box", "ellipse", "diamond", "note", "text")
+#: Pixels per canvas unit in the probes, and the longest probe side before the scale drops.
+PROBE_SCALE = 2.0
+PROBE_MAX_PX = 2400
+#: Units of slack around an outline before ink counts as outside it (anti-aliasing, stroke width).
+TOLERANCE = 2.0
+#: Fewer stray pixels than this is anti-aliasing noise, not a finding.
+MIN_PIXELS = 4
+#: Alpha at or above which a text-only pixel is glyph core (used for colour and contrast).
+CORE_ALPHA = 230
+INK_ALPHA = 64
+#: WCAG 2.2 SC 1.4.3: 4.5:1 for body text, 3:1 for large text (24 px and up, or 18.66 px bold).
+CONTRAST_BODY = 4.5
+CONTRAST_LARGE = 3.0
+LARGE_TEXT = 24.0
+
+#: Counts that fail the Phase 0 gate; ``--strict`` adds the tracked ones (routing lands in Phase 2).
+GATED_CHECKS = ("overlap", "text_on_label", "label_overflow", "frame_edge")
+TRACKED_CHECKS = ("arrow_through", "stray")
+
+SVG_NS = "http://www.w3.org/2000/svg"
+TEXT_TAGS = ("text",)
+KEEP_TAGS = ("defs", "style", "font-face")
+
+Box = Tuple[float, float, float, float]
+
+
+# --------------------------------------------------------------------------
+# PNG decoding (8-bit, non-interlaced: what resvg writes)
+
+
+def _unfilter(kind: int, line: bytearray, prev: bytearray, bpp: int) -> bytearray:
+    """One PNG scanline with its filter undone, in place (Paeth inlined: it is most of the run time)."""
+    stride = len(line)
+    if kind == 0:
+        return line
+    if not any(line):
+        # A zero residual repeats the prediction: a blank row under a blank row, the row above
+        # under Up, and the row above under Paeth when that row is one colour (a flat background).
+        if kind == 1 or not any(prev):
+            return line
+        if kind == 2 or (kind == 4 and prev[:bpp] * (stride // bpp) == prev):
+            return bytearray(prev)
+    if kind == 1:
+        for i in range(bpp, stride):
+            line[i] = (line[i] + line[i - bpp]) & 0xFF
+    elif kind == 2:
+        for i in range(stride):
+            line[i] = (line[i] + prev[i]) & 0xFF
+    elif kind == 3:
+        for i in range(bpp):
+            line[i] = (line[i] + (prev[i] >> 1)) & 0xFF
+        for i in range(bpp, stride):
+            line[i] = (line[i] + ((line[i - bpp] + prev[i]) >> 1)) & 0xFF
+    elif kind == 4:
+        for i in range(bpp):
+            line[i] = (line[i] + prev[i]) & 0xFF
+        for i in range(bpp, stride):
+            a, b, c = line[i - bpp], prev[i], prev[i - bpp]
+            pa = b - c if b > c else c - b
+            pb = a - c if a > c else c - a
+            pc = a + b - c - c
+            if pc < 0:
+                pc = -pc
+            if pa <= pb and pa <= pc:
+                line[i] = (line[i] + a) & 0xFF
+            elif pb <= pc:
+                line[i] = (line[i] + b) & 0xFF
+            else:
+                line[i] = (line[i] + c) & 0xFF
+    return line
+
+
+def read_png(path: Path) -> Tuple[int, int, List[bytes]]:
+    """``(width, height, rows)`` with every row as RGBA bytes."""
+    data = Path(path).read_bytes()
+    if data[:8] != R.PNG_MAGIC:
+        raise ValueError("{} is not a PNG".format(path))
+    pos, idat, palette, trns = 8, [], b"", b""
+    width = height = depth = ctype = interlace = 0
+    while pos < len(data):
+        length, kind = struct.unpack(">I4s", data[pos:pos + 8])
+        body = data[pos + 8:pos + 8 + length]
+        pos += 12 + length
+        if kind == b"IHDR":
+            width, height, depth, ctype, _comp, _filter, interlace = struct.unpack(">IIBBBBB", body)
+        elif kind == b"PLTE":
+            palette = body
+        elif kind == b"tRNS":
+            trns = body
+        elif kind == b"IDAT":
+            idat.append(body)
+        elif kind == b"IEND":
+            break
+    if depth != 8 or interlace:
+        raise ValueError("{}: only 8-bit non-interlaced PNGs are read (depth {}, interlace {})".format(path, depth, interlace))
+    channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}[ctype]
+    raw = zlib.decompress(b"".join(idat))
+    stride = width * channels
+    bpp = channels
+    rows: List[bytes] = []
+    prev = bytearray(stride)
+    at = 0
+    for _ in range(height):
+        kind = raw[at]
+        line = _unfilter(kind, bytearray(raw[at + 1:at + 1 + stride]), prev, bpp)
+        at += 1 + stride
+        prev = line
+        rows.append(_to_rgba(bytes(line), ctype, palette, trns))
+    return width, height, rows
+
+
+def _to_rgba(line: bytes, ctype: int, palette: bytes, trns: bytes) -> bytes:
+    if ctype == 6:
+        return line
+    out = bytearray()
+    if ctype == 2:
+        for i in range(0, len(line), 3):
+            out += line[i:i + 3] + b"\xff"
+    elif ctype == 0:
+        for v in line:
+            out += bytes((v, v, v, 255))
+    elif ctype == 4:
+        for i in range(0, len(line), 2):
+            out += bytes((line[i], line[i], line[i], line[i + 1]))
+    else:
+        for index in line:
+            alpha = trns[index] if index < len(trns) else 255
+            out += palette[3 * index:3 * index + 3] + bytes((alpha,))
+    return bytes(out)
+
+
+# --------------------------------------------------------------------------
+# colour
+
+
+def _luminance(rgb: Sequence[float]) -> float:
+    def channel(v: float) -> float:
+        v = v / 255.0
+        return v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4
+
+    r, g, b = (channel(v) for v in rgb[:3])
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def contrast(a: Sequence[float], b: Sequence[float]) -> float:
+    """The WCAG contrast ratio of two sRGB colours (1 to 21)."""
+    la, lb = _luminance(a), _luminance(b)
+    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+
+def _median(values: List[int]) -> int:
+    values = sorted(values)
+    return values[len(values) // 2] if values else 0
+
+
+# --------------------------------------------------------------------------
+# the throwaway team
+
+
+class QaTeam:
+    """A temporary state root with one team (``qa``) whose canvas is on; one member draws.
+
+    The environment is built from scratch (like ``tests/support.TempState``), so no call can
+    reach the real socket, HOME or state root.
+    """
+
+    def __init__(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="canvas-qa-"))
+        config_dir = self.tmp / "cfg" / "herdr"
+        state_root = self.tmp / "state"
+        for d in (self.tmp / "home", config_dir, self.tmp / "st", state_root):
+            d.mkdir(parents=True, exist_ok=True)
+        self.env: Dict[str, str] = {
+            "HOME": os.fspath(self.tmp / "home"),
+            "XDG_CONFIG_HOME": os.fspath(self.tmp / "cfg"),
+            "XDG_STATE_HOME": os.fspath(self.tmp / "st"),
+            "HERDR_TEAM_STATE_DIR": os.fspath(state_root),
+            "HERDR_SOCKET_PATH": os.fspath(config_dir / "herdr.sock"),
+            "HERDR_ENV": "1",
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        }
+        self.session = paths.session_paths(state_root, "default")
+        paths.ensure_session_dirs(self.session)
+        self.team = self.session.team(TEAM)
+        paths.ensure_team_dirs(self.team)
+        member = {"name": MEMBER, "role": "drawer", "kind": "claude", "terminal_id": "term_qa", "pane_id": "w1:p1",
+                  "workspace_id": "w1", "tab_id": "w1:t1", "label": "team:qa/drawer", "cwd": os.fspath(self.tmp),
+                  "managed": False, "session": None, "status": "active", "generation": 1, "delivery": "nudge",
+                  "joined_at": "2026-09-27T10:00:00Z", "last_seen_at": None, "briefed_at": None, "briefing_seq": None,
+                  "charter_seq_acked": None, "brief": None}
+        human = {"name": "human", "role": "operator", "kind": "human", "terminal_id": None, "status": "active"}
+        store.write_json(self.team.team_json, {
+            "schema": 1, "team": TEAM, "created_at": "2026-09-27T10:00:00Z", "socket": self.env["HERDR_SOCKET_PATH"],
+            "state_dir": os.fspath(state_root), "naming": "prefixed", "revision": 1,
+            "charter": {"seq": 1, "text": "Canvas QA.", "refs": [], "updated_at": "2026-09-27T10:00:00Z", "updated_by": "human"},
+            "members": [member, human]})
+        features.set_layer(self.session, True, "human", "cli")
+        features.set_team(self.team, enabled=True, by="human", via="cli")
+        self.layout = paths.resolve_layout(self.env)
+        self.author = C.CanvasAuthor(MEMBER, C.KIND_MEMBER, "cli", True, agent="claude", team=TEAM)
+
+    def cleanup(self) -> None:
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def __enter__(self) -> "QaTeam":
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        self.cleanup()
+
+
+# --------------------------------------------------------------------------
+# scenes
+
+
+def load_scene_file(path: Path) -> Dict[str, Any]:
+    """``{"name", "about", "batches", "file"}`` from a scene file; ``ValueError`` when it is malformed."""
+    doc = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(doc, dict):
+        raise ValueError("{}: a scene is a JSON object".format(path))
+    batches = doc.get("batches")
+    if batches is None:
+        batches = [doc.get("ops")]
+    if not isinstance(batches, list) or not batches or not all(isinstance(b, list) and b for b in batches):
+        raise ValueError("{}: a scene needs ops (a non-empty list) or batches (a list of them)".format(path))
+    exempt = doc.get("page_line_exempt") or {}
+    if not isinstance(exempt, dict):
+        raise ValueError("{}: page_line_exempt maps element ids to the reason their page lines may differ".format(path))
+    return {"name": str(doc.get("name") or Path(path).stem), "about": str(doc.get("about") or ""), "batches": batches,
+            "file": os.fspath(path), "page_line_exempt": {str(k): str(v) for k, v in exempt.items()}}
+
+
+def scene_files(targets: Sequence[str]) -> List[Path]:
+    """Scene files from paths, directories, or bare names under the golden set."""
+    found: List[Path] = []
+    for target in targets or [os.fspath(SCENES_DIR)]:
+        path = Path(target)
+        if not path.exists() and (SCENES_DIR / (target + ".json")).is_file():
+            path = SCENES_DIR / (target + ".json")
+        if path.is_dir():
+            found.extend(sorted(path.glob("*.json")))
+        elif path.is_file():
+            found.append(path)
+        else:
+            raise ValueError("no scene at {}".format(target))
+    return found
+
+
+def apply_scene(qa: QaTeam, scene: Dict[str, Any]) -> Dict[str, Any]:
+    """Apply every batch as the member; op counts, refusals and warning codes."""
+    ops = applied = 0
+    refused: List[Dict[str, Any]] = []
+    warnings: Dict[str, int] = {}
+    for number, batch in enumerate(scene["batches"]):
+        result = C.apply_ops(qa.layout, qa.team, batch, qa.author)
+        ops += len(batch)
+        applied += len(result.get("applied") or [])
+        for item in result.get("refused") or []:
+            refused.append({"batch": number, "index": item.get("index"), "code": item.get("code"), "message": item.get("message")})
+        for warning in result.get("warnings") or []:
+            code = str(warning.get("code") if isinstance(warning, dict) else warning)
+            warnings[code] = warnings.get(code, 0) + 1
+    return {"ops": ops, "applied": applied, "refused": refused, "warnings": warnings}
+
+
+# --------------------------------------------------------------------------
+# rendering
+
+
+def themes_supported() -> List[str]:
+    """``["light"]``, plus ``"dark"`` once ``canvas_render.render_svg`` takes a ``theme`` argument."""
+    try:
+        params = inspect.signature(R.render_svg).parameters
+    except (TypeError, ValueError):
+        return ["light"]
+    return ["light", "dark"] if "theme" in params else ["light"]
+
+
+def _theme_kw(theme: str) -> Dict[str, Any]:
+    """``render_svg``'s theme argument, left out while the renderer has none (light only)."""
+    return {"theme": theme} if len(themes_supported()) > 1 else {}
+
+
+_NO_FONT_RE = re.compile(r"No fonts with a (.*?)/U\+([0-9A-Fa-f]+) character")
+
+
+def missing_glyphs(stderr: str) -> List[str]:
+    """The code points resvg drew as boxes (``U+0628``...), from its "No fonts with a ... character" warnings."""
+    return sorted({"U+" + match.group(2).upper() for match in _NO_FONT_RE.finditer(stderr or "")})
+
+
+def cut_off(scene: Dict[str, Any], box: Sequence[float], units_per_px: float) -> List[str]:
+    """Ids of frames whose title and arrows whose label pill reach past the picture ``box``."""
+    out = []
+    for el in scene.get("elements") or []:
+        if not isinstance(el, dict) or el.get("deleted"):
+            continue
+        drawn: Optional[Sequence[float]] = None
+        if el.get("type") == "frame":
+            drawn = R.frame_title_box(el, units_per_px)
+        elif el.get("type") == "arrow":
+            pill = R.arrow_label_pill(el)
+            if pill is not None:
+                (px, py, pw, ph), _size, _lines = pill
+                drawn = (px, py, px + pw, py + ph)
+        if drawn is not None and not _contains(tuple(box), tuple(drawn)):  # type: ignore[arg-type]
+            out.append(str(el["id"]))
+    return out
+
+
+def render_scene(qa: QaTeam, scene: Dict[str, Any], out: Path, name: str, theme: str) -> Dict[str, Any]:
+    """The whole scene as ``look --image`` draws it (id marks on), as ``<name>.svg`` and ``<name>.png``; plus the
+    glyphs resvg had no font for and the titles and pills the picture cuts off."""
+    box = R.view_box(scene)
+    width_px, height_px = R.pixel_size(box, R.DEFAULT_MAX_PX)
+    svg = R.render_svg(scene, box, marks=True, max_px=R.DEFAULT_MAX_PX, team=qa.team, **_theme_kw(theme))
+    svg_path, png_path = out / (name + ".svg"), out / (name + ".png")
+    svg_path.write_text(svg, encoding="utf-8")
+    warnings: List[str] = []
+    original = R.RUN
+
+    def run(argv: List[str], timeout: float) -> Tuple[int, str]:
+        code, err = original(argv, timeout)
+        warnings.append(err)
+        return code, err
+
+    R.RUN = run
+    try:
+        png = R.render_png(svg, png_path, width_px)
+    finally:
+        R.RUN = original
+    units_per_px = (box[2] - box[0]) / float(width_px)
+    return {"svg": os.fspath(svg_path), "png": os.fspath(png) if png else None, "width_px": width_px, "height_px": height_px,
+            "units_per_px": round(units_per_px, 3), "tofu": missing_glyphs("\n".join(warnings)),
+            "cut_off": cut_off(scene, box, units_per_px)}
+
+
+def _local(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def _strip(svg: str, keep_text: bool) -> Tuple[str, bool]:
+    """The SVG with only its text (``keep_text``) or with every text removed; and whether any text is clipped or masked."""
+    ET.register_namespace("", SVG_NS)
+    root = ET.fromstring(svg)
+    clipped = False
+
+    def has_text(node: ET.Element) -> bool:
+        return _local(node.tag) in TEXT_TAGS or any(has_text(child) for child in node)
+
+    def walk(node: ET.Element, inherited: bool) -> None:
+        nonlocal clipped
+        masked = inherited or bool(node.get("clip-path") or node.get("mask"))
+        for child in list(node):
+            tag = _local(child.tag)
+            if tag in TEXT_TAGS:
+                if keep_text:
+                    clipped = clipped or masked or bool(child.get("clip-path") or child.get("mask"))
+                else:
+                    node.remove(child)
+                continue
+            if keep_text and tag not in KEEP_TAGS and not has_text(child):
+                node.remove(child)
+                continue
+            walk(child, masked)
+
+    walk(root, False)
+    return ET.tostring(root, encoding="unicode"), clipped
+
+
+def _lines(svg: str) -> List[str]:
+    """The lines the server drew: each ``<text>`` (a ``<tspan>`` each in a multi-line one) in document order."""
+    root = ET.fromstring(svg)
+    out: List[str] = []
+    for node in root.iter():
+        if _local(node.tag) != "text":
+            continue
+        spans = [child for child in node if _local(child.tag) == "tspan"]
+        if spans:
+            out.extend("".join(span.itertext()) for span in spans)
+        else:
+            out.append("".join(node.itertext()))
+    return out
+
+
+def _fill_of(node: ET.Element, inherited: Optional[str]) -> Optional[str]:
+    style = dict(part.split(":", 1) for part in (node.get("style") or "").replace(" ", "").split(";") if ":" in part)
+    return style.get("fill") or node.get("fill") or inherited
+
+
+def _text_fills(svg: str) -> List[str]:
+    """The fill every ``<text>`` in the SVG is drawn with (inherited fills resolved), in document order."""
+    fills: List[str] = []
+
+    def walk(node: ET.Element, inherited: Optional[str]) -> None:
+        fill = _fill_of(node, inherited)
+        if _local(node.tag) == "text" and fill:
+            fills.append(fill)
+        for child in node:
+            walk(child, fill)
+
+    walk(ET.fromstring(svg), None)
+    return fills
+
+
+def _hex_rgb(value: str) -> Optional[List[int]]:
+    value = value.strip().lower()
+    if len(value) == 4 and value.startswith("#"):
+        value = "#" + "".join(c * 2 for c in value[1:])
+    if len(value) != 7 or not value.startswith("#"):
+        return None
+    try:
+        return [int(value[i:i + 2], 16) for i in (1, 3, 5)]
+    except ValueError:
+        return None
+
+
+def _probe_png(svg: str, path: Path, width_px: int) -> Tuple[int, int, List[bytes]]:
+    png = R.render_png(svg, path, width_px)
+    if png is None:
+        raise RuntimeError("resvg failed on {}".format(path))
+    try:
+        return read_png(png)
+    finally:
+        for leftover in (png,):
+            try:
+                os.unlink(leftover)
+            except OSError:
+                pass
+
+
+# --------------------------------------------------------------------------
+# pixel probes
+
+
+def _inside(el: Dict[str, Any], x: float, y: float, slack: float) -> bool:
+    """Whether a canvas point lies in the element's outline grown by ``slack`` (shrunk when negative)."""
+    x0, y0, x1, y1 = K.box_of(el)
+    kind = el.get("type")
+    if kind == "ellipse":
+        rx, ry = (x1 - x0) / 2.0 + slack, (y1 - y0) / 2.0 + slack
+        if rx <= 0 or ry <= 0:
+            return False
+        dx, dy = x - (x0 + x1) / 2.0, y - (y0 + y1) / 2.0
+        return (dx / rx) ** 2 + (dy / ry) ** 2 <= 1.0
+    if kind == "diamond":
+        hw, hh = (x1 - x0) / 2.0 + slack, (y1 - y0) / 2.0 + slack
+        if hw <= 0 or hh <= 0:
+            return False
+        return abs(x - (x0 + x1) / 2.0) / hw + abs(y - (y0 + y1) / 2.0) / hh <= 1.0
+    return x0 - slack <= x <= x1 + slack and y0 - slack <= y <= y1 + slack
+
+
+def _contains(outer: Box, inner: Box) -> bool:
+    return outer[0] <= inner[0] and outer[1] <= inner[1] and inner[2] <= outer[2] and inner[3] <= outer[3]
+
+
+def _text_size(el: Dict[str, Any]) -> float:
+    style = el.get("style") if isinstance(el.get("style"), dict) else {}
+    size = float(style.get("size") or 20)
+    return size * 0.8 if el.get("type") == "arrow" else size
+
+
+def probe(qa: QaTeam, scene: Dict[str, Any], el: Dict[str, Any], solid: List[Dict[str, Any]], work: Path, theme: str,
+          scale: float, tolerance: float) -> Dict[str, Any]:
+    """Pixel facts about one element's text: overflow, collisions, contrast and its drawn lines."""
+    base = K.box_of(el)
+    size = _text_size(el)
+    margin = max(80.0, 4.0 * size, 0.5 * max(base[2] - base[0], base[3] - base[1]))
+    alone = {"elements": [el], "authors": scene.get("authors") or {}}
+    for _attempt in range(4):
+        region = (base[0] - margin, base[1] - margin, base[2] + margin, base[3] + margin)
+        longest = max(region[2] - region[0], region[3] - region[1])
+        px = int(min(PROBE_MAX_PX, math.ceil(longest * scale)))
+        ink_svg, clipped = _strip(R.render_svg(alone, region, marks=False, max_px=px, team=qa.team, **_theme_kw(theme)), True)
+        width, height, ink = _probe_png(ink_svg, work / "ink.png", R.pixel_size(region, px)[0])
+        edge = any(row[3] >= INK_ALPHA or row[-1] >= INK_ALPHA for row in ink) or \
+            max(ink[0][3::4]) >= INK_ALPHA or max(ink[-1][3::4]) >= INK_ALPHA
+        if not edge:
+            break
+        margin *= 2.5
+    sx, sy = (region[2] - region[0]) / float(width), (region[3] - region[1]) / float(height)
+    lines = _lines(ink_svg)
+    pixels: List[Tuple[float, float, int, int]] = []  # canvas x, y, row, column
+    for j, row in enumerate(ink):
+        alphas = row[3::4]
+        if max(alphas) < INK_ALPHA:
+            continue
+        cy = region[1] + (j + 0.5) * sy
+        for i, a in enumerate(alphas):
+            if a >= INK_ALPHA:
+                pixels.append((region[0] + (i + 0.5) * sx, cy, j, i))
+    found: Dict[str, Any] = {"id": el["id"], "type": el.get("type"), "lines": lines, "ink_px": len(pixels), "clipped": clipped,
+                             "reaches_probe_edge": edge}
+    if not pixels:
+        return found
+    ink_box = (min(p[0] for p in pixels), min(p[1] for p in pixels), max(p[0] for p in pixels), max(p[1] for p in pixels))
+    found["ink_box"] = [round(v, 1) for v in ink_box]
+    slack = tolerance + max(sx, sy)
+    if el.get("type") != "arrow":
+        outside = [p for p in pixels if not _inside(el, p[0], p[1], slack)]
+        if len(outside) >= MIN_PIXELS:
+            sides = []
+            for side, past in (("left", ink_box[0] < base[0] - slack), ("top", ink_box[1] < base[1] - slack),
+                               ("right", ink_box[2] > base[2] + slack), ("bottom", ink_box[3] > base[3] + slack)):
+                if past:
+                    sides.append(side)
+            reach = max(base[0] - ink_box[0], base[1] - ink_box[1], ink_box[2] - base[2], ink_box[3] - base[3], 0.0)
+            found["overflow"] = {"px": len(outside), "units": round(reach, 1), "sides": sides or ["outline"]}
+    # Marks the ink lands on: solid marks it is not inside of (a label on its own panel is a grouping).
+    hits = []
+    for other in solid:
+        if other["id"] == el["id"]:
+            continue
+        box = K.box_of(other)
+        if box[0] > ink_box[2] or box[2] < ink_box[0] or box[1] > ink_box[3] or box[3] < ink_box[1]:
+            continue
+        if el.get("type") != "arrow" and _contains(box, base):
+            continue
+        count = sum(1 for p in pixels if _inside(other, p[0], p[1], -slack))
+        if count >= MIN_PIXELS:
+            hits.append({"other": other["id"], "other_type": other.get("type"), "px": count})
+    if hits:
+        found["collisions"] = hits
+    # Contrast: the core of the glyphs against what the scene draws under them with every text removed.
+    core = [(p[2], p[3]) for p in pixels if ink[p[2]][4 * p[3] + 3] >= CORE_ALPHA]
+    if len(core) < MIN_PIXELS:
+        top = max(ink[p[2]][4 * p[3] + 3] for p in pixels)
+        core = [(p[2], p[3]) for p in pixels if ink[p[2]][4 * p[3] + 3] >= 0.8 * top]
+    # Only the ink's own box is drawn for the background: the rest of the region never matters here.
+    under = (ink_box[0] - sx, ink_box[1] - sy, ink_box[2] + 2 * sx, ink_box[3] + 2 * sy)
+    under_px = max(1, int(math.ceil(max(under[2] - under[0], under[3] - under[1]) / min(sx, sy))))
+    bg_svg, _ = _strip(R.render_svg(scene, under, marks=False, max_px=under_px, team=qa.team, **_theme_kw(theme)), False)
+    bw, bh, bg = _probe_png(bg_svg, work / "bg.png", R.pixel_size(under, under_px)[0])
+    bsx, bsy = (under[2] - under[0]) / float(bw), (under[3] - under[1]) / float(bh)
+
+    def under_at(j: int, i: int) -> bytes:
+        x, y = region[0] + (i + 0.5) * sx, region[1] + (j + 0.5) * sy
+        row = bg[min(bh - 1, max(0, int((y - under[1]) / bsy)))]
+        col = min(bw - 1, max(0, int((x - under[0]) / bsx)))
+        return row[4 * col:4 * col + 4]
+
+    # The ink colour is the fill the text is drawn with; the pixels decide only when the SVG does not
+    # say (a colour emoji's pixels are not the text colour, and thin strokes blend into the background).
+    fills = {f for f in _text_fills(ink_svg)}
+    ink_rgb = _hex_rgb(fills.pop()) if len(fills) == 1 else None
+    if ink_rgb is None:
+        ink_rgb = [_median([ink[j][4 * i + c] for j, i in core]) for c in range(3)]
+    below = [under_at(j, i) for j, i in core]
+    bg_rgb = [_median([px_[c] for px_ in below]) for c in range(3)]
+    ratio = contrast(ink_rgb, bg_rgb)
+    need = CONTRAST_LARGE if size >= LARGE_TEXT else CONTRAST_BODY
+    found["contrast"] = {"ratio": round(ratio, 2), "need": need, "ink": "#%02x%02x%02x" % tuple(ink_rgb),
+                         "under": "#%02x%02x%02x" % tuple(bg_rgb)}
+    return found
+
+
+# --------------------------------------------------------------------------
+# one scene
+
+
+def _text_of(el: Dict[str, Any]) -> str:
+    text = " ".join(str(el.get("text") or "").split())
+    return text if len(text) <= 48 else text[:47] + "…"
+
+
+def evaluate(scene_doc: Dict[str, Any], out: Path, scale: float = PROBE_SCALE, tolerance: float = TOLERANCE,
+             themes: Optional[Sequence[str]] = None, page_lines: Optional[Dict[str, List[str]]] = None,
+             strict: bool = False, serve: float = 0.0, browser: Optional[Browser] = None) -> Dict[str, Any]:
+    """Apply, check, render and probe one scene; its report (``gate.ok`` says whether it passes)."""
+    name = scene_doc["name"]
+    themes = list(themes or themes_supported())
+    report: Dict[str, Any] = {"scene": name, "file": scene_doc["file"], "themes": themes}
+    with QaTeam() as qa:
+        report.update(apply_scene(qa, scene_doc))
+        scene = C.load_scene(qa.team)
+        live = [e for e in scene.get("elements") or [] if isinstance(e, dict) and not e.get("deleted")]
+        report["elements"] = len(live)
+        problems = C.check(qa.layout, qa.team, MEMBER)["problems"]
+        by_code: Dict[str, int] = {}
+        for problem in problems:
+            by_code[problem["code"]] = by_code.get(problem["code"], 0) + 1
+        report["check"] = by_code
+        report["check_problems"] = [{"code": p["code"], "ids": p["ids"], "message": p["message"]} for p in problems]
+        solid = [e for e in live if e.get("type") in K.SOLID]
+        texts = [e for e in live if (e.get("type") in LABELLED or e.get("type") == "arrow") and str(e.get("text") or "").strip()]
+        work = Path(tempfile.mkdtemp(prefix="probe-", dir=os.fspath(qa.tmp)))
+        report["renders"] = {}
+        report["pixel"] = {}
+        for theme in themes:
+            suffix = "" if theme == "light" else "-" + theme
+            report["renders"][theme] = render_scene(qa, scene, out, name + suffix, theme)
+            probes = [probe(qa, scene, el, solid, work, theme, scale, tolerance) for el in texts]
+            by_id = {el["id"]: el for el in texts}
+            overflow = [dict(p["overflow"], id=p["id"], type=p["type"], text=_text_of(by_id[p["id"]])) for p in probes if p.get("overflow")]
+            collisions, arrow_hits = [], []
+            for p in probes:
+                for hit in p.get("collisions") or []:
+                    row = dict(hit, id=p["id"], type=p["type"], text=_text_of(by_id[p["id"]]))
+                    (arrow_hits if p["type"] == "arrow" else collisions).append(row)
+            low = [dict(p["contrast"], id=p["id"], type=p["type"]) for p in probes
+                   if p.get("contrast") and p["contrast"]["ratio"] < p["contrast"]["need"]]
+            ratios = [p["contrast"]["ratio"] for p in probes if p.get("contrast")]
+            report["pixel"][theme] = {
+                "probed": len(probes), "overflow": overflow, "collisions": collisions, "arrow_label_collisions": arrow_hits,
+                "low_contrast": low, "min_contrast": min(ratios) if ratios else None,
+                "clipped": [p["id"] for p in probes if p.get("clipped")],
+                "no_ink": [p["id"] for p in probes if not p["ink_px"]],
+            }
+            if theme == themes[0]:
+                report["lines"] = {p["id"]: p["lines"] for p in probes}
+        if browser is not None:
+            shot = out / (name + "-page.png")
+            report["page_png"] = os.fspath(shot)
+            page_lines = read_page_lines(qa, browser, shot)
+            report["page_lines_read"] = page_lines
+            report["page_overflow"] = [row for row in browser.audit if row.get("type") != "arrow" and (row.get("overflowPx") or 0) > 0.5]
+        if page_lines is not None:
+            report["page_lines"] = compare_lines(report["lines"], page_lines, scene_doc.get("page_line_exempt"))
+        if serve > 0:
+            serve_scene(qa, serve)
+    check_ids = sorted({i for p in problems if p["code"] == "label_overflow" for i in p["ids"]})
+    pixel_ids = sorted({o["id"] for t in themes for o in report["pixel"][t]["overflow"]})
+    report["label_overflow"] = {"check": check_ids, "pixel": pixel_ids, "count": len(set(check_ids) | set(pixel_ids))}
+    report["png"] = report["renders"][themes[0]]["png"]
+    report["gate"] = gate(report, strict)
+    return report
+
+
+def compare_lines(server: Dict[str, List[str]], page: Dict[str, List[str]], exempt: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    """Line breaks that differ between the server's drawing and the page's.
+
+    Every line counts, blank ones too, and so do indentation and runs of spaces (a drawing that
+    dropped them read the same when whitespace was collapsed); only trailing spaces are ignored. The
+    page's lines go through ``canvas_render.render_text`` first: the emoji the server draws on purpose
+    without joiners and skin tones, and flags as letters, are not a difference. ``exempt`` names
+    elements whose lines may differ (a scene's ``page_line_exempt``: scripts the metrics only
+    estimate); their differences are listed apart and do not fail the gate.
+    """
+    def norm(lines: Iterable[str]) -> List[str]:
+        return [R.render_text(str(line)).rstrip() for line in lines]
+
+    exempt = exempt or {}
+    mismatches, excused = [], []
+    compared = 0
+    for eid, lines in sorted(server.items()):
+        if eid not in page:
+            continue
+        compared += 1
+        if norm(lines) != norm(page[eid]):
+            row = {"id": eid, "server": lines, "page": page[eid]}
+            (excused if eid in exempt else mismatches).append(dict(row, reason=exempt[eid]) if eid in exempt else row)
+    missing = sorted(set(server) - set(page))
+    return {"compared": compared, "mismatches": mismatches, "exempt": excused, "missing_on_page": missing}
+
+
+def gate(report: Dict[str, Any], strict: bool) -> Dict[str, Any]:
+    """Every reason this scene fails, gated counts first; ``ok`` when there is none."""
+    failed: List[str] = []
+    if report.get("refused"):
+        failed.append("refused {} op(s): the scene itself is invalid".format(len(report["refused"])))
+    codes = GATED_CHECKS + (TRACKED_CHECKS if strict else ())
+    for code in codes:
+        if report["check"].get(code):
+            failed.append("check {} {}".format(code, report["check"][code]))
+    for theme, pixel in report["pixel"].items():
+        for key in ("overflow", "collisions", "low_contrast", "clipped") + (("arrow_label_collisions",) if strict else ()):
+            if pixel.get(key):
+                failed.append("pixel {} {} ({})".format(key, len(pixel[key]), theme))
+    for theme, render in (report.get("renders") or {}).items():
+        for key in ("tofu", "cut_off"):
+            if render.get(key):
+                failed.append("render {} {} ({})".format(key, len(render[key]), theme))
+    page = report.get("page_lines")
+    if page and page["mismatches"]:
+        failed.append("page line breaks differ on {} of {}".format(len(page["mismatches"]), page["compared"]))
+    if report.get("page_overflow"):
+        failed.append("page overflow {}".format(len(report["page_overflow"])))
+    return {"ok": not failed, "failed": failed}
+
+
+def serve_scene(qa: QaTeam, seconds: float) -> None:
+    """Serve the scene's whiteboard page on loopback for ``seconds`` and print a one-use URL (for page checks)."""
+    import threading
+    from unittest import mock
+
+    from herdr_team import activity, views
+    from herdr_team import whiteboard_server as W
+
+    with mock.patch.object(views, "team_views", side_effect=lambda *a, **k: []), \
+            mock.patch.object(activity, "cards", side_effect=lambda *a, **k: []):
+        server = W.make_server(qa.layout, qa.env, port=0, writable=False, api=None)
+        port = server.server_address[1]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        print("page: {}".format(W.mint_ticket(qa.layout, False, "human", port=port)), flush=True)
+        try:
+            time.sleep(seconds)
+        finally:
+            server.shutdown()
+            server.server_close()
+
+
+# --------------------------------------------------------------------------
+# the page (headless Chrome over the DevTools protocol)
+
+#: Reads the line breaks the page drew off Excalidraw's scene: each Synapse text (a free text, or a
+#: shape's or an arrow's bound label) keeps its soft wraps in ``text`` and the source in ``originalText``.
+PAGE_LINES_JS = r"""(() => {
+  if (document.fonts && document.fonts.status !== 'loaded') return 'fonts loading';
+  const root = document.querySelector('.excalidraw');
+  if (!root) return 'no canvas';
+  const key = Object.keys(root).find((k) => k.startsWith('__reactFiber$'));
+  let fiber = key ? root[key] : null;
+  while (fiber && !(fiber.stateNode && fiber.stateNode.scene && typeof fiber.stateNode.scene.getNonDeletedElements === 'function')) fiber = fiber.return;
+  if (!fiber) return 'no scene';
+  const out = {};
+  for (const el of fiber.stateNode.scene.getNonDeletedElements()) {
+    const s = el.customData && el.customData.synapse;
+    if (el.type === 'text' && s && s.id && (s.derived === null || s.derived === 'text')) out[s.id] = String(el.text).split('\n');
+  }
+  return out;
+})()"""
+#: Fits the whole scene into the viewport before a screenshot (Excalidraw's own zoom-to-fit).
+#: The page's own fit audit (``window.__synapseFitAudit``, ``web/src/canvas/adapter.js``): per fitted label, how far
+#: its text runs past the room its container gives it.
+PAGE_AUDIT_JS = r"""(() => (window.__synapseFitAudit ? window.__synapseFitAudit() : []))()"""
+PAGE_FIT_JS = r"""(() => {
+  const root = document.querySelector('.excalidraw');
+  const key = root && Object.keys(root).find((k) => k.startsWith('__reactFiber$'));
+  let fiber = key ? root[key] : null;
+  while (fiber && !(fiber.stateNode && typeof fiber.stateNode.scrollToContent === 'function')) fiber = fiber.return;
+  if (!fiber) return false;
+  fiber.stateNode.scrollToContent(undefined, { fitToViewport: true, viewportZoomFactor: 0.9, animate: false });
+  return true;
+})()"""
+CHROME_PATHS = ("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "google-chrome", "chromium", "chromium-browser")
+PAGE_WAIT_S = 20.0
+
+
+def find_chrome(explicit: Optional[str] = None) -> Optional[str]:
+    """``--page PATH``, ``$CHROME``, the macOS app, or a Chrome/Chromium on ``PATH``."""
+    for candidate in ([explicit] if explicit else []) + [os.environ.get("CHROME") or ""] + list(CHROME_PATHS):
+        if not candidate:
+            continue
+        found = candidate if os.path.isfile(candidate) else shutil.which(candidate)
+        if found and os.access(found, os.X_OK):
+            return found
+    return None
+
+
+class Cdp:
+    """The smallest DevTools client that works: one WebSocket to one page target, calls in order."""
+
+    def __init__(self, ws_url: str, timeout: float = 30.0) -> None:
+        import base64
+        import socket
+        from urllib.parse import urlparse
+
+        url = urlparse(ws_url)
+        self.sock = socket.create_connection((url.hostname, url.port), timeout)
+        key = base64.b64encode(os.urandom(16)).decode()
+        self.sock.sendall(("GET {} HTTP/1.1\r\nHost: {}:{}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                           "Sec-WebSocket-Key: {}\r\nSec-WebSocket-Version: 13\r\n\r\n").format(url.path, url.hostname, url.port, key).encode())
+        head = b""
+        while b"\r\n\r\n" not in head:
+            chunk = self.sock.recv(4096)
+            if not chunk:
+                raise RuntimeError("DevTools closed the connection during the handshake")
+            head += chunk
+        head, self.buf = head.split(b"\r\n\r\n", 1)
+        if b" 101 " not in head.split(b"\r\n", 1)[0]:
+            raise RuntimeError("DevTools refused the WebSocket: {}".format(head.split(b"\r\n", 1)[0].decode(errors="replace")))
+        self.next_id = 0
+
+    def _exact(self, n: int) -> bytes:
+        while len(self.buf) < n:
+            chunk = self.sock.recv(65536)
+            if not chunk:
+                raise RuntimeError("DevTools closed the connection")
+            self.buf += chunk
+        out, self.buf = self.buf[:n], self.buf[n:]
+        return out
+
+    def _send(self, payload: bytes, opcode: int = 1) -> None:
+        mask = os.urandom(4)
+        n = len(payload)
+        head = bytes((0x80 | opcode,)) + (bytes((0x80 | n,)) if n < 126 else bytes((0x80 | 126,)) + struct.pack(">H", n)
+                                           if n < 65536 else bytes((0x80 | 127,)) + struct.pack(">Q", n))
+        self.sock.sendall(head + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(payload)))
+
+    def _message(self) -> Dict[str, Any]:
+        parts = b""
+        while True:
+            b0, b1 = self._exact(2)
+            n = b1 & 0x7F
+            if n == 126:
+                n = struct.unpack(">H", self._exact(2))[0]
+            elif n == 127:
+                n = struct.unpack(">Q", self._exact(8))[0]
+            payload = self._exact(n)
+            opcode = b0 & 0x0F
+            if opcode == 8:
+                raise RuntimeError("DevTools closed the connection")
+            if opcode == 9:
+                self._send(payload, 10)
+                continue
+            parts += payload
+            if b0 & 0x80:
+                return json.loads(parts.decode("utf-8"))
+
+    def call(self, method: str, **params: Any) -> Dict[str, Any]:
+        self.next_id += 1
+        self._send(json.dumps({"id": self.next_id, "method": method, "params": params}).encode())
+        while True:
+            message = self._message()
+            if message.get("id") == self.next_id:
+                if "error" in message:
+                    raise RuntimeError("{}: {}".format(method, message["error"]))
+                return message.get("result") or {}
+
+    def evaluate(self, expression: str) -> Any:
+        result = self.call("Runtime.evaluate", expression=expression, returnByValue=True, awaitPromise=True)
+        return (result.get("result") or {}).get("value")
+
+    def close(self) -> None:
+        try:
+            self.sock.close()
+        except OSError:
+            pass
+
+
+class Browser:
+    """A throwaway headless Chrome (its own profile under a temp dir); ``close`` kills only this process."""
+
+    def __init__(self, binary: str) -> None:
+        import subprocess
+        from urllib.request import urlopen
+
+        self.profile = Path(tempfile.mkdtemp(prefix="canvas-qa-chrome-"))
+        #: The page's fit audit, read with the last settled lines.
+        self.audit: List[Dict[str, Any]] = []
+        self.proc = subprocess.Popen([binary, "--headless=new", "--remote-debugging-port=0", "--user-data-dir=" + os.fspath(self.profile),
+                                      "--no-first-run", "--no-default-browser-check", "--window-size=1400,900", "about:blank"],
+                                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        port_file = self.profile / "DevToolsActivePort"
+        deadline = time.monotonic() + 15
+        while not (port_file.is_file() and port_file.read_text().strip()):
+            if time.monotonic() > deadline or self.proc.poll() is not None:
+                self.close()
+                raise RuntimeError("Chrome did not open its DevTools port")
+            time.sleep(0.1)
+        port = int(port_file.read_text().split()[0])
+        with urlopen("http://127.0.0.1:{}/json/list".format(port), timeout=10) as reply:
+            targets = json.loads(reply.read().decode())
+        page = next(t for t in targets if t.get("type") == "page")
+        self.cdp = Cdp(page["webSocketDebuggerUrl"])
+        self.cdp.call("Page.enable")
+        self.cdp.call("Runtime.enable")
+
+    def lines(self, url: str, shot: Optional[Path] = None) -> Dict[str, List[str]]:
+        """Open ``url`` and read the page's line breaks once they hold still (fonts loaded, two equal reads)."""
+        self.cdp.call("Emulation.setEmulatedMedia", features=[{"name": "prefers-color-scheme", "value": "light"}])
+        self.cdp.call("Page.navigate", url=url)
+        deadline, last = time.monotonic() + PAGE_WAIT_S, None
+        while time.monotonic() < deadline:
+            time.sleep(0.5)
+            value = self.cdp.evaluate(PAGE_LINES_JS)
+            if isinstance(value, dict) and value and value == last:
+                audit = self.cdp.evaluate(PAGE_AUDIT_JS)
+                self.audit = audit if isinstance(audit, list) else []
+                if shot is not None:
+                    self.cdp.evaluate(PAGE_FIT_JS)
+                    time.sleep(0.5)
+                    self.screenshot(shot)
+                    self.cdp.call("Emulation.setEmulatedMedia", features=[{"name": "prefers-color-scheme", "value": "dark"}])
+                    time.sleep(0.5)
+                    self.screenshot(shot.with_name(shot.stem + "-dark.png"))
+                return value
+            last = value
+        raise RuntimeError("the page never settled: {}".format(last if isinstance(last, str) else "lines kept changing"))
+
+    def screenshot(self, path: Path) -> None:
+        import base64
+
+        data = self.cdp.call("Page.captureScreenshot", format="png").get("data") or ""
+        path.write_bytes(base64.b64decode(data))
+
+    def close(self) -> None:
+        cdp = getattr(self, "cdp", None)
+        if cdp is not None:
+            cdp.close()
+        if self.proc.poll() is None:
+            self.proc.terminate()
+            try:
+                self.proc.wait(timeout=5)
+            except Exception:
+                self.proc.kill()
+        shutil.rmtree(self.profile, ignore_errors=True)
+
+
+def read_page_lines(qa: QaTeam, browser: Browser, shot: Optional[Path]) -> Dict[str, List[str]]:
+    """The scene's page served on loopback, opened in the browser, and its line breaks read."""
+    import threading
+    from unittest import mock
+
+    from herdr_team import activity, views
+    from herdr_team import whiteboard_server as W
+
+    with mock.patch.object(views, "team_views", side_effect=lambda *a, **k: []), \
+            mock.patch.object(activity, "cards", side_effect=lambda *a, **k: []):
+        server = W.make_server(qa.layout, qa.env, port=0, writable=False, api=None)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            return browser.lines(W.mint_ticket(qa.layout, False, "human", port=server.server_address[1]), shot)
+        finally:
+            server.shutdown()
+            server.server_close()
+
+
+# --------------------------------------------------------------------------
+# output
+
+
+def summary_line(report: Dict[str, Any]) -> str:
+    pixel = report["pixel"][report["themes"][0]]
+    checks = ", ".join("{} {}".format(k, v) for k, v in sorted(report["check"].items())) or "none"
+    contrast_text = "{:.1f}".format(pixel["min_contrast"]) if pixel["min_contrast"] is not None else "-"
+    page = report.get("page_lines")
+    page_text = "  page lines differ {}/{}".format(len(page["mismatches"]), page["compared"]) if page else ""
+    if "page_overflow" in report:
+        page_text += "  page overflow {}".format(len(report["page_overflow"]))
+    render = report["renders"][report["themes"][0]]
+    return ("{:<16} {}  ops {}/{}  check: {}  label_overflow {}  pixel overflow {} collisions {} arrow-label {}  "
+            "min contrast {}  tofu {} cut off {}{}\n    png {}").format(
+        report["scene"], "PASS" if report["gate"]["ok"] else "FAIL", report["applied"], report["ops"], checks,
+        report["label_overflow"]["count"], len(pixel["overflow"]), len(pixel["collisions"]), len(pixel["arrow_label_collisions"]),
+        contrast_text, len(render.get("tofu") or []), len(render.get("cut_off") or []), page_text, report["png"])
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    parser = argparse.ArgumentParser(description="Measure text overflow, overlap and contrast on golden canvas scenes.")
+    parser.add_argument("scenes", nargs="*", help="scene files, directories, or names in tests/fixtures/canvas_scenes (default: all)")
+    parser.add_argument("--out", default=os.fspath(OUT_DIR), help="where the renders and report.json go (default: .local/qa/canvas)")
+    parser.add_argument("--json", action="store_true", help="print the whole report as one JSON object")
+    parser.add_argument("--scale", type=float, default=PROBE_SCALE, help="probe pixels per canvas unit (default 2)")
+    parser.add_argument("--tolerance", type=float, default=TOLERANCE, help="units of slack around outlines (default 2)")
+    parser.add_argument("--theme", action="append", choices=("light", "dark"), help="themes to probe (default: every one the renderer has)")
+    parser.add_argument("--page-lines", help="JSON of line breaks read off the page: {scene: {element id: [lines]}} or {element id: [lines]}")
+    parser.add_argument("--strict", action="store_true", help="also gate arrow_through, stray and arrow-label collisions (Phase 2)")
+    parser.add_argument("--serve", type=float, default=0.0, metavar="SECONDS", help="serve each scene's page on loopback this long")
+    parser.add_argument("--page", nargs="?", const="", metavar="CHROME",
+                        help="also open each scene's page in a throwaway headless Chrome, read its line breaks and compare them "
+                             "(screenshots light and dark); CHROME defaults to $CHROME or the installed Chrome")
+    args = parser.parse_args(argv)
+
+    if R.find_resvg() is None:
+        print("canvas_qa: resvg is not on PATH (brew install resvg)", file=sys.stderr)
+        return 3
+    themes = args.theme or themes_supported()
+    if "dark" in themes and "dark" not in themes_supported():
+        print("canvas_qa: the server renderer has no dark theme yet (render_svg takes no theme)", file=sys.stderr)
+        return 2
+    try:
+        files = scene_files(args.scenes)
+        scenes = [load_scene_file(path) for path in files]
+    except (OSError, ValueError) as err:
+        print("canvas_qa: {}".format(err), file=sys.stderr)
+        return 2
+    page: Optional[Dict[str, Any]] = None
+    if args.page_lines:
+        page = json.loads(Path(args.page_lines).read_text(encoding="utf-8"))
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    browser: Optional[Browser] = None
+    if args.page is not None:
+        chrome = find_chrome(args.page or None)
+        if chrome is None:
+            print("canvas_qa: no Chrome found for --page (pass its path, or set CHROME)", file=sys.stderr)
+            return 2
+        browser = Browser(chrome)
+    try:
+        reports = run_scenes(scenes, out, args, themes, page, browser)
+    finally:
+        if browser is not None:
+            browser.close()
+    doc = {"scenes": reports, "ok": all(r["gate"]["ok"] for r in reports), "themes": themes,
+           "resvg": R.find_resvg(), "scale": args.scale, "tolerance": args.tolerance, "strict": args.strict}
+    (out / "report.json").write_text(json.dumps(doc, indent=1, ensure_ascii=False), encoding="utf-8")
+    if args.json:
+        print(json.dumps(doc, ensure_ascii=False))
+    else:
+        print("{} of {} scenes pass; report {}".format(sum(1 for r in reports if r["gate"]["ok"]), len(reports), out / "report.json"))
+    if any(r.get("refused") or "error" in r for r in reports):
+        return 2
+    return 0 if doc["ok"] else 1
+
+
+def run_scenes(scenes: List[Dict[str, Any]], out: Path, args: argparse.Namespace, themes: List[str],
+               page: Optional[Dict[str, Any]], browser: Optional[Browser]) -> List[Dict[str, Any]]:
+    """Evaluate each scene in turn, printing its summary line as it finishes (unless ``--json``)."""
+    reports = []
+    for scene in scenes:
+        lines = None
+        if page is not None:
+            lines = page.get(scene["name"]) if isinstance(page.get(scene["name"]), dict) else page
+        try:
+            report = evaluate(scene, out, args.scale, args.tolerance, themes, lines, args.strict, args.serve, browser)
+        except Exception as err:  # one broken scene is a finding, not a crash of the run
+            report = {"scene": scene["name"], "file": scene["file"], "error": "{}: {}".format(type(err).__name__, err),
+                      "gate": {"ok": False, "failed": ["error"]}}
+        reports.append(report)
+        if not args.json:
+            print(summary_line(report) if "error" not in report else "{:<16} ERROR {}".format(report["scene"], report["error"]), flush=True)
+    return reports
+
+
+if __name__ == "__main__":
+    sys.exit(main())

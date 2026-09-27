@@ -1,14 +1,30 @@
+/* Colours come from the design tokens: src/theme/tokens.js sets these variables on the root for
+   the current theme (applyTheme). The values here only cover the moment before it runs. */
 :root {
-  --ink: #1e1e1e;
-  --muted: #6c757d;
-  --line: #dee2e6;
+  --ink: #1c2024;
+  --muted: #5b616b;
+  --line: #d9dce1;
   --panel: #ffffff;
-  --soft: #f8f9fa;
-  --accent: #1971c2;
-  --warn: #f08c00;
-  --bad: #e03131;
-  --good: #2f9e44;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --soft: #f7f8fa;
+  --code-bg: #eceef1;
+  --accent: #1e66c9;
+  --accent-soft: #e8f2fe;
+  --on-accent: #ffffff;
+  --warn: #b8520c;
+  --warn-soft: #fff0e3;
+  --warn-ink: #5c2a07;
+  --bad: #c42a30;
+  --bad-soft: #fdecec;
+  --bad-ink: #6b1519;
+  --good: #1d7a47;
+  --good-soft: #e7f6ec;
+  --toast: #3a3f47;
+  --on-toast: #ffffff;
+  --selection: #6e56cf;
+  --diagram-bg: #ffffff;
+  --font-sans: "Synapse Sans", Helvetica, Arial, sans-serif;
+  --font-mono: "Synapse Mono", ui-monospace, Menlo, monospace;
+  font-family: var(--font-sans);
   color: var(--ink);
 }
 
@@ -28,9 +44,9 @@ body {
 }
 
 code {
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.9em;
-  background: #f1f3f5;
+  background: var(--code-bg);
   padding: 0.05em 0.3em;
   border-radius: 4px;
 }
@@ -39,7 +55,8 @@ button {
   font: inherit;
   cursor: pointer;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--panel);
+  color: var(--ink);
   border-radius: 6px;
   padding: 0.3em 0.7em;
 }
@@ -69,7 +86,8 @@ select {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 0.35em 0.5em;
-  background: #fff;
+  background: var(--panel);
+  color: var(--ink);
 }
 
 textarea {
@@ -128,8 +146,12 @@ textarea {
   border-radius: 6px;
 }
 
+.tab {
+  color: var(--ink);
+}
+
 .tab.active {
-  background: #e7f5ff;
+  background: var(--accent-soft);
   color: var(--accent);
   font-weight: 600;
 }
@@ -172,13 +194,13 @@ textarea {
 
 .banner {
   padding: 0.45em 0.9em;
-  background: #e7f5ff;
+  background: var(--accent-soft);
   border-bottom: 1px solid var(--line);
   font-size: 14px;
 }
 
 .banner.warn {
-  background: #fff4e6;
+  background: var(--warn-soft);
 }
 
 .content {
@@ -239,7 +261,7 @@ textarea {
 }
 
 .chip.on {
-  background: #e7f5ff;
+  background: var(--accent-soft);
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -332,7 +354,33 @@ textarea {
 }
 
 .swatch.hatched {
-  background: repeating-linear-gradient(45deg, #adb5bd, #adb5bd 2px, #fff 2px, #fff 4px);
+  background: repeating-linear-gradient(45deg, var(--muted), var(--muted) 2px, var(--panel) 2px, var(--panel) 4px);
+}
+
+/* An author's chip (AuthorChip.jsx): initials on the author's chip colour. */
+.author-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+  margin-right: 0.35em;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0;
+  vertical-align: middle;
+}
+
+.theme-toggle {
+  border: none;
+  background: none;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0.2em 0.35em;
 }
 
 .legend,
@@ -392,7 +440,7 @@ textarea {
   z-index: 20;
   max-width: 320px;
   pointer-events: none;
-  background: #fff;
+  background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0.4em 0.6em;
@@ -401,6 +449,8 @@ textarea {
 }
 
 .hover-title {
+  display: flex;
+  align-items: center;
   font-weight: 600;
 }
 
@@ -414,7 +464,7 @@ textarea {
   position: relative;
   width: 100%;
   height: 100%;
-  background: #fff;
+  background: var(--diagram-bg);
 }
 
 .viz-frame {
@@ -450,7 +500,7 @@ textarea {
   right: 4px;
   font-size: 11px;
   color: var(--bad);
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--panel);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -471,8 +521,8 @@ textarea {
   display: flex;
   gap: 0.6em;
   align-items: center;
-  background: #212529;
-  color: #fff;
+  background: var(--toast);
+  color: var(--on-toast);
   border-radius: 8px;
   padding: 0.5em 0.8em;
   font-size: 13px;
@@ -480,15 +530,15 @@ textarea {
 }
 
 .toast.warn {
-  background: #e8590c;
+  background: var(--warn);
 }
 
 .toast.error {
-  background: #c92a2a;
+  background: var(--bad);
 }
 
 .toast.ok {
-  background: #2b8a3e;
+  background: var(--good);
 }
 
 .toast button {
@@ -525,6 +575,8 @@ textarea {
 }
 
 img.diagram {
+  background: var(--diagram-bg);
+  border-radius: 6px;
   max-width: 100%;
   max-height: 560px;
   width: auto;
@@ -562,7 +614,7 @@ img.diagram {
 }
 
 .fact-id {
-  font-family: ui-monospace, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--muted);
 }
@@ -571,14 +623,14 @@ img.diagram {
   display: inline-block;
   font-size: 11px;
   border-radius: 4px;
-  background: #f1f3f5;
+  background: var(--code-bg);
   padding: 0 0.35em;
   margin-left: 0.3em;
 }
 
 .badge.red {
-  background: #ffe3e3;
-  color: var(--bad);
+  background: var(--bad-soft);
+  color: var(--bad-ink);
 }
 
 .timeline {
@@ -592,7 +644,7 @@ img.diagram {
 
 .timeline li {
   padding: 0.25em 0;
-  border-bottom: 1px solid #f1f3f5;
+  border-bottom: 1px solid var(--line);
 }
 
 .lanes {
@@ -642,7 +694,7 @@ img.diagram {
   height: 9px;
   border-radius: 50%;
   margin-right: 0.4em;
-  background: #adb5bd;
+  background: var(--muted);
 }
 
 .state-dot.working {

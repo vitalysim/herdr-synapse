@@ -1,0 +1,15 @@
+{
+  "name": "text-notes",
+  "about": "Text only, no shapes: a heading, an auto-sized paragraph long enough to reach the 600-unit wrap limit, columns wrapping at 100 and 220 units, a list with a blank line, indented lines, a long path, and a monospace snippet, stacked with below and right_of so the stack depends on each text's measured height.",
+  "stresses": ["auto width up to TEXT_MAX_W", "wrap width as the column width", "height from line count", "stacking below measured text", "leading spaces and blank lines"],
+  "ops": [
+    {"op": "shape", "kind": "text", "id": "h1", "text": "Decision record: move the nightly export to the new queue", "at": [0, 0], "size": "xl", "intent": "the heading"},
+    {"op": "shape", "kind": "text", "id": "para", "text": "Context. The nightly export has failed four times this month because the old queue drops jobs larger than 64 MB. The new queue streams in chunks, keeps a dead-letter topic, and already runs the invoice pipeline without incident since July. Moving the export costs about two days of work and removes the manual re-run that on-call does every Monday.", "below": "h1", "gap": 20, "intent": "an auto-sized paragraph"},
+    {"op": "shape", "kind": "text", "id": "narrow", "text": "Owner: platform team. Reviewers: data, finance.", "below": "para", "w": 100, "intent": "a 100-unit column"},
+    {"op": "shape", "kind": "text", "id": "list", "text": "Options\n- keep the old queue and raise the limit\n- move to the new queue\n\nChosen: move to the new queue", "right_of": "narrow", "w": 220, "intent": "a list in a 220-unit column"},
+    {"op": "shape", "kind": "text", "id": "indent", "text": "Rollout\n    step 1: dual-write for a week\n    step 2: compare row counts daily\n    step 3: switch the reader", "right_of": "list", "intent": "indented lines"},
+    {"op": "shape", "kind": "text", "id": "path", "text": "Runbook: /srv/runbooks/data-platform/exports/nightly-export-to-streaming-queue-migration.md", "below": "narrow", "gap": 60, "intent": "a long path"},
+    {"op": "shape", "kind": "text", "id": "code", "text": "queue.publish(topic=\"exports.nightly\", chunk_mb=8, dead_letter=\"exports.dlq\")", "below": "path", "font": "code", "intent": "a monospace line"},
+    {"op": "shape", "kind": "text", "id": "sign", "text": "Approved by the operator on 2026-09-27", "below": "code", "size": "s", "intent": "a small sign-off"}
+  ]
+}

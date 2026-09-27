@@ -2,6 +2,7 @@
 // action is an operation (or /send) the server checks; nothing here edits the scene.
 import React, { useEffect, useState, useSyncExternalStore } from "react";
 import { activeClaims } from "../sceneStore.js";
+import AuthorChip from "./AuthorChip.jsx";
 
 const who = (name) => (name === "human" ? "the operator" : name);
 
@@ -25,7 +26,7 @@ function Section({ title, children, count }) {
   );
 }
 
-function SelectionActions({ teamRow, writable, selection, actions }) {
+function SelectionActions({ scene, theme, teamRow, writable, selection, actions }) {
   const [to, setTo] = useState("");
   const [note, setNote] = useState("");
   const [lockLabel, setLockLabel] = useState("");
@@ -39,6 +40,20 @@ function SelectionActions({ teamRow, writable, selection, actions }) {
     <Section title={count ? `Selection (${count})` : "Selection"}>
       {count ? (
         <>
+          <ul className="plain selected">
+            {selection.slice(0, 8).map((id) => {
+              const el = scene.elements.find((item) => item.id === id);
+              if (!el) return null;
+              return (
+                <li key={id} className="claim-row">
+                  <AuthorChip scene={scene} name={el.author} theme={theme} />
+                  <span>
+                    {id} {el.type} · {who(el.author)}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
           <button type="button" onClick={actions.copyText}>Copy text form</button>
           {writable ? (
             <>
@@ -119,7 +134,7 @@ function CommentThread({ scene, id, writable, actions }) {
   );
 }
 
-function History({ scene, store, writable, actions }) {
+function History({ scene, theme, store, writable, actions }) {
   const events = store.recentEvents();
   const intents = new Map();
   for (const event of events) {
@@ -134,7 +149,7 @@ function History({ scene, store, writable, actions }) {
     <ul className="history">
       {batches.map((batch) => (
         <li key={batch.id} className={batch.undone ? "undone" : ""}>
-          <span className="swatch" style={{ background: scene.authors?.[batch.author]?.color || "#1e1e1e" }} />
+          <AuthorChip scene={scene} name={batch.author} theme={theme} />
           <span className="history-main">
             <b>{who(batch.author)}</b> {batch.id} v{batch.first_seq}
             {batch.last_seq !== batch.first_seq ? `–${batch.last_seq}` : ""}
@@ -149,7 +164,7 @@ function History({ scene, store, writable, actions }) {
   );
 }
 
-export default function SidePanel({ teamRow, writable, store, selection, hidden, actions, onClose }) {
+export default function SidePanel({ teamRow, writable, store, selection, hidden, theme, actions, onClose }) {
   const scene = useScene(store);
   const claims = activeClaims(scene);
   const openComments = scene.elements.filter((el) => el.type === "comment" && !el.resolved && !el.reply_to);
@@ -163,7 +178,7 @@ export default function SidePanel({ teamRow, writable, store, selection, hidden,
         <button type="button" className="close" onClick={onClose} aria-label="Close the panel">×</button>
       </div>
       {commentId ? <CommentThread scene={scene} id={commentId} writable={writable} actions={actions} /> : null}
-      <SelectionActions teamRow={teamRow} writable={writable} selection={selection} actions={actions} />
+      <SelectionActions scene={scene} theme={theme} teamRow={teamRow} writable={writable} selection={selection} actions={actions} />
       <Section title="Legend" count={scene.legend.length}>
         {scene.legend.length ? (
           <ul className="legend">
@@ -198,7 +213,7 @@ export default function SidePanel({ teamRow, writable, store, selection, hidden,
       <Section title="Claims and locks" count={claims.length + scene.locks.length}>
         {claims.map((claim) => (
           <div key={claim.id} className="claim-row">
-            <span className="swatch dashed" style={{ borderColor: scene.authors?.[claim.author]?.color || "#868e96" }} />
+            <AuthorChip scene={scene} name={claim.author} theme={theme} />
             {claim.id} {who(claim.author)}: {claim.label}
           </div>
         ))}
@@ -212,13 +227,13 @@ export default function SidePanel({ teamRow, writable, store, selection, hidden,
         {!claims.length && !scene.locks.length ? <p className="muted">Nobody is holding a region.</p> : null}
       </Section>
       <Section title="History">
-        <History scene={scene} store={store} writable={writable} actions={actions} />
+        <History scene={scene} theme={theme} store={store} writable={writable} actions={actions} />
       </Section>
       <Section title="Layers" count={authors.length}>
         {authors.map(([name, author]) => (
           <label key={name} className="layer-row">
             <input type="checkbox" checked={!hidden.has(name)} onChange={() => actions.toggleAuthor(name)} />
-            <span className="swatch" style={{ background: author.color }} />
+            <AuthorChip scene={scene} name={name} theme={theme} />
             {who(name)}
             {author.agent ? <span className="muted"> · {author.agent}</span> : null}
           </label>

@@ -27,6 +27,13 @@ reader last looked, active claims, locks, the legend, comments that mention
 the reader, and on request a rendered image with id marks
 (``canvas_render``). Graph layout and the Mermaid flowchart subset live in
 ``canvas_layout`` and ``canvas_mermaid``.
+
+Since 0.22 (canvas v2, ``.local/prd/canvas-v2-architecture.md``) a labelled
+element is sized from its label before it is placed or laid out: its kind in
+the ``canvas_kinds`` registry measures it with the bundled fonts' metrics
+(``canvas_text``), an op's ``w``/``h`` are the minimum, and the element stores
+a ``fit`` record. Colours come from a ``tone`` (``canvas_theme``), never from
+the author.
 """
 from __future__ import annotations
 
@@ -46,9 +53,12 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Sequence, Set, Tuple
 
 from herdr_team import canvas_check as _check
+from herdr_team import canvas_kinds as _kinds
 from herdr_team import canvas_layout as _layout
 from herdr_team import canvas_mermaid as _mermaid
 from herdr_team import canvas_render as _render
+from herdr_team import canvas_text as _ctext
+from herdr_team import canvas_theme as _theme
 from herdr_team import features as _features
 from herdr_team import sanitize as _sanitize
 from herdr_team import store
@@ -145,10 +155,15 @@ CLI = "herdr-synapse"
 
 SHAPE_KINDS = ("box", "ellipse", "diamond", "note", "text")
 TEXT_TYPES = frozenset(SHAPE_KINDS)
-SHAPE_SIZES = {"box": (160, 80), "ellipse": (160, 80), "diamond": (160, 100), "note": (160, 100)}
+#: The minimum size of each shape kind (design tokens ``size_min``): an op's ``w``/``h`` replaces it, and a
+#: shape grows past it to fit its label (0.22).
+SHAPE_SIZES = {kind: (int(w), int(h)) for kind, (w, h) in ((k, _theme.size_min(k)) for k in ("box", "ellipse", "diamond", "note"))}
 HEADS = ("arrow", "triangle", "dot", "none")
 DASHES = ("solid", "dashed", "dotted")
 FONTS = ("hand", "normal", "code")
+#: Colour by meaning (0.22): a tone picks an element's stroke, fill and label colour; a variant how strongly.
+TONES = _theme.TONES
+VARIANTS = _theme.VARIANTS
 WIDTHS = {"thin": 1, "bold": 2, "extra": 4, "1": 1, "2": 2, "4": 4}
 SIZES = {"s": 16, "m": 20, "l": 28, "xl": 36, "16": 16, "20": 20, "28": 28, "36": 36}
 TEXT_MAX_W = 600
@@ -823,19 +838,50 @@ def _fill_color(value: Any) -> Optional[str]:
     raise _invalid("fill", "fill must be one of {}, none, or #rrggbb".format(", ".join(FILLS)))
 
 
-STYLE_FIELDS = ("color", "fill", "width", "dash", "opacity", "font", "size", "rough")
+STYLE_FIELDS = ("color", "fill", "width", "dash", "opacity", "font", "size", "rough", "tone", "variant")
 
 
-def _default_style(color: str, kind: str) -> Dict[str, Any]:
-    return {"stroke": color, "fill": NOTE_FILL if kind == "note" else None, "width": 2, "dash": "solid",
-            "opacity": 100, "font": "hand", "size": 20, "rough": 1}
+def _default_style(kind: str) -> Dict[str, Any]:
+    """A new element's style (0.22): its kind's default tone, the sans font, straight lines. Authorship is not a colour."""
+    tone, variant = _theme.default_tone(kind)
+    colours = _theme.resolve(tone, variant, kind)
+    return {"stroke": colours["stroke"], "fill": colours["fill"], "text": colours["text"], "tone": tone, "variant": variant,
+            "width": 2, "dash": "solid", "opacity": 100, "font": "normal", "size": 20, "rough": 0}
 
 
-def _style(op: Dict[str, Any], base: Dict[str, Any]) -> Dict[str, Any]:
-    """The element ``style`` from an op's style inputs over ``base``."""
-    style = dict(base)
+def _toned(style: Dict[str, Any], op: Dict[str, Any], kind: str) -> None:
+    """Apply an op's ``tone``, ``variant`` and ``color`` to ``style`` in place.
+
+    A tone (or a variant alone, over the element's tone) sets stroke, fill and
+    label colour together. A named ``color`` is read as its tone (``blue`` is
+    ``info``) and sets stroke and label colour; a hex ``color`` is the escape
+    hatch, drawn as given, with the label in its tone's text colour when the hex
+    is a known one and in ink otherwise (a free text takes the hex itself).
+    """
+    tone = style.get("tone") if style.get("tone") in TONES else None
+    variant = style.get("variant") if style.get("variant") in VARIANTS else "soft"
+    if op.get("tone") is not None or op.get("variant") is not None:
+        tone = _choice(op.get("tone"), "tone", TONES, tone or _theme.default_tone(kind)[0])
+        variant = _choice(op.get("variant"), "variant", VARIANTS, variant)
+        style.update(_theme.resolve(tone, variant, kind), tone=tone, variant=variant)
     if op.get("color") is not None:
-        style["stroke"] = _stroke_color(op["color"])
+        raw = op["color"]
+        name = raw.strip().lower() if isinstance(raw, str) else ""
+        if name in COLORS:
+            tone = _theme.tone_of(name) or "neutral"
+            colours = _theme.resolve(tone, variant, kind)
+            style.update(stroke=colours["stroke"], text=colours["text"], tone=tone)
+        else:
+            stroke = _stroke_color(raw)
+            tone = _theme.tone_of(stroke)
+            text = stroke if kind == "text" else _theme.resolve(tone or "neutral", variant, kind)["text"]
+            style.update(stroke=stroke, text=text, tone=tone)
+
+
+def _style(op: Dict[str, Any], base: Dict[str, Any], kind: str = "box") -> Dict[str, Any]:
+    """The element ``style`` from an op's style inputs over ``base``; ``kind`` decides how a tone is used."""
+    style = dict(base)
+    _toned(style, op, kind)
     if "fill" in op:
         style["fill"] = None if op["fill"] is None else _fill_color(op["fill"])
     if op.get("width") is not None:
@@ -850,7 +896,7 @@ def _style(op: Dict[str, Any], base: Dict[str, Any]) -> Dict[str, Any]:
     if op.get("opacity") is not None:
         style["opacity"] = _round(_num(op["opacity"], "opacity", 10, 100))
     if op.get("font") is not None:
-        style["font"] = _choice(op["font"], "font", FONTS, "hand")
+        style["font"] = _choice(op["font"], "font", FONTS, "normal")
     if op.get("size") is not None:
         raw = op["size"]
         size = SIZES.get(str(int(raw)) if _is_number(raw) and float(raw) == int(raw) else str(raw).strip().lower())
@@ -865,29 +911,61 @@ def _style(op: Dict[str, Any], base: Dict[str, Any]) -> Dict[str, Any]:
     return style
 
 
-def measure_text(text: str, size: float, max_w: float = TEXT_MAX_W) -> Tuple[float, float]:
-    """A text element's size: its lines word-wrapped at ``max_w`` the way the renderer wraps them,
-    ``CHAR_W``·size per character and 1.25·size per line; the width is the widest line's."""
-    lines = _render.wrap_text(text or " ", _render.chars_per_line(max_w, size))
-    widest = max(len(line) for line in lines) * _render.CHAR_W * size
-    # round before ceil: 5 x 0.55 x 28 is 77.00000000000001 in floating point
-    return float(max(_round(size), int(math.ceil(round(widest, 6))))), float(int(math.ceil(round(len(lines) * 1.25 * size, 6))))
+def measure_text(text: str, size: float, max_w: float = TEXT_MAX_W, font: str = "normal") -> Tuple[float, float]:
+    """A text element's size: its lines wrapped at ``max_w`` with the bundled font's metrics (``canvas_text``),
+    as wide as its widest line (at least one font size) and 1.25 x size per line."""
+    request = _ctext.FitRequest(text or " ", font=font, size=float(size), min_w=float(size), max_w=max(float(size), float(max_w)))
+    result = _ctext.fit("hug", request)
+    return float(result.w), float(result.h)
 
 
-def text_size(text: str, size: float, wrap_w: Optional[float] = None) -> Tuple[float, float]:
-    """``(w, h)`` of a text element. Its height always follows its lines; its width is the
-    widest line (up to ``TEXT_MAX_W``), or ``wrap_w`` when the text wraps at a set width."""
-    if wrap_w is None:
-        return measure_text(text, size)
-    return float(max(1, _round(wrap_w))), measure_text(text, size, wrap_w)[1]
+def text_size(text: str, size: float, wrap_w: Optional[float] = None, font: str = "normal") -> Tuple[float, float]:
+    """``(w, h)`` of a text element. Its height always follows its lines; its width is the widest line
+    (up to ``TEXT_MAX_W``), or ``wrap_w`` when the text wraps at a set width (wider only for a word that cannot break)."""
+    probe = {"type": "text", "text": text, "style": {"size": size, "font": font}, "wrap": wrap_w is not None}
+    fitted = _fitted(probe, (float(wrap_w), 1.0) if wrap_w is not None else (float(size), 1.0))
+    return float(fitted["w"]), float(fitted["h"])
+
+
+def _minimum(el: Dict[str, Any], w: Any = None, h: Any = None) -> Tuple[float, float]:
+    """What a text-bearing element may not shrink below (0.22): an op's ``w``/``h``, else its stored
+    ``fit.min``, else (an element from before 0.22) its current size, else its kind's default. A text's
+    minimum width is its wrap width when it wraps, else one font size; its height follows its lines."""
+    style = el.get("style") if isinstance(el.get("style"), dict) else {}
+    fit = el.get("fit") if isinstance(el.get("fit"), dict) else {}
+    stored = fit.get("min") if isinstance(fit.get("min"), list) and len(fit["min"]) == 2 and all(_is_number(v) for v in fit["min"]) else None
+    if el.get("type") == "text":
+        if w is not None:
+            return float(w), 1.0
+        if el.get("wrap"):
+            return float(stored[0]) if stored else max(1.0, float(el.get("w") or 1)), 1.0
+        return float(style.get("size") or 20), 1.0
+    if stored:
+        base_w, base_h = float(stored[0]), float(stored[1])
+    elif _is_number(el.get("w")) and _is_number(el.get("h")):
+        base_w, base_h = float(el["w"]), float(el["h"])
+    else:
+        base_w, base_h = (float(v) for v in SHAPE_SIZES.get(str(el.get("type")), (160, 80)))
+    return (float(w) if w is not None else base_w), (float(h) if h is not None else base_h)
+
+
+def _fitted(el: Dict[str, Any], minimum: Sequence[float]) -> Dict[str, Any]:
+    """``w``, ``h`` and ``fit`` of an element sized from its label by its kind (0.22), or ``{}`` for a kind without text."""
+    kind = _kinds.get(el.get("type"))
+    if kind is None or kind.measure is None:
+        return {}
+    result = kind.measure(el, (float(minimum[0]), float(minimum[1])))
+    return {"w": max(1, min(MAX_SIZE, int(math.ceil(result.w - 1e-9)))), "h": max(1, min(MAX_SIZE, int(math.ceil(result.h - 1e-9)))),
+            "fit": _ctext.fit_record(result, minimum)}
 
 
 def _text_fields(el: Dict[str, Any], text: str, style: Dict[str, Any], wrap_w: Optional[float] = None) -> Dict[str, Any]:
-    """A text element's ``w``/``h``/``wrap`` after its text, size or wrap width changed."""
-    if wrap_w is None and el.get("wrap"):
-        wrap_w = float(el.get("w") or 1)
-    w, h = text_size(text, float(style.get("size") or 20), wrap_w)
-    return {"w": max(1, _round(w)), "h": max(1, _round(h)), "wrap": wrap_w is not None}
+    """A text element's ``w``/``h``/``wrap``/``fit`` after its text, size or wrap width changed."""
+    wraps = wrap_w is not None or bool(el.get("wrap"))
+    probe = dict(el, text=text, style=style, wrap=wraps)
+    fields = _fitted(probe, _minimum(probe, wrap_w))
+    fields["wrap"] = wraps
+    return fields
 
 
 # --------------------------------------------------------------------------
@@ -1151,7 +1229,7 @@ class _Ctx:
         el: Dict[str, Any] = {
             "id": eid or self.new_id("C" if kind == "comment" else "E"), "type": kind, "alias": alias, "client_id": client_id,
             "x": _round(x), "y": _round(y), "w": max(1, _round(w)), "h": max(1, _round(h)),
-            "text": text or "", "style": style or _default_style(self.author_color(), kind),
+            "text": text or "", "style": style or _default_style(kind),
             "frame": frame, "group": group, "role": role, "z": self.next_z(),
             "author": self.author.name, "author_kind": KIND_HUMAN if self.author.is_human else KIND_MEMBER,
             "intent": self.intent, "batch": self.batch_id, "created_seq": self.seq, "updated_seq": self.seq,
@@ -1278,34 +1356,69 @@ def _after_create(ctx: _Ctx, el: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _free_slot(ctx: _Ctx, area: Sequence[float], w: float, h: float, exclude: Optional[str] = None,
-               reserve: Sequence[Sequence[float]] = ()) -> Tuple[float, float]:
+               reserve: Sequence[Sequence[float]] = (), widens: bool = False) -> Tuple[float, float]:
     """The first position in ``area`` (rows top to bottom, 20-unit steps) whose bounds plus a 20-unit margin hit nothing.
 
     Obstacles are the live elements that reach into the area, except the
     container itself and anything that wholly encloses the area (a parent
-    frame), plus the ``reserve`` boxes (the author's portrait corner).
+    frame), plus the ``reserve`` boxes (the author's portrait corner). A
+    child of the container is always an obstacle, even one that fills the
+    whole area: taken for a parent, the next child was put on top of it (QA F-3).
+
+    When the area is full the element goes in the next free row below it, or,
+    when the area ``widens`` (a frame grows right as well as down), in a new
+    column to its right if that keeps the filled area nearer square (QA F-13).
     """
     x0, y0, x1, y1 = area
+
+    def encloses(el: Dict[str, Any], box: Sequence[float]) -> bool:
+        return _contains(box, area) and (exclude is None or el.get("frame") != exclude)
+
     obstacles = [tuple(box) for box in reserve]
     for el in ctx.live():
         box = bounds(el)
-        if el["id"] != exclude and _intersects(box, (x0 - GRID, y0 - GRID, x1 + GRID, y1 + GRID)) and not _contains(box, area):
+        if el["id"] != exclude and _intersects(box, (x0 - GRID, y0 - GRID, x1 + GRID, y1 + GRID)) and not encloses(el, box):
             obstacles.append(box)
-    y = y0
-    while y + h <= y1:
-        x = x0
-        while x + w <= x1:
-            grown = (x - GRID, y - GRID, x + w + GRID, y + h + GRID)
-            hit = next((ob for ob in obstacles if _intersects(grown, ob)), None)
-            if hit is None:
-                return x, y
-            # Jump past the obstacle, still on the grid.
-            x = max(x + GRID, x0 + math.ceil((hit[2] + GRID - x0) / GRID) * GRID)
-        y += GRID
-    # Nothing fits: content-left, 20 below the lowest child, then further down past
+
+    def scan(start: float, limit: float, blocking: Sequence[Sequence[float]], right: float = x1) -> Optional[Tuple[float, float]]:
+        y = start
+        while y + h <= limit:
+            x = x0
+            while x + w <= right:
+                grown = (x - GRID, y - GRID, x + w + GRID, y + h + GRID)
+                hit = next((ob for ob in blocking if _intersects(grown, ob)), None)
+                if hit is None:
+                    return x, y
+                # Jump past the obstacle, still on the grid.
+                x = max(x + GRID, x0 + math.ceil((hit[2] + GRID - x0) / GRID) * GRID)
+            y += GRID
+        return None
+
+    found = scan(y0, y1, obstacles)
+    if found is not None:
+        return found
+    below = [bounds(el) for el in ctx.live() if el["id"] != exclude and not encloses(el, bounds(el))] + [tuple(b) for b in reserve]
+    # Nothing fits: keep packing rows below the area, clear of everything there too (a frame then grows
+    # down to hold them), so a full frame fills its width rather than one ragged column (QA F-13).
+    lowest = max([ob[3] for ob in obstacles] + [b[3] for b in below if _intersects(b, (x0, y0, x1, b[3] + 1))] + [y1])
+    tried = math.floor((y1 - h - y0) / GRID) if y1 - h >= y0 else -1  # the last row the first scan tried
+    found = scan(y0 + (tried + 1) * GRID, lowest + GRID + h, list(obstacles) + below)
+    if widens:
+        beside = scan(y0, max(y1, y0 + h), list(obstacles) + below, x1 + w + GRID)
+
+        def squareness(spot: Optional[Tuple[float, float]]) -> float:
+            if spot is None:
+                return float("inf")
+            width, height = max(x1, spot[0] + w) - x0, max(y1, spot[1] + h) - y0
+            return max(width / max(height, 1.0), height / max(width, 1.0))
+
+        if squareness(beside) < squareness(found):
+            found = beside
+    if found is not None:
+        return found
+    # Still nothing: content-left, 20 below the lowest child, then further down past
     # anything that already overflowed there (so two big items never stack).
     y = max((ob[3] for ob in obstacles), default=y0 - GRID) + GRID
-    below = [bounds(el) for el in ctx.live() if el["id"] != exclude and not _contains(bounds(el), area)] + [tuple(b) for b in reserve]
     for _attempt in range(len(below) + 1):
         grown = (x0 - GRID, y - GRID, x0 + w + GRID, y + h + GRID)
         hits = [box for box in below if _intersects(grown, box)]
@@ -1348,6 +1461,83 @@ def _grow_frame(ctx: _Ctx, frame: Dict[str, Any], box: Sequence[float]) -> None:
     ctx.update(frame, w=_round(nx1 - x0), h=_round(ny1 - y0))
 
 
+def _grow_parents(ctx: _Ctx, el: Dict[str, Any]) -> None:
+    """After ``el`` grew to fit its label: grow each frame up its chain that no longer holds it, where the
+    author may and no lock is in the way; any other frame keeps its size (``frame_edge`` then says so)."""
+    child = el
+    seen: Set[str] = set()
+    while isinstance(child.get("frame"), str) and child["frame"] not in seen:
+        seen.add(child["frame"])
+        frame = ctx.el(child["frame"])
+        if frame is None or frame.get("type") != "frame" or frame.get("role") == PORTRAIT_ROLE:
+            return
+        box = bounds(child)
+        if _contains(bounds(frame), box):
+            return
+        if not _may_edit(ctx.author, frame):
+            return
+        try:
+            _grow_frame(ctx, frame, box)
+        except HerdrTeamError:
+            return
+        child = ctx.el(frame["id"]) or frame
+
+
+def _asked_box(el: Dict[str, Any]) -> Tuple[float, float, float, float]:
+    """The box an element was asked to take: its corner and its ``fit.min`` (its bounds when it has none)."""
+    fit = el.get("fit") if isinstance(el.get("fit"), dict) else {}
+    found = fit.get("min") if isinstance(fit.get("min"), list) and len(fit["min"]) == 2 else None
+    if not found or el.get("type") == "text":
+        return bounds(el)
+    x, y = float(el.get("x") or 0), float(el.get("y") or 0)
+    return x, y, x + min(float(found[0]), float(el.get("w") or 1)), y + min(float(found[1]), float(el.get("h") or 1))
+
+
+def _clear_of_growth(ctx: _Ctx, el: Dict[str, Any], asked: Tuple[float, float]) -> None:
+    """A new element that covers a neighbour only because one of them grew to fit its label (at the sizes they
+    were asked for they would not touch) moves, before it is recorded, to the nearest free spot beside that
+    neighbour, inside its frame, and says so (0.22): the later sibling makes way rather than overlap. A
+    collision the op asked for (the boxes overlap at their asked sizes, or it was put inside the other on
+    purpose) is left for ``check`` to report."""
+    if not str(el.get("text") or "").strip():
+        return  # an unlabelled shape is a background others sit on; it stays where it was put
+    box = bounds(el)
+    x, y = float(el["x"]), float(el["y"])
+    wanted = box if el.get("type") == "text" else (x, y, x + min(asked[0], box[2] - x), y + min(asked[1], box[3] - y))
+    solid = [other for other in ctx.live() if other.get("type") in _check.SOLID and other["id"] != el["id"]]
+    if any(_contains(_asked_box(other), wanted) for other in solid):
+        return  # drawn on another mark on purpose (a door on the walls): moving it would break the picture
+    labelled = [other for other in solid if other.get("type") in TEXT_TYPES and str(other.get("text") or "").strip()]
+
+    def covers(a: Sequence[float], b: Sequence[float]) -> bool:
+        w, h = min(a[2], b[2]) - max(a[0], b[0]), min(a[3], b[3]) - max(a[1], b[1])
+        return w > _check.TOUCH and h > _check.TOUCH and not _contains(a, b) and not _contains(b, a)
+
+    hit = next((other for other in labelled if covers(box, bounds(other)) and not covers(wanted, _asked_box(other))), None)
+    if hit is None:
+        return
+    frame = ctx.el(el["frame"]) if el.get("frame") else None
+    boxes = [(str(other["id"]), bounds(other)) for other in solid]
+    # The free spot nearest where the author put it; in a frame its author may grow, past its right or bottom edge.
+    grows = frame is not None and _may_edit(ctx.author, frame)
+    spot = _check.free_spot(el, hit, boxes, bounds(frame) if frame is not None else None, near=(x, y), frame_grows=grows,
+                                clearance=GRID)
+    if spot is None:
+        return
+    moved = (float(spot[0]), float(spot[1]), float(spot[0]) + box[2] - box[0], float(spot[1]) + box[3] - box[1])
+    try:
+        _check_locks(ctx, [moved])
+    except HerdrTeamError:
+        return
+    ctx.warn("moved_to_fit", "{} would cover {} now that labels grow to fit; it went to {} instead".format(
+        el["id"], hit["id"], cell_name(spot[0], spot[1])), [el["id"], hit["id"]])
+    el["x"], el["y"] = _round(spot[0]), _round(spot[1])
+    if frame is None:
+        el["frame"] = _enclosing_frame(ctx, moved)
+    elif not _contains(bounds(frame), moved):
+        _grow_parents(ctx, el)
+
+
 def _portrait_of(ctx: _Ctx, name: str) -> Optional[Dict[str, Any]]:
     return next((el for el in ctx.live() if el.get("type") == "frame" and el.get("role") == PORTRAIT_ROLE and el.get("author") == name), None)
 
@@ -1369,8 +1559,14 @@ PLACE_KEYS = ("at", "right_of", "left_of", "below", "above", "inside")
 PLACE_FIELDS = PLACE_KEYS + ("gap",)
 
 
-def _place(ctx: _Ctx, op: Dict[str, Any], w: float, h: float) -> Tuple[float, float, Optional[str]]:
-    """``(x, y, frame)`` for a new element of size ``w`` x ``h`` from the op's placement (contract 5.3)."""
+def _place(ctx: _Ctx, op: Dict[str, Any], w: float, h: float,
+           asked: Optional[Tuple[float, float]] = None) -> Tuple[float, float, Optional[str]]:
+    """``(x, y, frame)`` for a new element of size ``w`` x ``h`` from the op's placement (contract 5.3).
+
+    ``asked`` is the size the op asked for when the element grew past it to fit
+    its label (0.22): an element whose asked-for box lay in a frame still joins
+    that frame, and the frame grows to hold it where its author may.
+    """
     keys = [key for key in PLACE_KEYS if op.get(key) is not None]
     if len(keys) > 1:
         raise _invalid(keys[1], "use at most one of at, right_of, left_of, below, above, inside")
@@ -1385,9 +1581,11 @@ def _place(ctx: _Ctx, op: Dict[str, Any], w: float, h: float) -> Tuple[float, fl
     key = keys[0]
     if key == "inside":
         container = ctx.lookup(op["inside"], "inside")
-        x, y = _free_slot(ctx, _content_area(container), w, h, exclude=container["id"])
+        x, y = _free_slot(ctx, _content_area(container), w, h, exclude=container["id"], widens=container.get("type") == "frame")
         if container.get("type") == "frame":
             _grow_frame(ctx, container, (x, y, x + w, y + h))
+            # A frame that grew may no longer fit its own frame: each one up the chain grows too (QA F-3).
+            _grow_parents(ctx, ctx.el(container["id"]) or container)
             return x, y, container["id"]
         return x, y, None
     if key == "at":
@@ -1406,7 +1604,15 @@ def _place(ctx: _Ctx, op: Dict[str, Any], w: float, h: float) -> Tuple[float, fl
     for field, value in (("x", x), ("y", y)):
         if abs(value) > MAX_COORD:
             raise _invalid(key, "that places the element outside the canvas ({} = {:g})".format(field, value))
-    return x, y, _enclosing_frame(ctx, (x, y, x + w, y + h))
+    frame = _enclosing_frame(ctx, (x, y, x + w, y + h))
+    if frame is None and asked is not None and (asked[0] < w or asked[1] < h):
+        frame = _enclosing_frame(ctx, (x, y, x + asked[0], y + asked[1]))
+        container = ctx.el(frame) if frame else None
+        if container is not None:
+            _grow_parents(ctx, {"frame": frame, "x": x, "y": y, "w": w, "h": h})
+            if not _contains(bounds(ctx.el(frame) or container), (x, y, x + w, y + h)):
+                frame = None  # it could not grow (not the author's, or locked): frame_edge says so
+    return x, y, frame
 
 
 # --------------------------------------------------------------------------
@@ -1536,24 +1742,47 @@ def _point_list(value: Any, field: str, maximum: int, limit_name: str, pressure:
 def _op_shape(ctx: _Ctx, op: Dict[str, Any]) -> None:
     kind = _choice(op.get("kind"), "kind", SHAPE_KINDS, "box")
     text = _text(op.get("text"), "text", MAX_TEXT_CHARS, "MAX_TEXT_CHARS", required=kind == "text")
-    style = _style(op, _default_style(ctx.author_color(), kind))
-    fields: Dict[str, Any] = {}
+    style = _style(op, _default_style(kind), kind)
     if kind == "text":
         # A text's w is the width it wraps at; its height is what its lines need, so an h is ignored.
         wrap_w = _size(op, 1, 1)[0] if op.get("w") is not None else None
-        w, h = text_size(text, float(style["size"]), wrap_w)
-        fields["wrap"] = wrap_w is not None
+        fields = _text_fields({"type": "text"}, text, style, wrap_w)
     else:
-        w, h = _size(op, *SHAPE_SIZES[kind])
+        # Sized from the label before it is placed (0.22): w/h are the minimum, and the shape grows to fit.
+        fields = _fitted({"type": kind, "text": text, "style": style}, _size(op, *SHAPE_SIZES[kind]))
+    w, h = fields.pop("w"), fields.pop("h")
     alias = _alias(ctx, op)
     client = _client_id(op)
-    x, y, frame = _place(ctx, op, w, h)
+    asked = fields["fit"]["min"] if kind != "text" else [fields["fit"]["min"][0], h]
+    x, y, frame = _place(ctx, op, w, h, (float(asked[0]), float(asked[1])))
     ctx.alias = alias
-    _after_create(ctx, ctx.element(kind, x, y, w, h, text=text, style=style, alias=alias, client_id=client, frame=frame, **fields))
+    el = ctx.element(kind, x, y, w, h, text=text, style=style, alias=alias, client_id=client, frame=frame, **fields)
+    if op.get("inside") is None:
+        _clear_of_growth(ctx, el, (float(asked[0]), float(asked[1])))
+    _under_labels(ctx, el)
+    _after_create(ctx, el)
+
+
+def _under_labels(ctx: _Ctx, el: Dict[str, Any]) -> None:
+    """An unlabelled shape is a background others sit on (walls behind a door): drawn after a labelled shape
+    it covers, its fill hid that shape's label (QA F-2, the walls over the roof's second line). It goes
+    just under the lowest labelled shape it covers, never under its own frame; one it sits wholly inside
+    (a panel it is drawn on) keeps it on top."""
+    if el.get("type") not in ("box", "ellipse", "diamond") or str(el.get("text") or "").strip():
+        return
+    box = bounds(el)
+    covered = [int(other.get("z") or 0) for other in ctx.live()
+               if other["id"] != el["id"] and other.get("type") in TEXT_TYPES and str(other.get("text") or "").strip()
+               and _check._intersects(box, bounds(other), _check.TOUCH) and not _contains(bounds(other), box)]
+    if not covered:
+        return
+    frame = ctx.el(el["frame"]) if el.get("frame") else None
+    floor = int(frame.get("z") or 0) if frame is not None else -(10 ** 9)
+    el["z"] = max(min(covered) - 1, floor)
 
 
 def _op_arrow(ctx: _Ctx, op: Dict[str, Any]) -> None:
-    style = _style(op, _default_style(ctx.author_color(), "arrow"))
+    style = _style(op, _default_style("arrow"), "arrow")
     label = _text(op.get("label"), "label", MAX_LABEL_CHARS, "MAX_LABEL_CHARS", one_line=True)
     head = _choice(op.get("head"), "head", HEADS, "arrow")
     tail = _choice(op.get("tail"), "tail", HEADS, "none")
@@ -1583,7 +1812,7 @@ def _op_arrow(ctx: _Ctx, op: Dict[str, Any]) -> None:
 
 def _op_frame(ctx: _Ctx, op: Dict[str, Any]) -> None:
     title = _text(op.get("title"), "title", MAX_LABEL_CHARS, "MAX_LABEL_CHARS", one_line=True)
-    style = _style(op, _default_style(ctx.author_color(), "frame"))
+    style = _style(op, _default_style("frame"), "frame")
     alias = _alias(ctx, op)
     client = _client_id(op)
     children_raw, region_raw = op.get("children"), op.get("region")
@@ -1636,7 +1865,7 @@ def _op_pen(ctx: _Ctx, op: Dict[str, Any]) -> None:
     points = _point_list(op.get("points"), "points", MAX_PEN_POINTS, "MAX_PEN_POINTS", pressure=True)
     closed = _bool(op.get("closed"), "closed", False)
     mode = _choice(op.get("style"), "style", ("smooth", "straight"), "smooth")
-    style = _style(op, _default_style(ctx.author_color(), "pen"))
+    style = _style(op, _default_style("pen"), "pen")
     if style.get("fill") and not closed:
         raise _invalid("fill", "a pen stroke is filled only when closed: true")
     alias = _alias(ctx, op)
@@ -1659,7 +1888,7 @@ def _op_path(ctx: _Ctx, op: Dict[str, Any]) -> None:
     w, h = natural_w * scale, natural_h * scale
     if w > MAX_SIZE or h > MAX_SIZE:
         raise _invalid("scale", "the path would be {:g} x {:g}; the limit is {} per side".format(w, h, MAX_SIZE))
-    style = _style(op, _default_style(ctx.author_color(), "path"))
+    style = _style(op, _default_style("path"), "path")
     alias = _alias(ctx, op)
     client = _client_id(op)
     x, y, frame = _place(ctx, op, w, h)
@@ -1680,7 +1909,7 @@ def _op_svg(ctx: _Ctx, op: Dict[str, Any]) -> None:
     alias = _alias(ctx, op)
     client = _client_id(op)
     x, y, frame = _place(ctx, op, w, h)
-    el = ctx.element("svg", x, y, w, h, text=title, style=_default_style(ctx.author_color(), "svg"), alias=alias, client_id=client,
+    el = ctx.element("svg", x, y, w, h, text=title, style=_default_style("svg"), alias=alias, client_id=client,
                      frame=frame, asset=None, sketchy=sketchy)
     _check_locks(ctx, [bounds(el)])
     el["asset"] = store_asset(ctx.team, clean.encode("utf-8"), "svg")["asset"]
@@ -1710,8 +1939,38 @@ def _depth(subgraphs: Sequence[Dict[str, Any]]) -> Dict[str, int]:
     return out
 
 
-def _layout_key(nodes: Sequence[str], pairs: Sequence[Tuple[str, str]], algorithm: str, direction: str) -> Tuple[Any, ...]:
-    return tuple(nodes), tuple((a, b) for a, b in pairs), algorithm, direction
+def _layout_key(nodes: Sequence[str], pairs: Sequence[Tuple[str, str]], algorithm: str, direction: str,
+                sizes: Optional[Dict[str, Tuple[float, float]]] = None) -> Tuple[Any, ...]:
+    return (tuple(nodes), tuple((a, b) for a, b in pairs), algorithm, direction,
+            tuple((n, tuple(sizes[n])) for n in nodes if n in sizes) if sizes else ())
+
+
+def _node_style(op: Dict[str, Any], node: Dict[str, Any]) -> Dict[str, Any]:
+    """A graph node's style: its kind's default, then the op's style fields, then the node's own ``tone``, ``color`` and ``fill``."""
+    kind = node["kind"]
+    style = _style(op, _default_style(kind), kind)
+    own = {key: node[key] for key in ("tone", "color") if node.get(key) is not None}
+    if node.get("fill_set"):
+        own["fill"] = node.get("fill")
+    return _style(own, style, kind) if own else style
+
+
+#: Graph node kinds that keep their shape's own minimum (design tokens): a note is paper and a diamond needs
+#: room around its inscribed label; at ``NODE_W`` x ``NODE_H`` they came out small and uneven (QA F-12).
+GRAPH_SHAPE_MINIMUM = ("note", "diamond")
+
+
+def _node_sizes(op: Dict[str, Any], nodes: Sequence[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    """Every node sized from its label before layout (0.22): node id -> ``{"w", "h", "fit"}``, never under ``NODE_W`` x ``NODE_H``
+    (a note or a diamond never under its shape minimum)."""
+    out: Dict[str, Dict[str, Any]] = {}
+    for node in nodes:
+        probe = {"type": node["kind"], "text": node["text"], "style": _node_style(op, node), "group": "graph"}
+        minimum = (NODE_W, NODE_H)
+        if node["kind"] in GRAPH_SHAPE_MINIMUM:
+            minimum = (max(NODE_W, SHAPE_SIZES[node["kind"]][0]), max(NODE_H, SHAPE_SIZES[node["kind"]][1]))
+        out[node["id"]] = _fitted(probe, minimum)
+    return out
 
 
 #: Layouts slow enough to matter under ``canvas.lock`` (O(n^2) per iteration); the others take milliseconds.
@@ -1748,24 +2007,38 @@ def _prelayout(ops: Sequence[Dict[str, Any]]) -> Dict[Tuple[Any, ...], Dict[str,
             continue
         if len(set(nodes)) != len(nodes) or len(pairs) != len(edges_raw):
             continue
-        key = _layout_key(nodes, pairs, str(op["layout"]), direction)
+        try:
+            fitted = _node_sizes(op, _graph_nodes(nodes_raw))
+        except (HerdrTeamError,) + _OP_FAULTS:
+            continue  # the op itself reports what is wrong with it
+        sizes = {nid: (float(f["w"]), float(f["h"])) for nid, f in fitted.items()}
+        key = _layout_key(nodes, pairs, str(op["layout"]), direction, sizes)
         if key not in out:
             try:
-                out[key] = _layout.layout(key[0], key[1], key[2], direction)
+                out[key] = _layout.layout(key[0], key[1], key[2], direction, sizes=sizes)
             except _OP_FAULTS:
-                continue  # the op itself reports what is wrong with it
+                continue
     return out
 
 
 def _expand_graph(ctx: _Ctx, op: Dict[str, Any], title: str, nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]],
                   algorithm: str, direction: str, subgraphs: Sequence[Dict[str, Any]] = ()) -> None:
-    """A frame (the group) holding native shapes and bound arrows, laid out in Python; Mermaid subgraphs become nested frames."""
-    color = ctx.author_color()
-    base = _style(op, _default_style(color, "box"))
+    """A frame (the group) holding native shapes and bound arrows, laid out in Python; Mermaid subgraphs become nested frames.
+
+    Every node is sized from its label first, and the layout places the sized
+    boxes (0.22), so a long label never runs into its neighbour.
+    """
+    edge_base = _style(op, _default_style("arrow"), "arrow")
     alias = _alias(ctx, op)
-    key = _layout_key([n["id"] for n in nodes], [(e["from"], e["to"]) for e in edges], algorithm, direction)
-    positions = ctx.layouts.get(key) or _layout.layout(key[0], key[1], algorithm, direction)
-    node_box = {nid: (px, py, px + NODE_W, py + NODE_H) for nid, (px, py) in positions.items()}
+    fitted = _node_sizes(op, nodes)
+    sizes = {nid: (float(f["w"]), float(f["h"])) for nid, f in fitted.items()}
+    key = _layout_key([n["id"] for n in nodes], [(e["from"], e["to"]) for e in edges], algorithm, direction, sizes)
+    positions = ctx.layouts.get(key)
+    bends: Dict[int, List[Tuple[float, float]]] = {}
+    if positions is None:
+        # A long edge bends through the slots the layered layout kept for it, clear of the boxes between (QA F-6).
+        positions, bends = _layout.plan(key[0], key[1], algorithm, direction, sizes=sizes)
+    node_box = {nid: (px, py, px + sizes[nid][0], py + sizes[nid][1]) for nid, (px, py) in positions.items()}
     depth = _depth(subgraphs)
     sub_box: Dict[str, Tuple[float, float, float, float]] = {}
     for sg in sorted(subgraphs, key=lambda s: -depth[s["id"]]):
@@ -1774,7 +2047,7 @@ def _expand_graph(ctx: _Ctx, op: Dict[str, Any], title: str, nodes: List[Dict[st
         if boxes:
             sub_box[sg["id"]] = (min(b[0] for b in boxes) - FRAME_PAD, min(b[1] for b in boxes) - FRAME_TOP,
                                  max(b[2] for b in boxes) + FRAME_PAD, max(b[3] for b in boxes) + FRAME_PAD)
-    everything = list(node_box.values()) + list(sub_box.values())
+    everything = list(node_box.values()) + list(sub_box.values()) + [(bx, by, bx, by) for points in bends.values() for bx, by in points]
     min_x, min_y = min(b[0] for b in everything), min(b[1] for b in everything)
     max_x, max_y = max(b[2] for b in everything), max(b[3] for b in everything)
     frame_w, frame_h = (max_x - min_x) + 2 * FRAME_PAD, (max_y - min_y) + FRAME_TOP + FRAME_PAD
@@ -1782,7 +2055,7 @@ def _expand_graph(ctx: _Ctx, op: Dict[str, Any], title: str, nodes: List[Dict[st
         raise _invalid("nodes", "the laid-out graph is {:g} x {:g}; split it (the limit is {} per side)".format(frame_w, frame_h, MAX_SIZE))
     x, y, parent = _place(ctx, op, frame_w, frame_h)
     ox, oy = x + FRAME_PAD - min_x, y + FRAME_TOP - min_y
-    frame_style = _default_style(color, "frame")
+    frame_style = _default_style("frame")
     frame = ctx.element("frame", x, y, frame_w, frame_h, text=title, style=frame_style, alias=alias, frame=parent)
     _check_locks(ctx, [bounds(frame)])
     ctx.put(frame)
@@ -1800,31 +2073,57 @@ def _expand_graph(ctx: _Ctx, op: Dict[str, Any], title: str, nodes: List[Dict[st
     shapes: Dict[str, Dict[str, Any]] = {}
     for node in nodes:
         px, py = positions[node["id"]]
-        style = dict(base)
-        if node.get("color"):
-            style["stroke"] = node["color"]
-        if node.get("fill_set"):
-            style["fill"] = node.get("fill")
-        elif node["kind"] == "note" and "fill" not in op:
-            style["fill"] = NOTE_FILL
-        el = ctx.element(node["kind"], px + ox, py + oy, NODE_W, NODE_H, text=node["text"], style=style,
-                         alias=_node_alias(ctx, alias, node["id"]), frame=sub_ids.get(node.get("subgraph") or "", group), group=group)
+        size = fitted[node["id"]]
+        el = ctx.element(node["kind"], px + ox, py + oy, size["w"], size["h"], text=node["text"], style=_node_style(op, node),
+                         alias=_node_alias(ctx, alias, node["id"]), frame=sub_ids.get(node.get("subgraph") or "", group), group=group,
+                         fit=size["fit"])
         shapes[node["id"]] = ctx.put(el)
-    for edge in edges:
+    for number, edge in enumerate(edges):
         a, b = shapes[edge["from"]], shapes[edge["to"]]
-        middle: List[List[float]] = []
+        middle: List[List[float]] = [[bx + ox, by + oy] for bx, by in bends.get(number, [])]
         if a["id"] == b["id"]:
             ax0, ay0, ax1, ay1 = bounds(a)
             cx, cy = _center(a)
             middle = [[ax1 + 40, cy], [ax1 + 40, ay0 - 20], [cx, ay0 - 20]]
         points = _route(("element", a), ("element", b), middle)
-        style = dict(base, fill=None, dash=edge.get("dash") or "solid")
+        style = dict(edge_base, fill=None, dash=edge.get("dash") or "solid")
         if edge.get("thick"):
             style["width"] = 4
         geo = _geometry(points)
         ctx.put(ctx.element("arrow", geo["x"], geo["y"], geo["w"], geo["h"], text=edge.get("label") or "", style=style, frame=group, group=group,
                             **{"from": a["id"], "to": b["id"], "points": points, "head": edge.get("head") or "arrow", "tail": "none", "curve": False}))
     _warn_claims(ctx, [group], bounds(frame))
+
+
+def _graph_nodes(nodes_raw: List[Any]) -> List[Dict[str, Any]]:
+    """A ``graph`` op's nodes, validated: ``{"id", "text", "kind", "tone", "color", "fill", "fill_set"}``."""
+    nodes: List[Dict[str, Any]] = []
+    seen = set()
+    for index, node in enumerate(nodes_raw):
+        field = "nodes[{}]".format(index)
+        if isinstance(node, str):
+            node = {"id": node}
+        if not isinstance(node, dict):
+            raise _invalid(field, "{} must be an object with id and text".format(field))
+        for key in node:
+            if key not in ("id", "text", "kind", "tone", "color", "fill"):
+                raise _invalid("{}.{}".format(field, key), "a node takes id, text, kind, tone, color, fill")
+        nid = node.get("id")
+        if not isinstance(nid, str) or not _NODE_ID_RE.match(nid):
+            raise _invalid(field + ".id", "a node id is 1 to 32 letters, digits, _ or -")
+        if nid in seen:
+            raise _invalid(field + ".id", "node id {} appears twice".format(nid))
+        seen.add(nid)
+        nodes.append({
+            "id": nid,
+            "text": _text(node.get("text", nid), field + ".text", MAX_LABEL_CHARS, "MAX_LABEL_CHARS", one_line=True) or nid,
+            "kind": _choice(node.get("kind"), field + ".kind", SHAPE_KINDS, "box"),
+            "tone": _choice(node["tone"], field + ".tone", TONES, "neutral") if node.get("tone") is not None else None,
+            "color": node["color"] if node.get("color") is not None and _stroke_color(node["color"]) else None,
+            "fill": _fill_color(node["fill"]) if node.get("fill") is not None else None,
+            "fill_set": "fill" in node,
+        })
+    return nodes
 
 
 def _op_graph(ctx: _Ctx, op: Dict[str, Any]) -> None:
@@ -1837,31 +2136,8 @@ def _op_graph(ctx: _Ctx, op: Dict[str, Any]) -> None:
         raise _invalid("edges", "edges must be a list of {\"from\", \"to\"}")
     if len(edges_raw) > MAX_GRAPH_EDGES:
         raise _too_big("edges", "MAX_GRAPH_EDGES", MAX_GRAPH_EDGES, "{} edges; the limit is {}".format(len(edges_raw), MAX_GRAPH_EDGES))
-    nodes: List[Dict[str, Any]] = []
-    seen = set()
-    for index, node in enumerate(nodes_raw):
-        field = "nodes[{}]".format(index)
-        if isinstance(node, str):
-            node = {"id": node}
-        if not isinstance(node, dict):
-            raise _invalid(field, "{} must be an object with id and text".format(field))
-        for key in node:
-            if key not in ("id", "text", "kind", "color", "fill"):
-                raise _invalid("{}.{}".format(field, key), "a node takes id, text, kind, color, fill")
-        nid = node.get("id")
-        if not isinstance(nid, str) or not _NODE_ID_RE.match(nid):
-            raise _invalid(field + ".id", "a node id is 1 to 32 letters, digits, _ or -")
-        if nid in seen:
-            raise _invalid(field + ".id", "node id {} appears twice".format(nid))
-        seen.add(nid)
-        nodes.append({
-            "id": nid,
-            "text": _text(node.get("text", nid), field + ".text", MAX_LABEL_CHARS, "MAX_LABEL_CHARS", one_line=True) or nid,
-            "kind": _choice(node.get("kind"), field + ".kind", SHAPE_KINDS, "box"),
-            "color": _stroke_color(node["color"]) if node.get("color") is not None else None,
-            "fill": _fill_color(node["fill"]) if node.get("fill") is not None else None,
-            "fill_set": "fill" in node,
-        })
+    nodes = _graph_nodes(nodes_raw)
+    seen = {node["id"] for node in nodes}
     edges: List[Dict[str, Any]] = []
     for index, edge in enumerate(edges_raw):
         field = "edges[{}]".format(index)
@@ -1926,7 +2202,7 @@ def _op_mermaid(ctx: _Ctx, op: Dict[str, Any]) -> None:
     client = _client_id(op)
     x, y, frame = _place(ctx, op, w, h)
     ctx.alias = alias
-    _after_create(ctx, ctx.element("mermaid", x, y, w, h, text=title, style=_style(op, _default_style(ctx.author_color(), "mermaid")),
+    _after_create(ctx, ctx.element("mermaid", x, y, w, h, text=title, style=_style(op, _default_style("mermaid"), "mermaid"),
                                    alias=alias, client_id=client, frame=frame, source=source, diagram=diagram, still=None))
 
 
@@ -1979,7 +2255,7 @@ def _op_chart(ctx: _Ctx, op: Dict[str, Any]) -> None:
     alias = _alias(ctx, op)
     client = _client_id(op)
     x, y, frame = _place(ctx, op, w, h)
-    el = ctx.element("chart", x, y, w, h, text=title, style=_default_style(ctx.author_color(), "chart"), alias=alias, client_id=client,
+    el = ctx.element("chart", x, y, w, h, text=title, style=_default_style("chart"), alias=alias, client_id=client,
                      frame=frame, spec_asset=None, data=data_rel, still=None)
     _check_locks(ctx, [bounds(el)])
     el["spec_asset"] = store_asset(ctx.team, raw.encode("utf-8"), "json")["asset"]
@@ -2013,7 +2289,7 @@ def _op_viz(ctx: _Ctx, op: Dict[str, Any]) -> None:
     alias = _alias(ctx, op)
     client = _client_id(op)
     x, y, frame = _place(ctx, op, w, h)
-    el = ctx.element("viz", x, y, w, h, text=title, style=_default_style(ctx.author_color(), "viz"), alias=alias, client_id=client,
+    el = ctx.element("viz", x, y, w, h, text=title, style=_default_style("viz"), alias=alias, client_id=client,
                      frame=frame, html_asset=None, libs=libs, data=data, data_path=rel, still=None)
     _check_locks(ctx, [bounds(el)])
     el["html_asset"] = store_asset(ctx.team, html.encode("utf-8"), "html")["asset"]
@@ -2084,7 +2360,7 @@ def _op_image(ctx: _Ctx, op: Dict[str, Any]) -> None:
     alias = _alias(ctx, op)
     client = _client_id(op)
     x, y, frame = _place(ctx, op, w, h)
-    el = ctx.element("image", x, y, w, h, style=_default_style(ctx.author_color(), "image"), alias=alias, client_id=client, frame=frame,
+    el = ctx.element("image", x, y, w, h, style=_default_style("image"), alias=alias, client_id=client, frame=frame,
                      asset=None, mime=mime, px_w=px_w, px_h=px_h)
     _check_locks(ctx, [bounds(el)])
     el["asset"] = store_asset(ctx.team, data, "image")["asset"]
@@ -2157,7 +2433,7 @@ def _op_comment(ctx: _Ctx, op: Dict[str, Any]) -> None:
             x0, y0, x1, _y1 = bounds(target)
             point = [x1, y0]
     mentions = _mentions(ctx, op.get("mentions"), text)
-    el = ctx.element("comment", point[0], point[1], 1, 1, text=text, style=_default_style(ctx.author_color(), "comment"), client_id=client,
+    el = ctx.element("comment", point[0], point[1], 1, 1, text=text, style=_default_style("comment"), client_id=client,
                      on=on, point=[_r2(point[0]), _r2(point[1])], mentions=mentions, reply_to=reply_to, resolved=False, resolved_by=None)
     _check_locks(ctx, [bounds(el)])
     ctx.put(el)
@@ -2325,10 +2601,14 @@ def _resized(el: Dict[str, Any], w: Any, h: Any) -> Dict[str, Any]:
         if w is None:
             raise _invalid("h", "a text's height follows its lines; give w to set the width it wraps at")
         style = el.get("style") if isinstance(el.get("style"), dict) else {}
-        return _on_canvas(el, _text_fields(el, str(el.get("text") or ""), style, _num(w, "w", 1, MAX_SIZE)), "w")
+        return _on_canvas(el, _text_fields(el, str(el.get("text") or ""), style, float(max(1, _round(_num(w, "w", 1, MAX_SIZE))))), "w")
     old_w, old_h = max(1.0, float(el.get("w") or 1)), max(1.0, float(el.get("h") or 1))
     new_w = _num(w, "w", 1, MAX_SIZE) if w is not None else old_w
     new_h = _num(h, "h", 1, MAX_SIZE) if h is not None else old_h
+    if el.get("type") in TEXT_TYPES:
+        # A new minimum (0.22): the shape takes the size asked for, or more when its label needs more.
+        minimum = _minimum(el, max(1, _round(new_w)) if w is not None else None, max(1, _round(new_h)) if h is not None else None)
+        return _on_canvas(el, _fitted(el, minimum), "w")
     fields: Dict[str, Any] = {"w": max(1, _round(new_w)), "h": max(1, _round(new_h))}
     if el.get("type") in ("pen", "arrow") and isinstance(el.get("points"), list):
         x0, y0 = float(el.get("x") or 0), float(el.get("y") or 0)
@@ -2404,6 +2684,8 @@ def _op_move(ctx: _Ctx, op: Dict[str, Any]) -> None:
             resized = ctx.update(el, **_resized(el, op.get("w"), op.get("h")))  # type: ignore[arg-type]
             boxes.append(bounds(resized))
             changed.append(eid)
+            if resized.get("type") in TEXT_TYPES or resized.get("type") == "frame":
+                _grow_parents(ctx, resized)
     repointed: List[str] = []
     if has_points:
         el = ctx.el(first["id"]) or first
@@ -2463,20 +2745,29 @@ def _op_restyle(ctx: _Ctx, op: Dict[str, Any]) -> None:
     if not any(op.get(key) is not None for key in STYLE_FIELDS) and "fill" not in op:
         raise _invalid("color", "restyle needs at least one of: {}".format(", ".join(STYLE_FIELDS)))
     boxes = []
+    resized: List[str] = []
     for target in targets:
         el = ctx.el(target["id"]) or target
-        style = _style(op, el.get("style") if isinstance(el.get("style"), dict) else _default_style(HUMAN_COLOR, str(el.get("type"))))
+        kind = str(el.get("type"))
+        style = _style(op, el.get("style") if isinstance(el.get("style"), dict) else _default_style(kind), kind)
         if el.get("type") == "pen" and style.get("fill") and not el.get("closed"):
             raise _invalid("fill", "{} is an open stroke; only closed strokes take a fill".format(el["id"]))
         boxes.append(bounds(el))
         fields: Dict[str, Any] = {"style": style}
-        if el.get("type") == "text":
+        if kind == "text":
             fields.update(_text_fields(el, str(el.get("text") or ""), style))
+        elif kind in TEXT_TYPES:
+            # A new font or size refits the label (0.22).
+            restyled_el = dict(el, style=style)
+            fields.update(_fitted(restyled_el, _minimum(restyled_el)))
         restyled = ctx.update(el, **fields)
         boxes.append(bounds(restyled))
-        if el.get("type") == "text":
-            _warn_frame_edge(ctx, restyled)
+        if kind in TEXT_TYPES and bounds(restyled) != bounds(el):
+            resized.append(el["id"])
+            _grow_parents(ctx, restyled)
+            _warn_frame_edge(ctx, ctx.el(el["id"]) or restyled)
     _check_locks(ctx, boxes)
+    _reroute_bound(ctx, resized)
 
 
 def _op_edit(ctx: _Ctx, op: Dict[str, Any]) -> None:
@@ -2495,10 +2786,17 @@ def _op_edit(ctx: _Ctx, op: Dict[str, Any]) -> None:
     fields: Dict[str, Any] = {"text": text}
     if kind == "text":
         fields.update(_text_fields(el, text, el.get("style") if isinstance(el.get("style"), dict) else {}))
+    elif kind in TEXT_TYPES:
+        # The label is refitted from the element's minimum (0.22), so a shorter text shrinks the box back.
+        fields.update(_fitted(dict(el, text=text), _minimum(el)))
     _check_locks(ctx, [bounds(el)])
     edited = ctx.update(el, **fields)
+    _check_locks(ctx, [bounds(edited)])
+    if bounds(edited) != bounds(el):
+        _grow_parents(ctx, edited)
+        _reroute_bound(ctx, [el["id"]])
     _warn_overlap(ctx, edited)
-    _warn_frame_edge(ctx, edited)
+    _warn_frame_edge(ctx, ctx.el(el["id"]) or edited)
 
 
 def _op_delete(ctx: _Ctx, op: Dict[str, Any]) -> None:
@@ -2580,12 +2878,13 @@ def _op_portrait(ctx: _Ctx, op: Dict[str, Any]) -> None:
         x, y = float(home[0]), float(home[1])
         if any(_intersects((x, y, x + PORTRAIT_W, y + height), bounds(el)) for el in ctx.live()):
             x, y = _free_slot(ctx, (home[0] + FRAME_PAD, home[1] + FRAME_PAD, home[2] - FRAME_PAD, home[3] - FRAME_PAD), PORTRAIT_W, height)
-        frame = ctx.put(ctx.element("frame", x, y, PORTRAIT_W, height, text=title, style=_default_style(color, "frame"), role=PORTRAIT_ROLE))
+        frame = ctx.put(ctx.element("frame", x, y, PORTRAIT_W, height, text=title, style=dict(_default_style("frame"), stroke=color), role=PORTRAIT_ROLE))
     fx, fy = float(frame["x"]), float(frame["y"])
     old_steps = sorted((el for el in ctx.live() if el.get("group") == frame["id"] and el.get("role") == PORTRAIT_ROLE and el["id"] != frame["id"]),
                        key=lambda el: (float(el.get("y") or 0), _id_number(el.get("id"))))
     for index, (text, status) in enumerate(steps):
-        style = dict(_default_style(color, "box"), size=16)
+        # A portrait is about its author, so its steps keep the author's colour (the one place colour is authorship).
+        style = dict(_default_style("box"), stroke=color, size=16)
         label = text
         if status == "completed":
             style["fill"] = FILLS["gray"]
@@ -2892,12 +3191,17 @@ def apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: C
                                           "message": "{} could not be applied: {}".format(name, type(err).__name__),
                                           "details": {"field": "op", "error": type(err).__name__}})
                 continue
+            geometry = _sized(ctx)
             state.fold(event)
             events.append(event)
             lines.append(line)
             entry: Dict[str, Any] = {"index": index, "op": name, "ids": list(event["ids"])}
             if ctx.alias:
                 entry["alias"] = ctx.alias
+            if geometry:
+                entry["geometry"] = geometry[:MAX_GEOMETRY]
+                if len(geometry) > MAX_GEOMETRY:
+                    entry["geometry_omitted"] = len(geometry) - MAX_GEOMETRY
             result["applied"].append(entry)
             result["warnings"].extend(ctx.warnings)
             result["aliases"].update(ctx.aliases)
@@ -2928,6 +3232,32 @@ def apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: C
         if seq is not None:
             result["notices"]["canvas_sent"].append(seq)
     return result
+
+
+#: Sized elements an apply result lists per op; a big graph lists this many and counts the rest.
+MAX_GEOMETRY = 50
+
+
+def _sized(ctx: _Ctx) -> List[Dict[str, Any]]:
+    """Where the op put every labelled element it created or refitted, and how its label was fitted (0.22),
+    so an agent never has to guess the size a shape grew to."""
+    out: List[Dict[str, Any]] = []
+    for eid in ctx.created + ctx.changed:
+        el = ctx.pending.get(eid)
+        if el is None or el.get("type") not in TEXT_TYPES:
+            continue
+        before = ctx.state.elements.get(eid)
+        if before is not None and (before.get("w"), before.get("h")) == (el.get("w"), el.get("h")) and before.get("fit") == el.get("fit"):
+            continue  # moved, not sized
+        entry: Dict[str, Any] = {"id": eid, "x": el.get("x"), "y": el.get("y"), "w": el.get("w"), "h": el.get("h")}
+        fit = el.get("fit") if isinstance(el.get("fit"), dict) else None
+        if fit:
+            entry["fit"] = {"policy": fit.get("policy"), "size": fit.get("size"), "lines": len(fit.get("lines") or [])}
+            for flag in ("truncated", "estimated"):
+                if fit.get(flag):
+                    entry["fit"][flag] = True
+        out.append(entry)
+    return out
 
 
 def check_applied(result: Dict[str, Any]) -> Dict[str, Any]:
@@ -3272,7 +3602,11 @@ def describe(el: Dict[str, Any], reader: Optional[str] = None, full: bool = True
     elif kind == "image":
         core = "{} image {}x{}px {}".format(eid, el.get("px_w"), el.get("px_h"), _bounds_text(el))
     else:
-        core = "{} {}{} {}".format(eid, kind, " " + _q(text, limit) if text else "", _bounds_text(el))
+        registered = _kinds.get(kind)
+        if registered is not None and registered.readback is not None:
+            core = registered.readback(el, full)
+        else:
+            core = "{} {}{} {}".format(eid, kind, " " + _q(text, limit) if text else "", _bounds_text(el))
     if full and kind in CELL_TYPES:
         core += " " + cell_name(el.get("x") or 0, el.get("y") or 0)
     line = "{} by {}".format(core, who)
@@ -3696,13 +4030,33 @@ def read_changes(layout: Any, team: TeamPaths, reader: str, since: Any = "last",
     return result
 
 
+def _geometry_text(entry: Dict[str, Any]) -> str:
+    """`` → 212x64 (hug, 2 lines)`` for one sized element, `` → 28 sized`` for more."""
+    geometry = entry.get("geometry") or []
+    if not geometry:
+        return ""
+    if len(geometry) > 1 or entry.get("geometry_omitted"):
+        return " → {} sized".format(len(geometry) + int(entry.get("geometry_omitted") or 0))
+    one = geometry[0]
+    fit = one.get("fit") or {}
+    notes = []
+    if fit.get("policy"):
+        count = int(fit.get("lines") or 0)
+        notes.append("{}, {} line{}".format(fit["policy"], count, "" if count == 1 else "s"))
+    for flag in ("truncated", "estimated"):
+        if fit.get(flag):
+            notes.append(flag)
+    return " → {}x{}{}".format(one.get("w"), one.get("h"), " ({})".format(", ".join(notes)) if notes else "")
+
+
 def apply_text(result: Dict[str, Any]) -> str:
     """The human text of an apply result: ``v44 · B-12 · applied 6, refused 1`` then one line per op."""
     lines = ["v{} · {} · applied {}, refused {}".format(result.get("version"), result.get("batch") or "no batch",
                                                        len(result.get("applied") or []), len(result.get("refused") or []))]
     for entry in result.get("applied") or []:
         alias = " ({})".format(entry["alias"]) if entry.get("alias") else ""
-        lines.append("#{} {} {}{}".format(entry.get("index"), entry.get("op"), _ids_text(entry.get("ids") or []) or "-", alias))
+        lines.append("#{} {} {}{}{}".format(entry.get("index"), entry.get("op"), _ids_text(entry.get("ids") or []) or "-", alias,
+                                          _geometry_text(entry)))
     if result.get("refused"):
         lines.append("refused:")
         lines += ["  #{} {} {}: {}".format(r.get("index"), r.get("op"), r.get("code"), r.get("message")) for r in result["refused"]]

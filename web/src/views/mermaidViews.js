@@ -1,6 +1,8 @@
 // Team views as Mermaid flowcharts. Every label is agent- or member-written text, so it is
 // escaped into Mermaid's quoted-label syntax (entity codes, no markup) and the diagram is
 // rendered with securityLevel "strict" and shown as an <img>, where no script can run.
+// Status colours are tones from the design tokens.
+import { mermaidClass } from "../theme/tokens.js";
 
 export function label(text, max = 60) {
   const clean = String(text ?? "")
@@ -30,13 +32,13 @@ export function workGraphSource(work) {
     if (ids.has(edge.from) && ids.has(edge.to)) lines.push(`  ${ids.get(edge.from)} --> ${ids.get(edge.to)}`);
   }
   lines.push(
-    "  classDef open fill:#f1f3f5,stroke:#868e96",
-    "  classDef active fill:#d0ebff,stroke:#1971c2",
-    "  classDef blocked fill:#ffe3e3,stroke:#e03131",
-    "  classDef review fill:#fff3bf,stroke:#f08c00",
-    "  classDef done fill:#d3f9d8,stroke:#2f9e44",
-    "  classDef failed fill:#ffc9c9,stroke:#c92a2a",
-    "  classDef cancelled fill:#f8f9fa,stroke:#adb5bd,color:#868e96",
+    `  classDef open ${mermaidClass("neutral", "outline")}`,
+    `  classDef active ${mermaidClass("info")}`,
+    `  classDef blocked ${mermaidClass("danger")}`,
+    `  classDef review ${mermaidClass("warning")}`,
+    `  classDef done ${mermaidClass("success")}`,
+    `  classDef failed ${mermaidClass("danger", "solid")}`,
+    `  classDef cancelled ${mermaidClass("neutral")},stroke-dasharray:4 3`,
   );
   return lines.join("\n");
 }
@@ -56,6 +58,6 @@ export function topologySource(topology) {
     lines.push(`  l${i}[/"linked: ${label(link.team, 30)}<br/>${label(link.state || "", 20)}"/]`);
     lines.push(`  team -.- l${i}`);
   });
-  lines.push("  classDef manager fill:#e5dbff,stroke:#7048e8");
+  lines.push(`  classDef manager ${mermaidClass("accent")}`);
   return lines.join("\n");
 }

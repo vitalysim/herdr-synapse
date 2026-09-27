@@ -1,0 +1,18 @@
+{
+  "name": "font-sizes",
+  "about": "The smallest and largest font sizes the ops accept (s = 16 and xl = 36) on every labelled kind, in the monospace font too, with boxes sized for the small size, a tiny 80x40 box holding an xl label, and free text wrapping at a narrow width at xl.",
+  "stresses": ["size classes s and xl", "monospace metrics", "tiny shape with a huge label", "narrow wrap width at xl"],
+  "ops": [
+    {"op": "shape", "kind": "box", "id": "s_box", "text": "Small print: read the retention policy before exporting", "at": [0, 0], "size": "s", "intent": "s label in a box"},
+    {"op": "shape", "kind": "box", "id": "xl_box", "text": "Quarterly revenue target", "right_of": "s_box", "size": "xl", "intent": "xl label in a default box"},
+    {"op": "shape", "kind": "box", "id": "tiny", "text": "Deploy", "right_of": "xl_box", "w": 80, "h": 40, "size": "xl", "intent": "xl label in a tiny box"},
+    {"op": "shape", "kind": "ellipse", "id": "s_ell", "text": "optional step, skip when the cache is warm", "below": "s_box", "size": "s", "intent": "s label in an ellipse"},
+    {"op": "shape", "kind": "ellipse", "id": "xl_ell", "text": "Launch day", "right_of": "s_ell", "size": "xl", "intent": "xl label in an ellipse"},
+    {"op": "shape", "kind": "diamond", "id": "xl_dia", "text": "Ship it?", "right_of": "xl_ell", "size": "xl", "intent": "xl label in a diamond"},
+    {"op": "shape", "kind": "note", "id": "xl_note", "text": "Big decision: move the launch to November", "below": "s_ell", "size": "xl", "intent": "xl note"},
+    {"op": "shape", "kind": "box", "id": "code_xl", "text": "SELECT count(*) FROM orders WHERE status = 'paid';", "right_of": "xl_note", "font": "code", "size": "xl", "intent": "monospace at xl"},
+    {"op": "shape", "kind": "box", "id": "code_s", "text": "export HERDR_SYNAPSE_RESVG=/opt/homebrew/bin/resvg", "right_of": "code_xl", "font": "code", "size": "s", "intent": "monospace at s"},
+    {"op": "shape", "kind": "text", "id": "xl_text", "text": "Everything on this board must stay readable", "below": "xl_note", "w": 180, "size": "xl", "intent": "xl free text in a narrow column"},
+    {"op": "shape", "kind": "text", "id": "s_text", "text": "Footnote: numbers are preliminary and exclude refunds issued after the 25th of the month.", "right_of": "xl_text", "size": "s", "intent": "s free text, auto width"}
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "name": "arrow-labels",
+  "about": "Connectors between shapes with long labels: a row of services joined by sentence-long arrow labels at the default 40-unit gap, a two-way pair, an elbowed arrow through explicit points, a curved arrow, and an arrow whose midpoint lands on a third shape. Shape labels are short so the arrow labels are what collide.",
+  "stresses": ["label pills wider than the gap", "labels over the shapes they join", "arrow_through", "curved and elbowed labels"],
+  "ops": [
+    {"op": "shape", "kind": "box", "id": "client", "text": "Client", "at": [0, 0], "intent": "the caller"},
+    {"op": "shape", "kind": "box", "id": "api", "text": "API", "right_of": "client", "intent": "the API"},
+    {"op": "shape", "kind": "box", "id": "worker", "text": "Worker", "right_of": "api", "intent": "the worker"},
+    {"op": "shape", "kind": "ellipse", "id": "db", "text": "Database", "below": "api", "gap": 160, "intent": "the database"},
+    {"op": "shape", "kind": "box", "id": "audit", "text": "Audit log", "below": "worker", "gap": 60, "intent": "the audit log, in the way"},
+    {"op": "arrow", "from": "client", "to": "api", "label": "POST /orders with an idempotency key", "intent": "a long label across a 40-unit gap"},
+    {"op": "arrow", "from": "api", "to": "worker", "label": "enqueue a signed job with retries and backoff", "intent": "another long label"},
+    {"op": "arrow", "from": "worker", "to": "api", "label": "status callback", "intent": "the reverse direction on the same pair"},
+    {"op": "arrow", "from": "api", "to": "db", "label": "INSERT ... ON CONFLICT DO NOTHING", "intent": "a vertical label"},
+    {"op": "arrow", "from": "client", "to": "worker", "label": "cancels a job the user no longer wants", "curve": true, "intent": "a curved arrow over the row"},
+    {"op": "arrow", "points": [[360, 300], [640, 300], [640, 40], [562, 40]], "label": "change data capture stream", "intent": "an elbowed arrow by points, pinned to coordinates"},
+    {"op": "arrow", "from": "db", "to": "audit", "label": "nightly compliance snapshot", "intent": "an arrow toward the audit log"}
+  ]
+}

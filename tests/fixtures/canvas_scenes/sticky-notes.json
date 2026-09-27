@@ -1,0 +1,16 @@
+{
+  "name": "sticky-notes",
+  "about": "A research wall of sticky notes at the default 160x100 note size: multi-line text with explicit line breaks, bullet lists, a blank line, one very long URL, one very long single word, a note with one word, and a colour per theme, laid out in rows with right_of and below so the engine picks every position.",
+  "stresses": ["notes growing from multi-line text", "rows placed relative to grown neighbours", "long unbroken tokens (URL, Internationalization)", "blank lines kept"],
+  "ops": [
+    {"op": "frame", "id": "wall", "title": "Customer interview findings, week 38", "at": [0, 0], "w": 1100, "h": 700, "intent": "the research wall"},
+    {"op": "shape", "kind": "note", "id": "n1", "text": "Onboarding\n- 7 of 9 users skipped the tour\n- 4 could not find the invite button\n- 2 asked for SSO on day one", "at": [40, 60], "intent": "onboarding findings"},
+    {"op": "shape", "kind": "note", "id": "n2", "text": "Pricing page is confusing: people compare the Team plan with the Business plan and cannot tell which one includes audit logs, so they open a support ticket instead of upgrading.", "right_of": "n1", "fill": "blue", "intent": "a pricing finding"},
+    {"op": "shape", "kind": "note", "id": "n3", "text": "Quote:\n\"I just want to see what my team did yesterday without opening five tabs.\"", "right_of": "n2", "fill": "green", "intent": "a customer quote"},
+    {"op": "shape", "kind": "note", "id": "n4", "text": "Bug reported twice:\nhttps://support.example.com/tickets/2026/09/38/export-fails-when-the-workspace-name-contains-an-apostrophe", "below": "n1", "fill": "red", "intent": "a blocker with a link"},
+    {"op": "shape", "kind": "note", "id": "n5", "text": "Internationalization\nlocalisation\nright-to-left layouts", "right_of": "n4", "fill": "pink", "intent": "a concern with a long word"},
+    {"op": "shape", "kind": "note", "id": "n6", "text": "Why?", "right_of": "n5", "fill": "yellow", "intent": "a one-word question"},
+    {"op": "shape", "kind": "note", "id": "n7", "text": "Next steps\n\n1. Rewrite the tour as three short tips\n2. Add an audit-log row to the pricing table\n3. Fix the apostrophe export bug before the October release", "below": "n4", "size": "l", "intent": "next steps at size l"},
+    {"op": "shape", "kind": "note", "id": "n8", "text": "Owner: research team (Dana, Luis, Mei)\nDue: Friday 2026-10-02\nStatus: waiting on two more interviews", "right_of": "n7", "fill": "teal", "intent": "ownership"}
+  ]
+}

@@ -15,6 +15,9 @@ The geometry is exact, the engine's hand-drawn look is not reproduced:
   better than unmarked ones.
 * ``render_png`` rasterises through ``resvg`` via the ``RUN`` hook, so tests
   fake it; a missing or failing ``resvg`` is ``None``, never an exception.
+  Text is drawn in the bundled fonts (Inter, Geist Mono under
+  ``assets/fonts``), the files ``canvas_text`` measured, at the lines the
+  element's fit stored (0.22), so the PNG breaks lines where the model did.
 * ``sanitize_svg`` rebuilds agent SVG from an allow-list and refuses the
   whole block (``svg_refused``) on scripts, foreign objects, event handlers,
   external references and CSS ``url()``; ``sanitize_path_data`` and
@@ -25,6 +28,7 @@ This module imports nothing from ``canvas``; ``canvas`` imports it.
 from __future__ import annotations
 
 import base64
+import html as _html
 import math
 import os
 import re
@@ -34,6 +38,9 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
+from herdr_team import canvas_kinds as _kinds
+from herdr_team import canvas_text as _ctext
+from herdr_team import canvas_theme as _theme
 from herdr_team import features as _features
 from herdr_team import store
 from herdr_team.errors import EXIT_REFUSED, HerdrTeamError
@@ -114,10 +121,61 @@ MAC_FONT_ASSETS = "/System/Library/AssetsV2"
 FONT_EXTENSIONS = (".ttf", ".ttc", ".otf", ".otc")
 #: Test hook: the font folders ``font_args`` looks in, in place of the system's.
 FONT_DIRS: Optional[Sequence[str]] = None
+#: The bundled fonts resvg draws canvas text with (0.22), the files ``canvas_text`` measures.
+FONTS_ROOT = Path(__file__).resolve().parent.parent / "assets" / "fonts"
+#: Test hook: the bundled font folders, in place of ``FONTS_ROOT``'s (None: the real ones).
+BUNDLED_FONT_DIRS: Optional[Sequence[str]] = None
+SANS_FAMILY = "Inter"
+MONO_FAMILY = "Geist Mono"
 
 
-def _is_last_resort(name: str) -> bool:
-    return name.lower().startswith("lastresort")
+#: Font files resvg must never fall back to, by file name: LastResort (a placeholder box for every code
+#: point), and macOS's hidden Nastaliq UI face, which claims Arabic but lacks most of its letters, so
+#: with Inter as the base font whole lines of Arabic, Japanese and emoji drew as boxes (QA F-1, 2026-09-27).
+FALLBACK_TRAPS = ("lastresort", "decotypenastaleequrdu")
+#: The font families the bundled fonts answer for: a picture using only these, in characters they
+#: cover, is drawn without loading the system fonts (a quarter of resvg's time on a dense board, QA F-7).
+BUNDLED_FAMILIES = frozenset(("inter", "geist mono", "sans-serif", "monospace"))
+_FONT_FAMILY_RE = re.compile(r"font-family\s*[:=]\s*(\"[^\"]*\"|'[^']*'|[^;\"'>]*)", re.IGNORECASE)
+_FONT_SHORTHAND_RE = re.compile(r"(?:^|[\s;\"'])font\s*[:=]", re.IGNORECASE)
+_SVG_TAG_RE = re.compile(r"<svg\b([^>]*)>")
+_TEXT_TAG_RE = re.compile(r"<text\b([^>]*)>")
+_TEXT_NODE_RE = re.compile(r">([^<]+)<")
+
+
+def _is_trap(name: str) -> bool:
+    return name.lower().startswith(FALLBACK_TRAPS)
+
+
+def bundled_covers(svg_text: str) -> bool:
+    """Whether the bundled fonts draw every character of ``svg_text`` in every family it names.
+
+    Conservative: an unknown family, the ``font`` shorthand, a ``<text>`` naming no family when the
+    document names none either (resvg's default is a serif), or a character Inter lacks (Arabic, CJK,
+    emoji) all say no, and the picture loads the system fonts as before.
+    """
+    if _FONT_SHORTHAND_RE.search(svg_text):
+        return False
+    for match in _FONT_FAMILY_RE.finditer(svg_text):
+        for family in match.group(1).strip("\"'").split(","):
+            family = family.strip().strip("\"'").lower()
+            if family and family not in BUNDLED_FAMILIES:
+                return False
+    root = _SVG_TAG_RE.search(svg_text)
+    if not (root and "font-family" in root.group(1)) and any("font-family" not in attrs for attrs in _TEXT_TAG_RE.findall(svg_text)):
+        return False
+    sans = _ctext.face("normal", _ctext.DEFAULT_WEIGHT)
+    if sans.builtin:
+        return False
+    seen = set()
+    for match in _TEXT_NODE_RE.finditer(svg_text):
+        for ch in _html.unescape(match.group(1)):
+            if ch in seen or ch.isspace():
+                continue
+            if ord(ch) not in sans.advances:
+                return False
+            seen.add(ch)
+    return True
 
 
 def font_dirs(env: Optional[Mapping[str, str]] = None) -> List[str]:
@@ -135,14 +193,32 @@ def font_dirs(env: Optional[Mapping[str, str]] = None) -> List[str]:
     return dirs
 
 
-def font_args(dirs: Optional[Sequence[str]] = None, env: Optional[Mapping[str, str]] = None) -> List[str]:
-    """resvg's font arguments: none, or the system fonts without macOS's LastResort.
+def bundled_font_args() -> List[str]:
+    """The bundled font folders, and Inter and Geist Mono as the generic sans-serif and monospace families."""
+    dirs = BUNDLED_FONT_DIRS if BUNDLED_FONT_DIRS is not None else [str(FONTS_ROOT / "inter"), str(FONTS_ROOT / "geist-mono")]
+    argv: List[str] = []
+    for folder in dirs:
+        if os.path.isdir(folder):
+            argv += ["--use-fonts-dir", folder]
+    if argv:
+        argv += ["--sans-serif-family", SANS_FAMILY, "--monospace-family", MONO_FAMILY]
+    return argv
+
+
+def font_args(dirs: Optional[Sequence[str]] = None, env: Optional[Mapping[str, str]] = None,
+              svg_text: Optional[str] = None) -> List[str]:
+    """resvg's font arguments: the bundled fonts first, then the system fonts without the ``FALLBACK_TRAPS``.
 
     LastResort maps every code point to a placeholder box, and resvg hands a whole line to
     the first fallback font that covers all of it, so one character the base font lacks (an
     emoji, a check mark) turned the label into boxes (found live on 2026-09-27). Where a
-    folder holds LastResort, its other fonts load one by one and its subfolders whole.
+    folder holds a trap, its other fonts load one by one and its subfolders whole. The
+    system fonts stay for what the bundled ones lack (CJK, emoji, Arabic); when ``svg_text``
+    needs nothing but the bundled fonts (``bundled_covers``), they are not loaded at all.
     """
+    bundled = bundled_font_args()
+    if bundled and svg_text is not None and bundled_covers(svg_text):
+        return bundled + ["--skip-system-fonts"]
     if dirs is None:
         dirs = FONT_DIRS if FONT_DIRS is not None else font_dirs(env)
     folders = [d for d in dirs if os.path.isdir(d)]
@@ -152,28 +228,29 @@ def font_args(dirs: Optional[Sequence[str]] = None, env: Optional[Mapping[str, s
             listed.append((folder, sorted(os.listdir(folder))))
         except OSError:
             continue
-    if not any(_is_last_resort(name) for _folder, names in listed for name in names):
-        return []
-    argv = ["--skip-system-fonts"]
+    if not any(_is_trap(name) for _folder, names in listed for name in names):
+        return bundled
+    argv = bundled + ["--skip-system-fonts"]
     for folder, names in listed:
-        if not any(_is_last_resort(name) for name in names):
+        if not any(_is_trap(name) for name in names):
             argv += ["--use-fonts-dir", folder]
             continue
         for name in names:
             path = os.path.join(folder, name)
             if os.path.isdir(path):
                 argv += ["--use-fonts-dir", path]
-            elif not _is_last_resort(name) and name.lower().endswith(FONT_EXTENSIONS):
+            elif not _is_trap(name) and name.lower().endswith(FONT_EXTENSIONS):
                 argv += ["--use-font-file", path]
     return argv
 
 
-def _rasterise(svg_path: Path, out_path: Path, width_px: Optional[int], env: Optional[Mapping[str, str]], timeout: float) -> Tuple[Optional[Path], Optional[str]]:
+def _rasterise(svg_path: Path, out_path: Path, width_px: Optional[int], env: Optional[Mapping[str, str]], timeout: float,
+               svg_text: Optional[str] = None) -> Tuple[Optional[Path], Optional[str]]:
     """``(png path, None)`` or ``(None, "resvg_missing" | "render_failed")``."""
     binary = find_resvg(env)
     if binary is None:
         return None, "resvg_missing"
-    argv = [binary] + font_args(env=env)
+    argv = [binary] + font_args(env=env, svg_text=svg_text)
     if width_px:
         argv += ["-w", str(int(width_px))]
     argv += [os.fspath(svg_path), os.fspath(out_path)]
@@ -205,7 +282,7 @@ def render_png(svg_text: str, out_path: Path, width_px: Optional[int] = None, en
     except (OSError, HerdrTeamError):
         return None
     try:
-        path, _error = _rasterise(tmp, out_path, width_px, env, timeout)
+        path, _error = _rasterise(tmp, out_path, width_px, env, timeout, svg_text)
     finally:
         try:
             os.unlink(tmp)
@@ -226,7 +303,7 @@ def render_region(team: TeamPaths, scene: Dict[str, Any], region: Optional[Seque
     svg_path = out_dir / (name + ".svg")
     png_path = out_dir / (name + ".png")
     store.atomic_write(svg_path, svg_text.encode("utf-8"), fsync=False)
-    png, error = _rasterise(svg_path, png_path, width_px, env, RENDER_TIMEOUT_S)
+    png, error = _rasterise(svg_path, png_path, width_px, env, RENDER_TIMEOUT_S, svg_text)
     prune_renders(out_dir, RENDER_KEEP)
     return {"svg": os.fspath(svg_path), "png": os.fspath(png) if png else None, "image_error": error,
             "width_px": width_px, "height_px": height_px, "region": [round(v, 2) for v in box]}
@@ -910,20 +987,49 @@ def _intersects(a: Sequence[float], b: Sequence[float]) -> bool:
     return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
 
 
-def view_box(scene: Dict[str, Any], region: Optional[Sequence[float]] = None) -> Tuple[float, float, float, float]:
-    """The region, or everything on the canvas plus ``PADDING``, as ``(x0, y0, x1, y1)``."""
+def view_box(scene: Dict[str, Any], region: Optional[Sequence[float]] = None,
+             max_px: int = DEFAULT_MAX_PX) -> Tuple[float, float, float, float]:
+    """The region, or everything on the canvas plus ``PADDING``, as ``(x0, y0, x1, y1)``.
+
+    Everything is what the picture draws, not only element boxes: an arrow label's pill (wider than a
+    short arrow) and a frame's title, which stands above the frame when the board is zoomed out, so
+    they are never cut at the picture's edge (QA F-10). A title grows with the units per pixel, which
+    grow with the box, so the box is settled over a few rounds at ``max_px``.
+    """
     if region is not None:
         x0, y0, x1, y1 = (float(v) for v in region)
         return min(x0, x1), min(y0, y1), max(x0, x1, min(x0, x1) + 1), max(y0, y1, min(y0, y1) + 1)
-    boxes = [_bounds(e) for e in scene.get("elements") or [] if isinstance(e, dict)]
+    elements = [e for e in scene.get("elements") or [] if isinstance(e, dict)]
+    boxes = [_bounds(e) for e in elements]
     for item in list(scene.get("claims") or []) + list(scene.get("locks") or []):
         region_box = item.get("region") if isinstance(item, dict) else None
         if isinstance(region_box, list) and len(region_box) == 4:
             boxes.append(tuple(float(v) for v in region_box))  # type: ignore[arg-type]
     if not boxes:
         return -PADDING, -PADDING, 400.0 + PADDING, 300.0 + PADDING
-    return (min(b[0] for b in boxes) - PADDING, min(b[1] for b in boxes) - PADDING,
-            max(b[2] for b in boxes) + PADDING, max(b[3] for b in boxes) + PADDING)
+    for el in elements:
+        if el.get("type") == "arrow" and el.get("text"):
+            pill = arrow_label_pill(el)
+            if pill is not None:
+                (px, py, pw, ph), _size, _lines = pill
+                boxes.append((px, py, px + pw, py + ph))
+
+    def padded(found: Sequence[Sequence[float]]) -> Tuple[float, float, float, float]:
+        return (min(b[0] for b in found) - PADDING, min(b[1] for b in found) - PADDING,
+                max(b[2] for b in found) + PADDING, max(b[3] for b in found) + PADDING)
+
+    box = padded(boxes)
+    frames = [e for e in elements if e.get("type") == "frame" and e.get("text")]
+    for _round in range(4):
+        if not frames:
+            break
+        u = max(box[2] - box[0], box[3] - box[1], 1.0) / float(max_px)
+        titles = [t for t in (frame_title_box(el, u) for el in frames) if t is not None]
+        grown = padded(boxes + titles)
+        if grown == box:
+            break
+        box = grown
+    return box
 
 
 def pixel_size(box: Sequence[float], max_px: int = DEFAULT_MAX_PX) -> Tuple[int, int]:
@@ -933,8 +1039,8 @@ def pixel_size(box: Sequence[float], max_px: int = DEFAULT_MAX_PX) -> Tuple[int,
     return max(1, int(round(width * scale))), max(1, int(round(height * scale)))
 
 
-#: The estimated width of one character, in font sizes: the model's text sizes and the renderer's
-#: wrapping both use it, so a text element's lines are the same wherever they are counted.
+#: Deprecated since 0.22 (``canvas_text`` measures with real font metrics): the old estimated width of one
+#: character in font sizes, kept with ``chars_per_line`` and ``wrap_text`` for callers outside the canvas.
 CHAR_W = 0.55
 
 
@@ -948,7 +1054,7 @@ def chars_per_line(width: float, size: float) -> int:
 
 
 def wrap_text(text: str, max_chars: int) -> List[str]:
-    """Word-wrap each line of ``text`` at ``max_chars`` characters."""
+    """Word-wrap each line of ``text`` at ``max_chars`` characters (deprecated: ``canvas_text.wrap`` measures real widths)."""
     max_chars = max(1, int(max_chars))
     out: List[str] = []
     for raw in (text or "").split("\n"):
@@ -972,7 +1078,12 @@ def wrap_text(text: str, max_chars: int) -> List[str]:
 
 
 def _font(style: Dict[str, Any]) -> str:
-    return "monospace" if style.get("font") == "code" else "sans-serif"
+    """The SVG font family: Geist Mono for ``code``, Inter for the rest (``hand`` has no bundled face and draws in Inter)."""
+    return MONO_FAMILY if style.get("font") == "code" else SANS_FAMILY
+
+
+def _font_key(style: Dict[str, Any]) -> str:
+    return str(style.get("font") or "normal")
 
 
 def _stroke_attrs(style: Dict[str, Any], fill: Optional[str], default_stroke: str = TEXT_COLOR) -> str:
@@ -991,24 +1102,68 @@ def _stroke_attrs(style: Dict[str, Any], fill: Optional[str], default_stroke: st
     return " ".join(parts)
 
 
-def _text_block(text: str, x: float, y: float, w: float, h: float, style: Dict[str, Any], align: str = "middle",
-                color: Optional[str] = None) -> str:
-    size = float(style.get("size") or 20)
-    lines = wrap_text(text, chars_per_line(w - (16 if align == "middle" else 0), size))
-    line_height = 1.25 * size
-    fill = color or _color(style.get("stroke"), TEXT_COLOR)
-    if align == "middle":
-        anchor_x = x + w / 2.0
-        first = y + h / 2.0 - line_height * len(lines) / 2.0 + size * 0.9
-    else:
-        anchor_x = x
-        first = y + size * 0.9
-    out = ['<text x="{}" y="{}" font-size="{}" font-family="{}" fill="{}" text-anchor="{}">'.format(
-        _n(anchor_x), _n(first), _n(size), _font(style), fill, "middle" if align == "middle" else "start")]
+def _lines_svg(lines: Sequence[str], anchor_x: float, top: float, size: float, style: Dict[str, Any], fill: str, anchor: str,
+               weight: int = _ctext.DEFAULT_WEIGHT) -> str:
+    """A group carrying the font, with one ``<text>`` per line at its own baseline; the first where the browser would put it.
+
+    One ``<text>`` per line, not a ``<tspan>`` each: resvg runs the bidi algorithm over a whole
+    ``<text>``, so the words of right-to-left lines drew over each other (QA F-4, 2026-09-27).
+    ``xml:space="preserve"`` keeps indentation and runs of spaces, and a blank line is an empty
+    ``<text>`` at its own baseline, so the lines after it stay where the page draws them (QA F-8).
+    """
+    line_height = _ctext.line_height(size)
+    first = top + _ctext.baseline(size, _font_key(style), weight)
+    out = ['<g font-size="{}" font-family="{}" font-weight="{}" fill="{}" text-anchor="{}" xml:space="preserve">'.format(
+        _n(size), _font(style), weight, fill, anchor)]
     for index, line in enumerate(lines):
-        out.append('<tspan x="{}" dy="{}">{}</tspan>'.format(_n(anchor_x), _n(0 if index == 0 else line_height), _label(line)))
-    out.append("</text>")
+        out.append('<text x="{}" y="{}">{}</text>'.format(_n(anchor_x), _n(first + index * line_height), _label(line)))
+    out.append("</g>")
     return "".join(out)
+
+
+def _text_block(text: str, x: float, y: float, w: float, h: float, style: Dict[str, Any], align: str = "middle",
+                color: Optional[str] = None, lines: Optional[Sequence[str]] = None) -> str:
+    """``text`` wrapped to the box (or the given ``lines``): centred in it, or from its top-left with ``align="start"``."""
+    size = float(style.get("size") or 20)
+    font = _font_key(style)
+    if lines is None:
+        lines = _ctext.wrap(text, max(1.0, w - (16 if align == "middle" else 0)), font, size)
+    fill = color or _color(style.get("text"), None) or _color(style.get("stroke"), TEXT_COLOR) or TEXT_COLOR
+    if align == "middle":
+        top = y + (h - _ctext.line_height(size) * len(lines)) / 2.0
+        return _lines_svg(lines, x + w / 2.0, top, size, style, fill, "middle")
+    return _lines_svg(lines, x, y, size, style, fill, "start")
+
+
+def _same_words(lines: Sequence[str], text: str) -> bool:
+    """Whether ``lines`` hold exactly ``text``'s characters (whitespace aside): stored lines still draw the label.
+
+    Whitespace is removed, not collapsed: a long token breaks after ``/`` or mid-word with no space
+    at the break, and comparing the lines joined with spaces threw such lines away (QA F-9).
+    """
+    return "".join("".join(lines).split()) == "".join(text.split())
+
+
+def _label_svg(el: Dict[str, Any], color: Optional[str]) -> str:
+    """A labelled element's text: the lines its fit stored (else its kind's wrap at its size), in its inner box."""
+    style = el.get("style") if isinstance(el.get("style"), dict) else {}
+    text = str(el.get("text") or "")
+    x0, y0, x1, y1 = _bounds(el)
+    result = _kinds.drawn(el)
+    if result is None:
+        return _text_block(text, x0, y0, x1 - x0, y1 - y0, style, color=color)
+    fit = el.get("fit") if isinstance(el.get("fit"), dict) else {}
+    stored = fit.get("lines")
+    lines: Sequence[str] = result.lines
+    if isinstance(stored, list) and all(isinstance(line, str) for line in stored) and (fit.get("truncated") or _same_words(stored, text)):
+        lines = stored
+    drawn_style = dict(style, size=result.size)
+    ix, iy, iw, ih = result.inner
+    fill = color or _color(style.get("text"), None) or _color(style.get("stroke"), TEXT_COLOR) or TEXT_COLOR
+    if el.get("type") == "text":
+        return _lines_svg(lines, x0, y0, result.size, drawn_style, fill, "start")
+    top = y0 + iy + (ih - _ctext.line_height(result.size) * len(lines)) / 2.0
+    return _lines_svg(lines, x0 + ix + iw / 2.0, top, result.size, drawn_style, fill, "middle")
 
 
 def _shape(el: Dict[str, Any]) -> str:
@@ -1018,7 +1173,7 @@ def _shape(el: Dict[str, Any]) -> str:
     w, h = x1 - x0, y1 - y0
     text = str(el.get("text") or "")
     if kind == "text":
-        return _text_block(text, x0, y0, w, h, style, align="start")
+        return _label_svg(el, None)
     fill = _color(style.get("fill"), None)
     if kind == "note":
         fill = fill or NOTE_FILL
@@ -1029,24 +1184,68 @@ def _shape(el: Dict[str, Any]) -> str:
         cx, cy = x0 + w / 2, y0 + h / 2
         body = '<polygon points="{},{} {},{} {},{} {},{}" {}/>'.format(_n(cx), _n(y0), _n(x1), _n(cy), _n(cx), _n(y1), _n(x0), _n(cy), attrs)
     else:
-        body = '<rect x="{}" y="{}" width="{}" height="{}" rx="8" {}/>'.format(_n(x0), _n(y0), _n(w), _n(h), attrs)
+        radius = 4 if kind == "note" else 8
+        body = '<rect x="{}" y="{}" width="{}" height="{}" rx="{}" {}/>'.format(_n(x0), _n(y0), _n(w), _n(h), radius, attrs)
     if text:
-        color = TEXT_COLOR if kind == "note" else None
-        body += _text_block(text, x0, y0, w, h, style, color=color)
+        # A note stored before 0.22 has no label colour: it was drawn in ink on its paper.
+        color = TEXT_COLOR if kind == "note" and not _color(style.get("text"), None) else None
+        body += _label_svg(el, color)
     return body
+
+
+#: A frame's title band (``canvas.FRAME_TOP``) and where its title sits in it (design spec 6.2).
+FRAME_BAND = 40
+FRAME_TITLE_AT = (20, 8)
+
+
+def _fit_line(text: str, width: float, size: float, weight: int) -> str:
+    """``text`` on one line no wider than ``width``, ending with … when cut."""
+    if _ctext.measure(text, size=size, weight=weight).width <= width:
+        return text
+    while text and _ctext.measure(text + "…", size=size, weight=weight).width > width:
+        text = text[:-1]
+    return text.rstrip() + "…" if text else ""
+
+
+FRAME_TITLE_WEIGHT = 600
+
+
+def _frame_title(el: Dict[str, Any], u: float) -> Optional[Tuple[str, float, float, float]]:
+    """A frame's title as drawn at ``u`` canvas units per pixel: ``(line, x, top, size)``, or None without one."""
+    title = str(el.get("text") or "")
+    if not title:
+        return None
+    x0, y0, x1, _y1 = _bounds(el)
+    size = max(12.0 * u, 16.0)
+    if size <= FRAME_BAND - 2 * FRAME_TITLE_AT[1]:
+        # Inside the band the frame keeps free for it, cut to the frame's width.
+        line = _fit_line(title[:120], (x1 - x0) - 2 * FRAME_TITLE_AT[0], size, FRAME_TITLE_WEIGHT)
+        return line, x0 + FRAME_TITLE_AT[0], y0 + FRAME_TITLE_AT[1], size
+    # Zoomed far out the band is too small to read: above the frame, as large as it needs.
+    return title[:120], x0, y0 - _ctext.line_height(size), size
+
+
+def frame_title_box(el: Dict[str, Any], u: float) -> Optional[Tuple[float, float, float, float]]:
+    """Where a frame's title is drawn at ``u`` units per pixel, ``(x0, y0, x1, y1)``; it may stand above the frame."""
+    title = _frame_title(el, u)
+    if title is None:
+        return None
+    line, x, top, size = title
+    return x, top, x + _ctext.measure(line, size=size, weight=FRAME_TITLE_WEIGHT).width, top + _ctext.line_height(size)
 
 
 def _frame(el: Dict[str, Any], u: float) -> str:
     style = el.get("style") if isinstance(el.get("style"), dict) else {}
     x0, y0, x1, y1 = _bounds(el)
     stroke = _color(style.get("stroke"), MUTED)
-    out = '<rect x="{}" y="{}" width="{}" height="{}" rx="6" fill="{}" stroke="{}" stroke-width="{}"/>'.format(
-        _n(x0), _n(y0), _n(x1 - x0), _n(y1 - y0), _color(style.get("fill"), "none"), stroke, _n(max(1.0, 1.5 * u)))
-    title = str(el.get("text") or "")
-    if title:
-        size = max(12.0 * u, 14.0)
-        out += '<text x="{}" y="{}" font-size="{}" font-family="sans-serif" fill="{}">{}</text>'.format(
-            _n(x0), _n(y0 - 0.4 * size), _n(size), MUTED, _label(title[:120]))
+    out = '<rect x="{}" y="{}" width="{}" height="{}" rx="{}" fill="{}" stroke="{}" stroke-width="{}"/>'.format(
+        _n(x0), _n(y0), _n(x1 - x0), _n(y1 - y0), 16 if style.get("tone") else 6, _color(style.get("fill"), "none"), stroke,
+        _n(max(1.0, 1.5 * u)))
+    title = _frame_title(el, u)
+    if title is not None:
+        line, x, top, size = title
+        color = _color(style.get("text"), None) or MUTED
+        out += _lines_svg([line], x, top, size, {}, color, "start", FRAME_TITLE_WEIGHT)
     return out
 
 
@@ -1108,6 +1307,19 @@ def arrow_midpoint(points: List[Tuple[float, float]]) -> Tuple[float, float]:
     return points[-1]
 
 
+#: An arrow label wraps where the page's Excalidraw 0.18 wraps it, at the wider of 0.7 x the arrow's
+#: width and 11 x its font size, so the picture and the page break it alike; it sits in a pill with this
+#: padding (design spec 6.1).
+ARROW_LABEL_WIDTH_FRACTION = 0.7
+ARROW_LABEL_MIN_EMS = 11
+ARROW_LABEL_PAD = (8, 2)
+
+
+def arrow_label_width(el: Dict[str, Any], size: float) -> float:
+    """The width an arrow's label wraps at."""
+    return max(ARROW_LABEL_WIDTH_FRACTION * max(1.0, float(el.get("w") or 1)), ARROW_LABEL_MIN_EMS * float(size))
+
+
 def _arrow(el: Dict[str, Any], u: float) -> str:
     style = el.get("style") if isinstance(el.get("style"), dict) else {}
     points = _points(el.get("points"))
@@ -1122,17 +1334,32 @@ def _arrow(el: Dict[str, Any], u: float) -> str:
         body = '<polyline points="{}" {}/>'.format(" ".join("{},{}".format(_n(x), _n(y)) for x, y in points), attrs)
     body += _head(str(el.get("head") or "arrow"), points[-1], points[-2], width, color)
     body += _head(str(el.get("tail") or "none"), points[0], points[1], width, color)
-    label = str(el.get("text") or "")
-    if label:
-        mx, my = arrow_midpoint(points)
-        size = float(style.get("size") or 20) * 0.8
-        lines = wrap_text(label, 30)
-        box_w = max(len(line) for line in lines) * 0.55 * size + 24  # _text_block keeps 16 units of padding
-        box_h = len(lines) * 1.25 * size + 6
-        body += '<rect x="{}" y="{}" width="{}" height="{}" rx="4" fill="#ffffff" opacity="0.9"/>'.format(
-            _n(mx - box_w / 2), _n(my - box_h / 2), _n(box_w), _n(box_h))
-        body += _text_block(label, mx - box_w / 2, my - box_h / 2, box_w, box_h, dict(style, size=size))
+    pill = arrow_label_pill(el)
+    if pill is not None:
+        (px, py, box_w, box_h), size, lines = pill
+        palette = _theme.base()
+        body += '<rect x="{}" y="{}" width="{}" height="{}" rx="6" fill="{}" stroke="{}" stroke-width="1" opacity="0.95"/>'.format(
+            _n(px), _n(py), _n(box_w), _n(box_h), palette["surface"], palette["grid"])
+        color = _color(style.get("text"), None) or color
+        body += _text_block(str(el.get("text")), px, py, box_w, box_h, dict(style, size=size), color=color, lines=lines)
     return body
+
+
+def arrow_label_pill(el: Dict[str, Any]) -> Optional[Tuple[Tuple[float, float, float, float], float, List[str]]]:
+    """An arrow label's pill ``(x, y, w, h)`` centred on the arrow's midpoint, its font size and lines; None without one."""
+    label = str(el.get("text") or "")
+    points = _points(el.get("points"))
+    if not label or len(points) < 2:
+        return None
+    style = el.get("style") if isinstance(el.get("style"), dict) else {}
+    mx, my = arrow_midpoint(points)
+    size = float(style.get("size") or 20) * 0.8
+    font = _font_key(style)
+    lines = _ctext.wrap(label, arrow_label_width(el, size), font, size)
+    widest = max(_ctext.measure(line, font, size).width for line in lines)
+    box_w = widest + 2 * ARROW_LABEL_PAD[0]
+    box_h = len(lines) * _ctext.line_height(size) + 2 * ARROW_LABEL_PAD[1]
+    return (mx - box_w / 2, my - box_h / 2, box_w, box_h), size, lines
 
 
 def _pen(el: Dict[str, Any]) -> str:
@@ -1218,12 +1445,13 @@ def _card(el: Dict[str, Any], team: Optional[TeamPaths], u: float) -> str:
     else:
         subtitle = "svg block (not stored)"
     size = max(min(h / 6.0, 22.0), 10.0)
-    small = max(4.0, min(size * 0.7, (w - 8) / (0.55 * max(1, len(subtitle)))))  # the subtitle shrinks to fit a narrow card
+    per_unit = max(_ctext.measure(subtitle, size=1).width, 0.01)
+    small = max(4.0, min(size * 0.7, (w - 8) / per_unit))  # the subtitle shrinks to fit a narrow card
     out = '<rect x="{}" y="{}" width="{}" height="{}" rx="8" fill="{}" stroke="{}" stroke-width="{}" stroke-dasharray="{} {}"/>'.format(
         _n(x0), _n(y0), _n(w), _n(h), PLACEHOLDER_FILL, MUTED, _n(max(1.0, 1.5 * u)), _n(6 * u + 4), _n(4 * u + 3))
     out += _text_block(title, x0, y0, w, h * 0.8, {"size": size, "stroke": TEXT_COLOR})
-    out += '<text x="{}" y="{}" font-size="{}" font-family="sans-serif" fill="{}" text-anchor="middle">{}</text>'.format(
-        _n(x0 + w / 2), _n(y0 + h * 0.8), _n(small), MUTED, _label(subtitle))
+    out += '<text x="{}" y="{}" font-size="{}" font-family="{}" fill="{}" text-anchor="middle">{}</text>'.format(
+        _n(x0 + w / 2), _n(y0 + h * 0.8), _n(small), SANS_FAMILY, MUTED, _label(subtitle))
     return out
 
 
@@ -1265,7 +1493,7 @@ def _comment(el: Dict[str, Any], u: float, colors: Dict[str, str]) -> str:
     r = 10.0 * u
     number = str(el.get("id") or "C-?").split("-", 1)[-1]
     return ('<circle cx="{}" cy="{}" r="{}" fill="{}" stroke="#ffffff" stroke-width="{}"/>'
-            '<text x="{}" y="{}" font-size="{}" font-family="sans-serif" fill="#ffffff" text-anchor="middle">{}</text>').format(
+            '<text x="{}" y="{}" font-size="{}" font-family="Inter" fill="#ffffff" text-anchor="middle">{}</text>').format(
         _n(x), _n(y), _n(r), color, _n(1.5 * u), _n(x), _n(y + 4 * u), _n(11 * u), _label(number))
 
 
@@ -1284,7 +1512,7 @@ def _claim(claim: Dict[str, Any], u: float, colors: Dict[str, str], reader: Opti
     who = "you" if reader and author == reader else ("the operator" if author == "human" else author)
     label = "{} {}: {}".format(claim.get("id"), who, claim.get("label") or "")
     return ('<rect x="{}" y="{}" width="{}" height="{}" fill="none" stroke="{}" stroke-width="{}" stroke-dasharray="{} {}"/>'
-            '<text x="{}" y="{}" font-size="{}" font-family="sans-serif" fill="{}">{}</text>').format(
+            '<text x="{}" y="{}" font-size="{}" font-family="Inter" fill="{}">{}</text>').format(
         _n(x), _n(y), _n(w), _n(h), color, _n(2 * u), _n(8 * u), _n(6 * u),
         _n(x + 4 * u), _n(y + 14 * u), _n(12 * u), color, _label(label[:120]))
 
@@ -1296,7 +1524,7 @@ def _lock(lock: Dict[str, Any], u: float) -> str:
     x, y, w, h = _region_rect(region)
     label = "{} locked: {}".format(lock.get("id"), lock.get("label") or "hands off")
     return ('<rect x="{}" y="{}" width="{}" height="{}" fill="url(#synapse-hatch)" opacity="0.5" stroke="{}" stroke-width="{}"/>'
-            '<text x="{}" y="{}" font-size="{}" font-family="sans-serif" fill="{}">{}</text>').format(
+            '<text x="{}" y="{}" font-size="{}" font-family="Inter" fill="{}">{}</text>').format(
         _n(x), _n(y), _n(w), _n(h), MUTED, _n(2 * u), _n(x + 4 * u), _n(y + h - 6 * u), _n(12 * u), TEXT_COLOR, _label(label[:120]))
 
 
@@ -1316,13 +1544,13 @@ def _badge(el: Dict[str, Any], u: float) -> str:
     label = str(el.get("id") or "")
     x, y = mark_anchor(el)
     size = 11.0 * u
-    width = (len(label) * 0.62 * 11.0 + 6.0) * u
+    width = (_ctext.measure(label, size=11.0, weight=700).width + 6.0) * u
     height = 15.0 * u
     x -= 2 * u
     # Inside the corner of a shape, but above a bare text element so it never covers the first line.
     y -= (height + 2 * u) if el.get("type") == "text" else 2 * u
     return ('<rect x="{}" y="{}" width="{}" height="{}" rx="{}" fill="#1e1e1e" opacity="0.85"/>'
-            '<text x="{}" y="{}" font-size="{}" font-family="sans-serif" font-weight="bold" fill="#ffffff">{}</text>').format(
+            '<text x="{}" y="{}" font-size="{}" font-family="Inter" font-weight="bold" fill="#ffffff">{}</text>').format(
         _n(x), _n(y), _n(width), _n(height), _n(3 * u), _n(x + 3 * u), _n(y + 11.5 * u), _n(size), _label(label))
 
 
@@ -1338,7 +1566,7 @@ def _grid(box: Sequence[float], u: float) -> List[str]:
         while gy <= y1:
             out.append('<circle cx="{}" cy="{}" r="{}" fill="#adb5bd"/>'.format(_n(gx), _n(gy), _n(1.8 * u)))
             if round(gx / step) % 2 == 0 and round(gy / step) % 2 == 0:
-                out.append('<text x="{}" y="{}" font-size="{}" font-family="sans-serif" fill="{}">c{}r{}</text>'.format(
+                out.append('<text x="{}" y="{}" font-size="{}" font-family="Inter" fill="{}">c{}r{}</text>'.format(
                     _n(gx + 3 * u), _n(gy - 3 * u), _n(9 * u), MUTED, int(math.floor(gx / 20)), int(math.floor(gy / 20))))
             gy += step
         gx += step
@@ -1356,11 +1584,12 @@ def render_svg(scene: Dict[str, Any], region: Optional[Sequence[float]] = None, 
     authors = scene.get("authors") if isinstance(scene.get("authors"), dict) else {}
     colors = {name: _color(info.get("color"), MUTED) or MUTED for name, info in authors.items() if isinstance(info, dict)}
     parts = [
-        '<svg xmlns="{}" width="{}" height="{}" viewBox="{} {} {} {}" font-family="sans-serif">'.format(
+        '<svg xmlns="{}" width="{}" height="{}" viewBox="{} {} {} {}" font-family="Inter, sans-serif">'.format(
             SVG_NS, width_px, height_px, _n(box[0]), _n(box[1]), _n(box[2] - box[0]), _n(box[3] - box[1])),
         '<defs><pattern id="synapse-hatch" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">'
         '<line x1="0" y1="0" x2="0" y2="12" stroke="{}" stroke-width="3"/></pattern></defs>'.format(MUTED),
-        '<rect x="{}" y="{}" width="{}" height="{}" fill="#ffffff"/>'.format(_n(box[0]), _n(box[1]), _n(box[2] - box[0]), _n(box[3] - box[1])),
+        '<rect x="{}" y="{}" width="{}" height="{}" fill="{}"/>'.format(_n(box[0]), _n(box[1]), _n(box[2] - box[0]), _n(box[3] - box[1]),
+                                                                       _theme.base()["canvas"]),
     ]
     if grid:
         parts.extend(_grid(box, u))

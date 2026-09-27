@@ -1,20 +1,29 @@
 """Graph layout for the canvas's ``graph`` operation and Mermaid flowcharts (0.21).
 
 Pure functions over node ids and edges (contract section 6, ``graph``). A
-layout returns the top-left corner of every fixed-size node box relative to
-``(0, 0)``; ``canvas`` places the whole drawing and turns nodes and edges
-into native shapes and bound arrows. Everything is deterministic: the force
-layout is seeded, so the same graph always draws the same picture and a
-test can pin it.
+layout returns the top-left corner of every node box relative to ``(0, 0)``;
+``canvas`` places the whole drawing and turns nodes and edges into native
+shapes and bound arrows. Since 0.22 every node may have its own size
+(``sizes``: ``canvas`` measures each label first), so a long label never runs
+into its neighbour. Everything is deterministic: the force layout is seeded,
+so the same graph always draws the same picture and a test can pin it.
 
 * ``layered``: longest-path layers from the sources (cycles broken at their
-  back edges), then three barycentre sweeps to reduce crossings.
+  back edges), then three barycentre sweeps to reduce crossings. Each layer
+  is as thick as its largest node; nodes sit side by side at their own sizes,
+  centred in their layer. An edge across several layers gets a slot in each
+  layer it crosses (Sugiyama's virtual nodes), so the sweeps keep nodes out
+  of its way; ``plan`` returns those slots as the edge's bend points, and a
+  long edge bends through them instead of cutting through the boxes between.
 * ``radial``: breadth-first rings around the first source.
 * ``force``: Fruchterman-Reingold, 200 iterations, kept inside its frame
   (the classic W x L bound, with a little gravity so unconnected nodes do
   not all end on its edge), then each box snapped to the nearest free cell
   of a grid, so none overlap and the drawing stays about the frame's size.
 * ``grid``: row-major in input order.
+
+``radial``, ``force`` and ``grid`` use one cell the size of the largest node
+and centre each node in its cell: simple, and never overlapping.
 """
 from __future__ import annotations
 
@@ -36,31 +45,51 @@ FORCE_SEED = 20260926
 GRAVITY = 0.05
 
 Position = Tuple[float, float]
+Size = Tuple[float, float]
 
 
 def layout(nodes: Sequence[str], edges: Sequence[Tuple[str, str]], algorithm: str = "layered", direction: str = "down",
-           node_w: float = NODE_W, node_h: float = NODE_H) -> Dict[str, Position]:
-    """Top-left corners of every node box, normalised so the smallest x and y are 0."""
+           node_w: float = NODE_W, node_h: float = NODE_H, sizes: Optional[Dict[str, Size]] = None) -> Dict[str, Position]:
+    """Top-left corners of every node box, normalised so the smallest x and y are 0.
+
+    ``sizes`` gives a node its own ``(w, h)``; a node it leaves out is ``node_w`` x ``node_h``.
+    """
+    return plan(nodes, edges, algorithm, direction, node_w, node_h, sizes)[0]
+
+
+def plan(nodes: Sequence[str], edges: Sequence[Tuple[str, str]], algorithm: str = "layered", direction: str = "down",
+         node_w: float = NODE_W, node_h: float = NODE_H,
+         sizes: Optional[Dict[str, Size]] = None) -> Tuple[Dict[str, Position], Dict[int, List[Position]]]:
+    """``layout``'s corners, and the bend points of each edge that crosses layers (``layered`` only), by the
+    edge's index in ``edges``, in order from its first node to its second, in the corners' coordinates."""
     ids = list(dict.fromkeys(str(n) for n in nodes))
     known = set(ids)
-    pairs = [(str(a), str(b)) for a, b in edges if str(a) in known and str(b) in known]
+    indexed = [(index, str(a), str(b)) for index, (a, b) in enumerate(edges) if str(a) in known and str(b) in known]
+    pairs = [(a, b) for _index, a, b in indexed]
     if not ids:
-        return {}
+        return {}, {}
+    size = {n: (float((sizes or {}).get(n, (node_w, node_h))[0]), float((sizes or {}).get(n, (node_w, node_h))[1])) for n in ids}
+    if algorithm == "layered" or algorithm not in LAYOUTS:
+        corners, bends = _layered(ids, pairs, direction, size, [index for index, _a, _b in indexed])
+        return _normalise(corners, bends)
+    cell_w, cell_h = max(w for w, _ in size.values()), max(h for _, h in size.values())
     if algorithm == "radial":
-        raw = _radial(ids, pairs, node_w, node_h)
+        raw = _radial(ids, pairs, cell_w, cell_h)
     elif algorithm == "force":
-        raw = _force(ids, pairs, node_w, node_h)
-    elif algorithm == "grid":
-        raw = _grid(ids, node_w, node_h)
+        raw = _force(ids, pairs, cell_w, cell_h)
     else:
-        raw = _layered(ids, pairs, direction, node_w, node_h)
-    return _normalise(raw)
+        raw = _grid(ids, cell_w, cell_h)
+    # Each node centred in the cell the largest node would fill.
+    return _normalise({n: (x + (cell_w - size[n][0]) / 2.0, y + (cell_h - size[n][1]) / 2.0) for n, (x, y) in raw.items()})
 
 
-def _normalise(raw: Dict[str, Position]) -> Dict[str, Position]:
+def _normalise(raw: Dict[str, Position], bends: Optional[Dict[int, List[Position]]] = None
+               ) -> Tuple[Dict[str, Position], Dict[int, List[Position]]]:
+    """Corners moved so the smallest x and y are 0, and the bend points moved with them."""
     min_x = min(x for x, _ in raw.values())
     min_y = min(y for _, y in raw.values())
-    return {key: (round(x - min_x, 2), round(y - min_y, 2)) for key, (x, y) in raw.items()}
+    return ({key: (round(x - min_x, 2), round(y - min_y, 2)) for key, (x, y) in raw.items()},
+            {index: [(round(x - min_x, 2), round(y - min_y, 2)) for x, y in points] for index, points in (bends or {}).items()})
 
 
 # --------------------------------------------------------------------------
@@ -122,15 +151,37 @@ def layer_of(ids: Sequence[str], pairs: Sequence[Tuple[str, str]]) -> Dict[str, 
     return layer
 
 
-def _layered(ids: List[str], pairs: List[Tuple[str, str]], direction: str, node_w: float, node_h: float) -> Dict[str, Position]:
+def _layered(ids: List[str], pairs: List[Tuple[str, str]], direction: str, size: Dict[str, Size],
+             edge_ids: Optional[List[int]] = None) -> Tuple[Dict[str, Position], Dict[int, List[Position]]]:
+    """Corners of the real nodes, and the slots each long edge bends through (by ``edge_ids``, else its index)."""
     layer = layer_of(ids, pairs)
     depth = max(layer.values()) + 1
     rows: List[List[str]] = [[] for _ in range(depth)]
     for node in ids:
         rows[layer[node]].append(node)
-    neighbours_up: Dict[str, List[str]] = {n: [] for n in ids}
-    neighbours_down: Dict[str, List[str]] = {n: [] for n in ids}
-    for a, b in pairs:
+    size = dict(size)
+    # A virtual node (a point: no size) in every layer a long edge crosses; the edge is a chain through them.
+    chains: Dict[int, List[str]] = {}
+    links: List[Tuple[str, str]] = []
+    for number, (a, b) in enumerate(pairs):
+        low, high = (a, b) if layer[a] <= layer[b] else (b, a)
+        if layer[high] - layer[low] <= 1:
+            links.append((a, b))
+            continue
+        chain, previous = [], low
+        for level in range(layer[low] + 1, layer[high]):
+            virtual = "\x00{}:{}".format(number, level)  # never a node id: those are validated names
+            size[virtual], layer[virtual] = (0.0, 0.0), level
+            rows[level].append(virtual)
+            links.append((previous, virtual))
+            chain.append(virtual)
+            previous = virtual
+        links.append((previous, high))
+        chains[edge_ids[number] if edge_ids is not None else number] = chain if low == a else chain[::-1]
+    everyone = [n for row in rows for n in row]
+    neighbours_up: Dict[str, List[str]] = {n: [] for n in everyone}
+    neighbours_down: Dict[str, List[str]] = {n: [] for n in everyone}
+    for a, b in links:
         if a == b:
             continue
         if layer[a] < layer[b]:
@@ -153,20 +204,31 @@ def _layered(ids: List[str], pairs: List[Tuple[str, str]], direction: str, node_
             keyed.sort()
             rows[index] = [node for _k, _c, node in keyed]
     horizontal = direction in ("right", "left")
-    along = node_h if horizontal else node_w  # the size of a node along its layer
-    across = node_w if horizontal else node_h  # the size of a node from layer to layer
-    widest = max(len(row) for row in rows)
-    span = widest * along + (widest - 1) * SPACING
+
+    def along(node: str) -> float:  # the size of a node along its layer
+        return size[node][1] if horizontal else size[node][0]
+
+    def across(node: str) -> float:  # the size of a node from layer to layer
+        return size[node][0] if horizontal else size[node][1]
+
+    widths = [sum(along(n) for n in row) + (len(row) - 1) * SPACING for row in rows]
+    span = max(widths)
+    thickness = [max((across(n) for n in row), default=0.0) for row in rows]
+    order = list(range(depth - 1, -1, -1)) if direction in ("up", "left") else list(range(depth))
+    start: Dict[int, float] = {}
+    edge = 0.0
+    for index in order:
+        start[index] = edge
+        edge += thickness[index] + LAYER_GAP
     out: Dict[str, Position] = {}
     for index, row in enumerate(rows):
-        width = len(row) * along + (len(row) - 1) * SPACING
-        offset = (span - width) / 2.0
-        step = depth - 1 - index if direction in ("up", "left") else index
-        for order_index, node in enumerate(row):
-            secondary = offset + order_index * (along + SPACING)
-            primary = step * (across + LAYER_GAP)
+        secondary = (span - widths[index]) / 2.0
+        for node in row:
+            primary = start[index] + (thickness[index] - across(node)) / 2.0
             out[node] = (primary, secondary) if horizontal else (secondary, primary)
-    return out
+            secondary += along(node) + SPACING
+    bends = {edge: [out[virtual] for virtual in chain] for edge, chain in chains.items()}
+    return {node: out[node] for node in ids}, bends
 
 
 # --------------------------------------------------------------------------

@@ -1,0 +1,19 @@
+{
+  "name": "i18n",
+  "about": "Labels outside Latin text: Chinese, Japanese and Korean with no spaces to break at, emoji with ZWJ sequences, skin tones and flags, Arabic and Hebrew right-to-left text, mixed bidirectional text, and combining accents; in boxes, ellipses, notes, free text and arrow labels. Metrics for these scripts are estimated; the gate is that nothing spills and nothing turns into boxes.",
+  "stresses": ["CJK breaks at any character", "emoji width and fallback fonts", "RTL and bidi", "combining marks", "estimated metrics"],
+  "page_line_exempt": {"E-5": "emoji: the server strips ZWJ and skin-tone modifiers before resvg, the page keeps them", "E-6": "Arabic: right-to-left shaping is out of scope for Phase 0 (research section 11, risk 3)", "E-7": "Hebrew in a diamond: right to left", "E-8": "mixed bidirectional text", "E-11": "right-to-left arrow label"},
+  "ops": [
+    {"op": "frame", "id": "intl", "title": "Launch checklist per market 🌍", "at": [0, 0], "w": 1000, "h": 640, "intent": "the markets"},
+    {"op": "shape", "kind": "box", "id": "zh", "text": "中国市场：支付宝和微信支付必须在上线前完成接入测试", "at": [40, 60], "intent": "Chinese label with no spaces"},
+    {"op": "shape", "kind": "box", "id": "ja", "text": "日本：請求書払いとコンビニ決済に対応し、敬語のメール文面を確認する", "right_of": "zh", "intent": "Japanese label"},
+    {"op": "shape", "kind": "ellipse", "id": "ko", "text": "한국: 카카오페이 연동과 개인정보 동의 문구 검토", "right_of": "ja", "intent": "Korean label with spaces"},
+    {"op": "shape", "kind": "note", "id": "emoji", "text": "Team 👩‍💻👨‍👩‍👧‍👦 ready ✅\nBlocked 🚧 on legal 👍🏽\nMarkets 🇩🇪 🇯🇵 🇧🇷 🇮🇱", "below": "zh", "intent": "emoji with ZWJ, skin tones and flags"},
+    {"op": "shape", "kind": "box", "id": "ar", "text": "السوق السعودية: التحقق من ضريبة القيمة المضافة وعرض الأسعار بالريال", "right_of": "emoji", "intent": "Arabic, right to left"},
+    {"op": "shape", "kind": "diamond", "id": "he", "text": "האם התרגום לעברית אושר?", "right_of": "ar", "intent": "Hebrew question in a diamond"},
+    {"op": "shape", "kind": "text", "id": "bidi", "text": "Order #4521 — הזמנה מאושרת — تم تأكيد الطلب — 注文確認済み ✔", "below": "emoji", "intent": "mixed bidirectional free text"},
+    {"op": "shape", "kind": "box", "id": "accents", "text": "Ångström façade naïve coöperate Zürich São Paulo Kraków Ærøskøbing", "below": "bidi", "intent": "Latin with accents"},
+    {"op": "arrow", "from": "zh", "to": "emoji", "label": "上线前 ✅ 确认", "intent": "a CJK arrow label"},
+    {"op": "arrow", "from": "ar", "to": "he", "label": "مراجعة ← סקירה", "intent": "an RTL arrow label"}
+  ]
+}

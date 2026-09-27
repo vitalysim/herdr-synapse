@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import json
+import math
 import os
 import sys
 import threading
@@ -16,6 +17,8 @@ from test_cmd_roster import env_no_daemon, json_out, live_api, run_cli
 
 from herdr_team import canvas as C
 from herdr_team import canvas_render as R
+from herdr_team import canvas_text as X
+from herdr_team import canvas_theme as T
 from herdr_team import features as F
 from herdr_team import sketch as S
 from herdr_team import store, workdir
@@ -180,7 +183,8 @@ class SwitchesAndAuthority(CanvasRig):
         self.ok({"op": "move", "id": mine, "by": [20, 0], "intent": "tidy"}, manager)
         self.assertEqual(self.refused({"op": "delete", "id": theirs, "intent": "t"}, manager)["code"], "element_not_yours")
         self.ok({"op": "restyle", "id": mine, "color": "red"}, OPERATOR)
-        self.assertEqual(self.el(mine)["style"]["stroke"], "#e03131")
+        # A named colour is read as its tone (0.22): red is danger.
+        self.assertEqual((self.el(mine)["style"]["stroke"], self.el(mine)["style"]["tone"]), (T.resolve("danger")["stroke"], "danger"))
 
 
 # --------------------------------------------------------------------------
@@ -267,7 +271,7 @@ class SpaceAndIds(CanvasRig):
                 C.parse_region(bad)
         self.drivers()
         scene = self.scene()
-        self.assertEqual(C.parse_point("price", scene, "alpha-worker"), [300.0, 170.0])
+        self.assertEqual(C.parse_point("price", scene, "alpha-worker"), [310.0, 180.0])
         self.assertEqual(C.parse_region("E-1", scene), [200.0, 80.0, 800.0, 440.0])
 
     def test_homes_and_first_free_slots(self):
@@ -285,7 +289,7 @@ class SpaceAndIds(CanvasRig):
             self.assertFalse(C._intersects(corner, C.bounds(el)), "the portrait corner stays free")
         self.assertFalse(C._intersects(C.bounds(a), C.bounds(b)))
         self.assertGreaterEqual(c["x"], 1000)
-        self.assertEqual(a["style"]["stroke"], C.AUTHOR_PALETTE[0])
+        self.assertEqual(a["style"]["stroke"], T.resolve("neutral")["stroke"], "authorship is not a colour (0.22)")
         self.assertEqual(self.refused({"op": "shape", "text": "x"}, OPERATOR)["details"]["field"], "at", "the operator has no home")
 
     def test_relative_placement_and_frames(self):
@@ -293,10 +297,10 @@ class SpaceAndIds(CanvasRig):
         self.assertEqual(result["aliases"], {"drivers": "E-1", "price": "E-2", "onboard": "E-3"})
         price, onboard, arrow = self.el("E-2"), self.el("E-3"), self.el("E-4")
         self.assertEqual((price["x"], price["y"], price["frame"]), (220, 120, "E-1"))
-        self.assertEqual((onboard["x"], onboard["y"], onboard["frame"]), (440, 120, "E-1"))
+        self.assertEqual((onboard["x"], onboard["y"], onboard["frame"]), (460, 120, "E-1"))
         self.assertEqual((arrow["from"], arrow["to"], arrow["frame"]), ("E-2", "E-3", "E-1"))
         below = self.el(self.ok({"op": "shape", "text": "b", "below": "price", "intent": "t"})["ids"][0])
-        self.assertEqual((below["x"], below["y"]), (220, 260))
+        self.assertEqual((below["x"], below["y"]), (220, 280))
         left = self.el(self.ok({"op": "shape", "text": "l", "left_of": "E-1", "gap": 20, "intent": "t"})["ids"][0])
         self.assertEqual((left["x"], left["y"]), (200 - 20 - 160, 80))
         above = self.el(self.ok({"op": "shape", "text": "a", "above": "E-1", "intent": "t"})["ids"][0])
@@ -337,24 +341,31 @@ class SpaceAndIds(CanvasRig):
 class Operations(CanvasRig):
     def test_shape_defaults_and_style(self):
         box = self.el(self.ok({"op": "shape", "at": "c0r0", "intent": "t"})["ids"][0])
-        self.assertEqual((box["type"], box["w"], box["h"], box["style"]["fill"]), ("box", 160, 80, None))
+        # 0.22: neutral tone (a white surface), the sans font, straight lines; the size is the kind's minimum.
+        self.assertEqual((box["type"], box["w"], box["h"], box["style"]["fill"]), ("box", 160, 80, "#ffffff"))
+        self.assertEqual({k: box["style"][k] for k in ("tone", "variant", "font", "rough")}, {"tone": "neutral", "variant": "soft", "font": "normal", "rough": 0})
+        self.assertEqual(box["fit"], {"policy": "hug", "min": [160, 80], "size": 20, "lines": [], "truncated": False, "estimated": False})
         note = self.el(self.ok({"op": "shape", "kind": "note", "at": "c0r10", "intent": "t"})["ids"][0])
-        self.assertEqual((note["w"], note["h"], note["style"]["fill"]), (160, 100, C.NOTE_FILL))
+        self.assertEqual((note["w"], note["h"], note["style"]["fill"], note["style"]["tone"]), (180, 120, T.resolve("idea", "soft", "note")["fill"], "idea"))
         text = self.el(self.ok({"op": "shape", "kind": "text", "text": "hello", "at": "c0r20", "size": "l", "intent": "t"})["ids"][0])
-        self.assertEqual((text["w"], text["h"], text["style"]["size"]), (77, 35, 28))
+        self.assertEqual((text["w"], text["h"], text["style"]["size"]), (int(math.ceil(X.measure("hello", size=28).width)), 35, 28))
         styled = self.el(self.ok({"op": "shape", "at": "c0r30", "color": "#ABCDEF", "fill": "blue", "width": "extra", "dash": "dashed",
-                                  "opacity": 50, "font": "code", "rough": 0, "intent": "t"})["ids"][0])
-        self.assertEqual(styled["style"], {"stroke": "#abcdef", "fill": "#a5d8ff", "width": 4, "dash": "dashed", "opacity": 50, "font": "code", "size": 20, "rough": 0})
+                                  "opacity": 50, "font": "code", "rough": 1, "intent": "t"})["ids"][0])
+        self.assertEqual(styled["style"], {"stroke": "#abcdef", "fill": "#a5d8ff", "text": T.base()["ink"], "tone": None, "variant": "soft",
+                                           "width": 4, "dash": "dashed", "opacity": 50, "font": "code", "size": 20, "rough": 1})
+        toned = self.el(self.ok({"op": "shape", "at": "c0r40", "tone": "warning", "variant": "solid", "intent": "t"})["ids"][0])
+        self.assertEqual({k: toned["style"][k] for k in ("stroke", "fill", "text")}, T.resolve("warning", "solid", "box"))
+        self.assertEqual(self.refused({"op": "shape", "at": "c0r0", "tone": "mauve", "intent": "t"})["details"]["field"], "tone")
         self.assertEqual(self.refused({"op": "shape", "at": "c0r0", "color": "mauve", "intent": "t"})["details"]["field"], "color")
         self.assertEqual(self.refused({"op": "shape", "at": "c0r0", "width": 3, "intent": "t"})["details"]["field"], "width")
         keys = list(box)
         self.assertEqual(keys[:len(keys)], ["id", "type", "alias", "client_id", "x", "y", "w", "h", "text", "style", "frame", "group", "role", "z",
-                                            "author", "author_kind", "intent", "batch", "created_seq", "updated_seq", "created_at", "updated_at"])
+                                            "author", "author_kind", "intent", "batch", "created_seq", "updated_seq", "created_at", "updated_at", "fit"])
 
     def test_arrows_bind_follow_and_unbind(self):
         self.drivers()
         arrow = self.el("E-4")
-        self.assertEqual(arrow["points"], [[384, 170], [436, 170]], "centre to centre, clipped to each end plus a gap")
+        self.assertEqual(arrow["points"], [[404, 180], [456, 180]], "centre to centre, clipped to each end plus a gap")
         moved = self.ok({"op": "move", "id": "onboard", "by": [0, 200], "intent": "t"})
         self.assertIn("E-4", moved["ids"], "the bound arrow re-routes in the same event")
         self.assertNotEqual(self.el("E-4")["points"], arrow["points"])
@@ -480,7 +491,7 @@ class Operations(CanvasRig):
         stale = self.refused({"op": "edit", "id": "price", "text": "again", "if_version": version, "intent": "t"})
         self.assertEqual((stale["code"], stale["details"]["current"]), ("canvas_stale", self.el("E-2")["updated_seq"]))
         self.ok({"op": "restyle", "ids": ["price", "onboard"], "color": "green", "intent": "t"})
-        self.assertEqual({self.el(i)["style"]["stroke"] for i in ("E-2", "E-3")}, {"#2f9e44"})
+        self.assertEqual({self.el(i)["style"]["stroke"] for i in ("E-2", "E-3")}, {T.resolve("success", "soft", "note")["stroke"]})
         self.assertEqual(self.refused({"op": "restyle", "id": "price", "intent": "t"})["code"], "op_invalid")
         self.ok({"op": "move", "id": "price", "w": 200, "h": 120, "intent": "bigger"})
         self.assertEqual((self.el("E-2")["w"], self.el("E-2")["h"]), (200, 120))
@@ -495,7 +506,7 @@ class Operations(CanvasRig):
         self.drivers()
         result = self.apply([{"op": "comment", "at": "price", "text": "@reviewer 38% of churn; see F-12", "intent": "ask for a check"}])
         comment = self.el(result["applied"][0]["ids"][0])
-        self.assertEqual((comment["id"], comment["on"], comment["point"], comment["mentions"]), ("C-1", "E-2", [380, 120], ["alpha-reviewer"]))
+        self.assertEqual((comment["id"], comment["on"], comment["point"], comment["mentions"]), ("C-1", "E-2", [400, 120], ["alpha-reviewer"]))
         [sent] = self.records("canvas_sent")
         self.assertEqual(result["notices"]["canvas_sent"], [sent["seq"]])
         self.assertEqual(sent["to"], ["alpha-reviewer"])
@@ -574,7 +585,7 @@ class Operations(CanvasRig):
         steps = sorted((e for e in scene["elements"] if e.get("group") == frame["id"]), key=lambda e: e["y"])
         self.assertEqual((frame["x"], frame["y"], frame["w"], frame["text"]), (0, -1000, 360, "alpha-worker's plan"))
         self.assertEqual([s["text"] for s in steps], ["✓ fetch", "clean", "plot"])
-        self.assertEqual([s["style"]["fill"] for s in steps], [C.FILLS["gray"], C.AUTHOR_FILLS[0], None])
+        self.assertEqual([s["style"]["fill"] for s in steps], [C.FILLS["gray"], C.AUTHOR_FILLS[0], T.base()["surface"]])
         self.assertEqual(steps[1]["style"]["width"], 4)
         second = self.ok({"op": "portrait", "steps": [{"text": "fetch", "status": "completed"}, {"text": "ship", "status": "in_progress"}], "intent": "t"})
         scene = self.scene()
@@ -758,8 +769,8 @@ class Look(CanvasRig):
             '  v8 the operator added E-5 box "Pricing page"',
             "region c10r4:c40r22:",
             '  E-1 frame "Churn drivers" [200,80 600x360] c10r4 by alpha-worker — group the drivers',
-            '    E-2 note "Price rise in March" [220,120 160x100] c11r6 by alpha-worker — the biggest driver',
-            '    E-3 note "Slow onboarding" [440,120 160x100] c22r6 by alpha-worker — second driver',
+            '    E-2 note "Price rise in March" [220,120 180x120] c11r6 by alpha-worker — the biggest driver',
+            '    E-3 note "Slow onboarding" [460,120 180x120] c23r6 by alpha-worker — second driver',
             '    E-4 arrow E-2 → E-3 "worsens" by alpha-worker — worsens',
             '  C-1 comment on E-2 by alpha-worker → @alpha-reviewer: "@reviewer please check" (open)',
             "elsewhere:",
@@ -937,7 +948,7 @@ class Cli(CanvasRig):
         with mock.patch.object(sys, "stdin", io.StringIO(json.dumps([{"op": "shape", "text": "C", "at": "c0r10", "intent": "t"}]))):
             code, out, err = run_cli(["canvas", "draw", "--file", "-"], env_no_daemon(self.ts, HERDR_PANE_ID="w2:p2"), self.api)
         self.assertEqual(code, 0, err)
-        self.assertEqual(out, "v3 · B-2 · applied 1, refused 0\n#0 shape E-3\n")
+        self.assertEqual(out, "v3 · B-2 · applied 1, refused 0\n#0 shape E-3 → 160x80 (hug, 1 line)\n")
         code, _payload, err = self.worker("canvas", "draw", "--op", '{"op": "shape", "text": "no intent"}')
         self.assertEqual((code, err["code"]), (1, "canvas_refused"))
         self.assertEqual(err["refused"][0]["details"]["field"], "intent")

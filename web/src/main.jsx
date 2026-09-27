@@ -2,6 +2,7 @@ import "./asset-path.js";
 import React from "react";
 import { createRoot } from "react-dom/client";
 import "@excalidraw/excalidraw/index.css";
+import "./fonts.css";
 import "./styles.css";
 import App from "./App.jsx";
 

@@ -1,0 +1,33 @@
+{
+  "name": "flowchart",
+  "about": "A checkout flowchart with sentence-long node labels, decision diamonds and labelled edges, drawn twice: once through graph (layered, top to bottom) and once through a Mermaid flowchart with a subgraph (left to right). Node boxes are the fixed 160x60 today.",
+  "stresses": ["graph nodes sized before layout", "diamond inner box", "edge label pills", "subgraph frames", "long unbroken words"],
+  "ops": [
+    {"op": "graph", "id": "checkout", "title": "Checkout flow for returning shoppers", "at": [0, 0], "layout": "layered", "direction": "down", "intent": "the checkout path",
+     "nodes": [
+      {"id": "start", "text": "Shopper presses Pay now on the cart page", "kind": "ellipse"},
+      {"id": "auth", "text": "Validate the session token and the CSRF cookie"},
+      {"id": "reach", "text": "Is the payment provider reachable within 800 ms?", "kind": "diamond"},
+      {"id": "charge", "text": "Charge the saved card through the provider API"},
+      {"id": "ok", "text": "Payment approved?", "kind": "diamond"},
+      {"id": "order", "text": "Write the order to the orders database (Postgres 17 primary)"},
+      {"id": "retry", "text": "Show a retry banner and keep the cart intact for 30 minutes"},
+      {"id": "mail", "text": "Send the confirmation e-mail with the invoice PDF attached", "kind": "note"},
+      {"id": "done", "text": "Done", "kind": "ellipse"}
+     ],
+     "edges": [
+      {"from": "start", "to": "auth"},
+      {"from": "auth", "to": "reach"},
+      {"from": "reach", "to": "charge", "label": "yes"},
+      {"from": "reach", "to": "retry", "label": "no, provider timed out"},
+      {"from": "charge", "to": "ok"},
+      {"from": "ok", "to": "order", "label": "approved"},
+      {"from": "ok", "to": "retry", "label": "declined by the issuing bank"},
+      {"from": "order", "to": "mail"},
+      {"from": "mail", "to": "done"},
+      {"from": "retry", "to": "start", "label": "shopper tries again", "dash": true}
+     ]
+    },
+    {"op": "mermaid", "id": "refund", "title": "Refund flow", "below": "checkout", "gap": 80, "intent": "the refund path as Mermaid", "source": "flowchart LR\n  req([Customer asks for a refund through the support widget]) --> policy{Is the order younger than thirty days?}\n  policy -->|yes| auto[Refund automatically to the original payment method]\n  policy -->|no| human[Escalate to a human agent in the Tier-2 queue]\n  subgraph ledger [Ledger and notifications]\n    auto --> book[Book a negative ledger entry with the reason code]\n    human --> book\n    book --> notify[Notify the customer and the accounting mailbox]\n  end\n  notify --> closed((Closed))"}
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "name": "house",
+  "about": "The live-test house (Haiku over MCP, 2026-09-26/27) redrawn with the long labels agents actually write: absolute coordinates, shapes sized for one word, a door and a window placed inside unlabelled walls, and a note beside the frame. Nothing overlaps at the authored sizes; every label is longer than its shape.",
+  "stresses": ["label_overflow", "growth into a neighbour", "growth past a frame edge", "ellipse and diamond inner boxes"],
+  "ops": [
+    {"op": "frame", "id": "home", "title": "Our cozy home on the hill", "at": [100, 100], "w": 560, "h": 420, "intent": "the scene"},
+    {"op": "shape", "kind": "diamond", "id": "roof", "text": "red tiled roof with a brick chimney", "at": [180, 150], "w": 200, "h": 80, "intent": "the roof"},
+    {"op": "shape", "kind": "box", "id": "walls", "at": [180, 240], "w": 200, "h": 140, "intent": "the walls, unlabelled"},
+    {"op": "shape", "kind": "box", "id": "window", "text": "kitchen window", "at": [195, 255], "w": 50, "h": 40, "intent": "a window inside the walls"},
+    {"op": "shape", "kind": "box", "id": "door", "text": "front door with a brass knocker", "at": [260, 300], "w": 40, "h": 60, "intent": "the door inside the walls"},
+    {"op": "shape", "kind": "ellipse", "id": "sun", "text": "the warm afternoon sun", "at": [470, 140], "w": 60, "h": 60, "intent": "the sun"},
+    {"op": "shape", "kind": "box", "id": "tree", "text": "old oak tree planted by grandpa", "at": [440, 280], "w": 90, "h": 60, "intent": "a tree to the right"},
+    {"op": "shape", "kind": "text", "id": "caption", "text": "A cozy home where the whole team gathers on Fridays", "at": [140, 430], "w": 360, "intent": "the caption"},
+    {"op": "arrow", "from": "sun", "to": "roof", "label": "warms the tiles", "intent": "sunlight"},
+    {"op": "shape", "kind": "note", "id": "question", "text": "Ask the designer whether the roof should be flat or pitched before we pick colours", "right_of": "home", "intent": "an open question"}
+  ]
+}

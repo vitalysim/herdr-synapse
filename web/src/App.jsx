@@ -7,6 +7,7 @@ import { createBus } from "./bus.js";
 import CanvasTab from "./canvas/CanvasTab.jsx";
 import { createSceneStore } from "./sceneStore.js";
 import { openStream } from "./stream.js";
+import { applyTheme } from "./theme/tokens.js";
 import ActivityTab from "./views/ActivityTab.jsx";
 import DiagramsTab from "./views/DiagramsTab.jsx";
 import TeamTab from "./views/TeamTab.jsx";
@@ -38,6 +39,46 @@ function writeHash(team, tab) {
   if (window.location.hash !== next) window.history.replaceState(null, "", next);
 }
 
+// Light or dark: the viewer's own choice when they made one (kept in this browser), else the
+// system's. Excalidraw's menu toggle and the top bar button both set the choice.
+const THEME_KEY = "synapse-theme";
+const darkQuery = () => (typeof window.matchMedia === "function" ? window.matchMedia("(prefers-color-scheme: dark)") : null);
+
+function storedTheme() {
+  try {
+    const value = window.localStorage.getItem(THEME_KEY);
+    return value === "light" || value === "dark" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function useTheme() {
+  const [chosen, setChosen] = useState(storedTheme);
+  const [system, setSystem] = useState(() => (darkQuery()?.matches ? "dark" : "light"));
+  useEffect(() => {
+    const query = darkQuery();
+    if (!query) return undefined;
+    const follow = () => setSystem(query.matches ? "dark" : "light");
+    query.addEventListener("change", follow);
+    return () => query.removeEventListener("change", follow);
+  }, []);
+  const theme = chosen || system;
+  useEffect(() => applyTheme(theme), [theme]);
+  const choose = useCallback((next) => {
+    setChosen((prev) => {
+      if (prev === next || (!prev && next === system)) return prev;
+      try {
+        window.localStorage.setItem(THEME_KEY, next);
+      } catch {
+        // kept for this page only
+      }
+      return next;
+    });
+  }, [system]);
+  return [theme, choose];
+}
+
 function Toasts({ toasts, dismiss }) {
   return (
     <div className="toasts" role="status">
@@ -62,6 +103,7 @@ export default function App() {
   const [streamStatus, setStreamStatus] = useState("connecting");
   const [bye, setBye] = useState(null);
   const [toasts, setToasts] = useState([]);
+  const [theme, setTheme] = useTheme();
   const toastId = useRef(0);
   const store = useMemo(() => createSceneStore(), []);
   const bus = useMemo(() => createBus(), []);
@@ -163,6 +205,15 @@ export default function App() {
           {streamStatus}
         </span>
         <span className="muted small">v{session.server_version}</span>
+        <button
+          type="button"
+          className="theme-toggle"
+          title={theme === "dark" ? "Light theme" : "Dark theme"}
+          aria-label={theme === "dark" ? "Switch to the light theme" : "Switch to the dark theme"}
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+        >
+          {theme === "dark" ? "☀" : "☾"}
+        </button>
       </header>
       {!session.writable ? (
         <div className="banner">
@@ -183,6 +234,8 @@ export default function App() {
               bus={bus}
               visible={tab === "canvas"}
               toast={toast}
+              theme={theme}
+              onTheme={setTheme}
             />
           ) : (
             <div className="empty">No team has the whiteboard on. The operator turns a team on with: herdr-synapse --team T whiteboard team on</div>

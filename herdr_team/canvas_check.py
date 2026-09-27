@@ -10,7 +10,11 @@ can act on (``canvas check``, the MCP ``canvas_check`` tool, and the
   other is a grouping, not a problem, unless it is text on a labelled shape);
 * ``text_on_label``: a text lying on a shape that has its own label;
 * ``label_overflow``: a shape's label needs more room than the shape has,
-  measured the way the renderer wraps it (``canvas_render.wrap_text``);
+  measured with the bundled font's metrics by the element's kind
+  (``canvas_kinds``, ``canvas_text``); since 0.22 shapes grow to fit, so
+  this reports elements drawn before that, or a bug;
+* ``label_truncated``: a clamped label shows only part of its text (a
+  kind's own check);
 * ``frame_edge``: a mark half inside a frame;
 * ``arrow_through``: an arrow crossing a mark it does not connect;
 * ``stray``: a mark far from everything else.
@@ -18,20 +22,24 @@ can act on (``canvas check``, the MCP ``canvas_check`` tool, and the
 Every problem carries ``ids``, a one-line ``message``, and ``fix``: a ready
 ``move`` operation when there is an obvious one (``None`` otherwise, the
 message says what to do). Pure: reads element dicts, writes nothing.
+
+The checks are a registry (``CHECKS``, ``register_check``): a new check is
+one function and one line, and a kind adds its own through ``Kind.checks``.
 """
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from herdr_team import canvas_render as _render
+from herdr_team import canvas_kinds as _kinds
 
 #: Marks that take room on the canvas and so can collide. Arrows, pens and comments are drawn over things on purpose.
 SOLID = frozenset(("box", "ellipse", "diamond", "note", "text", "path", "svg", "mermaid", "chart", "viz", "image"))
 LABELLED_SHAPES = frozenset(("box", "ellipse", "diamond", "note"))
-#: How much of a shape's box its label may use (an ellipse's and a diamond's inner boxes are smaller).
+#: How much of a shape's box its label may use (an ellipse's and a diamond's inner boxes are smaller);
+#: the kinds' ``inset`` functions (``canvas_kinds.shape``) use the same factors.
 LABEL_ROOM = {"box": 1.0, "note": 1.0, "ellipse": math.sqrt(0.5), "diamond": 0.5}
-LABEL_PAD = 16
 #: Overlaps thinner than this are edges touching, not marks on top of each other.
 TOUCH = 4.0
 #: A mark this far from its nearest neighbour is reported as stray (with at least ``STRAY_MIN_MARKS`` marks).
@@ -40,7 +48,7 @@ STRAY_MIN_MARKS = 4
 FRAME_PAD = 20
 #: Problems a ``look`` shows; ``canvas check`` lists every one.
 LOOK_MAX = 8
-SEVERITY = {"overlap": 0, "text_on_label": 0, "label_overflow": 1, "frame_edge": 2, "arrow_through": 3, "stray": 4}
+SEVERITY = {"overlap": 0, "text_on_label": 0, "label_overflow": 1, "label_truncated": 1, "frame_edge": 2, "arrow_through": 3, "stray": 4}
 
 
 def box_of(el: Dict[str, Any]) -> Tuple[float, float, float, float]:
@@ -93,8 +101,16 @@ def _snap(value: float) -> int:
 
 
 def free_spot(el: Dict[str, Any], other: Dict[str, Any], boxes: List[Tuple[str, Tuple[float, float, float, float]]],
-              frame: Optional[Tuple[float, float, float, float]]) -> Optional[Tuple[int, int]]:
-    """A top-left corner for ``el`` beside ``other`` that touches no other mark and stays inside ``frame`` (when given)."""
+              frame: Optional[Tuple[float, float, float, float]], near: Optional[Tuple[float, float]] = None,
+              frame_grows: bool = False, clearance: float = 0.0) -> Optional[Tuple[int, int]]:
+    """A top-left corner for ``el`` beside ``other`` that touches no other mark and stays inside ``frame`` (when given).
+
+    ``near`` tries the spots nearest that point first (where the author put it) rather than the sides
+    of ``other`` in a fixed order; ``frame_grows`` lets the spot pass the frame's right and bottom edges,
+    which the frame then grows over (QA F-2: a sun that grew into the roof went below the roof, onto the
+    spot the next op put the tree on, because the free spot beside the roof was past the frame's edge);
+    ``clearance`` keeps that much room to every other mark (room for an arrow between them).
+    """
     x0, y0, x1, y1 = box_of(el)
     w, h = x1 - x0, y1 - y0
     ox0, oy0, ox1, oy1 = box_of(other)
@@ -102,13 +118,17 @@ def free_spot(el: Dict[str, Any], other: Dict[str, Any], boxes: List[Tuple[str, 
     def free(x: float, y: float) -> bool:
         box = (x, y, x + w, y + h)
         if frame is not None and not _contains(frame, box):
-            return False
-        return not any(_intersects(box, b, TOUCH) for eid, b in boxes if eid != el["id"])
+            if not frame_grows or box[0] < frame[0] or box[1] < frame[1]:
+                return False
+        room = (x - clearance, y - clearance, x + w + clearance, y + h + clearance)
+        return not any(_intersects(room, b, TOUCH) for eid, b in boxes if eid != el["id"])
 
     candidates = [(ox1 + GAP, y0), (x0, oy1 + GAP), (ox0 - w - GAP, y0), (x0, oy0 - h - GAP)]
     for ring in range(1, SEARCH_RINGS + 1):
         step = ring * GRID
         candidates += [(x0 + dx, y0 + dy) for dx in (-step, 0, step) for dy in (-step, 0, step) if dx or dy]
+    if near is not None:
+        candidates.sort(key=lambda c: math.hypot(_snap(c[0]) - near[0], _snap(c[1]) - near[1]))
     for x, y in candidates:
         x, y = _snap(x), _snap(y)
         if free(x, y):
@@ -154,24 +174,23 @@ def _overlaps(solid: List[Dict[str, Any]], reader: Optional[str], by_id: Dict[st
 
 
 def label_room(el: Dict[str, Any]) -> Optional[Tuple[int, int]]:
-    """``(w, h)`` a labelled shape needs for its label as the renderer wraps it, or None when it fits."""
-    text = str(el.get("text") or "")
-    if el.get("type") not in LABELLED_SHAPES or not text.strip():
+    """``(w, h)`` a labelled element needs for its label at the size it is drawn, or None when it fits.
+
+    Measured by the element's kind with the bundled font's metrics: a shape
+    at its drawn size (``fit.size``, else ``style.size``) with no further
+    shrinking, a text as it wraps. A kind without a ``measure`` never overflows.
+    """
+    if not str(el.get("text") or "").strip() or el.get("role") == "portrait":
         return None
-    style = el.get("style") if isinstance(el.get("style"), dict) else {}
-    size = float(style.get("size") or 20)
-    room = LABEL_ROOM.get(str(el.get("type")), 1.0)
+    result = _kinds.drawn(el)
+    if result is None:
+        return None
     x0, y0, x1, y1 = box_of(el)
     w, h = x1 - x0, y1 - y0
-    longest = max((len(word) for line in text.split("\n") for word in line.split()), default=0)
-    need_w = w
-    if longest > _render.chars_per_line(w * room - LABEL_PAD, size):
-        need_w = math.ceil((longest * _render.CHAR_W * size + LABEL_PAD) / room)
-    lines = len(_render.wrap_text(text, _render.chars_per_line(need_w * room - LABEL_PAD, size)))
-    need_h = max(h, math.ceil((lines * 1.25 * size + LABEL_PAD) / room))
-    if need_w <= w and need_h <= h:
+    need_w, need_h = int(math.ceil(result.w - 1e-6)), int(math.ceil(result.h - 1e-6))
+    if need_w <= w + 0.5 and need_h <= h + 0.5:
         return None
-    return int(math.ceil(need_w)), int(math.ceil(need_h))
+    return max(need_w, int(math.ceil(w))), max(need_h, int(math.ceil(h)))
 
 
 def _label_overflows(solid: List[Dict[str, Any]], reader: Optional[str], by_id: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -181,10 +200,12 @@ def _label_overflows(solid: List[Dict[str, Any]], reader: Optional[str], by_id: 
         if need is None:
             continue
         x0, y0, x1, y1 = box_of(el)
+        # A text's height follows its lines, so its fix is the width it wraps at.
+        fix = {"op": "move", "id": el["id"], "w": need[0]} if el.get("type") == "text" else {"op": "move", "id": el["id"], "w": need[0], "h": need[1]}
         out.append(_problem("label_overflow", [el["id"]],
-                            "{}'s label needs {}x{} but the shape is {}x{}; resize it (or shorten the label)".format(
-                                _name(el), need[0], need[1], int(x1 - x0), int(y1 - y0)),
-                            {"op": "move", "id": el["id"], "w": need[0], "h": need[1]}, reader, by_id))
+                            "{}'s label needs {}x{} but the {} is {}x{}; resize it (or shorten the label)".format(
+                                _name(el), need[0], need[1], "text" if el.get("type") == "text" else "shape", int(x1 - x0), int(y1 - y0)),
+                            fix, reader, by_id))
     return out
 
 
@@ -214,6 +235,23 @@ def _frame_edges(marks: List[Dict[str, Any]], frames: List[Dict[str, Any]], read
                                 "{} sticks out of frame {} past its {} edge; {}".format(_name(el), _name(frame), " and ".join(sides), advice),
                                 fix, reader, by_id))
             break
+    # A frame inside a frame (its ``frame`` names the parent) that grew past it: the parent should grow (QA F-3).
+    ids = {frame["id"] for frame in frames}
+    for frame in frames:
+        parent = by_id.get(str(frame.get("frame"))) if frame.get("frame") in ids else None
+        if parent is None:
+            continue
+        box, outer = box_of(frame), box_of(parent)
+        if _contains(outer, box):
+            continue
+        sides = [side for side, past in (("left", box[0] < outer[0]), ("top", box[1] < outer[1]),
+                                         ("right", box[2] > outer[2]), ("bottom", box[3] > outer[3])) if past]
+        grow_w = int(math.ceil(max(outer[2], box[2] + FRAME_PAD) - outer[0]))
+        grow_h = int(math.ceil(max(outer[3], box[3] + FRAME_PAD) - outer[1]))
+        out.append(_problem("frame_edge", [frame["id"], parent["id"]],
+                            "{} sticks out of its frame {} past its {} edge; grow the frame to {}x{}".format(
+                                _name(frame), _name(parent), " and ".join(sides), grow_w, grow_h),
+                            {"op": "move", "id": parent["id"], "w": grow_w, "h": grow_h}, reader, by_id))
     return out
 
 
@@ -278,6 +316,60 @@ def _strays(marks: List[Dict[str, Any]], reader: Optional[str], by_id: Dict[str,
     return out
 
 
+# --------------------------------------------------------------------------
+# the registry
+
+
+Problem = Dict[str, Any]
+
+
+@dataclass(frozen=True)
+class Check:
+    """One layout check: ``run(elements, env)`` returns problems (``_problem`` dicts)."""
+
+    code: str
+    #: Its place in the order ``problems`` sorts by (``SEVERITY``).
+    severity: int
+    run: Callable[[List[Dict[str, Any]], Dict[str, Any]], List[Problem]]
+
+
+def _groups(live: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    return {"solid": [el for el in live if el.get("type") in SOLID],
+            "frames": [el for el in live if el.get("type") == "frame" and el.get("role") != "portrait"],
+            "arrows": [el for el in live if el.get("type") == "arrow"],
+            "marks": [el for el in live if el.get("type") not in ("frame", "comment", "arrow")]}
+
+
+CHECKS: List[Check] = [
+    Check("overlap", 0, lambda live, env: _overlaps(env["groups"]["solid"], env["reader"], env["by_id"])),
+    Check("label_overflow", 1, lambda live, env: _label_overflows(env["groups"]["solid"], env["reader"], env["by_id"])),
+    Check("frame_edge", 2, lambda live, env: _frame_edges(env["groups"]["marks"], env["groups"]["frames"], env["reader"], env["by_id"])),
+    Check("arrow_through", 3, lambda live, env: _arrows_through(env["groups"]["arrows"], env["groups"]["solid"], env["reader"], env["by_id"])),
+    Check("stray", 4, lambda live, env: _strays(env["groups"]["marks"], env["reader"], env["by_id"])),
+]
+
+
+def register_check(check: Check) -> None:
+    """Add a check (``text_on_label`` comes with ``overlap``); a second one with the same code is a programming error."""
+    if any(existing.code == check.code for existing in CHECKS):
+        raise ValueError("check {} is registered twice".format(check.code))
+    CHECKS.append(check)
+    SEVERITY.setdefault(check.code, check.severity)
+
+
+def _kind_checks(live: List[Dict[str, Any]], env: Dict[str, Any]) -> List[Problem]:
+    """Each element's own kind checks (``Kind.checks``), made into full problems."""
+    out: List[Problem] = []
+    for el in live:
+        kind = _kinds.get(el.get("type"))
+        for check in kind.checks if kind is not None else ():
+            for found in check(el, env) or []:
+                ids = [str(i) for i in found.get("ids") or [el.get("id")]]
+                out.append(_problem(str(found.get("code") or "kind"), ids, str(found.get("message") or ""), found.get("fix"),
+                                    env["reader"], env["by_id"]))
+    return out
+
+
 def problems(elements: Iterable[Dict[str, Any]], reader: Optional[str] = None, region: Optional[Sequence[float]] = None) -> List[Dict[str, Any]]:
     """Every layout problem on these elements, most serious first and the reader's own first within each kind.
 
@@ -285,12 +377,11 @@ def problems(elements: Iterable[Dict[str, Any]], reader: Optional[str] = None, r
     """
     live = [el for el in elements if isinstance(el, dict) and el.get("id") and not el.get("deleted")]
     by_id = {str(el["id"]): el for el in live}
-    solid = [el for el in live if el.get("type") in SOLID]
-    frames = [el for el in live if el.get("type") == "frame" and el.get("role") != "portrait"]
-    arrows = [el for el in live if el.get("type") == "arrow"]
-    marks = [el for el in live if el.get("type") not in ("frame", "comment", "arrow")]
-    found = (_overlaps(solid, reader, by_id) + _label_overflows(solid, reader, by_id) + _frame_edges(marks, frames, reader, by_id)
-             + _arrows_through(arrows, solid, reader, by_id) + _strays(marks, reader, by_id))
+    env: Dict[str, Any] = {"reader": reader, "by_id": by_id, "groups": _groups(live)}
+    found: List[Problem] = []
+    for check in CHECKS:
+        found.extend(check.run(live, env))
+    found.extend(_kind_checks(live, env))
     if region is not None:
         found = [p for p in found if any(_intersects(box_of(by_id[i]), region) for i in p["ids"] if i in by_id)]
     found.sort(key=lambda p: (SEVERITY.get(p["code"], 9), not p["yours"]))

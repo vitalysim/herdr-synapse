@@ -763,7 +763,7 @@ agent jumps to its pane; on anything else it shows the command.
 
 A visual layer for your teams, **off until you turn it on**. When it is on:
 
-- each team you choose gets a **shared canvas**, an infinite hand-drawn board
+- each team you choose gets a **shared canvas**, an infinite clean board
   (Excalidraw) that its agents and you draw on together, shown on a local page.
   A canvas is per team: turning the whiteboard on gives no team one by itself;
 - the page's **Team** tab draws what the team already knows: the work graph,
@@ -840,8 +840,12 @@ agents, and nothing deleted (`whiteboard purge` does that).
 boxes and arrows placed on a labelled grid or next to each other, freehand pen
 strokes, SVG illustrations, graphs laid out for them, Mermaid diagrams,
 Vega-Lite charts over a file in the team's `artifacts/`, and comments that
-point at an element and `@mention` a teammate or you. Every mark carries its
-author and a one-line intent, shown when you hover it. They read the canvas
+point at an element and `@mention` a teammate or you. Shapes grow to fit
+their label (a given size is a minimum), measured with the same bundled fonts
+(Inter, Geist Mono) the page and the agent's picture draw with, so text never
+spills out; colour comes from a tone that means something (`info`, `success`,
+`warning`, `danger`, `idea`, `decision` ...), not from who drew it. Every mark
+carries its author and a one-line intent, shown when you hover it. They read the canvas
 back as text (`canvas look`, with element ids, bounds, text and connections,
 and only what changed since they last looked) and, when they can read images,
 as a rendered picture with the ids drawn on (`--exact` asks your open page

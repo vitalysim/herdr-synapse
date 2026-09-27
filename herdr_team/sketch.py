@@ -16,6 +16,15 @@ prints, or copy it next to its own script::
     s.print()          # {"ops": [...]} on stdout: python3 plan.py | herdr-synapse canvas draw --file -
     result = s.send()  # or run herdr-synapse canvas draw --file - --json and get its parsed result
 
+Style keywords pass through to the op: colour by meaning with ``tone=``
+(``neutral``, ``info``, ``success``, ``warning``, ``danger``, ``accent``,
+``idea``, ``decision``) and ``variant=`` (``soft``, ``solid``, ``outline``),
+or ``color=``/``fill=`` for a named or hex colour; ``w=``/``h=`` on a shape
+are its minimum size, since shapes grow to fit their label (0.22)::
+
+    s.shape("box", "Payments API", tone="info", w=160, h=80)
+    s.restyle(price, tone="danger")
+
 Every method appends one operation and returns what later calls can refer to:
 the op's alias for anything it creates (the ``id`` you gave, or a generated
 one), the target id for edits. Generated aliases carry a per-run tag
@@ -125,7 +134,8 @@ class Sketch:
     # ----------------------------------------------------------- drawings
 
     def shape(self, kind: str, text: str = "", id: Optional[str] = None, **kw: Any) -> str:
-        """``kind`` box, ellipse, diamond, note or text; placement: at, right_of, left_of, below, above, inside (+ gap)."""
+        """``kind`` box, ellipse, diamond, note or text; placement: at, right_of, left_of, below, above, inside (+ gap);
+        ``tone=``/``variant=`` colour it by meaning; ``w=``/``h=`` are its minimum (it grows to fit ``text``)."""
         return self._create({"op": "shape", "kind": kind, "text": text}, id, text, kw)
 
     def frame(self, title: str = "", id: Optional[str] = None, **kw: Any) -> str:
@@ -196,10 +206,11 @@ class Sketch:
         return id
 
     def move(self, id: Union[str, Sequence[str]], **kw: Any) -> Union[str, Sequence[str]]:
-        """``to=`` a point, ``by=[dx, dy]``, a relative placement, and/or ``w=``/``h=``."""
+        """``to=`` a point, ``by=[dx, dy]``, a relative placement, and/or ``w=``/``h=`` (a labelled shape's new minimum)."""
         return self._edit("move", id, kw)
 
     def restyle(self, id: Union[str, Sequence[str]], **kw: Any) -> Union[str, Sequence[str]]:
+        """``tone=``, ``variant=``, ``color=``, ``fill=``, ``size=``, ``font=`` ... (a new size or font refits the label)."""
         return self._edit("restyle", id, kw)
 
     def edit(self, id: str, text: str, **kw: Any) -> str:

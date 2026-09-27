@@ -3,16 +3,18 @@ the page agree on; a warning for an element that crosses a frame's edge; labels 
 resvg's font list without macOS's LastResort; live visuals fitted to their frame."""
 from __future__ import annotations
 
+import math
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from support import PLUGIN_ROOT
-from test_canvas import CanvasRig, fake_resvg
+from test_canvas import OPERATOR, CanvasRig, fake_resvg
 
 from herdr_team import canvas as C
 from herdr_team import canvas_render as R
+from herdr_team import canvas_text as X
 from herdr_team import whiteboard_server as W
 
 
@@ -25,13 +27,18 @@ def text_op(text, **extra):
 
 def drawn_lines(el):
     """The lines the renderer draws for a text element."""
-    return R._text_block(el["text"], el["x"], el["y"], el["w"], el["h"], el["style"], align="start").count("<tspan")
+    return R._text_block(el["text"], el["x"], el["y"], el["w"], el["h"], el["style"], align="start").count("<text")
+
+
+def width(text, size=20):
+    """A one-line text's width as the model sizes it (0.22: the bundled font's advances)."""
+    return int(math.ceil(X.measure(text, size=size).width - 1e-9))
 
 
 class TextSizes(CanvasRig):
     def test_a_text_without_a_width_is_as_wide_as_its_widest_line(self):
         text = self.el(self.ok(text_op("A cozy home"))["ids"][0])
-        self.assertEqual((text["w"], text["h"], text["wrap"]), (121, 25, False))
+        self.assertEqual((text["w"], text["h"], text["wrap"]), (width("A cozy home"), 25, False))
         self.assertEqual(drawn_lines(text), 1)
 
     def test_a_set_width_wraps_the_text_and_its_height_follows(self):
@@ -42,31 +49,37 @@ class TextSizes(CanvasRig):
 
     def test_a_five_letter_word_at_size_l_stays_on_one_line(self):
         text = self.el(self.ok(text_op("hello", size="l"))["ids"][0])
-        self.assertEqual((text["w"], text["h"]), (77, 35))
-        self.assertEqual(R.chars_per_line(77, 28), 5)
+        self.assertEqual((text["w"], text["h"]), (width("hello", 28), 35))
+        self.assertEqual(R.chars_per_line(77, 28), 5, "the deprecated wrapper keeps its rounding fix")
         self.assertEqual(drawn_lines(text), 1)
 
     def test_the_model_counts_the_lines_the_renderer_draws(self):
-        for words, width in (("one two three four five six seven", 90), ("a verylongwordthatmustbreak here", 70), ("x\ny z", 30)):
-            with self.subTest(words=words, width=width):
-                w, h = C.text_size(words, 20, width)
-                self.assertEqual(h, R.wrap_text(words, R.chars_per_line(width, 20)).__len__() * 25)
+        for words, wrap_w, lines in (("one two three four five six seven", 90, None), ("a verylongwordthatmustbreak here", 70, 3),
+                                     ("x\ny z", 30, 2)):
+            with self.subTest(words=words, width=wrap_w):
+                w, h = C.text_size(words, 20, wrap_w)
+                self.assertEqual(h, len(X.wrap(words, w)) * 25)
+                if lines:
+                    self.assertEqual(h, lines * 25)
                 el = {"text": words, "x": 0, "y": 0, "w": w, "h": h, "style": {"size": 20}}
                 self.assertEqual(drawn_lines(el) * 25, h)
+        w, _h = C.text_size("a verylongwordthatmustbreak here", 20, 70)
+        self.assertEqual(w, width("verylongwordthatmustbreak"), "a word that cannot break widens the text instead of splitting")
 
     def test_an_edit_keeps_a_set_width_and_regrows_an_auto_width(self):
         fixed = self.ok(text_op("A cozy home", w=100))["ids"][0]
         self.ok({"op": "edit", "id": fixed, "text": "A much longer label here", "intent": "t"})
-        self.assertEqual((self.el(fixed)["w"], self.el(fixed)["h"]), (100, 100))
+        self.assertEqual((self.el(fixed)["w"], self.el(fixed)["h"]), (100, len(X.wrap("A much longer label here", 100)) * 25))
+        self.assertEqual(self.el(fixed)["fit"]["min"], [100, 1], "the wrap width is kept as the text's minimum")
         auto = self.ok(text_op("Hi", at=[0, 400]))["ids"][0]
         self.ok({"op": "edit", "id": auto, "text": "Hello world", "intent": "t"})
-        self.assertEqual((self.el(auto)["w"], self.el(auto)["h"], self.el(auto)["wrap"]), (121, 25, False))
+        self.assertEqual((self.el(auto)["w"], self.el(auto)["h"], self.el(auto)["wrap"]), (width("Hello world"), 25, False))
 
     def test_a_new_size_measures_the_text_again(self):
         eid = self.ok(text_op("hello"))["ids"][0]
-        self.assertEqual((self.el(eid)["w"], self.el(eid)["h"]), (55, 25))
+        self.assertEqual((self.el(eid)["w"], self.el(eid)["h"]), (width("hello"), 25))
         self.ok({"op": "restyle", "id": eid, "size": "l", "intent": "t"})
-        self.assertEqual((self.el(eid)["w"], self.el(eid)["h"]), (77, 35))
+        self.assertEqual((self.el(eid)["w"], self.el(eid)["h"]), (width("hello", 28), 35))
 
     def test_resizing_a_text_sets_the_width_it_wraps_at(self):
         eid = self.ok(text_op("A cozy home"))["ids"][0]
@@ -98,9 +111,16 @@ class FrameEdge(CanvasRig):
         self.assertEqual(self.warnings({"op": "shape", "at": [50, 50], "w": 600, "h": 500, "intent": "t"}), [])
         self.assertEqual(self.warnings({"op": "arrow", "points": [[150, 150], [700, 150]], "intent": "t"}), [])
 
-    def test_growing_a_text_past_the_edge_warns(self):
+    def test_growing_a_text_past_the_edge_grows_the_frame_or_warns(self):
         eid = self.ok(text_op("short", at=[120, 360]))["ids"][0]
         result = self.apply([{"op": "edit", "id": eid, "text": "short\nand now\nthree lines", "intent": "t"}])
+        self.assertEqual(result["warnings"], [], "0.22: the author's frame grows to hold what grew in it")
+        self.assertTrue(C._contains(C.bounds(self.el(self.frame)), C.bounds(self.el(eid))))
+        # A frame the author may not change stays as it is, and the edge is named instead.
+        theirs = self.ok({"op": "frame", "title": "Theirs", "at": [900, 100], "w": 300, "h": 200}, OPERATOR)["ids"][0]
+        other = self.ok(text_op("short", at=[920, 260]))["ids"][0]
+        self.assertEqual(self.el(other)["frame"], theirs)
+        result = self.apply([{"op": "edit", "id": other, "text": "short\nand now\nthree lines", "intent": "t"}])
         self.assertEqual([w["code"] for w in result["warnings"]], ["frame_edge"])
         result = self.apply([{"op": "move", "id": eid, "to": [120, 150], "intent": "t"}])
         self.assertEqual(result["warnings"], [])

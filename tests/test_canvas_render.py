@@ -16,6 +16,7 @@ from herdr_team import canvas as C
 from herdr_team import canvas_layout as L
 from herdr_team import canvas_mermaid as M
 from herdr_team import canvas_render as R
+from herdr_team import canvas_theme as T
 from herdr_team.errors import HerdrTeamError
 
 SVG = "http://www.w3.org/2000/svg"
@@ -158,10 +159,12 @@ class RenderSvg(CanvasRig):
         self.assertNotIn("script", tags(root))
         self.assertIn("c0r0", texts, "grid labels")
         self.assertIn("rendered on the page", " ".join(texts))
-        self.assertTrue(any(r.get("fill") == C.NOTE_FILL for r in root.iter("{%s}rect" % SVG)), "notes are filled")
+        sticky = T.resolve("idea", "soft", "note")["fill"]
+        self.assertTrue(any(r.get("fill") == sticky for r in root.iter("{%s}rect" % SVG)), "notes are sticky paper in their tone")
         self.assertTrue(any(r.get("stroke-dasharray") for r in root.iter("{%s}rect" % SVG)), "claims are dashed")
         self.assertTrue(any(r.get("fill") == "url(#synapse-hatch)" for r in root.iter("{%s}rect" % SVG)), "locks are hatched")
-        self.assertTrue(any(p.get("fill") == "#e03131" for p in root.iter("{%s}polygon" % SVG)), "the pen is a filled outline")
+        red = T.resolve("danger", "soft", "pen")["stroke"]
+        self.assertTrue(any(p.get("fill") == red for p in root.iter("{%s}polygon" % SVG)), "the pen is a filled outline")
         nested = [n for n in root.iter("{%s}svg" % SVG) if n is not root]
         self.assertEqual(len(nested), 1, "the svg block is inlined")
         self.assertEqual(nested[0].get("viewBox"), "0 0 10 10")

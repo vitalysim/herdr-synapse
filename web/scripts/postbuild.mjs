@@ -8,14 +8,26 @@
 //                        three (one minified ES module), p5 (the unmodified distributed file).
 //   dist/licenses/       <package>.txt for every bundled or vendored package, fonts.txt,
 //                        and THIRD_PARTY.txt, the summary.
+//   dist/kinds.json      the canvas kinds the page draws (src/canvas/kinds/names.js), which a
+//                        Python test holds equal to herdr_team/canvas_kinds.
+//
+// The bundled Inter and Geist Mono (assets/fonts/) are not copied here: src/fonts.css imports them
+// and Vite hashes them into dist/assets/. This script checks they arrived byte for byte.
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { build as rolldownBuild } from "rolldown";
 
 const WEB = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = path.join(WEB, "dist");
+const REPO_FONTS = path.join(WEB, "..", "assets", "fonts");
+// The fonts src/fonts.css bundles: [licence heading, directory under assets/fonts, files].
+const BUNDLED_FONTS = [
+  ["Inter 4.1 (canvas labels as Excalidraw's \"Helvetica\" slot, and the page chrome as Synapse Sans)", "inter",
+    ["Inter-Regular.ttf", "Inter-Medium.ttf", "Inter-SemiBold.ttf", "Inter-Bold.ttf"]],
+  ["Geist Mono (the page chrome's code as Synapse Mono)", "geist-mono", ["GeistMono-Regular.ttf"]],
+];
 const NM = path.join(WEB, "node_modules");
 const EXCALIDRAW = path.join(NM, "@excalidraw", "excalidraw");
 const SKIPPED_FONTS = new Set(["Xiaolai"]);
@@ -145,8 +157,23 @@ for (const [name, note] of fontNotes) {
   if (!shippedFonts.includes(name)) continue;
   fonts += `\n\n===== ${name} =====\n\n${note}\n`;
 }
+// The bundled fonts, each unmodified in dist/assets/ under a hashed name, with its OFL.
+const sha = (file) => crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+const hashedAssets = new Map(fs.readdirSync(path.join(DIST, "assets")).map((name) => [sha(path.join(DIST, "assets", name)), name]));
+fonts += "\n\nFonts bundled in dist/assets/ (copied unmodified from assets/fonts/, SIL Open Font License 1.1):\n";
+for (const [, dir, files] of BUNDLED_FONTS) {
+  for (const file of files) {
+    const hashed = hashedAssets.get(sha(path.join(REPO_FONTS, dir, file)));
+    if (!hashed) throw new Error(`postbuild: assets/fonts/${dir}/${file} is not in dist/assets byte for byte (is it imported in src/fonts.css?)`);
+    fonts += `- assets/${hashed}: ${file}\n`;
+  }
+}
+for (const [heading, dir] of BUNDLED_FONTS) {
+  fonts += `\n\n===== ${heading} =====\n\n${fs.readFileSync(path.join(REPO_FONTS, dir, "OFL.txt"), "utf8").trim()}\n`;
+}
 fs.writeFileSync(path.join(LICENSES, "fonts.txt"), fonts);
 summary.push("fonts in dist/fonts  OFL-1.1 / MIT  licenses/fonts.txt");
+summary.push("Inter 4.1 and Geist Mono in dist/assets  OFL-1.1  licenses/fonts.txt");
 
 fs.writeFileSync(
   path.join(LICENSES, "THIRD_PARTY.txt"),
@@ -157,7 +184,12 @@ fs.writeFileSync(
     "\n",
 );
 
-// -- 4. hash lists -----------------------------------------------------------------------
+// -- 4. the page's canvas kinds ------------------------------------------------------------
+
+const { PAGE_KINDS, DISPLAY_LIST } = await import(pathToFileURL(path.join(WEB, "src", "canvas", "kinds", "names.js")).href);
+fs.writeFileSync(path.join(DIST, "kinds.json"), `${JSON.stringify({ v: 1, kinds: [...PAGE_KINDS].sort(), display_list: DISPLAY_LIST })}\n`);
+
+// -- 5. hash lists -----------------------------------------------------------------------
 
 function walk(dir, base = dir) {
   const out = [];

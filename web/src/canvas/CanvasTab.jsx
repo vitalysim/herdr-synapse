@@ -4,11 +4,17 @@
 // labelled cursor moves to what it changed); the human's edits go back as operations
 // 400 ms after the pointer lifts, each with if_version. The server is the only writer:
 // refused operations revert to the canonical scene with the reason in a toast.
+//
+// The first build waits for the bundled fonts (src/fonts.css), so Excalidraw measures labels in
+// the Inter the server measured them in, not in a fallback that would clip them.
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { CaptureUpdateAction, Excalidraw, MainMenu, exportToCanvas, getCommonBounds, restoreElements } from "@excalidraw/excalidraw";
 import { ApiError, dataURLToBlob, getJSON, postBytes, postJSON, teamPath } from "../api.js";
 import VizFrame from "../viz/VizFrame.jsx";
-import { build, diff, elementAt, exIdOf, snapshotOf, unionBounds } from "./adapter.js";
+import { CANVAS, INK, SANS, TOKENS, authorChip } from "../theme/tokens.js";
+import { build, diff, elementAt, exIdOf, fitAudit, fontStringOf, snapshotOf, unionBounds } from "./adapter.js";
+import AuthorChip from "./AuthorChip.jsx";
+import { FONT_TO_EX } from "./elements.js";
 import { rasterize, renderFile, svgToDataURL } from "./renderers.js";
 import SidePanel from "./SidePanel.jsx";
 
@@ -17,7 +23,40 @@ const PEN_ANIMATION_MS = 600;
 const CURSOR_LINGER_MS = 8000;
 const OVERRIDE_TTL_MS = 10000;
 const RESYNC_MS = 1500;
-const MARK_FONT = "bold 12px sans-serif";
+const MARK_FONT = `600 12px ${SANS}`;
+const FONT_WAIT_MS = 4000;
+const EX = TOKENS.phase0_excalidraw;
+// Frames keep Excalidraw's name label (what a human grabs to select or rename one); the zone
+// behind each frame (kinds/frame.js) replaces its grey outline.
+const FRAME_RENDERING = { ...EX.frameRendering, name: true };
+// What a human draws with: the design's Phase 0 defaults (clean lines, Inter, ink on nothing).
+const HUMAN_DEFAULTS = {
+  viewBackgroundColor: CANVAS,
+  frameRendering: FRAME_RENDERING,
+  currentItemFontFamily: FONT_TO_EX.normal,
+  currentItemFontSize: 20,
+  currentItemRoughness: EX.roughness,
+  currentItemStrokeColor: INK,
+  currentItemBackgroundColor: "transparent",
+  currentItemFillStyle: EX.fillStyle,
+  currentItemStrokeStyle: "solid",
+  currentItemStrokeWidth: 2,
+  currentItemRoundness: "round",
+};
+
+// Resolves once the canvas fonts have loaded (or after FONT_WAIT_MS, so a missing font never
+// keeps the canvas empty): family 2 ("Helvetica", Inter here) and the chrome's Synapse Sans.
+let fontsReady = null;
+function whenFontsReady() {
+  if (!fontsReady) {
+    const fonts = typeof document !== "undefined" ? document.fonts : null;
+    const loaded = fonts
+      ? Promise.all([fonts.load(fontStringOf(20, FONT_TO_EX.normal)), fonts.load(`400 16px "Synapse Sans"`)]).then(() => fonts.ready)
+      : Promise.resolve();
+    fontsReady = Promise.race([loaded.catch(() => undefined), new Promise((resolve) => setTimeout(resolve, FONT_WAIT_MS))]);
+  }
+  return fontsReady;
+}
 
 function refusalText(refused) {
   const first = refused[0];
@@ -29,7 +68,7 @@ function authorName(name) {
   return name === "human" ? "the operator" : name;
 }
 
-export default function CanvasTab({ team, teamRow, writable, store, bus, visible, toast }) {
+export default function CanvasTab({ team, teamRow, writable, store, bus, visible, toast, theme = "light", onTheme }) {
   const apiRef = useRef(null);
   const snapshots = useRef(new Map());
   const overrides = useRef(new Map());
@@ -53,13 +92,15 @@ export default function CanvasTab({ team, teamRow, writable, store, bus, visible
   const hoverFrame = useRef(null);
   const lastClient = useRef({ x: 0, y: 0 });
   const selectionKey = useRef("");
-  const [tint, setTint] = useState(false);
+  const fontsLoaded = useRef(false);
+  const exTheme = useRef(null);
+  const [authors, setAuthors] = useState(false);
   const [hidden, setHidden] = useState(() => new Set());
   const [selection, setSelection] = useState([]);
   const [tooltip, setTooltip] = useState(null);
   const [panelOpen, setPanelOpen] = useState(true);
-  const optionsRef = useRef({ tint, hidden, vizOn: Boolean(teamRow && teamRow.viz) });
-  optionsRef.current = { tint, hidden, vizOn: Boolean(teamRow && teamRow.viz) };
+  const optionsRef = useRef({ authors, hidden, vizOn: Boolean(teamRow && teamRow.viz) });
+  optionsRef.current = { authors, hidden, vizOn: Boolean(teamRow && teamRow.viz) };
 
   // -- building the Excalidraw scene -------------------------------------------------
 
@@ -131,14 +172,14 @@ export default function CanvasTab({ team, teamRow, writable, store, bus, visible
   const rebuild = useCallback(() => {
     const api = apiRef.current;
     if (!api) return;
-    if (isInteracting()) {
+    if (isInteracting() || !fontsLoaded.current) {
       pendingRebuild.current = true;
       return;
     }
     pendingRebuild.current = false;
     const scene = store.get();
-    const { tint: tinted, hidden: hiddenAuthors, vizOn } = optionsRef.current;
-    const { elements: built, fileJobs } = build(scene, { team, hiddenAuthors, tint: tinted, vizOn, animated: animatedPoints() });
+    const { authors: showAuthors, hidden: hiddenAuthors, vizOn } = optionsRef.current;
+    const { elements: built, fileJobs } = build(scene, { team, hiddenAuthors, authors: showAuthors, vizOn, animated: animatedPoints() });
     const current = api.getSceneElementsIncludingDeleted();
     const currentById = new Map(current.map((el) => [el.id, el]));
     const now = Date.now();
@@ -173,7 +214,7 @@ export default function CanvasTab({ team, teamRow, writable, store, bus, visible
       const points = animatedPoints();
       const parts = scene.elements.filter((el) => running.has(el.id));
       const { elements: replacements } = build({ ...scene, elements: parts, claims: [], locks: [] }, {
-        team, hiddenAuthors: optionsRef.current.hidden, tint: false, vizOn: optionsRef.current.vizOn, animated: points,
+        team, hiddenAuthors: optionsRef.current.hidden, authors: false, vizOn: optionsRef.current.vizOn, animated: points,
       });
       const current = api.getSceneElementsIncludingDeleted();
       const currentById = new Map(current.map((el) => [el.id, el]));
@@ -194,7 +235,7 @@ export default function CanvasTab({ team, teamRow, writable, store, bus, visible
 
   function moveCursor(author, x, y, exIds) {
     if (!author) return;
-    const color = author === "human" ? "#1e1e1e" : store.get().authors?.[author]?.color || "#868e96";
+    const color = authorChip(store.get(), author).bg;
     const selected = {};
     for (const id of exIds || []) selected[id] = true;
     collaborators.current.set(author, {
@@ -285,25 +326,49 @@ export default function CanvasTab({ team, teamRow, writable, store, bus, visible
 
   useEffect(() => {
     rebuild();
-  }, [tint, hidden, teamRow && teamRow.viz, rebuild]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [authors, hidden, teamRow && teamRow.viz, rebuild]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // A build measures text with the fonts loaded at the time; one made before Excalidraw's
-  // fonts arrived sized every text by a narrower fallback and clipped it. Build again once
-  // they have loaded (found live on 2026-09-27).
+  // A build measures text with the fonts loaded at the time; one made before the fonts arrived
+  // sized every text by a narrower fallback and clipped it. The first build waits for them, and
+  // any font that loads later (Excalifont, Cascadia on legacy text) builds again.
   useEffect(() => {
     const fonts = typeof document !== "undefined" ? document.fonts : null;
-    if (!fonts) return undefined;
     let cancelled = false;
     const again = () => {
       if (!cancelled) rebuild();
     };
+    whenFontsReady().then(() => {
+      fontsLoaded.current = true;
+      again();
+    });
+    if (!fonts) return undefined;
     fonts.addEventListener("loadingdone", again);
-    fonts.ready.then(again, () => {});
     return () => {
       cancelled = true;
       fonts.removeEventListener("loadingdone", again);
     };
   }, [rebuild]);
+
+  // QA hooks (canvas-v2-qa.md): the page's line breaks and overflow per fitted element, and
+  // measureText in the canvas's own font strings for the text corpus calibration.
+  useEffect(() => {
+    window.__synapseFitAudit = (options = {}) => {
+      const api = apiRef.current;
+      return api ? fitAudit(store.get(), api.getSceneElements(), options) : [];
+    };
+    window.__synapseMeasure = async (strings, font = "normal", size = 20) => {
+      const family = FONT_TO_EX[font] || FONT_TO_EX.normal;
+      const fontString = fontStringOf(size, family);
+      if (document.fonts) await document.fonts.load(fontString, "A");
+      const context = document.createElement("canvas").getContext("2d");
+      context.font = fontString;
+      return { font: fontString, size, widths: (strings || []).map((text) => context.measureText(String(text)).width) };
+    };
+    return () => {
+      delete window.__synapseFitAudit;
+      delete window.__synapseMeasure;
+    };
+  }, [store]);
 
   useEffect(() => {
     if (visible && apiRef.current) apiRef.current.refresh();
@@ -431,8 +496,15 @@ export default function CanvasTab({ team, teamRow, writable, store, bus, visible
         selectionKey.current = key;
         setSelection(ids);
       }
+      // Excalidraw's own theme toggle: follow it in the chrome. Compared with the theme it last
+      // reported, not the prop, so a prop change is never bounced back while Excalidraw catches up.
+      if (appState.theme && appState.theme !== exTheme.current) {
+        const first = exTheme.current === null;
+        exTheme.current = appState.theme;
+        if (!first && onTheme) onTheme(appState.theme);
+      }
     },
-    [writable, scheduleSync],
+    [writable, scheduleSync, onTheme],
   );
 
   const onPointerUpdate = useCallback(
@@ -469,7 +541,7 @@ export default function CanvasTab({ team, teamRow, writable, store, bus, visible
       const height = Math.max(1, y1 - y0);
       // Everything overlapping the region (frames keep their children), plus an invisible
       // rectangle spanning it so the export covers the whole region; then crop to it.
-      const all = api.getSceneElements().filter((el) => el.customData?.synapse?.derived !== "tint" && el.type !== "embeddable");
+      const all = api.getSceneElements().filter((el) => el.customData?.synapse?.derived !== "chip" && el.type !== "embeddable");
       const byId = new Map(all.map((el) => [el.id, el]));
       const overlaps = (el) => {
         const [ex0, ey0, ex1, ey1] = getCommonBounds([el]);
@@ -483,8 +555,8 @@ export default function CanvasTab({ team, teamRow, writable, store, bus, visible
       const scale = Math.min(2, 1024 / Math.max(width, height));
       const full = await exportToCanvas({
         elements,
-        appState: { ...api.getAppState(), exportBackground: true, viewBackgroundColor: "#ffffff", exportWithDarkMode: false,
-          frameRendering: { enabled: true, name: false, outline: true, clip: true } },
+        appState: { ...api.getAppState(), exportBackground: true, viewBackgroundColor: CANVAS, exportWithDarkMode: false,
+          frameRendering: { ...FRAME_RENDERING, name: false } },
         files: api.getFiles(),
         exportPadding: 0,
         getDimensions: (w, h) => ({ width: Math.max(1, Math.round(w * scale)), height: Math.max(1, Math.round(h * scale)), scale }),
@@ -493,7 +565,7 @@ export default function CanvasTab({ team, teamRow, writable, store, bus, visible
       canvas.width = Math.max(1, Math.round(width * scale));
       canvas.height = Math.max(1, Math.round(height * scale));
       const crop = canvas.getContext("2d");
-      crop.fillStyle = "#ffffff";
+      crop.fillStyle = CANVAS;
       crop.fillRect(0, 0, canvas.width, canvas.height);
       crop.drawImage(full, Math.round((x0 - minX) * scale), Math.round((y0 - minY) * scale), canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
       const context = crop;
@@ -515,9 +587,9 @@ export default function CanvasTab({ team, teamRow, writable, store, bus, visible
           if (el.x > x1 || el.y > y1 || el.x + (el.w || 1) < x0 || el.y + (el.h || 1) < y0) continue;
           const [px, py] = toPx(Math.max(el.x, x0), Math.max(el.y, y0));
           const width = context.measureText(el.id).width + 8;
-          context.fillStyle = "#1e1e1e";
+          context.fillStyle = INK;
           context.fillRect(px, py, width, 16);
-          context.fillStyle = "#ffffff";
+          context.fillStyle = CANVAS;
           context.fillText(el.id, px + 4, py + 12);
         }
       }
@@ -643,7 +715,8 @@ export default function CanvasTab({ team, teamRow, writable, store, bus, visible
             apiRef.current = api;
             setTimeout(() => rebuild(), 0);
           }}
-          initialData={{ elements: [], appState: { viewBackgroundColor: "#ffffff", currentItemFontFamily: 5, currentItemStrokeColor: "#1e1e1e" } }}
+          initialData={{ elements: [], appState: HUMAN_DEFAULTS }}
+          theme={theme}
           onChange={onChange}
           onPointerUpdate={onPointerUpdate}
           viewModeEnabled={!writable}
@@ -658,8 +731,8 @@ export default function CanvasTab({ team, teamRow, writable, store, bus, visible
           }}
           renderTopRightUI={() => (
             <div className="canvas-top-right">
-              <button type="button" className={tint ? "chip on" : "chip"} title="Tint every mark by who made it" onClick={() => setTint((v) => !v)}>
-                who made this
+              <button type="button" className={authors ? "chip on" : "chip"} title="Show who made each mark as a small badge" onClick={() => setAuthors((v) => !v)}>
+                show authors
               </button>
               <button type="button" className={panelOpen ? "chip on" : "chip"} onClick={() => setPanelOpen((v) => !v)}>
                 panel
@@ -679,7 +752,7 @@ export default function CanvasTab({ team, teamRow, writable, store, bus, visible
       {tooltipElement ? (
         <div className="hover-card" style={{ left: tooltip.x + 14, top: tooltip.y + 14 }}>
           <div className="hover-title">
-            <span className="swatch" style={{ background: store.get().authors?.[tooltipElement.author]?.color || "#1e1e1e" }} />
+            <AuthorChip scene={store.get()} name={tooltipElement.author} theme={theme} />
             {tooltipElement.id} {tooltipElement.type} · {authorName(tooltipElement.author)}
           </div>
           {tooltipElement.intent ? <div className="hover-intent">{tooltipElement.intent}</div> : null}
@@ -694,7 +767,7 @@ export default function CanvasTab({ team, teamRow, writable, store, bus, visible
           store={store}
           selection={selection}
           hidden={hidden}
-          tint={tint}
+          theme={theme}
           actions={actions}
           onClose={() => setPanelOpen(false)}
         />

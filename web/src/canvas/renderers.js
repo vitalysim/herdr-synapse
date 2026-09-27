@@ -4,6 +4,7 @@
 // Vega-Lite through vega-interpreter (no eval) with a loader that refuses every URL, so a
 // chart only ever sees the data the page hands it from the team's artifacts.
 import { blobToDataURL, getBlob, getJSON, getText, teamPath } from "../api.js";
+import { INK, MUTED, SANS, mermaidThemeVariables, toneColors } from "../theme/tokens.js";
 
 const cache = new Map();
 
@@ -63,17 +64,21 @@ export function fitSVG(svgText, w, h) {
   return new XMLSerializer().serializeToString(root);
 }
 
-// A card for things that are not drawn here: a switched-off live visual, a failed render.
-export function placeholderSVG(w, h, title, line, tone = "#868e96") {
+// A card for things that are not drawn here: a switched-off live visual, a failed render. Its
+// colours are a tone's (neutral, or danger for a failure); drawn as an image, it cannot use the
+// page's fonts, so the stack falls back to the system sans.
+export function placeholderSVG(w, h, title, line, tone = "neutral") {
   const width = Math.max(40, Math.round(w));
   const height = Math.max(30, Math.round(h));
+  const colors = toneColors(tone, "soft", "frame");
+  const font = escapeXML(SANS);
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
-    `<rect x="1" y="1" width="${width - 2}" height="${height - 2}" rx="8" fill="#f8f9fa" stroke="${tone}" stroke-dasharray="6 4"/>` +
-    `<text x="${width / 2}" y="${height / 2 - 6}" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#1e1e1e">${escapeXML(
+    `<rect x="1" y="1" width="${width - 2}" height="${height - 2}" rx="8" fill="${colors.fill}" stroke="${toneColors(tone).stroke}" stroke-dasharray="6 4"/>` +
+    `<text x="${width / 2}" y="${height / 2 - 6}" text-anchor="middle" font-family="${font}" font-size="16" fill="${INK}">${escapeXML(
       String(title || "").slice(0, 60),
     )}</text>` +
-    `<text x="${width / 2}" y="${height / 2 + 16}" text-anchor="middle" font-family="sans-serif" font-size="12" fill="${tone}">${escapeXML(
+    `<text x="${width / 2}" y="${height / 2 + 16}" text-anchor="middle" font-family="${font}" font-size="12" fill="${tone === "neutral" ? MUTED : colors.text}">${escapeXML(
       String(line || "").slice(0, 80),
     )}</text></svg>`
   );
@@ -87,13 +92,17 @@ let mermaidCounter = 0;
 function loadMermaid() {
   if (!mermaidReady) {
     mermaidReady = import("mermaid").then(({ default: mermaid }) => {
+      // The "base" theme coloured from the tokens (the "neo" look needs Mermaid 12). Mermaid sizes
+      // nodes with the page's Inter; the SVG, shown as an image, draws in the system sans, which
+      // is narrower, so labels still fit.
       mermaid.initialize({
         startOnLoad: false,
         securityLevel: "strict",
         htmlLabels: false,
         flowchart: { htmlLabels: false },
-        theme: "default",
-        fontFamily: "sans-serif",
+        theme: "base",
+        themeVariables: mermaidThemeVariables(),
+        fontFamily: SANS,
       });
       return mermaid;
     });
@@ -256,7 +265,7 @@ export async function sketchySVG(svgText) {
 // drawn with its style and fitted to the element's box through its own bounding box.
 export function pathSVG(element) {
   const style = element.style || {};
-  const stroke = style.stroke || "#1e1e1e";
+  const stroke = style.stroke || INK;
   const fill = style.fill || "none";
   const width = style.width || 2;
   const probe = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -375,7 +384,7 @@ export function renderFile(team, element, fileId) {
       }
     } catch (err) {
       const line = `${element.type} could not be drawn: ${String(err && err.message ? err.message : err).slice(0, 60)}`;
-      return { dataURL: svgToDataURL(placeholderSVG(w, h, element.text || element.id, line, "#e03131")), mimeType: "image/svg+xml", failed: true };
+      return { dataURL: svgToDataURL(placeholderSVG(w, h, element.text || element.id, line, "danger")), mimeType: "image/svg+xml", failed: true };
     }
   });
 }

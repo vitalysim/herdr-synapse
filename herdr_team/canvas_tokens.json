@@ -1,0 +1,472 @@
+{
+  "version": 1,
+  "doc": ".local/prd/canvas-v2-design.md",
+  "about": "Synapse canvas design tokens. Every renderer (page, Python SVG/PNG, v2 display list) reads this file; colours are chosen by meaning (tone), never by author. Units are canvas units (1 unit = 1 CSS px at 100% zoom).",
+  "contrast": {"text": 4.5, "non_text": 3.0, "standard": "WCAG 2.2 AA"},
+  "font": {
+    "sans": {
+      "family": "Inter",
+      "version": "4.1",
+      "license": "OFL-1.1",
+      "fallback": ["Inter", "Helvetica", "Arial", "sans-serif"],
+      "weights": {"regular": 400, "medium": 500, "semibold": 600, "bold": 700}
+    },
+    "mono": {"family": "Geist Mono", "license": "OFL-1.1", "fallback": ["Geist Mono", "Cascadia Code", "Menlo", "monospace"]},
+    "sketch": {"family": "Excalifont", "license": "OFL-1.1", "note": "opt-in sketch theme only"},
+    "aliases": {"normal": "sans", "hand": "sketch", "code": "mono"},
+    "default": "sans"
+  },
+  "type": {
+    "default": "m",
+    "scale": {
+      "s": {"size": 16, "line": 24, "weight": 400, "use": "body text, arrow labels, card body, table cells"},
+      "m": {"size": 20, "line": 28, "weight": 500, "use": "shape and sticky labels, card titles (600)"},
+      "l": {"size": 28, "line": 36, "weight": 600, "use": "headings inside a section"},
+      "xl": {"size": 36, "line": 44, "weight": 700, "use": "the board or area heading"}
+    },
+    "roles": {
+      "caption": {"size": 12, "line": 16, "weight": 500, "ink": "ink_muted", "use": "chips, id badges, grid labels, metadata"},
+      "label": {"size": 16, "line": 20, "weight": 500, "ink": "ink_muted", "use": "arrow label pills"},
+      "section_title": {"size": 20, "line": 28, "weight": 600, "use": "v2 section band title"},
+      "card_title": {"size": 20, "line": 28, "weight": 600},
+      "code": {"size": 14, "line": 20, "weight": 400, "font": "mono"},
+      "display": {"size": 48, "line": 60, "weight": 700, "use": "v2 board title, component-set only"}
+    },
+    "shrink_floor": 14,
+    "tracking": 0
+  },
+  "space": {
+    "unit": 4,
+    "grid": 20,
+    "scale": [0, 4, 8, 12, 16, 20, 24, 32, 40, 48, 64, 80, 96],
+    "gap": {"s": 20, "m": 40, "l": 80},
+    "snap": "a container grown to fit its text rounds its w and h up to the next multiple of grid"
+  },
+  "padding": {
+    "box": {"x": 16, "y": 12},
+    "ellipse": {"x": 8, "y": 8, "inner": "inscribed rectangle w/sqrt(2) x h/sqrt(2)"},
+    "diamond": {"x": 4, "y": 4, "inner": "inscribed rectangle w/2 x h/2"},
+    "note": {"x": 16, "y": 16},
+    "card": {"x": 16, "y": 16, "title_gap": 4},
+    "section": {"x": 20, "y": 20, "band": {"phase0": 40, "v2": 60}},
+    "arrow_label": {"x": 8, "y": 2},
+    "chip": {"x": 6, "y": 2},
+    "table_cell": {"x": 12, "y": 8},
+    "text": {"x": 0, "y": 0}
+  },
+  "radius": {
+    "box": 8,
+    "diamond": 8,
+    "card": 12,
+    "note": 4,
+    "section": 16,
+    "image": 8,
+    "table_cell": 6,
+    "arrow_label": 6,
+    "elbow": 8,
+    "pill": 999,
+    "chip": 999
+  },
+  "stroke": {
+    "width": {"hairline": 1, "border": 1.5, "connector": 2, "emphasis": 3},
+    "phase0_width": {"thin": 1, "bold": 2, "extra": 4},
+    "dash": {"solid": [], "dashed": [8, 6], "dotted": [2, 6]},
+    "cap": "round",
+    "join": "round"
+  },
+  "elevation": {
+    "0": "flat: sections, text, arrows, shapes",
+    "1": "resting: cards, stickies, images",
+    "2": "lifted: hover, drag, the selection",
+    "3": "floating: menus and popovers on the page"
+  },
+  "size_min": {
+    "box": [160, 80],
+    "ellipse": [160, 80],
+    "diamond": [200, 120],
+    "note": [180, 120],
+    "sticky": [200, 200],
+    "card": [240, 80],
+    "graph_node": [160, 60],
+    "section": [320, 200],
+    "table_cell": [120, 40],
+    "kanban_column": [280, 200],
+    "chip": [24, 24],
+    "arrow_label": [24, 24]
+  },
+  "arrow": {
+    "width": "connector",
+    "color": "line",
+    "toned_color": "stroke",
+    "head": {"v2": "triangle", "phase0": "arrow", "length": 10, "width": 8},
+    "route": {"default": "straight", "graph": "elbow", "clearance": 20, "corner_radius": 8},
+    "label": {"role": "label", "fill": "surface", "stroke": "grid", "radius": "arrow_label", "padding": "arrow_label"},
+    "dash_meaning": {"solid": "direct, synchronous, owns", "dashed": "async, optional, planned", "dotted": "weak reference, see also"}
+  },
+  "section": {
+    "fill": "zone",
+    "stroke": "zone_stroke",
+    "stroke_width": "hairline",
+    "radius": "section",
+    "elevation": 0,
+    "title": {
+      "phase0": {"size": 16, "at": [20, 8], "ink": "text"},
+      "v2": {"role": "section_title", "at": [20, 16], "ink": "text"}
+    },
+    "default_tone": "neutral"
+  },
+  "sticky": {
+    "fill": "sticky",
+    "text": "text",
+    "stroke": {"phase0": "stroke", "v2": "none"},
+    "elevation": 1,
+    "radius": "note",
+    "size": "m",
+    "fit": "shrink",
+    "default_tone": "idea",
+    "meaning": {
+      "idea": "idea or question",
+      "info": "discussion",
+      "success": "positive",
+      "warning": "concern",
+      "danger": "blocker",
+      "accent": "highlight",
+      "decision": "decided",
+      "neutral": "aside"
+    }
+  },
+  "author": {
+    "chip": {
+      "diameter": 24,
+      "text": "caption",
+      "weight": 600,
+      "initials": 2,
+      "offset": [-8, -8],
+      "anchor": "top-right",
+      "show": "hover, selection, and when zoom >= 0.5 in the page; always in the side panel"
+    },
+    "halo": {"width": 3, "alpha": 0.35, "gap": 4},
+    "assign": "chip index = the author's roster index modulo 8; the human always uses human_chip",
+    "rule": "authorship never changes stroke, fill or text colour"
+  },
+  "tones": ["neutral", "info", "success", "warning", "danger", "accent", "idea", "decision"],
+  "roles": {
+    "fill": "soft tinted background of a shape or card",
+    "stroke": "shape outline and toned arrows, >= 3:1 on canvas, surface and fill",
+    "text": "ink on fill, sticky, zone, canvas and surface, >= 4.5:1",
+    "solid": "strong background for the solid variant and badges, >= 3:1 on canvas",
+    "on_solid": "text on solid, >= 4.5:1",
+    "sticky": "sticky-note paper",
+    "zone": "section (frame) tint",
+    "zone_stroke": "section hairline, decorative"
+  },
+  "legacy": {
+    "color": {
+      "black": "neutral",
+      "gray": "neutral",
+      "white": "neutral",
+      "blue": "info",
+      "green": "success",
+      "orange": "warning",
+      "yellow": "idea",
+      "red": "danger",
+      "pink": "danger",
+      "purple": "accent",
+      "teal": "decision"
+    },
+    "stroke_hex": {
+      "#1e1e1e": "neutral",
+      "#868e96": "neutral",
+      "#e03131": "danger",
+      "#c2255c": "danger",
+      "#9c36b5": "accent",
+      "#1971c2": "info",
+      "#0c8599": "decision",
+      "#2f9e44": "success",
+      "#f08c00": "warning",
+      "#f59f00": "idea",
+      "#5c940d": "success",
+      "#ffffff": "neutral"
+    },
+    "fill_hex": {
+      "#ffc9c9": "danger",
+      "#fcc2d7": "danger",
+      "#eebefa": "accent",
+      "#a5d8ff": "info",
+      "#99e9f2": "decision",
+      "#b2f2bb": "success",
+      "#ffec99": "idea",
+      "#ffd8a8": "warning",
+      "#e9ecef": "neutral",
+      "#d8f5a2": "success",
+      "#ffffff": "neutral"
+    },
+    "note_fill": "#ffec99"
+  },
+  "phase0_excalidraw": {
+    "roughness": 0,
+    "fillStyle": "solid",
+    "strokeStyle": {"solid": "solid", "dashed": "dashed", "dotted": "dotted"},
+    "fontFamily": {"sans": 2, "sketch": 5, "mono": 3},
+    "font_face": {
+      "family": "Helvetica",
+      "weight": 500,
+      "why": "family 2 is Excalidraw's only local font: it registers no FontFace for it, so the page's @font-face named Helvetica (Inter Medium, bundled) is what the canvas draws"
+    },
+    "lineHeight": {"s": 1.5, "m": 1.4, "l": 1.2857, "xl": 1.2222},
+    "roundness": {
+      "box": {"type": 3, "value": 8},
+      "note": {"type": 3, "value": 4},
+      "diamond": {"type": 3, "value": 8},
+      "ellipse": null,
+      "arrow_curve": {"type": 2}
+    },
+    "arrowhead": {"arrow": "arrow", "triangle": "triangle", "dot": "dot", "none": null},
+    "frameRendering": {"enabled": true, "clip": true, "name": false, "outline": false},
+    "viewBackgroundColor": "canvas",
+    "dark_mode": "Excalidraw's own filter invert(93%) hue-rotate(180deg) over the light tokens; every pair was checked through it",
+    "currentItem": {
+      "roughness": 0,
+      "fontFamily": 2,
+      "fontSize": 20,
+      "strokeWidth": 2,
+      "strokeColor": "ink",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeStyle": "solid",
+      "roundness": "round"
+    }
+  },
+  "theme": {
+    "light": {
+      "base": {
+        "canvas": "#f7f8fa",
+        "surface": "#ffffff",
+        "ink": "#1c2024",
+        "ink_muted": "#5b616b",
+        "line": "#6b7079",
+        "grid": "#e3e5e9",
+        "selection": "#6e56cf"
+      },
+      "tone": {
+        "neutral": {
+          "fill": "#ffffff",
+          "stroke": "#80858f",
+          "text": "#1c2024",
+          "solid": "#3a3f47",
+          "on_solid": "#ffffff",
+          "sticky": "#eceef1",
+          "zone": "#f0f1f4",
+          "zone_stroke": "#d9dce1"
+        },
+        "info": {
+          "fill": "#e8f2fe",
+          "stroke": "#3f84d8",
+          "text": "#0b3a6e",
+          "solid": "#1e66c9",
+          "on_solid": "#ffffff",
+          "sticky": "#cfe4fd",
+          "zone": "#f1f7fe",
+          "zone_stroke": "#bcd8f7"
+        },
+        "success": {
+          "fill": "#e7f6ec",
+          "stroke": "#3d9a63",
+          "text": "#15452c",
+          "solid": "#1d7a47",
+          "on_solid": "#ffffff",
+          "sticky": "#c9ecd3",
+          "zone": "#f1faf4",
+          "zone_stroke": "#b9e0c6"
+        },
+        "warning": {
+          "fill": "#fff0e3",
+          "stroke": "#cc6a1e",
+          "text": "#5c2a07",
+          "solid": "#b8520c",
+          "on_solid": "#ffffff",
+          "sticky": "#ffdcbd",
+          "zone": "#fff7f0",
+          "zone_stroke": "#f7cfaa"
+        },
+        "danger": {
+          "fill": "#fdecec",
+          "stroke": "#dc4b4f",
+          "text": "#6b1519",
+          "solid": "#c42a30",
+          "on_solid": "#ffffff",
+          "sticky": "#fdd3d3",
+          "zone": "#fef5f5",
+          "zone_stroke": "#f4c2c3"
+        },
+        "accent": {
+          "fill": "#f1eefe",
+          "stroke": "#7d68d8",
+          "text": "#2f2468",
+          "solid": "#5b45c4",
+          "on_solid": "#ffffff",
+          "sticky": "#e0d9fd",
+          "zone": "#f7f5ff",
+          "zone_stroke": "#d6cef7"
+        },
+        "idea": {
+          "fill": "#fff8d1",
+          "stroke": "#9e8000",
+          "text": "#4a3b05",
+          "solid": "#8f6d00",
+          "on_solid": "#ffffff",
+          "sticky": "#fff0a0",
+          "zone": "#fffbe8",
+          "zone_stroke": "#ecdc8f"
+        },
+        "decision": {
+          "fill": "#e3f6f3",
+          "stroke": "#2c9a8a",
+          "text": "#0f433c",
+          "solid": "#0d7a6c",
+          "on_solid": "#ffffff",
+          "sticky": "#c3ece5",
+          "zone": "#f0faf8",
+          "zone_stroke": "#b4e0d8"
+        }
+      },
+      "author_chips": [
+        {"name": "indigo", "bg": "#3e5bd6", "fg": "#ffffff"},
+        {"name": "cyan", "bg": "#0b7285", "fg": "#ffffff"},
+        {"name": "pink", "bg": "#c2255c", "fg": "#ffffff"},
+        {"name": "lime", "bg": "#4d7c0f", "fg": "#ffffff"},
+        {"name": "plum", "bg": "#9c36b5", "fg": "#ffffff"},
+        {"name": "brown", "bg": "#8f5a2e", "fg": "#ffffff"},
+        {"name": "crimson", "bg": "#c92a2a", "fg": "#ffffff"},
+        {"name": "jade", "bg": "#18794e", "fg": "#ffffff"}
+      ],
+      "human_chip": {"name": "human", "bg": "#1c2024", "fg": "#ffffff"},
+      "shadow": {
+        "1": [
+          {"x": 0, "y": 1, "blur": 2, "color": "#101828", "alpha": 0.06},
+          {"x": 0, "y": 1, "blur": 3, "color": "#101828", "alpha": 0.1}
+        ],
+        "2": [
+          {"x": 0, "y": 2, "blur": 4, "color": "#101828", "alpha": 0.08},
+          {"x": 0, "y": 6, "blur": 12, "color": "#101828", "alpha": 0.12}
+        ],
+        "3": [{"x": 0, "y": 12, "blur": 32, "color": "#101828", "alpha": 0.16}]
+      }
+    },
+    "dark": {
+      "base": {
+        "canvas": "#111214",
+        "surface": "#1b1c20",
+        "ink": "#edeef0",
+        "ink_muted": "#a8adb5",
+        "line": "#8a8f98",
+        "grid": "#26282c",
+        "selection": "#9b8afb"
+      },
+      "tone": {
+        "neutral": {
+          "fill": "#1b1c20",
+          "stroke": "#7b818b",
+          "text": "#edeef0",
+          "solid": "#c9ccd2",
+          "on_solid": "#16181c",
+          "sticky": "#2b2e33",
+          "zone": "#17181b",
+          "zone_stroke": "#2e3136"
+        },
+        "info": {
+          "fill": "#122640",
+          "stroke": "#4a8fe0",
+          "text": "#c4dffd",
+          "solid": "#6aa8f5",
+          "on_solid": "#0a1a2e",
+          "sticky": "#1c3a60",
+          "zone": "#111b28",
+          "zone_stroke": "#1f3552"
+        },
+        "success": {
+          "fill": "#122d1e",
+          "stroke": "#3ea36a",
+          "text": "#bdebcf",
+          "solid": "#55c287",
+          "on_solid": "#0a1f13",
+          "sticky": "#1b4430",
+          "zone": "#101e17",
+          "zone_stroke": "#1e3b2b"
+        },
+        "warning": {
+          "fill": "#33200f",
+          "stroke": "#d27a33",
+          "text": "#fdd7b8",
+          "solid": "#f09450",
+          "on_solid": "#2a1405",
+          "sticky": "#553316",
+          "zone": "#22170e",
+          "zone_stroke": "#46301c"
+        },
+        "danger": {
+          "fill": "#3a1618",
+          "stroke": "#e0595d",
+          "text": "#fdcbcb",
+          "solid": "#f07a7d",
+          "on_solid": "#2e0a0c",
+          "sticky": "#5a2427",
+          "zone": "#261314",
+          "zone_stroke": "#4c2224"
+        },
+        "accent": {
+          "fill": "#231d44",
+          "stroke": "#8f7ce6",
+          "text": "#dcd5fe",
+          "solid": "#a896f7",
+          "on_solid": "#1a1240",
+          "sticky": "#352c69",
+          "zone": "#1a1730",
+          "zone_stroke": "#342d5c"
+        },
+        "idea": {
+          "fill": "#2e2708",
+          "stroke": "#b79a1c",
+          "text": "#f6e7a3",
+          "solid": "#dcc049",
+          "on_solid": "#221c00",
+          "sticky": "#4c410f",
+          "zone": "#201c0b",
+          "zone_stroke": "#43391a"
+        },
+        "decision": {
+          "fill": "#0f2d29",
+          "stroke": "#34a797",
+          "text": "#b5ebe2",
+          "solid": "#4cc6b4",
+          "on_solid": "#062420",
+          "sticky": "#18453f",
+          "zone": "#0f1f1d",
+          "zone_stroke": "#1c3d38"
+        }
+      },
+      "author_chips": [
+        {"name": "indigo", "bg": "#9aabff", "fg": "#0d1433"},
+        {"name": "cyan", "bg": "#66d0e3", "fg": "#032a31"},
+        {"name": "pink", "bg": "#f59ac0", "fg": "#3a0a1d"},
+        {"name": "lime", "bg": "#a6d86a", "fg": "#18290a"},
+        {"name": "plum", "bg": "#dba2ef", "fg": "#2f0d38"},
+        {"name": "brown", "bg": "#e0b48c", "fg": "#2e1a0a"},
+        {"name": "crimson", "bg": "#ff9d9d", "fg": "#3b0b0b"},
+        {"name": "jade", "bg": "#7bd6a8", "fg": "#082a1b"}
+      ],
+      "human_chip": {"name": "human", "bg": "#edeef0", "fg": "#1c2024"},
+      "shadow": {
+        "1": [
+          {"x": 0, "y": 1, "blur": 2, "color": "#000000", "alpha": 0.4},
+          {"x": 0, "y": 1, "blur": 3, "color": "#000000", "alpha": 0.3}
+        ],
+        "2": [
+          {"x": 0, "y": 2, "blur": 4, "color": "#000000", "alpha": 0.45},
+          {"x": 0, "y": 6, "blur": 12, "color": "#000000", "alpha": 0.5}
+        ],
+        "3": [{"x": 0, "y": 12, "blur": 32, "color": "#000000", "alpha": 0.6}]
+      }
+    }
+  }
+}

@@ -50,18 +50,22 @@ class Checks(unittest.TestCase):
         self.assertEqual(K.problems([dict(box, text=""), text]), [], "text on an unlabelled shape is its label")
 
     def test_a_label_bigger_than_its_shape_gets_the_size_it_needs(self):
+        # A box drawn before 0.22 at a fixed size too small for its label (0.22 shapes grow to fit when drawn).
         door = el("E-1", "box", 0, 0, 40, 60, "door")
         [problem] = K.problems([door])
         self.assertEqual(problem["code"], "label_overflow")
-        self.assertEqual({k: problem["fix"][k] for k in ("id", "w", "h")}, {"id": "E-1", "w": 60, "h": 60})
-        self.assertIsNone(K.label_room(dict(door, w=60)))
+        need = K.label_room(door)
+        self.assertEqual({k: problem["fix"][k] for k in ("id", "w", "h")}, {"id": "E-1", "w": need[0], "h": 60})
+        self.assertGreater(need[0], 40)
+        self.assertIsNone(K.label_room(dict(door, w=need[0])))
+        self.assertIsNone(K.label_room(dict(door, w=need[0], h=60, fit={"policy": "hug", "min": [40, 60], "size": 20, "lines": ["door"]})))
         sun = el("E-2", "ellipse", 0, 0, 60, 60, "the warm afternoon sun")
         need = K.label_room(sun)
         self.assertIsNone(K.label_room(dict(sun, w=need[0], h=need[1])), "the size it asks for is enough")
 
     def test_frame_edge_grows_the_frame_or_moves_the_mark_in(self):
         frame = el("E-1", "frame", 100, 100, 400, 300, "Home")
-        low = el("E-2", "text", 280, 370, 100, 50, "A cozy home", frame=None)
+        low = el("E-2", "text", 280, 370, 100, 50, "A cozy home", frame=None, wrap=True)
         [problem] = K.problems([frame, low])
         self.assertEqual(problem["code"], "frame_edge")
         self.assertIn("past its bottom edge", problem["message"])
@@ -79,7 +83,7 @@ class Checks(unittest.TestCase):
     def test_an_arrow_through_a_mark_it_does_not_connect(self):
         a = el("E-1", "box", 0, 0, 100, 60, "A")
         b = el("E-2", "box", 400, 0, 100, 60, "B")
-        wall = el("E-3", "box", 200, -20, 60, 100, "wall")
+        wall = el("E-3", "box", 200, -20, 80, 100, "wall")
         arrow = el("E-4", "arrow", 100, 30, 300, 1, "", points=[[100, 30], [400, 30]], **{"from": "E-1", "to": "E-2"})
         self.assertEqual(codes(K.problems([a, b, wall, arrow])), [("arrow_through", ["E-4", "E-3"])])
         around = dict(arrow, points=[[100, 30], [150, 30], [150, 140], [400, 140], [400, 30]], h=110)
@@ -121,7 +125,10 @@ class OnACanvas(CanvasRig):
         # The live test's house (2026-09-26/27), with the problems Haiku left in it and a few more.
         self.apply(HOUSE)
         first = C.check(self.layout, self.team, WORKER.name)["problems"]
-        self.assertEqual(sorted({p["code"] for p in first}), ["frame_edge", "label_overflow", "overlap"])
+        # 0.22: every shape was sized for its label when drawn, so none overflows; what is left is placement.
+        # The sun that grew into the walls moved to the nearest free spot and its frame grew to hold it (QA F-2),
+        # so nothing sticks out of the frame any more.
+        self.assertEqual(sorted({p["code"] for p in first}), ["overlap", "text_on_label"])
         for _ in range(10):
             found = C.check(self.layout, self.team, WORKER.name)["problems"]
             fixes = [p["fix"] for p in found if p["fix"]]
@@ -134,7 +141,7 @@ class OnACanvas(CanvasRig):
     def test_check_scopes_and_look_ends_with_the_list(self):
         self.apply(HOUSE)
         result = C.check(self.layout, self.team, WORKER.name, around="E-4")
-        self.assertIn("label_overflow", {p["code"] for p in result["problems"]})
+        self.assertIn("overlap", {p["code"] for p in result["problems"]})
         self.assertEqual(C.check(self.layout, self.team, WORKER.name, region="c100r100:c110r110")["problems"], [], "nothing out there")
         self.assertIn("apply a fix: herdr-synapse canvas draw --op", result["text"])
         self.assertEqual(C.check(self.layout, self.team, "alpha-reviewer", mine=True)["problems"], [])

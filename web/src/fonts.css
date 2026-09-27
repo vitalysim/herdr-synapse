@@ -1,0 +1,59 @@
+/* The bundled fonts (assets/fonts/, the same files the Python side measures and resvg draws).
+   Vite hashes each file into dist/assets/; nothing loads from a CDN.
+
+   "Synapse Sans" / "Synapse Mono" are the page chrome's families.
+
+   "Helvetica" is Excalidraw's font family 2, the only one it registers no FontFace for (its
+   metadata marks it local:). Declaring it here makes the canvas draw and measure family-2 text
+   in Inter, so `font: normal` on the page uses the font herdr_team/canvas_text.py measured. One
+   face only: Excalidraw canvas text carries no weight, so it is the weight the Python metrics
+   measure labels in (canvas_text.DEFAULT_WEIGHT, Inter Medium, design spec 9.2), declared as the
+   family's normal face. */
+
+@font-face {
+  font-family: "Helvetica";
+  src: url("../../assets/fonts/inter/Inter-Medium.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "Synapse Sans";
+  src: url("../../assets/fonts/inter/Inter-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "Synapse Sans";
+  src: url("../../assets/fonts/inter/Inter-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "Synapse Sans";
+  src: url("../../assets/fonts/inter/Inter-SemiBold.ttf") format("truetype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "Synapse Sans";
+  src: url("../../assets/fonts/inter/Inter-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "Synapse Mono";
+  src: url("../../assets/fonts/geist-mono/GeistMono-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}

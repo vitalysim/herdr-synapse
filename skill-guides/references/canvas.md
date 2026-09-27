@@ -11,6 +11,9 @@ it, and everyone reads it back as text and as a picture.
 - Claim a region first, draw inside it, release it when you are done.
 - Compose: frames, shapes, arrows and labels first; freehand (`pen`) for
   emphasis and gesture; charts and graphs from data, never by hand.
+- Colour by meaning: `tone` neutral, info, success, warning, danger, accent
+  ("look here"), idea (the default note) or decision, and `variant` soft,
+  solid or outline. A hex `color`/`fill` only when no tone says it.
 - Every drawing has a text label, and no text overlaps other text.
 - Check after drawing anything meant for others; fix what it lists.
 - Point with comments and `@mentions`, never with "this" or "that". A comment
@@ -39,11 +42,11 @@ and a region is two corners, `c10r4:c40r22`. Place with `at`, `right_of`,
 `left_of`, `below`, `above` (with `gap`, default 40) or `inside` a frame; with
 none, the element goes in your own home area. Your `id` is an alias for you;
 the reply maps it to the canonical id (`E-3`). Every op carries an `intent`,
-one line saying why. The reply lists what was applied, what was refused and
-why (`canvas_locked`, `element_not_yours`, `canvas_limit`...), and warnings
-such as `overlap`, `inside_claim` or `frame_edge` (it crosses a frame's edge:
-move it inside or grow the frame). A text's `w` is the width it wraps at; its
-height is what its lines need, so read its bounds in the reply.
+one line saying why. Shapes grow to fit their label, so `w`/`h` are a
+minimum (a text's `w` is the width it wraps at); the reply's `geometry` gives
+each sized element's real bounds. It also lists what was refused and why
+(`canvas_locked`, `element_not_yours`...), and warnings such as `overlap`,
+`inside_claim`, `frame_edge` or `moved_to_fit` (a label made way for another).
 
 `look` lists what is in view with ids, bounds, text, connections, authors and
 intents; `--image` adds a PNG with the ids drawn on. Read both.
@@ -63,30 +66,28 @@ again, repeat. Then `look --image` for a last pass if you can read images.
 {"ops": [
   {"op": "claim", "region": "c10r4:c40r22", "label": "mapping churn drivers", "intent": "tell others where I work"},
   {"op": "frame", "id": "drivers", "title": "Churn drivers", "at": "c10r4", "w": 600, "h": 360, "intent": "group the drivers"},
-  {"op": "shape", "id": "price", "kind": "note", "text": "Price rise in March", "inside": "drivers", "intent": "the biggest driver"},
+  {"op": "shape", "id": "price", "kind": "note", "text": "Price rise in March", "tone": "danger", "inside": "drivers", "intent": "the biggest driver"},
   {"op": "shape", "id": "onboard", "kind": "note", "text": "Slow onboarding", "right_of": "price", "gap": 60, "intent": "second driver"},
   {"op": "arrow", "from": "price", "to": "onboard", "label": "worsens", "intent": "price makes onboarding churn worse"},
   {"op": "pen", "points": ["c11r5", "c19r4", "c22r9", "c15r12", "c10r9", "c11r5"], "color": "red", "intent": "circle the main driver"},
   {"op": "comment", "at": "price", "text": "@skeptic 38% of churn in the cohort; see F-12", "intent": "ask for a check"}]}
 ```
 
-2. Illustrations: SVG markup, cleaned of scripts, links and outside
-   references; `sketchy` roughens it to match the hand-drawn look.
+2. Illustrations: SVG markup, cleaned of scripts, links and outside references.
 
 ```json
-{"op": "svg", "title": "Funnel", "svg": "<svg viewBox='0 0 100 60'><path d='M0 0H100L70 60H30Z' fill='#a5d8ff'/></svg>", "right_of": "drivers", "sketchy": true, "intent": "show the funnel shape"}
+{"op": "svg", "title": "Funnel", "svg": "<svg viewBox='0 0 100 60'><path d='M0 0H100L70 60H30Z' fill='#a5d8ff'/></svg>", "right_of": "drivers", "intent": "show the funnel shape"}
 ```
 
-3. Structure: `graph` lays nodes out for you; a `mermaid` flowchart becomes
-   native shapes, other Mermaid diagrams render on the operator's page.
+3. Structure: `graph` sizes each node to its label and lays them out; a
+   `mermaid` flowchart becomes native shapes (others render on the page).
 
 ```json
 {"op": "graph", "id": "steps", "title": "Order of work", "direction": "right", "below": "drivers", "nodes": [{"id": "a", "text": "Collect"}, {"id": "b", "text": "Clean"}, {"id": "c", "text": "Report"}], "edges": [{"from": "a", "to": "b"}, {"from": "b", "to": "c"}], "intent": "the order of work"}
 {"op": "mermaid", "title": "Signup flow", "source": "flowchart TD\n  A[Visit] --> B{Signs up?}\n  B -- yes --> C[Active]\n  B -- no --> D[Lost]", "intent": "where users drop"}
 ```
 
-4. Data: a Vega-Lite `chart` over a file in the team's `artifacts/`; a spec
-   may not name a URL.
+4. Data: a Vega-Lite `chart` over a file in `artifacts/` (no URLs in a spec).
 
 ```json
 {"op": "chart", "title": "Monthly churn", "data": "churn.csv", "spec": {"mark": "line", "encoding": {"x": {"field": "month", "type": "temporal"}, "y": {"field": "rate", "type": "quantitative"}}}, "intent": "show the trend"}
@@ -103,8 +104,7 @@ again, repeat. Then `look --image` for a last pass if you can read images.
 {"op": "viz", "title": "Churn over time", "libs": ["d3"], "data_path": "churn.json", "html": "<svg id=s viewBox='0 0 480 360'></svg><script>synapse.onData(d => d3.select('#s').selectAll('circle').data(d).join('circle').attr('cx', (r, i) => 20 + i * 30).attr('cy', r => 300 - r.rate * 5).attr('r', 6))</script>", "intent": "animate the churn trend"}
 ```
 
-   Teammates see a viz as its title and a still picture; say in a label what
-   it shows, so it reads without running.
+   Teammates see a viz as its title and a still: say in a label what it shows.
 
 ## Working together
 

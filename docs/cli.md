@@ -2236,13 +2236,13 @@ post, and secrets or marker text refuse):
 
 | `op` | Does | Who |
 | --- | --- | --- |
-| `shape` | box, ellipse, diamond, note or text (`kind`, `text`, placement, `w`, `h`, style); a text's `w` is the width it wraps at and its height follows its lines | writer |
+| `shape` | box, ellipse, diamond, note or text (`kind`, `text`, placement, `w`, `h`, style); sized from its label before it is placed, so `w`/`h` are its minimum (0.22); a text's `w` is the width it wraps at and its height follows its lines | writer |
 | `arrow` | `from`/`to` element or point, `label`, `head`, `tail`, `curve`; or `points` | writer |
 | `frame` | a titled frame: placement + size, `children`, or a `region` | writer |
 | `pen` | a freehand stroke: 2..500 `points` (cells or coordinates, optional pressure), `closed`, `style` smooth/straight | writer |
 | `path` | SVG path data (commands and numbers only), `scale` | writer |
 | `svg` | sanitised SVG markup ≤ 100 KB, `sketchy` | writer |
-| `graph` | nodes and edges laid out (`layered`, `radial`, `force`, `grid`) as native shapes | writer |
+| `graph` | nodes (`id`, `text`, `kind`, `tone`, `color`, `fill`) and edges laid out (`layered`, `radial`, `force`, `grid`) as native shapes, each node sized from its label before layout | writer |
 | `mermaid` | a flowchart becomes native shapes; other diagrams render on the page | writer |
 | `chart` | a Vega-Lite spec over a file in the team's `artifacts/` (no `url`/`href` keys) | writer |
 | `viz` | HTML and JavaScript for a sealed frame (`libs` ⊆ d3, three, p5; `data` or `data_path`); `synapse.width`/`height` are the frame's size and a lone fixed-size `<canvas>` or `<svg>` is scaled to it; `viz_off` unless the team's viz is on | writer |
@@ -2250,7 +2250,7 @@ post, and secrets or marker text refuse):
 | `comment` | a pinned comment; `@name` and `mentions` post `canvas_sent` | writer |
 | `claim` / `release` | a five-minute region claim (three per author) | writer / own |
 | `legend` | a recorded convention (`symbol`, `meaning`), or `remove` | writer |
-| `move`, `restyle`, `edit`, `delete` | change elements (a text's `w` in a `move` sets the width it wraps at; an edit or a new size measures it again); `if_version` refuses `canvas_stale` | editor |
+| `move`, `restyle`, `edit`, `delete` | change elements (a `w`/`h` in a `move` is a labelled shape's new minimum, and a text's `w` the width it wraps at; an edit, a new size or a new font refits the label from the minimum, so a box can shrink back); `if_version` refuses `canvas_stale` | editor |
 | `portrait` | the author's plan as a frame of steps in its home | self |
 | `resolve` | close a comment | its author, a mentioned member, manager, operator |
 | `lock` / `unlock` | an operator region lock | operator |
@@ -2264,20 +2264,68 @@ refuse `canvas_locked`; inside another author's claim they apply with a
 element that crosses a frame's edge a `frame_edge` warning. `inside` a
 frame (on a new element or a `move`) makes the element its child; the frame
 grows to fit only for its editor and never into a lock, so placing something
-too big inside someone else's frame refuses `element_not_yours`.
+too big inside someone else's frame refuses `element_not_yours`. A shape that
+grew to fit its label past the frame it was placed in grows that frame too,
+and every frame around it in turn, where its author may (0.22). A frame with no
+room left takes a new child in the next row below, or in a new column to its
+right when that keeps it nearer square. A new label that would cover a
+neighbour only because one of them grew moves to the free spot nearest where
+it was put (its frame grows to hold it) with a `moved_to_fit` warning; a
+collision the op itself asked for is left to `check`. An unlabelled shape
+drawn over labelled ones goes under them, so its fill never hides their text.
+
+**Style** (on `shape`, `arrow`, `frame`, `pen`, `path`, `graph` and its
+nodes, `mermaid`, `restyle`): `tone` is `neutral`, `info`, `success`,
+`warning`, `danger`, `accent`, `idea` or `decision` and sets the stroke, fill
+and label colour together from the design tokens (`herdr_team/canvas_tokens.json`);
+`variant` is `soft` (a tint, the default), `solid` or `outline`. A note
+defaults to `idea`, everything else to `neutral`; authorship is not a colour
+(0.22). `color` is a name (read as its tone: `red` is `danger`) or `#rrggbb`
+(drawn as given), `fill` a name, `#rrggbb` or `none`; either wins over the
+tone in the same op. `width` 1, 2, 4 (`thin`, `bold`, `extra`), `dash`
+`solid`/`dashed`/`dotted`, `opacity` 10..100, `font` `normal` (the default,
+Inter), `code` (monospace) or `hand` (the legacy sketch font), `size` `s`,
+`m`, `l`, `xl` (16, 20, 28, 36), `rough` 0 (the default), 1 or 2.
+
+**Fit** (0.22). A labelled element stores how its label was fitted:
+`"fit": {"policy", "min": [w, h], "size", "lines": [...], "truncated", "estimated"}`.
+`policy` is `hug` for a box and a text (it grows on the 20-unit grid,
+wrapping at 320, or 240 for a graph node and 600 for a text; a paragraph
+wraps wider, up to 40 em, rather than stand as a tower), `shrink` for a
+note (the paper keeps its size and the text steps down to 14 before it grows;
+a note in a graph hugs instead, at its neighbours' size) and `scale_shape` for
+an ellipse or a diamond (it grows as a whole until its inscribed box holds the
+label). `min` is what the op asked for, or the kind's minimum (box and ellipse
+160x80, diamond 200x120, note 180x120, graph node 160x60, a graph note or
+diamond its shape's minimum); `size` is the size drawn (smaller than `style.size` only after
+`shrink`); `lines` are the lines `look`, `check` and the picture use;
+`estimated` says a character the bundled fonts lack (CJK, emoji) was
+estimated. Widths come from the bundled fonts' own metrics
+(`assets/fonts/font-metrics.json`), the files the page and resvg draw with.
+Lines break at spaces, then after `/ _ . - :` inside a long token, then
+between Chinese or Japanese characters, and mid-word only when no wider box is
+possible or the piece is wider than 24 em (480 at size 20): a long URL or
+identifier breaks rather than make a giant shape. Elements drawn before 0.22 have no `fit` and refit the next time
+their text, size or style changes.
 
 **Result** (`draw --json`, the MCP `structuredContent`, the page's `POST /ops`):
 
 ```json
 {"team":"alpha","version":44,"batch":"B-12","atomic":false,
- "applied":[{"index":0,"op":"claim","ids":["K-3"]},{"index":1,"op":"frame","ids":["E-2"],"alias":"drivers"}],
+ "applied":[{"index":0,"op":"claim","ids":["K-3"]},{"index":1,"op":"frame","ids":["E-2"],"alias":"drivers"},
+            {"index":2,"op":"shape","ids":["E-3"],"alias":"price",
+             "geometry":[{"id":"E-3","x":220,"y":120,"w":180,"h":120,"fit":{"policy":"shrink","size":20,"lines":2}}]}],
  "refused":[{"index":5,"op":"pen","code":"canvas_locked","message":"…","details":{"lock":"X-1"}}],
  "aliases":{"drivers":"E-2"},
  "warnings":[{"index":4,"code":"inside_claim","message":"…","ids":["E-5"]}],
  "notices":{"canvas_changed":51,"canvas_sent":[52]}}
 ```
 
-Exit 0 when at least one op applied; `canvas_refused` (1, details = the
+Each applied entry lists the `geometry` of every labelled element the op
+created or refitted (id, bounds, and `fit` as policy, drawn size and line
+count; `truncated` or `estimated` when true), at most 50, with
+`geometry_omitted` counting the rest; the text form prints
+`#2 shape E-3 → 180x120 (shrink, 2 lines)`. Exit 0 when at least one op applied; `canvas_refused` (1, details = the
 result) when every op was refused or an atomic batch was. Batch-level errors
 raise: `whiteboard_off`, `author_unverified`, `canvas_limit` (over 100 ops or
 512 KB), `canvas_rate` (over 300 ops, or 8 MB written to the log, a minute per
@@ -2289,7 +2337,8 @@ every touched element is logged whole) refuses `canvas_limit`
 **`look`** lists the region in full, the rest one line each, far clusters by
 author and direction, then the claims, locks, legend and the comments that
 mention the reader; `--since` adds the changes; `--image` renders a PNG with
-element ids (and `--grid` cell labels) through `resvg` when it is installed
+element ids (and `--grid` cell labels) through `resvg` when it is installed, drawn with the
+bundled Inter and Geist Mono at each label's stored lines
 (`image_error: "resvg_missing"` otherwise); `--exact` asks an open page for
 Excalidraw's own export (5 s, else the server render). JSON
 `{"team","version","reader","switch","region","region_cells","level","elements","elsewhere","clusters","omitted","since","changes","claims","locks","legend","comments_for_you","image","svg","image_error","exact","text"}`.
@@ -2300,8 +2349,10 @@ with the layout problems in view (at most 8; `canvas check` lists them all).
 for agents that cannot read images and for those that misjudge them:
 `overlap` (two marks partly on top of each other; one wholly inside another is
 a grouping), `text_on_label` (text lying on a labelled shape), `label_overflow`
-(a shape's label needs more room than the shape, measured as the renderer
-wraps it), `frame_edge` (a mark half inside a frame), `arrow_through` (an arrow
+(a shape's or a text's label needs more room than it has at the size it is
+drawn, measured with the bundled fonts; since 0.22 shapes grow to fit, so this
+finds elements drawn before that), `label_truncated` (a clamped label shows
+only part of its text), `frame_edge` (a mark half inside a frame), `arrow_through` (an arrow
 crossing a mark it does not connect) and `stray` (a mark 1500+ units from the
 rest). Each problem has `ids`, a `message`, `yours`, and `fix`: an operation
 that applies as it stands (`move … to` a free spot, a resize, a frame grown,

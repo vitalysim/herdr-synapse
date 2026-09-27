@@ -1,0 +1,993 @@
+{
+ "v": 1,
+ "about": "Labels for the page/server width comparison (canvas v2 item I7): each string with canvas_text's width at 20 px, font normal, weights 400 and 500 (SAFETY included). Regenerate after a metrics change; tests/test_canvas_text.py checks the numbers are current.",
+ "size": 20,
+ "font": "normal",
+ "safety": 1.03,
+ "strings": [
+  {
+   "text": "Checkout API",
+   "w400": 132.281,
+   "w500": 133.779,
+   "estimated": false
+  },
+  {
+   "text": "Payment service",
+   "w400": 162.044,
+   "w500": 164.237,
+   "estimated": false
+  },
+  {
+   "text": "Order database",
+   "w400": 151.231,
+   "w500": 152.82,
+   "estimated": false
+  },
+  {
+   "text": "Auth gateway",
+   "w400": 134.061,
+   "w500": 136.093,
+   "estimated": false
+  },
+  {
+   "text": "Inventory worker",
+   "w400": 165.715,
+   "w500": 168.17,
+   "estimated": false
+  },
+  {
+   "text": "Email queue",
+   "w400": 118.762,
+   "w500": 120.009,
+   "estimated": false
+  },
+  {
+   "text": "Search index",
+   "w400": 127.322,
+   "w500": 128.74,
+   "estimated": false
+  },
+  {
+   "text": "Recommendation engine",
+   "w400": 241.869,
+   "w500": 244.766,
+   "estimated": false
+  },
+  {
+   "text": "Billing reconciliation job",
+   "w400": 230.392,
+   "w500": 233.782,
+   "estimated": false
+  },
+  {
+   "text": "User profile cache",
+   "w400": 179.184,
+   "w500": 180.803,
+   "estimated": false
+  },
+  {
+   "text": "Internationalization",
+   "w400": 184.937,
+   "w500": 188.538,
+   "estimated": false
+  },
+  {
+   "text": "Internationalization and localization pipeline",
+   "w400": 424.905,
+   "w500": 431.323,
+   "estimated": false
+  },
+  {
+   "text": "Payment approved?",
+   "w400": 194.694,
+   "w500": 197.169,
+   "estimated": false
+  },
+  {
+   "text": "Is the cache warm?",
+   "w400": 188.77,
+   "w500": 190.56,
+   "estimated": false
+  },
+  {
+   "text": "Retry later?",
+   "w400": 110.725,
+   "w500": 112.596,
+   "estimated": false
+  },
+  {
+   "text": "Ship it?",
+   "w400": 71.054,
+   "w500": 72.18,
+   "estimated": false
+  },
+  {
+   "text": "Why not now?",
+   "w400": 138.819,
+   "w500": 140.508,
+   "estimated": false
+  },
+  {
+   "text": "WHY NOT NOW",
+   "w400": 157.316,
+   "w500": 158.181,
+   "estimated": false
+  },
+  {
+   "text": "DONE",
+   "w400": 58.521,
+   "w500": 58.662,
+   "estimated": false
+  },
+  {
+   "text": "TODO: write tests",
+   "w400": 172.776,
+   "w500": 174.788,
+   "estimated": false
+  },
+  {
+   "text": "Q3 revenue: $1.2M (+14%)",
+   "w400": 260.779,
+   "w500": 263.425,
+   "estimated": false
+  },
+  {
+   "text": "p99 latency 420 ms",
+   "w400": 194.151,
+   "w500": 196.193,
+   "estimated": false
+  },
+  {
+   "text": "99.95% uptime",
+   "w400": 149.078,
+   "w500": 151.271,
+   "estimated": false
+  },
+  {
+   "text": "3 retries, 5 s backoff",
+   "w400": 201.916,
+   "w500": 203.988,
+   "estimated": false
+  },
+  {
+   "text": "v2.21.0",
+   "w400": 69.947,
+   "w500": 71.567,
+   "estimated": false
+  },
+  {
+   "text": "2026-09-27",
+   "w400": 119.838,
+   "w500": 121.447,
+   "estimated": false
+  },
+  {
+   "text": "A cozy home where the whole team gathers on Fridays",
+   "w400": 536.334,
+   "w500": 540.951,
+   "estimated": false
+  },
+  {
+   "text": "Ask the designer whether the roof should be flat or pitched before we pick colours",
+   "w400": 804.175,
+   "w500": 811.507,
+   "estimated": false
+  },
+  {
+   "text": "front door with a brass knocker",
+   "w400": 305.369,
+   "w500": 308.457,
+   "estimated": false
+  },
+  {
+   "text": "the warm afternoon sun",
+   "w400": 232.504,
+   "w500": 235.16,
+   "estimated": false
+  },
+  {
+   "text": "old oak tree planted by grandpa",
+   "w400": 310.479,
+   "w500": 313.094,
+   "estimated": false
+  },
+  {
+   "text": "kitchen window",
+   "w400": 152.8,
+   "w500": 154.902,
+   "estimated": false
+  },
+  {
+   "text": "Small print: read the retention policy before exporting",
+   "w400": 520.542,
+   "w500": 526.809,
+   "estimated": false
+  },
+  {
+   "text": "Quarterly revenue target",
+   "w400": 239.073,
+   "w500": 242.432,
+   "estimated": false
+  },
+  {
+   "text": "Launch day",
+   "w400": 113.069,
+   "w500": 114.185,
+   "estimated": false
+  },
+  {
+   "text": "Big decision: move the launch to November",
+   "w400": 424.312,
+   "w500": 428.365,
+   "estimated": false
+  },
+  {
+   "text": "Everything on this board must stay readable",
+   "w400": 428.707,
+   "w500": 433.646,
+   "estimated": false
+  },
+  {
+   "text": "Footnote: numbers are preliminary and exclude refunds issued after the 25th of the month.",
+   "w400": 884.171,
+   "w500": 893.907,
+   "estimated": false
+  },
+  {
+   "text": "client -> server",
+   "w400": 149.34,
+   "w500": 151.1,
+   "estimated": false
+  },
+  {
+   "text": "server <- client",
+   "w400": 149.34,
+   "w500": 151.1,
+   "estimated": false
+  },
+  {
+   "text": "a => b",
+   "w400": 63.027,
+   "w500": 62.917,
+   "estimated": false
+  },
+  {
+   "text": "wait...",
+   "w400": 57.958,
+   "w500": 59.718,
+   "estimated": false
+  },
+  {
+   "text": "x -> y -> z",
+   "w400": 103.583,
+   "w500": 103.362,
+   "estimated": false
+  },
+  {
+   "text": "<- back",
+   "w400": 76.154,
+   "w500": 76.606,
+   "estimated": false
+  },
+  {
+   "text": "=> result",
+   "w400": 87.6,
+   "w500": 88.747,
+   "estimated": false
+  },
+  {
+   "text": "... and more",
+   "w400": 115.905,
+   "w500": 117.354,
+   "estimated": false
+  },
+  {
+   "text": "https://example.com/some/long/path/to/a/resource.html",
+   "w400": 548.827,
+   "w500": 558.674,
+   "estimated": false
+  },
+  {
+   "text": "https://github.com/herdrdev/herdr/discussions/2401",
+   "w400": 511.691,
+   "w500": 521.196,
+   "estimated": false
+  },
+  {
+   "text": "/opt/homebrew/bin/resvg",
+   "w400": 249.845,
+   "w500": 253.839,
+   "estimated": false
+  },
+  {
+   "text": "~/.config/herdr/agent-detection/claude.toml",
+   "w400": 432.288,
+   "w500": 439.661,
+   "estimated": false
+  },
+  {
+   "text": "herdr_team/canvas_text.py",
+   "w400": 263.274,
+   "w500": 267.991,
+   "estimated": false
+  },
+  {
+   "text": "src/detect/manifests/codex.toml",
+   "w400": 317.489,
+   "w500": 323.163,
+   "estimated": false
+  },
+  {
+   "text": "HERDR_SYNAPSE_RESVG",
+   "w400": 251.988,
+   "w500": 254.261,
+   "estimated": false
+  },
+  {
+   "text": "snake_case_identifier_name",
+   "w400": 272.015,
+   "w500": 276.37,
+   "estimated": false
+  },
+  {
+   "text": "camelCaseIdentifierName",
+   "w400": 251.455,
+   "w500": 254.965,
+   "estimated": false
+  },
+  {
+   "text": "SCREAMING_SNAKE_CASE",
+   "w400": 265.969,
+   "w500": 268.776,
+   "estimated": false
+  },
+  {
+   "text": "kebab-case-identifier-name",
+   "w400": 274.439,
+   "w500": 278.321,
+   "estimated": false
+  },
+  {
+   "text": "export HERDR_SYNAPSE_RESVG=/opt/homebrew/bin/resvg",
+   "w400": 583.972,
+   "w500": 591.073,
+   "estimated": false
+  },
+  {
+   "text": "SELECT count(*) FROM orders WHERE status = 'paid';",
+   "w400": 528.81,
+   "w500": 533.216,
+   "estimated": false
+  },
+  {
+   "text": "Mmmm Wwww",
+   "w400": 149.41,
+   "w500": 151.08,
+   "estimated": false
+  },
+  {
+   "text": "iiii llll",
+   "w400": 45.706,
+   "w500": 47.014,
+   "estimated": false
+  },
+  {
+   "text": "MMMMMMMMMM",
+   "w400": 186.084,
+   "w500": 187.995,
+   "estimated": false
+  },
+  {
+   "text": "WWWWWWWWWW",
+   "w400": 202.982,
+   "w500": 206.604,
+   "estimated": false
+  },
+  {
+   "text": "iiiiiiiiii",
+   "w400": 49.891,
+   "w500": 51.902,
+   "estimated": false
+  },
+  {
+   "text": "llllllllll",
+   "w400": 49.891,
+   "w500": 51.902,
+   "estimated": false
+  },
+  {
+   "text": "0123456789",
+   "w400": 122.142,
+   "w500": 124.083,
+   "estimated": false
+  },
+  {
+   "text": "!@#$%^&*()",
+   "w400": 120.633,
+   "w500": 122.614,
+   "estimated": false
+  },
+  {
+   "text": "{}[]<>/\\|",
+   "w400": 81.545,
+   "w500": 83.185,
+   "estimated": false
+  },
+  {
+   "text": "\"quoted\" 'text'",
+   "w400": 142.581,
+   "w500": 145.779,
+   "estimated": false
+  },
+  {
+   "text": "café résumé naïve",
+   "w400": 179.747,
+   "w500": 181.658,
+   "estimated": false
+  },
+  {
+   "text": "Ångström São Paulo Zürich",
+   "w400": 265.376,
+   "w500": 268.464,
+   "estimated": false
+  },
+  {
+   "text": "Straße Œuvre façade",
+   "w400": 206.946,
+   "w500": 209.068,
+   "estimated": false
+  },
+  {
+   "text": "Ελληνικά",
+   "w400": 93.263,
+   "w500": 95.124,
+   "estimated": false
+  },
+  {
+   "text": "Кириллица текст",
+   "w400": 170.493,
+   "w500": 173.3,
+   "estimated": false
+  },
+  {
+   "text": "ğüşöçİ",
+   "w400": 65.341,
+   "w500": 66.196,
+   "estimated": false
+  },
+  {
+   "text": "中文标签没有空格",
+   "w400": 164.8,
+   "w500": 164.8,
+   "estimated": true
+  },
+  {
+   "text": "日本語のラベル",
+   "w400": 144.2,
+   "w500": 144.2,
+   "estimated": true
+  },
+  {
+   "text": "한국어 라벨 텍스트",
+   "w400": 176.388,
+   "w500": 175.784,
+   "estimated": true
+  },
+  {
+   "text": "混合 mixed 文字 text",
+   "w400": 195.418,
+   "w500": 196.273,
+   "estimated": true
+  },
+  {
+   "text": "数据库连接池",
+   "w400": 123.6,
+   "w500": 123.6,
+   "estimated": true
+  },
+  {
+   "text": "東京タワー",
+   "w400": 103.0,
+   "w500": 103.0,
+   "estimated": true
+  },
+  {
+   "text": "🙂 smile",
+   "w400": 82.45,
+   "w500": 83.114,
+   "estimated": true
+  },
+  {
+   "text": "🚀 launch",
+   "w400": 96.402,
+   "w500": 97.196,
+   "estimated": true
+  },
+  {
+   "text": "✅ done",
+   "w400": 80.69,
+   "w500": 80.911,
+   "estimated": true
+  },
+  {
+   "text": "⚠️ warning",
+   "w400": 105.062,
+   "w500": 106.098,
+   "estimated": false
+  },
+  {
+   "text": "👩‍💻 dev",
+   "w400": 93.495,
+   "w500": 93.666,
+   "estimated": true
+  },
+  {
+   "text": "🇮🇱 flag",
+   "w400": 94.108,
+   "w500": 94.46,
+   "estimated": true
+  },
+  {
+   "text": "👍🏽 ok",
+   "w400": 80.952,
+   "w500": 80.952,
+   "estimated": true
+  },
+  {
+   "text": "★ star ☀ sun ✓ check",
+   "w400": 221.913,
+   "w500": 222.637,
+   "estimated": false
+  },
+  {
+   "text": "Tab\tseparated",
+   "w400": 158.403,
+   "w500": 158.986,
+   "estimated": false
+  },
+  {
+   "text": "  indented line",
+   "w400": 136.857,
+   "w500": 138.004,
+   "estimated": false
+  },
+  {
+   "text": "trailing space ",
+   "w400": 136.254,
+   "w500": 137.903,
+   "estimated": false
+  },
+  {
+   "text": "one",
+   "w400": 36.533,
+   "w500": 36.935,
+   "estimated": false
+  },
+  {
+   "text": "a",
+   "w400": 11.567,
+   "w500": 11.698,
+   "estimated": false
+  },
+  {
+   "text": "",
+   "w400": 0.0,
+   "w500": 0.0,
+   "estimated": false
+  },
+  {
+   "text": "ALPHA",
+   "w400": 68.539,
+   "w500": 69.414,
+   "estimated": false
+  },
+  {
+   "text": "Delta cache redis throughput retention decision delta cache",
+   "w400": 581.739,
+   "w500": 588.206,
+   "estimated": false
+  },
+  {
+   "text": "Queue kubernetes backend customer experiment beta",
+   "w400": 531.064,
+   "w500": 536.857,
+   "estimated": false
+  },
+  {
+   "text": "frontend backend latency throughput",
+   "w400": 363.246,
+   "w500": 368.024,
+   "estimated": false
+  },
+  {
+   "text": "Postgres latency",
+   "w400": 163.01,
+   "w500": 165.313,
+   "estimated": false
+  },
+  {
+   "text": "Frontend roadmap pricing alpha service database frontend roadmap pricing",
+   "w400": 738.079,
+   "w500": 746.026,
+   "estimated": false
+  },
+  {
+   "text": "alpha beta gamma delta epsilon service queue",
+   "w400": 452.365,
+   "w500": 456.741,
+   "estimated": false
+  },
+  {
+   "text": "Customer experiment beta queue kubernetes",
+   "w400": 441.361,
+   "w500": 446.421,
+   "estimated": false
+  },
+  {
+   "text": "Churn blocker epsilon",
+   "w400": 213.715,
+   "w500": 216.22,
+   "estimated": false
+  },
+  {
+   "text": "frontend",
+   "w400": 83.436,
+   "w500": 84.854,
+   "estimated": false
+  },
+  {
+   "text": "Alpha service database frontend roadmap pricing alpha service",
+   "w400": 617.427,
+   "w500": 624.458,
+   "estimated": false
+  },
+  {
+   "text": "Delta cache redis throughput retention decision",
+   "w400": 462.937,
+   "w500": 468.519,
+   "estimated": false
+  },
+  {
+   "text": "alpha beta gamma delta",
+   "w400": 233.007,
+   "w500": 235.22,
+   "estimated": false
+  },
+  {
+   "text": "Gateway kafka",
+   "w400": 144.854,
+   "w500": 146.574,
+   "estimated": false
+  },
+  {
+   "text": "Postgres latency onboarding hypothesis gamma worker postgres latency onboarding",
+   "w400": 828.959,
+   "w500": 838.736,
+   "estimated": false
+  },
+  {
+   "text": "frontend backend latency throughput budget roadmap customer",
+   "w400": 627.656,
+   "w500": 634.999,
+   "estimated": false
+  },
+  {
+   "text": "Throughput retention decision delta cache",
+   "w400": 413.207,
+   "w500": 418.246,
+   "estimated": false
+  },
+  {
+   "text": "Customer experiment beta",
+   "w400": 259.109,
+   "w500": 262.308,
+   "estimated": false
+  },
+  {
+   "text": "alpha",
+   "w400": 52.918,
+   "w500": 53.713,
+   "estimated": false
+  },
+  {
+   "text": "Hypothesis gamma worker postgres latency onboarding hypothesis gamma",
+   "w400": 736.108,
+   "w500": 744.668,
+   "estimated": false
+  },
+  {
+   "text": "Alpha service database frontend roadmap pricing",
+   "w400": 481.937,
+   "w500": 487.58,
+   "estimated": false
+  },
+  {
+   "text": "Queue kubernetes",
+   "w400": 179.596,
+   "w500": 181.719,
+   "estimated": false
+  },
+  {
+   "text": "Gateway kafka budget churn blocker epsilon gateway kafka budget",
+   "w400": 658.164,
+   "w500": 664.954,
+   "estimated": false
+  },
+  {
+   "text": "Frontend roadmap pricing alpha service",
+   "w400": 388.483,
+   "w500": 392.738,
+   "estimated": false
+  },
+  {
+   "text": "Throughput retention decision",
+   "w400": 294.405,
+   "w500": 298.559,
+   "estimated": false
+  },
+  {
+   "text": "Churn blocker epsilon gateway kafka budget churn blocker",
+   "w400": 576.649,
+   "w500": 582.735,
+   "estimated": false
+  },
+  {
+   "text": "Hypothesis gamma worker postgres latency onboarding",
+   "w400": 546.272,
+   "w500": 552.629,
+   "estimated": false
+  },
+  {
+   "text": "ALPHA KUBERNETES ONBOARDING DELTA",
+   "w400": 426.675,
+   "w500": 428.878,
+   "estimated": false
+  },
+  {
+   "text": "Delta cache",
+   "w400": 115.261,
+   "w500": 116.328,
+   "estimated": false
+  },
+  {
+   "text": "Queue kubernetes backend customer experiment beta queue kubernetes backend",
+   "w400": 803.159,
+   "w500": 811.527,
+   "estimated": false
+  },
+  {
+   "text": "Postgres latency onboarding hypothesis gamma",
+   "w400": 469.857,
+   "w500": 475.6,
+   "estimated": false
+  },
+  {
+   "text": "Frontend roadmap pricing",
+   "w400": 252.994,
+   "w500": 255.86,
+   "estimated": false
+  },
+  {
+   "text": "Customer experiment beta queue kubernetes backend customer experiment",
+   "w400": 744.105,
+   "w500": 752.524,
+   "estimated": false
+  },
+  {
+   "text": "Churn blocker epsilon gateway kafka budget",
+   "w400": 436.211,
+   "w500": 440.878,
+   "estimated": false
+  },
+  {
+   "text": "Alpha service",
+   "w400": 132.341,
+   "w500": 134.292,
+   "estimated": false
+  },
+  {
+   "text": "Delta cache redis throughput retention decision delta cache redis",
+   "w400": 635.774,
+   "w500": 642.784,
+   "estimated": false
+  },
+  {
+   "text": "Gateway kafka budget churn blocker",
+   "w400": 359.876,
+   "w500": 363.658,
+   "estimated": false
+  },
+  {
+   "text": "Postgres latency onboarding",
+   "w400": 280.021,
+   "w500": 283.562,
+   "estimated": false
+  },
+  {
+   "text": "Throughput retention decision delta cache redis throughput retention",
+   "w400": 673.322,
+   "w500": 681.912,
+   "estimated": false
+  },
+  {
+   "text": "Customer experiment beta queue kubernetes backend",
+   "w400": 531.204,
+   "w500": 536.978,
+   "estimated": false
+  },
+  {
+   "text": "Hypothesis gamma",
+   "w400": 187.17,
+   "w500": 189.494,
+   "estimated": false
+  },
+  {
+   "text": "Alpha service database frontend roadmap pricing alpha service database",
+   "w400": 712.772,
+   "w500": 720.718,
+   "estimated": false
+  },
+  {
+   "text": "Queue kubernetes backend customer experiment",
+   "w400": 482.34,
+   "w500": 487.822,
+   "estimated": false
+  },
+  {
+   "text": "Gateway kafka budget",
+   "w400": 219.438,
+   "w500": 221.802,
+   "estimated": false
+  },
+  {
+   "text": "Frontend roadmap pricing alpha service database frontend roadmap",
+   "w400": 665.366,
+   "w500": 672.407,
+   "estimated": false
+  },
+  {
+   "text": "Throughput retention decision delta cache redis",
+   "w400": 467.242,
+   "w500": 472.824,
+   "estimated": false
+  },
+  {
+   "text": "Churn blocker",
+   "w400": 137.923,
+   "w500": 139.583,
+   "estimated": false
+  },
+  {
+   "text": "Hypothesis gamma worker postgres latency onboarding hypothesis gamma worker",
+   "w400": 809.938,
+   "w500": 819.232,
+   "estimated": false
+  },
+  {
+   "text": "ALPHA KUBERNETES ONBOARDING DELTA KAFKA PRICING QUEUE",
+   "w400": 666.915,
+   "w500": 670.083,
+   "estimated": false
+  },
+  {
+   "text": "Delta cache redis throughput retention",
+   "w400": 375.377,
+   "w500": 379.994,
+   "estimated": false
+  },
+  {
+   "text": "Queue kubernetes backend",
+   "w400": 269.44,
+   "w500": 272.276,
+   "estimated": false
+  },
+  {
+   "text": "Postgres latency onboarding hypothesis gamma worker postgres latency",
+   "w400": 711.947,
+   "w500": 720.487,
+   "estimated": false
+  },
+  {
+   "text": "Frontend roadmap pricing alpha service database",
+   "w400": 483.828,
+   "w500": 488.999,
+   "estimated": false
+  },
+  {
+   "text": "Customer experiment",
+   "w400": 210.386,
+   "w500": 213.272,
+   "estimated": false
+  },
+  {
+   "text": "Churn blocker epsilon gateway kafka budget churn blocker epsilon",
+   "w400": 652.441,
+   "w500": 659.371,
+   "estimated": false
+  },
+  {
+   "text": "Alpha service database frontend roadmap",
+   "w400": 409.224,
+   "w500": 413.961,
+   "estimated": false
+  },
+  {
+   "text": "Delta cache redis",
+   "w400": 169.296,
+   "w500": 170.906,
+   "estimated": false
+  },
+  {
+   "text": "Gateway kafka budget churn blocker epsilon gateway kafka",
+   "w400": 583.579,
+   "w500": 589.725,
+   "estimated": false
+  },
+  {
+   "text": "Postgres latency onboarding hypothesis gamma worker",
+   "w400": 543.687,
+   "w500": 550.165,
+   "estimated": false
+  },
+  {
+   "text": "Throughput retention",
+   "w400": 206.845,
+   "w500": 210.033,
+   "estimated": false
+  },
+  {
+   "text": "Customer experiment beta queue kubernetes backend customer experiment beta",
+   "w400": 792.828,
+   "w500": 801.559,
+   "estimated": false
+  },
+  {
+   "text": "Hypothesis gamma worker postgres latency",
+   "w400": 429.261,
+   "w500": 434.38,
+   "estimated": false
+  },
+  {
+   "text": "Alpha service database",
+   "w400": 227.686,
+   "w500": 230.553,
+   "estimated": false
+  },
+  {
+   "text": "Queue kubernetes backend customer experiment beta queue kubernetes",
+   "w400": 713.315,
+   "w500": 720.97,
+   "estimated": false
+  },
+  {
+   "text": "Gateway kafka budget churn blocker epsilon",
+   "w400": 435.668,
+   "w500": 440.295,
+   "estimated": false
+  },
+  {
+   "text": "Frontend roadmap",
+   "w400": 180.28,
+   "w500": 182.242,
+   "estimated": false
+  },
+  {
+   "text": "Throughput retention decision delta cache redis throughput retention decision",
+   "w400": 760.882,
+   "w500": 770.438,
+   "estimated": false
+  },
+  {
+   "text": "Churn blocker epsilon gateway kafka",
+   "w400": 361.627,
+   "w500": 365.65,
+   "estimated": false
+  },
+  {
+   "text": "Hypothesis gamma worker",
+   "w400": 261.0,
+   "w500": 264.058,
+   "estimated": false
+  }
+ ]
+}

@@ -45,8 +45,10 @@ def _no_harness(argv: Sequence[str], cwd: Optional[str], env: Optional[Dict[str,
 
 
 _harnesses.RUN = _no_harness
-# resvg's arguments must not depend on the fonts of the machine running the tests.
+# resvg's arguments must not depend on the fonts of the machine running the tests, nor on this
+# checkout's path (the bundled fonts; tests that check them set the hook back to None).
 _canvas_render.FONT_DIRS = ()
+_canvas_render.BUNDLED_FONT_DIRS = ()
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 

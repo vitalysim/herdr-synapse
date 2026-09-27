@@ -112,13 +112,15 @@ class McpSession:
 # tools
 
 _OP_TABLE = (
-    "Ops (each needs intent): shape {kind box|ellipse|diamond|note|text, text, at|right_of|below|inside, w, h, color, fill; a text wraps at w}; "
+    "Ops (each needs intent): shape {kind box|ellipse|diamond|note|text, text, at|right_of|below|inside, w, h (minimums: shapes grow "
+    "to fit their label), tone neutral|info|success|warning|danger|accent|idea|decision, variant soft|solid|outline, color, fill; "
+    "a text wraps at w}; "
     "arrow {from, to (element or point), label}; frame {title, at+w+h | children | region}; "
     "pen {points [cells, \"x,y\" or [x,y]], closed, style smooth|straight, color}; path {d}; svg {svg}; "
-    "graph {nodes [{id,text}], edges [{from,to,label}], layout layered|radial|force|grid}; mermaid {source}; "
+    "graph {nodes [{id,text,kind,tone}], edges [{from,to,label}], layout layered|radial|force|grid}; mermaid {source}; "
     "chart {spec (Vega-Lite), data: a file under artifacts/}; viz {html, libs [d3,three,p5], title; draw to synapse.width x synapse.height}; image {path}; "
     "comment {at, text, mentions}; claim {region, label}; release {id}; legend {symbol, meaning}; "
-    "move {id|ids, to|by|right_of..., w, h}; restyle {id, color...}; edit {id, text}; delete {id}; "
+    "move {id|ids, to|by|right_of..., w, h}; restyle {id, tone, variant, color...}; edit {id, text}; delete {id}; "
     "portrait {steps, current}; undo {batch}. Places: cells c<col>r<row> (20 units), \"x,y\", or ids/aliases; "
     "an op's id is your alias for what it creates."
 )
@@ -164,7 +166,8 @@ def tool_definitions() -> List[Dict[str, Any]]:
         {"name": "canvas_draw",
          "description": ("Apply a batch of drawing operations in order (under about 40). Draw when a picture is clearer than text; claim "
                          "your region first; give every drawing a text label and every op an intent. Refused ops are listed with a "
-                         "reason; the rest still apply unless atomic. " + _OP_TABLE + " " + _EXAMPLE),
+                         "reason; the rest still apply unless atomic. Each applied entry lists the geometry of what it sized "
+                         "(id, x, y, w, h, fit), so you never guess how big a shape grew. " + _OP_TABLE + " " + _EXAMPLE),
          "inputSchema": schema({"ops": {"type": "array", "items": {"type": "object"}, "description": "the operations"},
                                 "atomic": {"type": "boolean", "description": "all or nothing"}}, ("ops",))},
         {"name": "canvas_comment",
