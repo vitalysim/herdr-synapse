@@ -154,7 +154,14 @@ create <team> [--charter "<text>" | --charter-file <path>] [--ref <path>]…
        [--from-workspace <id>] [--names plain] [--rename] [--steal] [--reuse]
 create <team> --new [--workspace] [--charter …] --spawn <role>:<harness>[/<profile>][:<cwd>]… [--names plain]
        --brief <name|role>="<Mission>"… [--model <role|kind>=<model>[@<effort>]]… [--unlisted]
+       [--canvas]
 ```
+
+- `--canvas` (0.21, the operator or a delegate): turn this team's whiteboard
+  canvas on before any member starts, so Claude Code and Codex members get the
+  canvas MCP tools at launch and every briefing mentions it. A canvas is per
+  team and off until turned on; without `--canvas`, `whiteboard team on`
+  turns it on later (members Synapse starts after that get the tools).
 
 - `--spawn <role>:<harness>[/<profile>]`: the harness is any kind Herdr can
   start; the profile is one of that harness's own named setups (section 9c,
@@ -2071,8 +2078,8 @@ JSON contract.
 | Level | Stored in | Default | Who flips it | Command |
 | --- | --- | --- | --- | --- |
 | the layer, this Herdr session | `<session>/features.json` `{"v":1,"whiteboard":{"enabled","by","via","at"}}` | **off** | the operator in person | `whiteboard enable` / `disable` |
-| one team's canvas | `team.json` `config.whiteboard.enabled` | on (absent = on) | the operator or a delegate | `whiteboard team on` / `off` |
-| one team's live visuals (`viz`) | `team.json` `config.whiteboard.viz` | on (absent = on) | the operator or a delegate | `whiteboard viz on` / `off` |
+| one team's canvas | `team.json` `config.whiteboard.enabled` | **off** (absent = off; only a literal `true` is on) | the operator or a delegate | `whiteboard team on` / `off`, `create --canvas` |
+| one team's live visuals (`viz`) | `team.json` `config.whiteboard.viz` | on (absent = on), inside a team whose canvas is on | the operator or a delegate | `whiteboard viz on` / `off` |
 | one agent's watch | `<session>/watch.json` | not watched | the operator in person | `watch` / `unwatch` |
 
 A team's canvas is on when the layer is on and its own switch is; its live
@@ -2110,8 +2117,11 @@ Anyone. JSON:
 A trusted human origin only (console, popup, a verified shell, outside
 Herdr); a delegate is refused `author_mismatch`, audited. `disable` also stops
 the page server and clears every watched pane's `team_doing` token, even when
-the layer was already off. When the effective switch of a team changes, that
-team's board gets one `whiteboard_state` record. JSON:
+the layer was already off. `enable` turns no team's canvas on: a canvas is
+per team (`whiteboard team on`, `create --canvas`, or `d` in `prefix+t`), so
+only a team whose own switch is on is announced. When the effective switch of
+a team changes, that team's board gets one `whiteboard_state` record; one
+saying its canvas came on wakes every member at its next idle. JSON:
 `{"enabled","changed","by","via","at","notices":{"<team>":<seq>},"server_stopped","tokens_cleared","warnings":[…]}`.
 
 ### `whiteboard team on|off` / `whiteboard viz on|off` (the operator or a delegate)

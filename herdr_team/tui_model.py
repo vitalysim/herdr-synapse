@@ -2496,6 +2496,9 @@ class PickerModel:
     swap_kind_index: int = 0
     #: A destructive action waiting for ``y``; mirrors ``ConsoleModel.pending_confirm``.
     pending_action: Optional["Intent"] = None
+    #: What ``n`` does instead of cancelling, for a question with two ways forward (a team of one
+    #: for an untrusted kind: ``y`` trusts it first, ``n`` goes ahead without); Esc still cancels.
+    pending_decline: Optional["Intent"] = None
     #: Terminal ids the operator watches (``activity.watched``), and whether the whiteboard layer is on
     #: (None when unknown); ``o`` toggles a watch and watched rows carry ``WATCH_MARK`` (0.21).
     watched: Set[str] = field(default_factory=set)
@@ -3003,12 +3006,20 @@ def picker_apply_key(model: PickerModel, key: str) -> Optional[Intent]:
         # ENTER is NOT yes: Enter opens the menu and picks the action, so a third Enter (or one held
         # key) would remove a member nobody meant to remove.
         pending = model.pending_action
+        decline = model.pending_decline
         if key in ("y", "Y"):
             model.pending_action = None
+            model.pending_decline = None
             model.status = None
             return pending
+        if key in ("n", "N") and decline is not None:
+            model.pending_action = None
+            model.pending_decline = None
+            model.status = None
+            return decline
         if key in ("n", "N", "ESC"):
             model.pending_action = None
+            model.pending_decline = None
             model.status = "cancelled"
             return None
         return None
@@ -4227,10 +4238,9 @@ def _team_header(model: PickerModel, node: PickerNode, width: int) -> str:
             label = "Mission missing: {}".format(", ".join(str(name) for name in missing))
             text += "  " + ("[! {}]".format(label) if model.ascii_only else "⚠ " + label)
     if model.watch_layer and degrade_level(width) < 2:
+        # Only the teams whose canvas was turned on say so; a canvas is off until then.
         switches = model.wb_teams.get(node.team) or {}
-        if not switches.get("canvas", True):
-            text += "  canvas off"
-        else:
+        if switches.get("canvas", False):
             text += "  canvas" + ("" if switches.get("viz", True) else " (live visuals off)")
     if degrade_level(width) < 2:
         manager = model.managers.get(node.team)

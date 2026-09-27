@@ -208,7 +208,7 @@ SYSTEM_EVENT_DELIVERY: Dict[str, Dict[str, Any]] = {
     "schedule_missed": {},
     "canvas_changed": {},  # one coalesced line per author per minute: awareness, drawing never wakes
     "canvas_sent": {"wake": "named", "toast": True},  # a canvas @mention or the operator's "send to member"
-    "whiteboard_state": {},  # the layer, a team's canvas or its viz switched: awareness
+    "whiteboard_state": {},  # the layer, a team's canvas or its viz switched: awareness, except a canvas that came on (canvas_came_on)
 }
 URGENT_SYSTEM_EVENTS = tuple(e for e, d in SYSTEM_EVENT_DELIVERY.items() if d.get("wake") == "all")
 NAMED_SYSTEM_EVENTS = tuple(e for e, d in SYSTEM_EVENT_DELIVERY.items() if d.get("wake") == "named")
@@ -1119,6 +1119,15 @@ def task_headline(member: Dict[str, Any], last_post: Optional[Dict[str, Any]], n
     return None
 
 
+def canvas_came_on(rec: Dict[str, Any]) -> bool:
+    """A ``whiteboard_state`` record saying the team's canvas just came on (``features.announce`` records before and after)."""
+    change = rec.get("whiteboard")
+    if not isinstance(change, dict):
+        return False
+    before, after = change.get("before"), change.get("after")
+    return isinstance(after, dict) and bool(after.get("on")) and not (isinstance(before, dict) and bool(before.get("on")))
+
+
 def nudge_text_for(name: str, seqs: Sequence[int], nonce: int) -> str:
     return nudge.nudge_text(name, list(seqs), nonce)
 
@@ -1135,8 +1144,9 @@ def interrupt_sender(pending: "Pending") -> str:
     return agents[0] if agents else "human"
 
 
-def briefing_lines_for(name: str, role: str, team: str, charter_headline: Optional[str], teammates: List[Tuple[str, str]], brief: Optional[str], cli_path: str) -> List[str]:
-    return list(nudge.briefing_lines(name, role, team, charter_headline, teammates, brief, cli_path))
+def briefing_lines_for(name: str, role: str, team: str, charter_headline: Optional[str], teammates: List[Tuple[str, str]], brief: Optional[str], cli_path: str,
+                       canvas: bool = False) -> List[str]:
+    return list(nudge.briefing_lines(name, role, team, charter_headline, teammates, brief, cli_path, canvas=canvas))
 
 
 def new_nonce() -> int:
@@ -3140,6 +3150,11 @@ class Daemon:
         out: List[Tuple[str, bool, bool]] = []
         if author == "system":
             event = rec.get("event")
+            if event == "whiteboard_state" and canvas_came_on(rec):
+                # A canvas that just came on is something every member can now do, so each hears of it at its
+                # next idle like an operator's post (found live on 2026-09-27: members never learned of it).
+                # Switching it off, or live visuals, stays awareness on the board.
+                out.extend((name, False, False) for name in agents(set()))
             if event in NAMED_SYSTEM_EVENTS:
                 # Addressed to particular members: each gets an ordinary nudge,
                 # every gate applying, so "you are at 90%, finish and compact"
@@ -4529,6 +4544,25 @@ class Daemon:
         else:
             self.log("{}: unknown job kind {!r}".format(team.name, kind))
 
+    def _canvas_on(self, team: TeamState) -> bool:
+        """Whether the team's whiteboard canvas is on now (the briefing says so); False when it cannot be read."""
+        from herdr_team import features as _features
+
+        try:
+            return bool(_features.team_switch(self.session, team.paths, team.roster).on)
+        except (HerdrTeamError, OSError, ValueError):
+            return False
+
+    def _canvas_briefing(self, team: TeamState, lines: List[str]) -> List[str]:
+        """The briefing as it goes out: the canvas line added or dropped by the switch *now*.
+
+        A team of one from ``prefix+t`` is created, then its canvas is turned on (a canvas is per team),
+        so the briefing queued at the join would otherwise miss the line it exists for.
+        """
+        line = nudge.CANVAS_BRIEFING.format(marker=nudge.MARKER_BRIEFING, cli=nudge.DEFAULT_CLI)
+        kept = [text for text in lines if text != line]
+        return kept + [line] if self._canvas_on(team) else kept
+
     def _enqueue_briefing(self, team: TeamState, member: Dict[str, Any], now: float) -> None:
         name = str(member["name"])
         charter = team.roster.get("charter") if isinstance(team.roster.get("charter"), dict) else None
@@ -4538,8 +4572,9 @@ class Daemon:
         teammates = [(str(m.get("name")), str(m.get("role") or ""), bool(m.get("manager")))
                      for m in team.members() if m.get("name") != name and m.get("kind") != "human"]
         brief = member.get("brief") if isinstance(member.get("brief"), str) else None
+        canvas = self._canvas_on(team)
         try:
-            lines = briefing_lines_for(name, str(member.get("role") or ""), team.name, headline, teammates, brief, self.cli_path)
+            lines = briefing_lines_for(name, str(member.get("role") or ""), team.name, headline, teammates, brief, self.cli_path, canvas=canvas)
         except (HerdrTeamError, ValueError) as err:
             # ``NudgeTextError`` is a ``ValueError``, not a ``HerdrTeamError``, and the
             # 400-char budget can genuinely overflow on long names with many teammates.
@@ -4547,7 +4582,7 @@ class Daemon:
             # left it silently unbriefed forever.
             self.log("{}: full briefing for {} did not fit ({}); falling back to the minimal one".format(team.name, name, err))
             try:
-                lines = briefing_lines_for(name, str(member.get("role") or ""), team.name, None, [], None, self.cli_path)
+                lines = briefing_lines_for(name, str(member.get("role") or ""), team.name, None, [], None, self.cli_path, canvas=canvas)
             except (HerdrTeamError, ValueError) as inner:
                 self.log("{}: cannot brief {} at all: {}".format(team.name, name, inner))
                 return
@@ -5056,7 +5091,9 @@ class Daemon:
             self._send_control(team, member, pending, snapshot, now)
             return
         interrupting = pending.kind == "nudge" and bool(decision.details.get("interrupt"))
-        if pending.kind in ("brief", "probe"):
+        if pending.kind == "brief":
+            lines = self._canvas_briefing(team, list(pending.lines or []))
+        elif pending.kind == "probe":
             lines = list(pending.lines or [])
         elif interrupting:
             lines = [interrupt_text_for(name, pending.seqs, new_nonce(), interrupt_sender(pending))]

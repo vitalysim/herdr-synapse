@@ -14,7 +14,7 @@ import re
 import unittest
 from unittest import mock
 
-from support import FAKE_AGENTS, PLUGIN_ROOT, TempState
+from support import FAKE_AGENTS, PLUGIN_ROOT, TempState, whiteboard_on
 from test_cmd_roster import env_no_daemon, json_out, live_api, run_cli
 
 from herdr_team import cli, cmd_misc, cmd_whiteboard, features, operator, render, roster, store
@@ -68,7 +68,7 @@ class LayerSwitchTests(Rig):
     def test_status_says_off_by_default_and_changes_nothing(self):
         payload = self.ok(self.human("whiteboard"))
         self.assertFalse(payload["session"]["enabled"])
-        self.assertEqual(payload["teams"]["alpha"]["enabled"], True, "a team is on by default; the layer gates it")
+        self.assertEqual(payload["teams"]["alpha"]["enabled"], False, "a team's canvas is off until turned on for it")
         self.assertEqual(payload["teams"]["alpha"]["on"], False)
         self.assertIsNone(payload["server"])
         self.assertEqual(payload["watched"], 0)
@@ -76,9 +76,19 @@ class LayerSwitchTests(Rig):
         code, out, err = run_cli(["whiteboard", "status"], env_no_daemon(self.ts), self.api)
         self.assertEqual(code, 0, err)
         self.assertIn("whiteboard: off for this Herdr session", out)
-        self.assertIn("team alpha: canvas on, waiting for the session switch", out)
+        self.assertIn("team alpha: canvas off (team switch; herdr-synapse --team alpha whiteboard team on)", out)
 
-    def test_the_operator_enables_it_once_and_every_team_is_told(self):
+    def test_enabling_alone_turns_no_teams_canvas_on_and_tells_nobody(self):
+        # Per team (the owner's call on 2026-09-27): the session switch is watch and the page.
+        payload = self.ok(self.human("whiteboard", "enable"))
+        self.assertTrue(payload["enabled"])
+        self.assertEqual(payload["notices"], {})
+        self.assertEqual(self.states(), [])
+        self.assertFalse(features.team_switch(self.ts.session, self.ts.team).on)
+
+    def test_the_operator_enables_it_once_and_every_team_with_a_canvas_is_told(self):
+        self.ok(self.human("whiteboard", "team", "on"))
+        self.assertEqual(self.states(), [], "a switch while the layer is off tells nobody")
         payload = self.ok(self.human("whiteboard", "enable"))
         self.assertTrue(payload["enabled"])
         self.assertTrue(payload["changed"])
@@ -112,6 +122,7 @@ class LayerSwitchTests(Rig):
             stop.assert_called_once()
             self.assertEqual(stop.call_args.args[1], "disabled")
             clear.assert_called_once()
+            self.ok(self.human("whiteboard", "team", "on"))
             self.ok(self.human("whiteboard", "enable"))
             payload = self.ok(self.human("whiteboard", "disable"))
         self.assertTrue(payload["changed"])
@@ -133,23 +144,24 @@ class LayerSwitchTests(Rig):
 
 
 class TeamSwitchTests(Rig):
-    def test_the_operator_switches_a_team_off_and_on_and_members_are_told(self):
+    def test_the_operator_switches_a_team_on_and_off_and_members_are_told(self):
         self.ok(self.human("whiteboard", "enable"))
-        payload = self.ok(self.human("whiteboard", "team", "off"))
+        payload = self.ok(self.human("whiteboard", "team", "on"))
         self.assertEqual(payload["changed"], ["enabled"])
-        self.assertFalse(payload["switch"]["on"])
+        self.assertTrue(payload["switch"]["on"])
         self.assertEqual(payload["by"], "operator")
         doc = store.read_json(self.ts.team.team_json)
-        self.assertIs(doc["config"]["whiteboard"]["enabled"], False)
-        self.assertIn("off for team alpha", self.states()[-1]["text"])
-        self.assertEqual(self.states()[-1]["seq"], payload["notice_seq"])
-        payload = self.ok(self.human("whiteboard", "team", "on"))
-        self.assertTrue(payload["switch"]["on"])
+        self.assertIs(doc["config"]["whiteboard"]["enabled"], True)
         self.assertIn("on for team alpha", self.states()[-1]["text"])
+        self.assertEqual(self.states()[-1]["seq"], payload["notice_seq"])
+        payload = self.ok(self.human("whiteboard", "team", "off"))
+        self.assertFalse(payload["switch"]["on"])
+        self.assertIn("off for team alpha", self.states()[-1]["text"])
         self.assertTrue(any(e["event"] == "whiteboard_switch" for e in self.audit()))
 
     def test_viz_is_on_by_default_and_opts_out_per_team(self):
         self.ok(self.human("whiteboard", "enable"))
+        self.ok(self.human("whiteboard", "team", "on"))
         self.assertTrue(features.team_switch(self.ts.session, self.ts.team).viz)
         payload = self.ok(self.human("whiteboard", "viz", "off"))
         self.assertEqual(payload["changed"], ["viz"])
@@ -296,7 +308,7 @@ class WhereTheSwitchShowsTests(Rig):
         self.assertIn("whiteboard: off", out.splitlines())
 
     def test_on_they_name_viz_the_version_and_the_reference(self):
-        features.set_layer(self.ts.session, True, "human", "cli")
+        whiteboard_on(self.ts.session, self.ts.team)
         with mock.patch("herdr_team.canvas.current_version", return_value=42):
             whiteboard = self.me()["whiteboard"]
             orient = self.ok(self.worker("orient"))["text"]
@@ -310,7 +322,7 @@ class WhereTheSwitchShowsTests(Rig):
         self.assertEqual(self.me()["whiteboard"]["line"], "whiteboard: off for this team")
 
     def test_a_broken_canvas_never_breaks_me(self):
-        features.set_layer(self.ts.session, True, "human", "cli")
+        whiteboard_on(self.ts.session, self.ts.team)
         with mock.patch("herdr_team.canvas.current_version", side_effect=ValueError("corrupt")):
             whiteboard = self.me()["whiteboard"]
         self.assertIsNone(whiteboard["version"])
@@ -320,7 +332,7 @@ class WhereTheSwitchShowsTests(Rig):
         listing = self.ok(self.worker("skill", "get", "--list"))
         self.assertNotIn("canvas", listing["references"])
         self.refused(self.worker("skill", "get", "--reference", "canvas"), "reference_unknown")
-        features.set_layer(self.ts.session, True, "human", "cli")
+        whiteboard_on(self.ts.session, self.ts.team)
         self.assertIn("canvas", self.ok(self.worker("skill", "get", "--list"))["references"])
         text = self.ok(self.worker("skill", "get", "--reference", "canvas"))["text"]
         self.assertIn("requests, never orders", text)

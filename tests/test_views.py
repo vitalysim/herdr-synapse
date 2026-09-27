@@ -4,7 +4,7 @@ from __future__ import annotations
 import unittest
 from unittest import mock
 
-from support import FAKE_AGENTS, TempState, fake_agent
+from support import FAKE_AGENTS, TempState, fake_agent, whiteboard_on
 from test_cmd_roster import env_no_daemon, json_out, live_api, run_cli
 
 from herdr_team import features, links, store, views
@@ -167,7 +167,7 @@ class TeamViewsTests(Rig):
         summary = {"version": 42, "elements": 18, "comments_open": 2, "claims_active": 1, "updated_at": "2026-09-26T19:40:02.123Z"}
         with mock.patch("herdr_team.canvas.summary", return_value=summary):
             self.assertIsNone(self.views()["canvas"])
-            features.set_layer(self.ts.session, True, "human", "cli")
+            whiteboard_on(self.ts.session, self.ts.team, via="cli")
             self.assertEqual(self.views()["canvas"], summary)
             features.set_team(self.ts.team, enabled=False)
             self.assertIsNone(self.views()["canvas"])
@@ -177,7 +177,7 @@ class TeamViewsTests(Rig):
 
         _work.work_jsonl(self.ts.team).write_bytes(b"{not json\n")
         store.write_json(self.ts.session.who_json, ["not", "a", "dict"])
-        features.set_layer(self.ts.session, True, "human", "cli")
+        whiteboard_on(self.ts.session, self.ts.team, via="cli")
         with mock.patch("herdr_team.facts.load", side_effect=OSError("gone")), \
                 mock.patch("herdr_team.mission.gather", side_effect=ValueError("bad")), \
                 mock.patch("herdr_team.canvas.summary", side_effect=OSError("unreadable scene")):

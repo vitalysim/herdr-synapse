@@ -77,9 +77,9 @@ def _first(model: PickerModel) -> str:
 
 
 def team_switches(model: PickerModel, team: str) -> Tuple[bool, bool]:
-    """``(canvas, live visuals)``: the team's own switches (absent = on)."""
+    """``(canvas, live visuals)``: the team's own switches (a canvas is off until turned on for the team; viz is on)."""
     row = model.wb_teams.get(team) or {}
-    return bool(row.get("canvas", True)), bool(row.get("viz", True))
+    return bool(row.get("canvas", False)), bool(row.get("viz", True))
 
 
 def options(model: PickerModel) -> List[Tuple[str, str]]:
@@ -96,22 +96,35 @@ def options(model: PickerModel) -> List[Tuple[str, str]]:
             out.append(("watch", "Watch {}: its sidebar row and the page show what it is doing{}".format(label, _first(model))))
     if kind == "agent" and target.get("running"):
         out.append(("solo", "Give {} a canvas of its own: a team of one{}".format(label, _first(model))))
+    kind_label = str(target.get("agent_kind") or "")
+    if kind == "member" and untrusted(model, kind_label):
+        out.append(("trust", "Trust {} so the notifier can type to {}: its briefing and the canvas news are held until then".format(kind_label, label)))
     team = str(target.get("team") or "")
     if team:
         canvas, viz = team_switches(model, team)
-        out.append(("team_canvas", "{} the canvas for team {}".format("Turn off" if canvas else "Turn on", team)))
+        out.append(("team_canvas", "Turn off the canvas for team {}".format(team) if canvas
+                    else "Turn on the canvas for team {} (only this team){}".format(team, _first(model))))
         if canvas:
             out.append(("team_viz", "{} live visuals for team {}".format("Turn off" if viz else "Turn on", team)))
     out.append(("open", "Open the whiteboard page in your browser{}".format(_first(model))))
     if layer_on(model):
         out.append(("layer_off", "Turn the whiteboard off for this session (nothing drawn is lost)"))
     else:
-        out.append(("layer_on", "Turn the whiteboard on for this session"))
+        out.append(("layer_on", "Turn the whiteboard on for this session (watch and the page; each team's canvas is turned on by itself)"))
     return out
 
 
 # --------------------------------------------------------------------------
 # keys
+
+
+def untrusted(model: PickerModel, kind: str) -> bool:
+    """A kind the notifier types nothing into in this session (``kinds.json``); False when unknown."""
+    return bool(kind) and model.trusted_kinds is not None and kind not in model.trusted_kinds
+
+
+def trust_step(kind: str, why: str) -> List[str]:
+    return ["kinds", "trust", kind, "--reason", why]
 
 
 def open_menu(model: PickerModel, node: Optional[PickerNode]) -> None:
@@ -122,6 +135,7 @@ def open_menu(model: PickerModel, node: Optional[PickerNode]) -> None:
     model.status = None
     model.error = None
     model.pending_action = None
+    model.pending_decline = None
 
 
 def steps_intent(model: PickerModel, steps: List[List[str]], done: str, **extra: Any) -> Intent:
@@ -155,6 +169,11 @@ def start(model: PickerModel, choice: str) -> Optional[Intent]:
         return watch_intent(model, True)
     if choice == "unwatch":
         return watch_intent(model, False)
+    if choice == "trust":
+        kind = str(target.get("agent_kind") or "")
+        label = str(target.get("label") or "")
+        return steps_intent(model, [trust_step(kind, "trusted from the teams view for {}".format(label))],
+                            "{} is trusted: the notifier can now type {}'s briefing and news once it is idle".format(kind, label))
     if choice == "solo":
         model.stage = "solo_name"
         model.error = None
@@ -162,8 +181,10 @@ def start(model: PickerModel, choice: str) -> Optional[Intent]:
         return None
     if choice == "team_canvas":
         canvas, _viz = team_switches(model, team)
-        value = "off" if canvas else "on"
-        return steps_intent(model, [["--team", team, "whiteboard", "team", value]], "the canvas is {} for team {}".format(value, team))
+        if canvas:
+            return steps_intent(model, [["--team", team, "whiteboard", "team", "off"]], "the canvas is off for team {}".format(team))
+        return steps_intent(model, _needs_layer(model, [["--team", team, "whiteboard", "team", "on"]]),
+                            "the canvas is on for team {} (only this team); its members are told at their next idle".format(team))
     if choice == "team_viz":
         _canvas, viz = team_switches(model, team)
         value = "off" if viz else "on"
@@ -171,10 +192,11 @@ def start(model: PickerModel, choice: str) -> Optional[Intent]:
     if choice == "open":
         return steps_intent(model, _needs_layer(model, [list(OPEN)]), "opened the whiteboard page")
     if choice == "layer_on":
-        return steps_intent(model, [list(ENABLE)], "the whiteboard is on: every team's canvas and live visuals are on unless switched off")
+        return steps_intent(model, [list(ENABLE)], "the whiteboard is on: watch any agent; turn on a team's canvas with d on its row")
     if choice == "layer_off":
         intent = steps_intent(model, [list(DISABLE)], "the whiteboard is off; nothing drawn was deleted")
         model.pending_action = intent
+        model.pending_decline = None
         model.status = "Turn the whiteboard off? The page closes and watching stops; nothing drawn is lost - y turns it off, n cancels"
         model.stage = "select"
         return None
@@ -218,6 +240,7 @@ def watch_offer(model: PickerModel, node: PickerNode) -> Optional[Intent]:
         model.error = "{} is not running; watch it once its agent is up".format(node.label)
         return None
     model.pending_action = watch_intent(model, True)
+    model.pending_decline = None
     model.status = "The whiteboard is off. Turn it on and watch {}? y turns it on and watches, n cancels".format(node.label)
     return None
 
@@ -298,23 +321,40 @@ def solo_key(model: PickerModel, key: str) -> Optional[Intent]:
             model.error = "the Mission is {} characters; the limit is {}".format(len(mission), tm.MAX_BRIEF_TOTAL_CHARS)
             return None
         model.solo_mission = mission
+        target = model.wb_target or {}
+        kind = str(target.get("agent_kind") or "")
+        if untrusted(model, kind):
+            # Nothing is typed into an untrusted kind, so the agent would never hear of its canvas
+            # (found live on 2026-09-27 with OpenCode on a fresh machine). Say so, and offer the fix.
+            yes = solo_intent(model, trust=True, clear=False)
+            no = solo_intent(model, trust=False)
+            model.pending_action, model.pending_decline = yes, no
+            model.stage = "select"
+            model.status = ("{} is not trusted for typed delivery in this Herdr session, so nothing can tell {} about its canvas. "
+                            "y trusts {} and creates the team, n creates it without telling it, Esc cancels").format(kind, target.get("label"), kind)
+            return None
         return solo_intent(model)
     tm.edit_key(tm._TextView(model), key)
     return None
 
 
-def solo_intent(model: PickerModel) -> Intent:
+def solo_intent(model: PickerModel, trust: bool = False, clear: bool = True) -> Intent:
+    """``create`` for a team of one, after ``kinds trust`` when ``trust``; its briefing tells it about the canvas."""
     target = model.wb_target or {}
     team = model.solo_team
     role, name = solo_member(model, team)
     create = ["create", team, "--member", "{}:{}:{}".format(target.get("pane_id"), role, name), "--brief", "{}={}".format(name, model.solo_mission)]
     kind = str(target.get("agent_kind") or "")
-    done = "{} has a canvas of its own in team {}; d opens the page".format(name, team)
-    if model.trusted_kinds is not None and kind and kind not in model.trusted_kinds:
-        done += ". It gets its briefing once you run: herdr-synapse kinds trust {}".format(kind)
-    model.solo_team = ""
-    model.solo_mission = ""
-    return steps_intent(model, _needs_layer(model, [create]), done, check_pane=str(target.get("pane_id") or ""),
+    canvas_on = ["--team", team, "whiteboard", "team", "on"]  # only this team: a canvas is per team
+    steps = ([trust_step(kind, "trusted from the teams view to brief {}".format(name))] if trust else []) + [create, canvas_on]
+    if untrusted(model, kind) and not trust:
+        done = "{} has a canvas of its own in team {}, but is not told until you run: herdr-synapse kinds trust {}".format(name, team, kind)
+    else:
+        done = "{} has a canvas of its own in team {}; its briefing tells it once it is idle; d opens the page".format(name, team)
+    if clear:
+        model.solo_team = ""
+        model.solo_mission = ""
+    return steps_intent(model, _needs_layer(model, steps), done, check_pane=str(target.get("pane_id") or ""),
                         terminal_id=str(target.get("terminal_id") or ""), focus="team:" + team)
 
 

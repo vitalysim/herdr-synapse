@@ -14,7 +14,7 @@ import os
 import unittest
 from unittest import mock
 
-from support import TempState, fake_agent
+from support import TempState, fake_agent, whiteboard_on
 from test_cmd_roster import env_no_daemon, json_out, live_api, run_cli
 import test_models as rigs
 
@@ -64,7 +64,7 @@ class LaunchArgsTests(unittest.TestCase):
     def setUp(self):
         self.ts = TempState()
         self.addCleanup(self.ts.cleanup)
-        features.set_layer(self.ts.session, True, "human", "cli")
+        whiteboard_on(self.ts.session, self.ts.team, via="cli")
         self.spec = spec_of(self.ts)
 
     def test_the_spec_names_this_checkout_the_socket_and_the_team_dir(self):
@@ -121,13 +121,14 @@ class FourPathsTests(unittest.TestCase):
         mock.patch("shutil.which", return_value="/bin/true").start()
         self.addCleanup(mock.patch.stopall)
 
-    def spawn(self):
+    def spawn(self, canvas=True):
         api = live_api()
         api.set_response("layout.apply", fill_layout)
         api.set_cli_result(["agent", "start"], {"type": "agent_started", "agent": fake_agent("w9:p1", "term_new", "codex", "delta-reviewer", launch_pending=False),
                                                 "argv": ["codex"]}, request_id="cli:agent:start")
         code, _payload, err = json_out(run_cli([
-            "--json", "create", "delta", "--new", "--workspace", "w9",
+            "--json", "create", "delta", "--new", "--workspace", "w9"] + (["--canvas"] if canvas else []) + [
+
             "--spawn", "reviewer:codex", "--spawn", "worker:claude", "--spawn", "scout:pi",
             "--brief", "reviewer=Review.", "--brief", "worker=Build.", "--brief", "scout=Scout.",
         ], env_no_daemon(self.ts), api))
@@ -146,6 +147,14 @@ class FourPathsTests(unittest.TestCase):
                 member.update(session=sessions[member["kind"]], cwd=str(self.ts.home), status="missing")
         store.write_json(paths.team_json, doc)
         return paths, roster.load_team(paths)
+
+    def test_a_team_created_without_canvas_starts_without_the_tools(self):
+        # A canvas is per team (2026-09-27): the layer alone gives a new team none, --canvas does.
+        features.set_layer(self.ts.session, True, "human", "cli")
+        argv = self.spawn(canvas=False)
+        self.assertEqual([mcp_tokens(kind, args) for kind, args in sorted(argv.items())], [[], [], []])
+        paths = self.ts.session.team("delta")
+        self.assertFalse(features.team_switch(self.ts.session, paths).on)
 
     def test_every_path_gives_the_same_flags_per_kind_while_the_canvas_is_on(self):
         features.set_layer(self.ts.session, True, "human", "cli")
@@ -257,14 +266,14 @@ class SwapLaunchTests(unittest.TestCase):
         return {"terminal_id": row["terminal_id"]}
 
     def test_a_swap_to_codex_starts_it_with_the_overrides(self):
-        features.set_layer(self.ts.session, True, "human", "cli")
+        whiteboard_on(self.ts.session, self.ts.team, via="cli")
         code, out, err = json_out(run_cli(["--json", "--team", "alpha", "swap", self.name, "--to", "codex"], env_no_daemon(self.ts), self.api))
         self.assertEqual(code, 0, (out, err))
         args = list(self.start.call_args.kwargs["args"])
         self.assertTrue(contains(args, features.mcp_launch_args("codex", spec_of(self.ts))), args)
 
     def test_a_dry_run_shows_the_flags_and_a_swap_while_off_has_none(self):
-        features.set_layer(self.ts.session, True, "human", "cli")
+        whiteboard_on(self.ts.session, self.ts.team, via="cli")
         code, out, err = json_out(run_cli(["--json", "--team", "alpha", "swap", self.name, "--to", "claude", "--dry-run"], env_no_daemon(self.ts), self.api))
         self.assertEqual(code, 0, err)
         self.assertTrue(contains(out["argv"], features.mcp_launch_args("claude", spec_of(self.ts))), out["argv"])
@@ -280,7 +289,7 @@ class RestartCarriesTheFlagsTests(unittest.TestCase):
     def setUp(self):
         self.ts = TempState()
         self.addCleanup(self.ts.cleanup)
-        features.set_layer(self.ts.session, True, "human", "cli")
+        whiteboard_on(self.ts.session, self.ts.team, via="cli")
         self.spec = spec_of(self.ts)
         self.session = {"claude": rigs.sess("k-1", "herdr:claude", "claude"), "codex": rigs.sess("c-1"),
                         "pi": {"source": "herdr:pi", "agent": "pi", "kind": "path", "value": "/tmp/pi-session.jsonl"}}
@@ -334,7 +343,7 @@ class NotifierRecheckTests(rigs.ControlRig):
         super().setUp()
         rigs.set_member(self.ts, rigs.MEMBER, session=rigs.sess("0199-reviewer"))
         self.d.scan_teams(force=True)
-        features.set_layer(self.ts.session, True, "human", "cli")
+        whiteboard_on(self.ts.session, self.ts.team, via="cli")
         self.spec = spec_of(self.ts)
 
     def restart(self, preserved, argv):

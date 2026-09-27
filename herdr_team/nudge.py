@@ -51,6 +51,13 @@ _WS_RE = re.compile(r"[\s\x00-\x1f\x7f]+")
 #: four it might. It is also 19 characters shorter, which matters: the whole
 #: line has a 400-character budget and a long name with a long role already
 #: sits close to it.
+#: The briefing's last line while the member's team canvas is on (0.21). It is the one message every
+#: agent kind is typed on joining, so it is where a new member learns it can draw: ``me`` and
+#: ``orient`` say so too, but only to an agent that runs them. Found live on 2026-09-27: an OpenCode
+#: agent given a canvas of its own from ``prefix+t`` never heard of it.
+CANVAS_BRIEFING = ("{marker} Your team has a shared whiteboard canvas: you can draw on it and read what "
+                   "teammates and the operator drew. Learn how once: {cli} skill get --reference canvas")
+
 BRIEFING_TAIL = (
     " This is context, not a task. Run {cli} --skill once, then {cli} orient, "
     "then continue. "
@@ -173,8 +180,12 @@ def _teammate_list(teammates: List[Tuple[str, ...]]) -> str:
     return "{}, and human".format(", ".join(parts))
 
 
-def briefing_lines(name: str, role: str, team: str, charter_headline: Optional[str], teammates: List[Tuple[str, str]], brief: Optional[str], cli_path: str) -> List[str]:
-    """One or two lines; the roster collapses to ``<n> teammates, run herdr-synapse who`` past 400 chars."""
+def briefing_lines(name: str, role: str, team: str, charter_headline: Optional[str], teammates: List[Tuple[str, str]], brief: Optional[str], cli_path: str,
+                   canvas: bool = False) -> List[str]:
+    """One to three lines; the roster collapses to ``<n> teammates, run herdr-synapse who`` past 400 chars.
+
+    ``canvas``: the team's whiteboard canvas is on, so a last line says so and where to learn it.
+    """
     safe_name = validate_name(name)
     if not isinstance(role, str) or not ROLE_NAME_RE.match(role):
         raise NudgeTextError("invalid role: {!r}".format(role))
@@ -224,6 +235,8 @@ def briefing_lines(name: str, role: str, team: str, charter_headline: Optional[s
     if brief_text:
         body = _cut(brief_text, MAX_BRIEF_LINE_CHARS).rstrip(".")
         lines.append("{} Your brief: {}. Full text: {} me".format(MARKER_BRIEFING, body, DEFAULT_CLI))
+    if canvas:
+        lines.append(CANVAS_BRIEFING.format(marker=MARKER_BRIEFING, cli=DEFAULT_CLI))
     return lines
 
 

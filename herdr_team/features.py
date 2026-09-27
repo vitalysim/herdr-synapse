@@ -6,9 +6,11 @@ section 3):
 * **The layer**, per Herdr session: ``<session>/features.json``
   ``{"v": 1, "whiteboard": {"enabled": bool, "by", "via", "at"}}``. Off by
   default; only the operator in person flips it.
-* **A team's canvas**: ``team.json`` ``config.whiteboard.enabled``. On by
-  default, so enabling the layer turns every team on; the operator or a
-  delegate switches one team off.
+* **A team's canvas**: ``team.json`` ``config.whiteboard.enabled``. Off by
+  default: the operator (or a delegate) turns it on for one team at a time,
+  so enabling the layer turns on watch and the page, never every team's
+  canvas (the owner's call on 2026-09-27: "per agent team - and not all
+  teams when we enable the feature").
 * **A team's live visuals** (``viz``: agent HTML and JavaScript in a sealed
   frame): ``config.whiteboard.viz``. On by default whenever the team's canvas
   is on; same authority as the team switch.
@@ -140,11 +142,11 @@ def require_layer(session: SessionPaths) -> None:
 
 
 def team_settings(doc: Any) -> Dict[str, Any]:
-    """``config.whiteboard`` of a ``team.json`` document with defaults: canvas on, viz on."""
+    """``config.whiteboard`` of a ``team.json`` document with defaults: canvas off until turned on for the team, viz on."""
     config = doc.get("config") if isinstance(doc, dict) and isinstance(doc.get("config"), dict) else {}
     raw = config.get(LAYER) if isinstance(config.get(LAYER), dict) else {}
     return {
-        "enabled": raw.get("enabled") is not False,
+        "enabled": raw.get("enabled") is True,
         "viz": raw.get("viz") is not False,
         "by": _text(raw.get("by")), "via": _text(raw.get("via")), "at": _text(raw.get("at")),
     }

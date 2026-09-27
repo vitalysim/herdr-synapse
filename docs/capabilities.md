@@ -701,8 +701,8 @@ In the teams view every manager is marked `★` in bold; team headers carry
 
 ## 5g. Whiteboard, canvas and watch (0.21.0)
 
-A visual layer, off until you turn it on. When on, every team gets a shared
-canvas that its agents and you draw on (Excalidraw on a local page), the page
+A visual layer, off until you turn it on. When on, each team whose canvas you
+turn on (per team, never all at once) gets a shared canvas that its agents and you draw on (Excalidraw on a local page), the page
 shows each team's work graph, fact map, topology, timeline and lanes, and
 watch shows what any flagged agent is doing, in the page and on its sidebar
 row. The command contract is [cli.md section 9n](cli.md#9n-whiteboard-canvas-and-watch-021).
@@ -1185,7 +1185,7 @@ Each row: do this, expect that.
 | C34 | with at least two supported agents in one team, type `!!all summarize your current task`; then inspect the board and each pane | the `!!` menu offers `all`; the console watches one seq per agent; each target has its own `direct` record and `typed` outcome; the line reaches working or muted agents, runtime dialog/draft/blocker/occupant checks still refuse per target, and an untrusted target kind refuses the whole fan-out before anything is written |
 
 | C35 | `herdr-synapse whiteboard status`; then from a member pane `herdr-synapse me` and `herdr-synapse canvas look` | `whiteboard: off for this Herdr session`; `me` says `whiteboard: off`; `canvas look` refuses `whiteboard_off` and writes nothing; `skill get --list` has no `canvas` |
-| C36 | `herdr-synapse whiteboard enable` from your shell; the same from a member pane | yours: each team's board gets a `whiteboard_state` line and `me` says `whiteboard: on · live visuals on`; the member's is refused `author_mismatch` and audited |
+| C36 | `herdr-synapse whiteboard enable` from your shell, then `--team <t> whiteboard team on`; the same from a member pane | yours: enabling alone tells no team; after `team on` only that team's board gets a `whiteboard_state` line, its members are nudged, and `me` there says `whiteboard: on · live visuals on`; the member's is refused `author_mismatch` and audited |
 | C37 | `prefix+a` | a popup flashes, the browser opens the page with the Canvas, Team, Activity and Diagrams tabs; `whiteboard status` shows the server as writable; over SSH, `whiteboard open` prints the URL and an `ssh -L` line instead |
 | C38 | ask a member to read `herdr-synapse skill get --reference canvas` and map the team's plan on the canvas | a claim appears, then frames, notes and arrows stream in with its name; `canvas look` from another member lists them with ids; the board gets at most one `canvas_changed` line per author per minute and nobody is nudged by drawing |
 | C39 | draw a box on the page, select it and "Send to…" a member with a note | the member gets one `canvas_sent` nudge with the text form and a PNG path, and its reply reads your box as `E-n box "…" by the operator` |

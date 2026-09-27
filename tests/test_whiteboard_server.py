@@ -29,7 +29,7 @@ from herdr_team import whiteboard_server as W
 from herdr_team.errors import HerdrTeamError
 from herdr_team.identity import Author
 
-from support import PLUGIN_ROOT, TempState
+from support import PLUGIN_ROOT, TempState, whiteboard_on
 
 
 def operator() -> Author:
@@ -237,7 +237,7 @@ class ServerCase(unittest.TestCase):
         self.addCleanup(self.ts.cleanup)
         self.layout = self.ts.layout
         if self.layer_on:
-            features.set_layer(self.ts.session, True, "human", "console")
+            whiteboard_on(self.ts.session, self.ts.team, via="console")
         self.static_root = Path(tempfile.mkdtemp(prefix="wb-static-"))
         self.addCleanup(lambda: __import__("shutil").rmtree(self.static_root, ignore_errors=True))
         self.dist = make_static(self.static_root)
@@ -635,7 +635,7 @@ class ApiTests(ServerCase):
         features.set_layer(self.ts.session, False, "human", "cli")
         layer = self.get("/api/teams/alpha/scene")
         self.assertEqual((layer.status, layer.json()["scope"]), (403, "session"))
-        features.set_layer(self.ts.session, True, "human", "cli")
+        whiteboard_on(self.ts.session, self.ts.team, via="cli")
         for path in ("/api/teams/nobody/scene", "/api/teams/Bad..Name/scene", "/api/teams/%2e%2e/scene"):
             response = self.get(path)
             self.assertEqual((response.status, response.json()["code"]), (404, "team_not_found"), path)
@@ -932,7 +932,7 @@ class RealCanvasTests(unittest.TestCase):
         self.ts = TempState()
         self.addCleanup(self.ts.cleanup)
         self.layout = self.ts.layout
-        features.set_layer(self.ts.session, True, "human", "console")
+        whiteboard_on(self.ts.session, self.ts.team, via="console")
         canvas.load_scene(self.ts.team)
         for patcher in (mock.patch.object(views, "team_views", return_value={}), mock.patch.object(activity, "cards", return_value=[]),
                         mock.patch.object(W, "POLL_S", 0.02)):
@@ -1101,7 +1101,7 @@ class LifecycleCase(unittest.TestCase):
         self.addCleanup(dist_patch.stop)
 
     def enable(self) -> None:
-        features.set_layer(self.ts.session, True, "human", "console")
+        whiteboard_on(self.ts.session, self.ts.team, via="console")
 
 
 class StatusAndIdleTests(LifecycleCase):
@@ -1137,7 +1137,7 @@ class StatusAndIdleTests(LifecycleCase):
         self.assertLess(server.idle_seconds(), 1.0, "closing a stream counts as activity")
         features.set_layer(self.ts.session, False, "human", "cli")
         self.assertEqual(server.exit_reason(60.0), "disabled")
-        features.set_layer(self.ts.session, True, "human", "cli")
+        whiteboard_on(self.ts.session, self.ts.team, via="cli")
         server.pending_signal = "stopped"
         self.assertEqual(server.exit_reason(60.0), "stopped")
         self.assertTrue(server.stop_event.is_set())
@@ -1437,7 +1437,7 @@ class BuiltPageTests(unittest.TestCase):
 
     def test_the_server_serves_the_real_build(self):
         with TempState() as ts:
-            features.set_layer(ts.session, True, "human", "console")
+            whiteboard_on(ts.session, ts.team, via="console")
             server = W.make_server(ts.layout, ts.env, static_dir=DIST)
             thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
             thread.start()

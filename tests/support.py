@@ -50,6 +50,17 @@ _canvas_render.FONT_DIRS = ()
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 
+
+def whiteboard_on(session: Any, *teams: Any, via: str = "cli") -> None:
+    """The whiteboard on for this session and each team's canvas turned on (0.21: a canvas is per team,
+    off until turned on for it, so turning the layer on alone gives a team no canvas)."""
+    from herdr_team import features
+
+    features.set_layer(session, True, "human", via)
+    for team in teams:
+        features.set_team(team, enabled=True, by="human", via=via)
+
+
 FAKE_TEAM = "alpha"
 FAKE_SLUG = "default"
 def identity_tokens(team: Optional[str], role: Optional[str], slot: Optional[int] = None) -> Dict[str, Any]:

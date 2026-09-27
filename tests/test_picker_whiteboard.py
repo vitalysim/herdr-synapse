@@ -50,7 +50,7 @@ class Menu(unittest.TestCase):
         self.assertEqual((intent.args["check_pane"], intent.args["terminal_id"]), ("w1:p3", "term_a"))
 
     def test_a_member_while_the_whiteboard_is_on(self):
-        model = model_for(layer=True)
+        model = model_for(layer=True, teams={"alpha": {"canvas": True, "viz": True}})
         menu_on(model, "member:alpha/alpha-worker")
         self.assertEqual(choices(model), ["watch", "team_canvas", "team_viz", "open", "layer_off"])
         self.assertFalse(any("first" in label for _choice, label in W.options(model)))
@@ -58,7 +58,7 @@ class Menu(unittest.TestCase):
         model = model_for(layer=True, watched={"term_w1"}, teams={"alpha": {"canvas": False, "viz": True}})
         menu_on(model, "member:alpha/alpha-worker")
         self.assertEqual(choices(model), ["unwatch", "team_canvas", "open", "layer_off"])
-        self.assertEqual(dict(W.options(model))["team_canvas"], "Turn on the canvas for team alpha")
+        self.assertEqual(dict(W.options(model))["team_canvas"], "Turn on the canvas for team alpha (only this team)")
         self.assertEqual(picker_apply_key(model, "1").args["steps"], [["unwatch", "term_w1"]])
 
     def test_a_team_row_and_no_row_at_all(self):
@@ -126,13 +126,15 @@ class TeamOfOne(unittest.TestCase):
         intent = picker_apply_key(model, "ENTER")
         name = roster.fit_member_name("codex-canvas", "codex-dev", tui_model.MAX_MEMBER_NAME_CHARS)
         self.assertEqual(intent.args["steps"], [["create", "codex-canvas", "--member", "w1:p3:codex-dev:" + name,
-                                                 "--brief", "{}={}".format(name, W.SOLO_MISSION)]])
+                                                 "--brief", "{}={}".format(name, W.SOLO_MISSION)],
+                                                ["--team", "codex-canvas", "whiteboard", "team", "on"]])  # only this team's canvas
         self.assertEqual(intent.args["focus"], "team:codex-canvas")
         self.assertIn("has a canvas of its own in team codex-canvas", intent.args["done"])
         self.assertNotIn("not trusted", intent.args["done"])
 
     def test_a_named_agent_keeps_its_name_and_the_whiteboard_goes_on_first(self):
         model = model_for()
+        model.trusted_kinds = {"claude", "codex", "gemini"}  # an untrusted kind asks first: test_canvas_awareness
         menu_on(model, "pane:w1:p2")  # gem, a gemini agent in no team
         picker_apply_key(model, "2")
         self.assertEqual(model.input, "gem-canvas")
@@ -146,8 +148,9 @@ class TeamOfOne(unittest.TestCase):
         self.assertIn("needs a Mission", model.error)
         type_line(model, "Draw   the plan ")
         intent = picker_apply_key(model, "ENTER")
-        self.assertEqual(intent.args["steps"], [ENABLE, ["create", "sketch-pad", "--member", "w1:p2:gemini-dev:gem", "--brief", "gem=Draw the plan"]])
-        self.assertIn("once you run: herdr-synapse kinds trust gemini", intent.args["done"])
+        self.assertEqual(intent.args["steps"], [ENABLE, ["create", "sketch-pad", "--member", "w1:p2:gemini-dev:gem", "--brief", "gem=Draw the plan"],
+                                                ["--team", "sketch-pad", "whiteboard", "team", "on"]])
+        self.assertIn("its briefing tells it once it is idle", intent.args["done"])
 
     def test_esc_walks_back_keeping_what_was_typed(self):
         model = model_for(layer=True)
@@ -187,7 +190,8 @@ class Tree(unittest.TestCase):
         tui_model.focus_node(model, "team:alpha")
         self.assertIn("d whiteboard", tui_model._tree_detail(model, tui_model.picker_tree(model)))
         model.wb_teams = {"alpha": {"canvas": False, "viz": True}}
-        self.assertTrue(any("canvas off" in line for line in tui_model.picker_lines(model, 120, 30)))
+        self.assertFalse(any(" canvas" in line for line in tui_model.picker_lines(model, 120, 30) if "alpha" in line),
+                         "a team whose canvas is off says nothing: that is the default")
         model = model_for(layer=False)
         lines = tui_model.picker_lines(model, 120, 30)
         self.assertIn("whiteboard off", lines[0])
@@ -303,7 +307,7 @@ class Running(unittest.TestCase):
 
     def test_the_model_reads_each_teams_switches_and_the_page(self):
         self.assertEqual(picker.whiteboard_state(None, {}), ({}, False))
-        features.set_team(self.ts.team, viz=False, by="human", via="cli")
+        features.set_team(self.ts.team, enabled=True, viz=False, by="human", via="cli")
         api = FakeApi()
         api.set_response("agent.list", {"type": "agent_list", "agents": [fake_agent("w1:p3", "term_a", "codex", None)]})
         api.set_response("tab.list", {"type": "tab_list", "tabs": []})

@@ -17,7 +17,7 @@ from unittest import mock
 from herdr_team import activity as A
 from herdr_team import features, identity, picker, store, tui_model
 from herdr_team.tui_model import Intent, picker_apply_key
-from support import FAKE_MEMBERS, FakeApi, TempState, fake_agent
+from support import FAKE_MEMBERS, FakeApi, TempState, fake_agent, whiteboard_on
 from test_cmd_roster import json_out, live_api, run_cli
 from test_daemon import make_daemon
 from test_tui_model import picker_model
@@ -371,6 +371,11 @@ class CanvasNoticeTests(unittest.TestCase):
             features.set_layer(self.ts.session, True, "human", "cli")
             self.clock.advance(31.0)
             self.d.flush_canvas_notices(self.d.now_ms())
+            flush.assert_not_called()  # the layer alone turns no team's canvas on
+            features.set_team(self.ts.team, enabled=True)
+            self.d.scan_teams(force=True)
+            self.clock.advance(31.0)
+            self.d.flush_canvas_notices(self.d.now_ms())
             self.assertEqual(flush.call_count, 1)
             self.assertEqual(flush.call_args[0][1].name, "alpha")
             self.clock.advance(10.0)
@@ -385,7 +390,8 @@ class CanvasNoticeTests(unittest.TestCase):
     def test_a_failing_canvas_is_logged_not_raised(self):
         from herdr_team import canvas
 
-        features.set_layer(self.ts.session, True, "human", "cli")
+        whiteboard_on(self.ts.session, self.ts.team)
+        self.d.scan_teams(force=True)
         with mock.patch.object(canvas, "flush_notices", side_effect=RuntimeError("boom")):
             self.d.flush_canvas_notices(self.d.now_ms())
         self.assertTrue(any("canvas notices failed: RuntimeError: boom" in line for line in self.d.logged), self.d.logged)

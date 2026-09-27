@@ -221,6 +221,7 @@ def refresh_rows(model: PickerModel, api: Any, layout: Optional[Layout]) -> None
     model.managers = fresh.managers
     model.watched, model.watch_layer = fresh.watched, fresh.watch_layer
     model.wb_teams, model.wb_page = fresh.wb_teams, fresh.wb_page
+    model.trusted_kinds = fresh.trusted_kinds
     model.collapsed &= set(model.rosters)
     model.collapsed_tabs &= {row.tab_id or "{}:tab?".format(row.workspace_id or "unknown") for row in model.rows}
     if not tui_model.focus_node(model, keep_key):
@@ -359,6 +360,14 @@ def add_args(spec: Dict[str, Any], member: Dict[str, Any]) -> List[str]:
     return args
 
 
+def drawable_size(stdscr: Any) -> Tuple[int, int]:
+    """The popup's rows and the columns ``console.draw_lines`` writes: one less than the window, which
+    curses cannot fill in its bottom-right cell. Laid out for the full width, every line that filled
+    it lost its last character ("n creates it withou", seen live on 2026-09-27)."""
+    height, width = stdscr.getmaxyx()
+    return height, max(1, width - 1)
+
+
 def _loop(stdscr: Any, model: PickerModel, api: Any, layout: Optional[Layout], env: Optional[Dict[str, str]] = None, actions: bool = True) -> Optional[Dict[str, Any]]:
     import curses
 
@@ -397,7 +406,7 @@ def _loop(stdscr: Any, model: PickerModel, api: Any, layout: Optional[Layout], e
                     restore = None
                     if finish_restore(model, api, layout, result):
                         return None
-            height, width = stdscr.getmaxyx()
+            height, width = drawable_size(stdscr)
             lines = tui_model.picker_lines(model, width, height)
             cursor = tui_model.picker_cursor(model, lines, width)
             if pending_path is not None:
@@ -454,10 +463,10 @@ def _loop(stdscr: Any, model: PickerModel, api: Any, layout: Optional[Layout], e
                 # the probes block for a few seconds with no redraw, so say so first
                 model.status = "looking at the harnesses on this machine…"
                 model.error = None
-                height, width = stdscr.getmaxyx()
+                height, width = drawable_size(stdscr)
                 draw_lines(stdscr, tui_model.picker_lines(model, width, height), None)
                 load_catalog(model, str(intent.args.get("cwd") or ""), dict(env or os.environ))
-                height, width = stdscr.getmaxyx()
+                height, width = drawable_size(stdscr)
                 draw_lines(stdscr, tui_model.picker_lines(model, width, height), None)
                 try:
                     curses.flushinp()
@@ -500,7 +509,7 @@ def _loop(stdscr: Any, model: PickerModel, api: Any, layout: Optional[Layout], e
                 # before it starts, and drop whatever was typed into the frozen popup afterwards.
                 model.status = ACTION_LABELS.get(intent.kind, "working").format(**{k: intent.args.get(k) for k in ("member", "team")}) + "…"
                 model.error = None
-                height, width = stdscr.getmaxyx()
+                height, width = drawable_size(stdscr)
                 draw_lines(stdscr, tui_model.picker_lines(model, width, height), None)
                 keep_open = execute_action(intent, model, api, layout, dict(env or {}))
                 try:

@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from support import FAKE_AGENTS, TempState
+from support import FAKE_AGENTS, TempState, whiteboard_on
 from test_cmd_roster import env_no_daemon, json_out, live_api, run_cli
 
 from herdr_team import canvas as C
@@ -45,7 +45,7 @@ class CanvasRig(unittest.TestCase):
     def setUp(self):
         self.ts = TempState()
         self.addCleanup(self.ts.cleanup)
-        F.set_layer(self.ts.session, True, "human", "cli")
+        whiteboard_on(self.ts.session, self.ts.team, via="cli")
         self.layout = self.ts.layout
         self.team = self.ts.team
         patcher = mock.patch.object(R, "find_resvg", return_value=None)

@@ -327,7 +327,7 @@ These options are accepted before or after the command name.
 <summary><code>create</code> — form a team from live agents (--member/--from-workspace) or fresh panes (--new --spawn)</summary>
 
 ```text
-herdr-synapse create [-h] [--json] [--team NAME|PATH] [--session NAME] [--socket PATH] [--session-mismatch-ok] [--charter TEXT] [--charter-file PATH] [--ref PATH] [--member TARGET[:ROLE[:NAME]]] [--brief NAME=TEXT] [--project PATH] [--rules TEXT] [--rules-file PATH] [--instructions NAME=TEXT] [--from-workspace ID] [--names {prefixed,plain}] [--rename] [--steal] [--reuse] [--use] [--new] [--workspace ID] [--spawn ROLE:HARNESS[/PROFILE][:CWD]] [--permissions {yolo,native}] [--member-permissions NAME|ROLE=MODE] [--manager NAME] [--model ROLE|KIND=MODEL[@EFFORT]] [--template NAME] [--unlisted] team
+herdr-synapse create [-h] [--json] [--team NAME|PATH] [--session NAME] [--socket PATH] [--session-mismatch-ok] [--charter TEXT] [--charter-file PATH] [--ref PATH] [--member TARGET[:ROLE[:NAME]]] [--brief NAME=TEXT] [--project PATH] [--rules TEXT] [--rules-file PATH] [--instructions NAME=TEXT] [--from-workspace ID] [--names {prefixed,plain}] [--rename] [--steal] [--reuse] [--use] [--new] [--workspace ID] [--spawn ROLE:HARNESS[/PROFILE][:CWD]] [--permissions {yolo,native}] [--canvas] [--member-permissions NAME|ROLE=MODE] [--manager NAME] [--model ROLE|KIND=MODEL[@EFFORT]] [--template NAME] [--unlisted] team
 ```
 
 </details>

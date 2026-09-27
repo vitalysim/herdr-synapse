@@ -11,7 +11,7 @@ from herdr_team import store
 from herdr_team.errors import HerdrTeamError
 from herdr_team.identity import Author
 
-from support import TempState
+from support import TempState, whiteboard_on
 
 
 def operator() -> Author:
@@ -77,37 +77,43 @@ class TeamSwitchTests(unittest.TestCase):
         self.session = self.ts.session
         self.team = self.ts.team
 
-    def test_teams_are_on_and_viz_is_on_once_the_layer_is(self):
+    def test_a_teams_canvas_is_off_until_turned_on_for_that_team(self):
+        # The owner's call on 2026-09-27: the whiteboard is per team, not every team at once.
         switch = F.team_switch(self.session, self.team)
-        self.assertEqual((switch.layer, switch.enabled, switch.viz_enabled), (False, True, True))
-        self.assertFalse(switch.on)
-        self.assertFalse(switch.viz)
+        self.assertEqual((switch.layer, switch.enabled, switch.viz_enabled), (False, False, True))
         F.set_layer(self.session, True, "human", "cli")
         switch = F.team_switch(self.session, self.team)
+        self.assertFalse(switch.on, "the layer alone turns no team's canvas on")
+        self.assertFalse(switch.viz)
+        F.set_team(self.team, enabled=True)
+        switch = F.team_switch(self.session, self.team)
         self.assertTrue(switch.on)
-        self.assertTrue(switch.viz)
+        self.assertTrue(switch.viz, "live visuals are on inside a team whose canvas is on")
         self.assertEqual(switch.to_json(), {"team": "alpha", "layer": True, "enabled": True, "viz_enabled": True, "on": True, "viz": True})
+        doc = {"config": {"whiteboard": {"enabled": "yes"}}}
+        self.assertFalse(F.team_settings(doc)["enabled"], "only a literal true turns a canvas on")
 
     def test_set_team_writes_team_json_config_and_bumps_the_revision(self):
         before_rev = store.RosterStore(self.team).current_revision()
-        result = F.set_team(self.team, enabled=False, by="human", via="console")
+        result = F.set_team(self.team, enabled=True, by="human", via="console")
         self.assertEqual(result["changed"], ["enabled"])
-        self.assertTrue(result["before"]["enabled"])
-        self.assertFalse(result["after"]["enabled"])
+        self.assertFalse(result["before"]["enabled"])
+        self.assertTrue(result["after"]["enabled"])
         doc = store.RosterStore(self.team).load()
-        self.assertEqual(doc["config"]["whiteboard"]["enabled"], False)
+        self.assertEqual(doc["config"]["whiteboard"]["enabled"], True)
         self.assertEqual(doc["config"]["whiteboard"]["by"], "human")
         self.assertEqual(doc["revision"], before_rev + 1)
         self.assertEqual(doc["members"][0]["name"], "alpha-reviewer", "the roster is untouched")
 
     def test_set_team_is_a_no_op_when_nothing_changes(self):
         rev = store.RosterStore(self.team).current_revision()
-        result = F.set_team(self.team, enabled=True, viz=True)
+        result = F.set_team(self.team, enabled=False, viz=True)
         self.assertEqual(result["changed"], [])
         self.assertEqual(store.RosterStore(self.team).current_revision(), rev)
 
     def test_viz_opt_out_is_independent_of_the_canvas(self):
         F.set_layer(self.session, True, "human", "cli")
+        F.set_team(self.team, enabled=True)
         F.set_team(self.team, viz=False)
         switch = F.team_switch(self.session, self.team)
         self.assertTrue(switch.on)
@@ -133,6 +139,7 @@ class TeamSwitchTests(unittest.TestCase):
 
     def test_require_viz(self):
         F.set_layer(self.session, True, "human", "cli")
+        F.set_team(self.team, enabled=True)
         self.assertTrue(F.require_viz(self.session, self.team).viz)
         F.set_team(self.team, viz=False)
         with self.assertRaises(HerdrTeamError) as ctx:
@@ -158,7 +165,10 @@ class TeamSwitchTests(unittest.TestCase):
         F.set_layer(self.session, True, "human", "cli")
         doc = F.status(self.session)
         self.assertTrue(doc["session"]["enabled"])
-        self.assertEqual(doc["teams"]["alpha"], {"enabled": True, "viz": True, "on": True, "viz_on": True, "by": None, "at": None})
+        self.assertEqual(doc["teams"]["alpha"], {"enabled": False, "viz": True, "on": False, "viz_on": False, "by": None, "at": None})
+        F.set_team(self.team, enabled=True, by="human", via="cli")
+        alpha = F.status(self.session)["teams"]["alpha"]
+        self.assertEqual((alpha["enabled"], alpha["on"], alpha["viz_on"], alpha["by"]), (True, True, True, "human"))
         self.assertEqual((doc["teams"]["beta"]["on"], doc["teams"]["beta"]["viz_on"]), (False, False))
         self.assertEqual(list(F.status(self.session, ["beta", "ghost"])["teams"]), ["beta"])
 
@@ -235,8 +245,10 @@ class NoticeTests(unittest.TestCase):
         other = self.ts.session.team("beta")
         ensure_team_dirs(other)
         store.write_json(other.team_json, {"schema": 1, "team": "beta", "revision": 1, "members": [], "config": {"whiteboard": {"enabled": False}}})
+        self.assertEqual(F.announce_layer(self.ts.layout, False, True, "human"), {}, "no team's canvas was turned on, so none changed")
+        F.set_team(self.ts.team, enabled=True)
         posted = F.announce_layer(self.ts.layout, False, True, "human")
-        self.assertEqual(list(posted), ["alpha"])
+        self.assertEqual(list(posted), ["alpha"], "only the team whose canvas was turned on is told")
         self.assertEqual(F.announce_layer(self.ts.layout, True, True, "human"), {})
 
 
@@ -247,7 +259,7 @@ class McpLaunchTests(unittest.TestCase):
         self.layout = self.ts.layout
 
     def enable(self):
-        F.set_layer(self.ts.session, True, "human", "cli")
+        whiteboard_on(self.ts.session, self.ts.team)
 
     def test_no_spec_while_the_layer_or_the_team_is_off(self):
         self.assertIsNone(F.mcp_spec(self.layout, self.ts.team))

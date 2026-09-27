@@ -763,8 +763,9 @@ agent jumps to its pane; on anything else it shows the command.
 
 A visual layer for your teams, **off until you turn it on**. When it is on:
 
-- every team has a **shared canvas**, an infinite hand-drawn board (Excalidraw)
-  that its agents and you draw on together, shown on a local page;
+- each team you choose gets a **shared canvas**, an infinite hand-drawn board
+  (Excalidraw) that its agents and you draw on together, shown on a local page.
+  A canvas is per team: turning the whiteboard on gives no team one by itself;
 - the page's **Team** tab draws what the team already knows: the work graph,
   the fact map with its disputes, who is on the team and linked to it, the
   board as a timeline, and the mission-control lanes;
@@ -782,15 +783,17 @@ not. Press `d` on any row for its whiteboard menu:
 | a team | turn its canvas or live visuals on or off |
 | any row | open the page; turn the whiteboard on or off for this session |
 
-A choice that needs the whiteboard while it is off turns it on first and says
+Turning a team's canvas on touches that team only. A choice that needs the
+whiteboard while it is off turns it on first and says
 so, and `o` on an agent while it is off asks to turn it on and watch. The
 header shows `whiteboard on` or `off`, and each team row says whether its
 canvas is on. The same, from a shell:
 
 ```bash
-herdr-synapse whiteboard enable        # you, in person; every team is on from now
+herdr-synapse whiteboard enable        # you, in person: watch and the page; no team's canvas yet
+herdr-synapse --team hunt whiteboard team on    # this team's canvas, and only this team's
 herdr-synapse whiteboard open          # or prefix+a: opens the page in your browser
-herdr-synapse --team hunt whiteboard team off   # one team without it
+herdr-synapse --team hunt whiteboard team off   # and off again
 herdr-synapse whiteboard status        # the switches, the page server, what is watched
 herdr-synapse watch w3:p2              # or `o` on an agent row in prefix+t
 herdr-synapse whiteboard disable       # everything stops; nothing drawn is lost
@@ -803,15 +806,16 @@ pane. After that:
 - **Watch needs no team.** Flag any agent in any pane (`watch <pane>` or `o`
   in `prefix+t`); its sidebar row, `watch show` and the page's Activity tab
   follow it.
-- **A canvas belongs to a team, and a team can be one agent.** Every team you
-  already have gets its canvas as soon as the layer is on. For a single agent,
-  make it a team of one: `d` on it in `prefix+t`, or from a shell:
+- **A canvas belongs to a team, and a team can be one agent.** Turn it on for
+  a team with `d` on its row in `prefix+t` (or `whiteboard team on`); other
+  teams are not touched. For a single agent, make it a team of one: `d` on it
+  in `prefix+t`, which turns on that team's canvas only, or from a shell:
 
 ```bash
 # an agent already running in pane w1:p3
-herdr-synapse create sketch --member w1:p3:artist --brief artist="Draw what I ask on the canvas."
-# or a fresh one, which also gets the canvas as MCP tools
-herdr-synapse create sketch --new --spawn artist:claude --brief artist="Draw what I ask on the canvas."
+herdr-synapse create sketch --canvas --member w1:p3:artist --brief artist="Draw what I ask on the canvas."
+# or a fresh one, which also gets the canvas as MCP tools (--canvas turns it on before it starts)
+herdr-synapse create sketch --canvas --new --spawn artist:claude --brief artist="Draw what I ask on the canvas."
 ```
 
 Then ask on the board (`@<member> sketch the login flow on the canvas`), or
@@ -822,11 +826,13 @@ that pane: the same conversation reopens with the tools added.
 
 **Three switches.** The session switch (`enable`/`disable`) is yours alone,
 from your own shell, the console or a popup; an agent cannot turn it on, even
-with a delegation. Once it is on, every team's canvas is on unless you, or an
-agent you delegated to, switch that team off (`whiteboard team off`). Each
-team's **live visuals** are on too, with the same per-team opt-out
-(`whiteboard viz off`). Every switch that changes what agents may do is
-announced on the team's board. Off means nothing runs: no page server, no
+with a delegation. It turns on watch and the page; each team's canvas stays
+off until you, or an agent you delegated to, turn it on for that team
+(`whiteboard team on`, `create --canvas`, or `d` in `prefix+t`). Inside a team
+whose canvas is on, **live visuals** are on too, with a per-team opt-out
+(`whiteboard viz off`). A canvas that comes on wakes that team's members at
+their next idle with a line saying so, and every member who joins a team with
+its canvas on is told in its briefing. Off means nothing runs: no page server, no
 watching, no canvas commands (they refuse `whiteboard_off`), nothing taught to
 agents, and nothing deleted (`whiteboard purge` does that).
 

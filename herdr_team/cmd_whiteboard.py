@@ -291,7 +291,8 @@ def _run_layer(args: argparse.Namespace, enabled: bool) -> int:
     def human() -> str:
         if enabled:
             head = ("whiteboard enabled for this Herdr session" if result["changed"] else "the whiteboard was already on")
-            lines = [head + ": every team's canvas and live visuals are on unless switched off (herdr-synapse --team <team> whiteboard team off | viz off)",
+            lines = [head + ": watch any agent; a team's canvas stays off until you turn it on for that team "
+                            "(herdr-synapse --team <team> whiteboard team on, or d on its row in prefix+t)",
                      "open the page with prefix+a or: herdr-synapse whiteboard open"]
         else:
             head = ("whiteboard disabled for this Herdr session" if result["changed"] else "the whiteboard was already off")
@@ -599,7 +600,7 @@ COMMANDS: List[Command] = [
         _run,
         description=("whiteboard [status] | enable | disable (the operator in person) | team on|off | viz on|off (the operator or a delegate) | "
                      "open [--no-browser] | stop (people only) | views | clear | purge [--all-teams] --yes. The layer is off by default; "
-                     "once on, every team's canvas and live visuals are on unless switched off."),
+                     "once on, a team's canvas is still off until turned on for that team (team on); its live visuals are on unless switched off."),
     ),
     Command("whiteboard-serve", "the whiteboard page server in the foreground (spawned by whiteboard open)", _add_serve_arguments, _run_serve, hidden=True),
 ]

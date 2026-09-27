@@ -161,6 +161,10 @@ class CanvasEndToEnd(unittest.TestCase):
         self.assertEqual(self.refused(["whiteboard", "enable"], pane=WORKER_PANE)["code"], "author_mismatch")
         enabled = self.ok(["whiteboard", "enable"])
         self.assertTrue(enabled["changed"])
+        # A canvas is per team: enabling turns none on and tells nobody, until the operator picks this team.
+        self.assertEqual((enabled["notices"], self.board("whiteboard_state")), ({}, []))
+        self.assertEqual(self.refused(["canvas", "look"], pane=WORKER_PANE)["scope"], "team")
+        self.assertTrue(self.ok(["whiteboard", "team", "on"])["switch"]["on"])
         [state] = self.board("whiteboard_state")
         self.assertIn("the whiteboard is on for team alpha", state["text"])
         me = self.ok(["me"], pane=WORKER_PANE)["whiteboard"]

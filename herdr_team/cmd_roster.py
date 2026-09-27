@@ -659,6 +659,8 @@ def _add_create_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--spawn", action="append", default=[], metavar="ROLE:HARNESS[/PROFILE][:CWD]",
                         help="start a member: its role, the harness, optionally one of the harness's profiles (see: herdr-synapse available)")
     parser.add_argument("--permissions", choices=_permissions.MODES, help="team launch default: yolo (default) or native agent settings")
+    parser.add_argument("--canvas", action="store_true",
+                        help="turn this team's whiteboard canvas on before its members start (a canvas is per team; the operator or a delegate)")
     parser.add_argument("--member-permissions", action="append", default=[], metavar="NAME|ROLE=MODE", help="per-member yolo/native override; repeat as needed")
     parser.add_argument("--manager", metavar="NAME", help="the member that coordinates the team (see: herdr-synapse manager)")
     parser.add_argument("--model", action="append", default=[], metavar="ROLE|KIND=MODEL[@EFFORT]",
@@ -724,6 +726,10 @@ def _run_create(args: argparse.Namespace) -> int:
         _human_only(layout, team_name, author, "create --manager")
     if args.permissions is not None or args.member_permissions:
         _human_only(layout, team_name, author, "create --permissions/--member-permissions")
+    if getattr(args, "canvas", False):
+        from herdr_team import features as _features
+
+        _features.check_authority(author, _features.LEVEL_TEAM, layout, team_name)
     permission_members = _parse_brief_args(args.member_permissions, flag="--member-permissions")
     for mode in permission_members.values():
         _permissions.validate(mode)
@@ -836,6 +842,14 @@ def _run_create(args: argparse.Namespace) -> int:
     team_paths = layout.team(team_name)
     if fresh:
         team = _roster.update_team(team_paths, lambda doc: doc.config.update(document_sync="auto", permissions=args.permissions or "yolo"))
+    if getattr(args, "canvas", False):
+        # Before any member starts, so those Synapse launches get the canvas tools and every briefing says so.
+        from herdr_team import features as _features
+
+        before = _features.team_switch(layout.session, team_paths)
+        if _features.set_team(team_paths, enabled=True, by=author.name, via=author.via)["changed"] and not fresh:
+            _features.announce(layout, team_paths, before, _features.team_switch(layout.session, team_paths), author.name)
+        team = _roster.load_team(team_paths)
     try:
         with _store.FileLock(team_paths.root / "restore.lock", timeout=0, code="create_busy"):
             team = _roster.load_team(team_paths)
