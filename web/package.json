@@ -1,6 +1,6 @@
 {
   "name": "herdr-synapse-whiteboard",
-  "version": "0.21.0",
+  "version": "0.21.1",
   "private": true,
   "description": "The herdr-synapse whiteboard page: the team canvas, generated team views and activity cards, served from web/dist by herdr_team/whiteboard_server.py.",
   "license": "MIT",

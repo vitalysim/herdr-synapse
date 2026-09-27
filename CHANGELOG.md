@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.21.1 (2026-09-27)
+
+- **The whiteboard is per team.** Turning it on (`whiteboard enable`, or `d` in `prefix+t`) now turns on watch and the page only; a team's canvas stays off until it is turned on for that team (`whiteboard team on`, the new `create --canvas`, or `d` on the team, member or agent in `prefix+t`). Other teams are never touched.
+- **Agents hear about their canvas.** A member's briefing ends with a line saying its team has a canvas and how to learn it; a canvas that comes on wakes that team's members at their next idle; and giving an agent a canvas from `prefix+t` asks to trust its kind when the notifier cannot type into it yet (found live with OpenCode). `d` on a member of an untrusted kind offers "Trust <kind>".
+- **The teams view draws every column.** Lines that filled the popup lost their last character; the view now lays out for the width it can draw.
+
 ## 0.21.0 (2026-09-26)
 
 Teams can now see and draw, not only write. Everything here is off until the
