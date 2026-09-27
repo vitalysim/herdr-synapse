@@ -1,0 +1,3784 @@
+{
+ "authors": {
+  "qa-drawer": {
+   "agent": "claude",
+   "color": "#1971c2",
+   "index": 0,
+   "kind": "member"
+  }
+ },
+ "batches": {
+  "B-1": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "qa-drawer",
+   "first_seq": 1,
+   "last_seq": 2,
+   "undone": false
+  }
+ },
+ "claims": [],
+ "counters": {
+  "B": 1,
+  "C": 0,
+  "E": 70,
+  "G": 0,
+  "K": 0,
+  "X": 0
+ },
+ "elements": [
+  {
+   "alias": "arch",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "frame": null,
+   "group": null,
+   "h": 1040,
+   "id": "E-1",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#f0f1f4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Shop platform: production architecture",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 4080,
+   "x": 0,
+   "y": 0,
+   "z": 1
+  },
+  {
+   "alias": "arch.web",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Web app",
+     "(Next.js 15, SSR)"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 80,
+   "id": "E-2",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Web app (Next.js 15, SSR)",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 200,
+   "x": 40,
+   "y": 350,
+   "z": 2
+  },
+  {
+   "alias": "arch.mobile",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Mobile app (iOS",
+     "and Android)"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 80,
+   "id": "E-3",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Mobile app (iOS and Android)",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 200,
+   "x": 40,
+   "y": 490,
+   "z": 3
+  },
+  {
+   "alias": "arch.partner",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Partner integrations",
+     "over REST"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 80,
+   "id": "E-4",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Partner integrations over REST",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 240,
+   "x": 20,
+   "y": 630,
+   "z": 4
+  },
+  {
+   "alias": "arch.cdn",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "CDN edge cache"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "scale_shape",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 120,
+   "id": "E-5",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "CDN edge cache",
+   "type": "ellipse",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 280,
+   "x": 360,
+   "y": 410,
+   "z": 5
+  },
+  {
+   "alias": "arch.waf",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "WAF and bot",
+     "protection"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 80,
+   "id": "E-6",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "WAF and bot protection",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 160,
+   "x": 740,
+   "y": 490,
+   "z": 6
+  },
+  {
+   "alias": "arch.gw",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "API gateway (Envoy)",
+     "with rate limits"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 80,
+   "id": "E-7",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "API gateway (Envoy) with rate limits",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 240,
+   "x": 1000,
+   "y": 490,
+   "z": 7
+  },
+  {
+   "alias": "arch.authz",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Auth service / JWT",
+     "issuer and key",
+     "rotation"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 100,
+   "id": "E-8",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Auth service / JWT issuer and key rotation",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 240,
+   "x": 1340,
+   "y": 560,
+   "z": 8
+  },
+  {
+   "alias": "arch.users",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "User profile service"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 60,
+   "id": "E-9",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "User profile service",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 240,
+   "x": 1340,
+   "y": 440,
+   "z": 9
+  },
+  {
+   "alias": "arch.catalog",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Product",
+     "catalog service"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 80,
+   "id": "E-10",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Product catalog service",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 200,
+   "x": 1360,
+   "y": 140,
+   "z": 10
+  },
+  {
+   "alias": "arch.search",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Search service",
+     "(OpenSearch",
+     "cluster, 6 nodes)"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 100,
+   "id": "E-11",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Search service (OpenSearch cluster, 6 nodes)",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 200,
+   "x": 1360,
+   "y": 280,
+   "z": 11
+  },
+  {
+   "alias": "arch.cart",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Cart service"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 60,
+   "id": "E-12",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Cart service",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 160,
+   "x": 1750,
+   "y": 400,
+   "z": 12
+  },
+  {
+   "alias": "arch.checkout",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Checkout",
+     "orchestrator"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 80,
+   "id": "E-13",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Checkout orchestrator",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 160,
+   "x": 1380,
+   "y": 780,
+   "z": 13
+  },
+  {
+   "alias": "arch.pay",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Payments adapter",
+     "(Stripe, Adyen)"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 80,
+   "id": "E-14",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Payments adapter (Stripe, Adyen)",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 220,
+   "x": 1720,
+   "y": 640,
+   "z": 14
+  },
+  {
+   "alias": "arch.fraud",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Fraud scoring",
+     "model v7"
+    ],
+    "min": [
+     200,
+     120
+    ],
+    "policy": "scale_shape",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 180,
+   "id": "E-15",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Fraud scoring model v7",
+   "type": "diamond",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 300,
+   "x": 1680,
+   "y": 780,
+   "z": 15
+  },
+  {
+   "alias": "arch.orders",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Order service"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 60,
+   "id": "E-16",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Order service",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 180,
+   "x": 1740,
+   "y": 520,
+   "z": 16
+  },
+  {
+   "alias": "arch.inventory",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Inventory",
+     "reservations"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 80,
+   "id": "E-17",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Inventory reservations",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 160,
+   "x": 2180,
+   "y": 700,
+   "z": 17
+  },
+  {
+   "alias": "arch.ship",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Shipping and",
+     "label printing"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 80,
+   "id": "E-18",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Shipping and label printing",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 180,
+   "x": 2570,
+   "y": 520,
+   "z": 18
+  },
+  {
+   "alias": "arch.notify",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Notification fan-out",
+     "(e-mail, SMS, push)"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 80,
+   "id": "E-19",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Notification fan-out (e-mail, SMS, push)",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 240,
+   "x": 2540,
+   "y": 660,
+   "z": 19
+  },
+  {
+   "alias": "arch.bus",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Event bus (Kafka, 3",
+     "brokers, 48 partitions)"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "scale_shape",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 140,
+   "id": "E-20",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Event bus (Kafka, 3 brokers, 48 partitions)",
+   "type": "ellipse",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 360,
+   "x": 2080,
+   "y": 500,
+   "z": 20
+  },
+  {
+   "alias": "arch.pg",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "PostgreSQL 17",
+     "primary (eu-west-1)"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 80,
+   "id": "E-21",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "PostgreSQL 17 primary (eu-west-1)",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 240,
+   "x": 2540,
+   "y": 320,
+   "z": 21
+  },
+  {
+   "alias": "arch.replica",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Read replicas x3"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 60,
+   "id": "E-22",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Read replicas x3",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 200,
+   "x": 2900,
+   "y": 310,
+   "z": 22
+  },
+  {
+   "alias": "arch.redis",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Redis session and",
+     "cart cache"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "scale_shape",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 100,
+   "id": "E-23",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Redis session and cart cache",
+   "type": "ellipse",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 280,
+   "x": 2120,
+   "y": 340,
+   "z": 23
+  },
+  {
+   "alias": "arch.s3",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Object storage for",
+     "invoices and images"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 80,
+   "id": "E-24",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Object storage for invoices and images",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 240,
+   "x": 2880,
+   "y": 430,
+   "z": 24
+  },
+  {
+   "alias": "arch.etl",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Nightly ETL to",
+     "the warehouse"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 80,
+   "id": "E-25",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Nightly ETL to the warehouse",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 180,
+   "x": 3220,
+   "y": 430,
+   "z": 25
+  },
+  {
+   "alias": "arch.wh",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Analytics warehouse",
+     "(BigQuery)"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 80,
+   "id": "E-26",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Analytics warehouse (BigQuery)",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 240,
+   "x": 3500,
+   "y": 490,
+   "z": 26
+  },
+  {
+   "alias": "arch.bi",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "BI dashboards for",
+     "finance and ops"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 120,
+   "id": "E-27",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#fff0a0",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "BI dashboards for finance and ops",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 220,
+   "x": 3840,
+   "y": 470,
+   "z": 27
+  },
+  {
+   "alias": "arch.obs",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Observability:",
+     "traces, logs, metrics"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 120,
+   "id": "E-28",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#fff0a0",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Observability: traces, logs, metrics",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 240,
+   "x": 2880,
+   "y": 630,
+   "z": 28
+  },
+  {
+   "alias": "arch.oncall",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "On-call paging"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 60,
+   "id": "E-29",
+   "intent": "the whole production architecture on one board",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "On-call paging",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 180,
+   "x": 3220,
+   "y": 570,
+   "z": 29
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-2",
+   "group": "E-1",
+   "h": 28,
+   "head": "arrow",
+   "id": "E-30",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     243.9,
+     413.09
+    ],
+    [
+     371.81,
+     441.51
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-5",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 128,
+   "x": 244,
+   "y": 413,
+   "z": 30
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-3",
+   "group": "E-1",
+   "h": 44,
+   "head": "arrow",
+   "id": "E-31",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     243.95,
+     547.32
+    ],
+    [
+     500,
+     590
+    ],
+    [
+     736.07,
+     545.74
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-6",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 492,
+   "x": 244,
+   "y": 546,
+   "z": 31
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-4",
+   "group": "E-1",
+   "h": 102,
+   "head": "arrow",
+   "id": "E-32",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     263.99,
+     663.11
+    ],
+    [
+     500,
+     650
+    ],
+    [
+     736.25,
+     561.4
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-6",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 472,
+   "x": 264,
+   "y": 561,
+   "z": 32
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-5",
+   "group": "E-1",
+   "h": 19,
+   "head": "arrow",
+   "id": "E-33",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     632.19,
+     494.79
+    ],
+    [
+     736.07,
+     514.26
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-6",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 104,
+   "x": 632,
+   "y": 495,
+   "z": 33
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-6",
+   "group": "E-1",
+   "h": 1,
+   "head": "arrow",
+   "id": "E-34",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     904,
+     530
+    ],
+    [
+     996,
+     530
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-7",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 92,
+   "x": 904,
+   "y": 530,
+   "z": 34
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "verify token"
+    ],
+    "size": 16
+   },
+   "frame": "E-1",
+   "from": "E-7",
+   "group": "E-1",
+   "h": 22,
+   "head": "arrow",
+   "id": "E-35",
+   "intent": "the whole production architecture on one board",
+   "label_at": [
+    1276.34,
+    595.86
+   ],
+   "points": [
+    [
+     1243.89,
+     559.15
+    ],
+    [
+     1336.11,
+     580.85
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "verify token",
+   "to": "E-8",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 92,
+   "x": 1244,
+   "y": 559,
+   "z": 35
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-7",
+   "group": "E-1",
+   "h": 16,
+   "head": "arrow",
+   "id": "E-36",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     1243.94,
+     508.13
+    ],
+    [
+     1336.06,
+     491.87
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-9",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 92,
+   "x": 1244,
+   "y": 492,
+   "z": 36
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-7",
+   "group": "E-1",
+   "h": 264,
+   "head": "arrow",
+   "id": "E-37",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     1161.64,
+     487.13
+    ],
+    [
+     1418.36,
+     222.87
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-10",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 257,
+   "x": 1162,
+   "y": 223,
+   "z": 37
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-7",
+   "group": "E-1",
+   "h": 106,
+   "head": "arrow",
+   "id": "E-38",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     1191.45,
+     487.97
+    ],
+    [
+     1371.55,
+     382.03
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-11",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 180,
+   "x": 1191,
+   "y": 382,
+   "z": 38
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-7",
+   "group": "E-1",
+   "h": 258,
+   "head": "arrow",
+   "id": "E-39",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     1195.07,
+     571.95
+    ],
+    [
+     1460,
+     720
+    ],
+    [
+     1788.58,
+     462.47
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-12",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 594,
+   "x": 1195,
+   "y": 462,
+   "z": 39
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-7",
+   "group": "E-1",
+   "h": 205,
+   "head": "arrow",
+   "id": "E-40",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     1169.94,
+     572.6
+    ],
+    [
+     1410.06,
+     777.4
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-13",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 240,
+   "x": 1170,
+   "y": 573,
+   "z": 40
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-8",
+   "group": "E-1",
+   "h": 218,
+   "head": "arrow",
+   "id": "E-41",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     1531.75,
+     557.64
+    ],
+    [
+     1830,
+     340
+    ],
+    [
+     2122.9,
+     374.06
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-23",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 591,
+   "x": 1532,
+   "y": 340,
+   "z": 41
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-9",
+   "group": "E-1",
+   "h": 218,
+   "head": "arrow",
+   "id": "E-42",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     1507.71,
+     437.76
+    ],
+    [
+     1830,
+     220
+    ],
+    [
+     2260,
+     280
+    ],
+    [
+     2536.08,
+     335.22
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-21",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 1028,
+   "x": 1508,
+   "y": 220,
+   "z": 42
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-10",
+   "group": "E-1",
+   "h": 278,
+   "head": "arrow",
+   "id": "E-43",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     1563.74,
+     140.75
+    ],
+    [
+     1830,
+     40
+    ],
+    [
+     2260,
+     100
+    ],
+    [
+     2595.11,
+     317.82
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-21",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 1031,
+   "x": 1564,
+   "y": 40,
+   "z": 43
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "images"
+    ],
+    "size": 16
+   },
+   "frame": "E-1",
+   "from": "E-10",
+   "group": "E-1",
+   "h": 328,
+   "head": "arrow",
+   "id": "E-44",
+   "intent": "the whole production architecture on one board",
+   "label_at": [
+    2290.57,
+    163.06
+   ],
+   "points": [
+    [
+     1563.91,
+     157.53
+    ],
+    [
+     1830,
+     100
+    ],
+    [
+     2260,
+     160
+    ],
+    [
+     2660,
+     200
+    ],
+    [
+     2946.5,
+     427.51
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "images",
+   "to": "E-24",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 1383,
+   "x": 1564,
+   "y": 100,
+   "z": 44
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-11",
+   "group": "E-1",
+   "h": 156,
+   "head": "arrow",
+   "id": "E-45",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     1563.63,
+     282.38
+    ],
+    [
+     1830,
+     160
+    ],
+    [
+     2260,
+     220
+    ],
+    [
+     2660,
+     260
+    ],
+    [
+     2896.11,
+     315.55
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-22",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 1332,
+   "x": 1564,
+   "y": 160,
+   "z": 45
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-12",
+   "group": "E-1",
+   "h": 19,
+   "head": "arrow",
+   "id": "E-46",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     1913.98,
+     422.19
+    ],
+    [
+     2120.54,
+     402.97
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-23",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 207,
+   "x": 1914,
+   "y": 403,
+   "z": 46
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-13",
+   "group": "E-1",
+   "h": 314,
+   "head": "arrow",
+   "id": "E-47",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     1500.7,
+     777.1
+    ],
+    [
+     1798.79,
+     462.9
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-12",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 298,
+   "x": 1501,
+   "y": 463,
+   "z": 47
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "charge"
+    ],
+    "size": 16
+   },
+   "frame": "E-1",
+   "from": "E-13",
+   "group": "E-1",
+   "h": 67,
+   "head": "arrow",
+   "id": "E-48",
+   "intent": "the whole production architecture on one board",
+   "label_at": [
+    1632.14,
+    754.87
+   ],
+   "points": [
+    [
+     1543.74,
+     788.31
+    ],
+    [
+     1720.54,
+     721.42
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "charge",
+   "to": "E-14",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 177,
+   "x": 1544,
+   "y": 721,
+   "z": 48
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "score"
+    ],
+    "size": 16
+   },
+   "frame": "E-1",
+   "from": "E-13",
+   "group": "E-1",
+   "h": 22,
+   "head": "arrow",
+   "id": "E-49",
+   "intent": "the whole production architecture on one board",
+   "label_at": [
+    1623.78,
+    842.13
+   ],
+   "points": [
+    [
+     1543.96,
+     831.35
+    ],
+    [
+     1703.61,
+     852.92
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "score",
+   "to": "E-15",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 160,
+   "x": 1544,
+   "y": 831,
+   "z": 49
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "allow or deny"
+    ],
+    "size": 16
+   },
+   "frame": "E-1",
+   "from": "E-15",
+   "group": "E-1",
+   "h": 22,
+   "head": "arrow",
+   "id": "E-50",
+   "intent": "the whole production architecture on one board",
+   "label_at": [
+    1628.07,
+    810.39
+   ],
+   "points": [
+    [
+     1703.61,
+     852.92
+    ],
+    [
+     1543.96,
+     831.35
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "allow or deny",
+   "to": "E-13",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 160,
+   "x": 1544,
+   "y": 831,
+   "z": 50
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-13",
+   "group": "E-1",
+   "h": 195,
+   "head": "arrow",
+   "id": "E-51",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     1518.05,
+     777.64
+    ],
+    [
+     1785.66,
+     582.36
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-16",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 268,
+   "x": 1518,
+   "y": 582,
+   "z": 51
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-16",
+   "group": "E-1",
+   "h": 437,
+   "head": "arrow",
+   "id": "E-52",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     1877.8,
+     582.24
+    ],
+    [
+     2260,
+     840
+    ],
+    [
+     2624.11,
+     403.07
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-21",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 746,
+   "x": 1878,
+   "y": 403,
+   "z": 52
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "reserve"
+    ],
+    "size": 16
+   },
+   "frame": "E-1",
+   "from": "E-16",
+   "group": "E-1",
+   "h": 121,
+   "head": "arrow",
+   "id": "E-53",
+   "intent": "the whole production architecture on one board",
+   "label_at": [
+    2038.94,
+    642.32
+   ],
+   "points": [
+    [
+     1901.55,
+     581.62
+    ],
+    [
+     2176.34,
+     703.03
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "reserve",
+   "to": "E-17",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 275,
+   "x": 1902,
+   "y": 582,
+   "z": 53
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-17",
+   "group": "E-1",
+   "h": 295,
+   "head": "arrow",
+   "id": "E-54",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     2305.01,
+     697.25
+    ],
+    [
+     2614.99,
+     402.75
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-21",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 310,
+   "x": 2305,
+   "y": 403,
+   "z": 54
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "order.created"
+    ],
+    "size": 16
+   },
+   "frame": "E-1",
+   "from": "E-16",
+   "group": "E-1",
+   "h": 7,
+   "head": "arrow",
+   "id": "E-55",
+   "intent": "the whole production architecture on one board",
+   "label_at": [
+    2000.64,
+    557.94
+   ],
+   "points": [
+    [
+     1924,
+     554.37
+    ],
+    [
+     2077.28,
+     561.5
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "order.created",
+   "to": "E-20",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 153,
+   "x": 1924,
+   "y": 554,
+   "z": 55
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-20",
+   "group": "E-1",
+   "h": 3,
+   "head": "arrow",
+   "id": "E-56",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     2443.63,
+     565.41
+    ],
+    [
+     2566,
+     562.35
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-18",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 122,
+   "x": 2444,
+   "y": 562,
+   "z": 56
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-20",
+   "group": "E-1",
+   "h": 44,
+   "head": "arrow",
+   "id": "E-57",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     2401.92,
+     616.12
+    ],
+    [
+     2536.2,
+     659.76
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-19",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 134,
+   "x": 2402,
+   "y": 616,
+   "z": 57
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-20",
+   "group": "E-1",
+   "h": 110,
+   "head": "arrow",
+   "id": "E-58",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     2410.82,
+     528.52
+    ],
+    [
+     2660,
+     460
+    ],
+    [
+     3000,
+     570
+    ],
+    [
+     3216.19,
+     500.26
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-25",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 805,
+   "x": 2411,
+   "y": 460,
+   "z": 58
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "labels"
+    ],
+    "size": 16
+   },
+   "frame": "E-1",
+   "from": "E-18",
+   "group": "E-1",
+   "h": 32,
+   "head": "arrow",
+   "id": "E-59",
+   "intent": "the whole production architecture on one board",
+   "label_at": [
+    2815,
+    518.97
+   ],
+   "points": [
+    [
+     2753.87,
+     535.15
+    ],
+    [
+     2876.13,
+     502.79
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "labels",
+   "to": "E-24",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 122,
+   "x": 2754,
+   "y": 503,
+   "z": 59
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "payment.settled"
+    ],
+    "size": 16
+   },
+   "frame": "E-1",
+   "from": "E-14",
+   "group": "E-1",
+   "h": 41,
+   "head": "arrow",
+   "id": "E-60",
+   "intent": "the whole production architecture on one board",
+   "label_at": [
+    2005.35,
+    600.64
+   ],
+   "points": [
+    [
+     1943.88,
+     650.87
+    ],
+    [
+     2105.74,
+     609.46
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "payment.settled",
+   "to": "E-20",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 162,
+   "x": 1944,
+   "y": 609,
+   "z": 60
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "streaming replication"
+    ],
+    "size": 16
+   },
+   "frame": "E-1",
+   "from": "E-21",
+   "group": "E-1",
+   "h": 7,
+   "head": "arrow",
+   "id": "E-61",
+   "intent": "the whole production architecture on one board",
+   "label_at": [
+    2882.49,
+    392.32
+   ],
+   "points": [
+    [
+     2783.99,
+     352.71
+    ],
+    [
+     2896.01,
+     346.12
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "streaming replication",
+   "to": "E-22",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 112,
+   "x": 2784,
+   "y": 346,
+   "z": 61
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-25",
+   "group": "E-1",
+   "h": 18,
+   "head": "arrow",
+   "id": "E-62",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     3403.93,
+     488.18
+    ],
+    [
+     3496.07,
+     506.01
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-26",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 92,
+   "x": 3404,
+   "y": 488,
+   "z": 62
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-26",
+   "group": "E-1",
+   "h": 1,
+   "head": "arrow",
+   "id": "E-63",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     3744,
+     530
+    ],
+    [
+     3836,
+     530
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-27",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 92,
+   "x": 3744,
+   "y": 530,
+   "z": 63
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-19",
+   "group": "E-1",
+   "h": 3,
+   "head": "arrow",
+   "id": "E-64",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     2784,
+     696.35
+    ],
+    [
+     2876,
+     693.65
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-28",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 92,
+   "x": 2784,
+   "y": 694,
+   "z": 64
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-7",
+   "group": "E-1",
+   "h": 447,
+   "head": "arrow",
+   "id": "E-65",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     1157.5,
+     573.02
+    ],
+    [
+     1460,
+     920
+    ],
+    [
+     1830,
+     1020
+    ],
+    [
+     2260,
+     960
+    ],
+    [
+     2660,
+     860
+    ],
+    [
+     2876.42,
+     751.79
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-28",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 1719,
+   "x": 1158,
+   "y": 573,
+   "z": 65
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-16",
+   "group": "E-1",
+   "h": 317,
+   "head": "arrow",
+   "id": "E-66",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     1869.96,
+     582.53
+    ],
+    [
+     2260,
+     900
+    ],
+    [
+     2660,
+     800
+    ],
+    [
+     2876.19,
+     730.05
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-28",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 1006,
+   "x": 1870,
+   "y": 583,
+   "z": 66
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "alerts"
+    ],
+    "size": 16
+   },
+   "frame": "E-1",
+   "from": "E-28",
+   "group": "E-1",
+   "h": 27,
+   "head": "arrow",
+   "id": "E-67",
+   "intent": "the whole production architecture on one board",
+   "label_at": [
+    3170,
+    640.65
+   ],
+   "points": [
+    [
+     3123.84,
+     654.05
+    ],
+    [
+     3216.16,
+     627.24
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "alerts",
+   "to": "E-29",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 92,
+   "x": 3124,
+   "y": 627,
+   "z": 67
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-22",
+   "group": "E-1",
+   "h": 59,
+   "head": "arrow",
+   "id": "E-68",
+   "intent": "the whole production architecture on one board",
+   "points": [
+    [
+     3075.23,
+     371.55
+    ],
+    [
+     3216.31,
+     430.71
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-25",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 141,
+   "x": 3075,
+   "y": 372,
+   "z": 68
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "user.updated"
+    ],
+    "size": 16
+   },
+   "frame": "E-1",
+   "from": "E-9",
+   "group": "E-1",
+   "h": 227,
+   "head": "arrow",
+   "id": "E-69",
+   "intent": "the whole production architecture on one board",
+   "label_at": [
+    1854.85,
+    296.76
+   ],
+   "points": [
+    [
+     1521.98,
+     438.17
+    ],
+    [
+     1830,
+     280
+    ],
+    [
+     2166.77,
+     507.12
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "user.updated",
+   "to": "E-20",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 645,
+   "x": 1522,
+   "y": 280,
+   "z": 69
+  },
+  {
+   "alias": "legend",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Solid arrows are synchronous calls.",
+     "Labelled arrows carry the event or",
+     "the reason.",
+     "Notes are dashboards people read."
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 14,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 120,
+   "id": "E-70",
+   "intent": "a legend for the diagram",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#fff0a0",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Solid arrows are synchronous calls.\nLabelled arrows carry the event or the reason.\nNotes are dashboards people read.",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 280,
+   "x": 0,
+   "y": 1080,
+   "z": 70
+  }
+ ],
+ "homes": {
+  "qa-drawer": [
+   0,
+   -1000,
+   800,
+   -400
+  ]
+ },
+ "legend": [],
+ "locks": [],
+ "team": "qa",
+ "updated_at": "2026-01-01T00:00:00.000Z",
+ "v": 1,
+ "version": 2
+}

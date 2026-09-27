@@ -103,10 +103,10 @@ class LabelsInTheSvg(CanvasRig):
         pill = next(r for r in root.iter("{%s}rect" % SVG) if r.get("rx") == "6")
         self.assertGreaterEqual(float(pill.get("width")), X.measure("calls with retries", size=16).width)
 
-    def test_an_arrow_label_wraps_where_the_page_wraps_it(self):
-        # Excalidraw 0.18: the wider of 0.7 x the arrow's width and 11 x the label's font size.
+    def test_an_arrow_label_wraps_at_eleven_ems_however_long_the_arrow(self):
+        # QA R-3: a label that widened with its arrow needed more room each time the arrow made room for it.
         self.assertEqual(R.arrow_label_width({"w": 100}, 16), 176)
-        self.assertEqual(R.arrow_label_width({"w": 1000}, 16), 700)
+        self.assertEqual(R.arrow_label_width({"w": 1000}, 16), 176)
 
 
 @unittest.skipUnless(R.find_resvg(), "resvg is not installed")

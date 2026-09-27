@@ -1,0 +1,501 @@
+{
+ "authors": {
+  "qa-drawer": {
+   "agent": "claude",
+   "color": "#1971c2",
+   "index": 0,
+   "kind": "member"
+  }
+ },
+ "batches": {
+  "B-1": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "qa-drawer",
+   "first_seq": 1,
+   "last_seq": 9,
+   "undone": false
+  }
+ },
+ "claims": [],
+ "counters": {
+  "B": 1,
+  "C": 0,
+  "E": 9,
+  "G": 0,
+  "K": 0,
+  "X": 0
+ },
+ "elements": [
+  {
+   "alias": "wall",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "frame": null,
+   "group": null,
+   "h": 700,
+   "id": "E-1",
+   "intent": "the research wall",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#f0f1f4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Customer interview findings, week 38",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 1100,
+   "x": 0,
+   "y": 0,
+   "z": 1
+  },
+  {
+   "alias": "n1",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Onboarding",
+     "- 7 of 9 users skipped the tour",
+     "- 4 could not find the invite button",
+     "- 2 asked for SSO on day one"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 14,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-2",
+   "intent": "onboarding findings",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#fff0a0",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Onboarding\n- 7 of 9 users skipped the tour\n- 4 could not find the invite button\n- 2 asked for SSO on day one",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 280,
+   "x": 40,
+   "y": 60,
+   "z": 2
+  },
+  {
+   "alias": "n2",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Pricing page is confusing: people",
+     "compare the Team plan with the",
+     "Business plan and cannot tell which",
+     "one includes audit logs, so they",
+     "open a support ticket instead of",
+     "upgrading."
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 14,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 140,
+   "id": "E-3",
+   "intent": "a pricing finding",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#a5d8ff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Pricing page is confusing: people compare the Team plan with the Business plan and cannot tell which one includes audit logs, so they open a support ticket instead of upgrading.",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 280,
+   "x": 360,
+   "y": 60,
+   "z": 3
+  },
+  {
+   "alias": "n3",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 4,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Quote:",
+     "\"I just want to see",
+     "what my team did",
+     "yesterday without",
+     "opening five tabs.\""
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 14,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-4",
+   "intent": "a customer quote",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#b2f2bb",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Quote:\n\"I just want to see what my team did yesterday without opening five tabs.\"",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 4,
+   "w": 180,
+   "x": 680,
+   "y": 60,
+   "z": 4
+  },
+  {
+   "alias": "n4",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 5,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Bug reported twice:",
+     "https://support.example.com/",
+     "tickets/2026/09/38/export-fails-",
+     "when-the-workspace-name-",
+     "contains-an-apostrophe"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 14,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-5",
+   "intent": "a blocker with a link",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffc9c9",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Bug reported twice:\nhttps://support.example.com/tickets/2026/09/38/export-fails-when-the-workspace-name-contains-an-apostrophe",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 5,
+   "w": 260,
+   "x": 40,
+   "y": 220,
+   "z": 5
+  },
+  {
+   "alias": "n5",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 6,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Internationalization",
+     "localisation",
+     "right-to-left layouts"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 14,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-6",
+   "intent": "a concern with a long word",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#fcc2d7",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Internationalization\nlocalisation\nright-to-left layouts",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 6,
+   "w": 180,
+   "x": 340,
+   "y": 220,
+   "z": 6
+  },
+  {
+   "alias": "n6",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 7,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Why?"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-7",
+   "intent": "a one-word question",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffec99",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Why?",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 7,
+   "w": 180,
+   "x": 560,
+   "y": 220,
+   "z": 7
+  },
+  {
+   "alias": "n7",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 8,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Next steps",
+     "",
+     "1. Rewrite the tour as three short",
+     "tips",
+     "2. Add an audit-log row to the",
+     "pricing table",
+     "3. Fix the apostrophe export bug",
+     "before the October release"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 14,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 180,
+   "id": "E-8",
+   "intent": "next steps at size l",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#fff0a0",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 28,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Next steps\n\n1. Rewrite the tour as three short tips\n2. Add an audit-log row to the pricing table\n3. Fix the apostrophe export bug before the October release",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 8,
+   "w": 260,
+   "x": 40,
+   "y": 380,
+   "z": 8
+  },
+  {
+   "alias": "n8",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 9,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Owner: research team (Dana, Luis,",
+     "Mei)",
+     "Due: Friday 2026-10-02",
+     "Status: waiting on two more",
+     "interviews"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 14,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-9",
+   "intent": "ownership",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#99e9f2",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Owner: research team (Dana, Luis, Mei)\nDue: Friday 2026-10-02\nStatus: waiting on two more interviews",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 9,
+   "w": 280,
+   "x": 340,
+   "y": 380,
+   "z": 9
+  }
+ ],
+ "homes": {
+  "qa-drawer": [
+   0,
+   -1000,
+   800,
+   -400
+  ]
+ },
+ "legend": [],
+ "locks": [],
+ "team": "qa",
+ "updated_at": "2026-01-01T00:00:00.000Z",
+ "v": 1,
+ "version": 9
+}

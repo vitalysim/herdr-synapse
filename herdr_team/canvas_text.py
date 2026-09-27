@@ -25,13 +25,15 @@ warning is logged: the canvas never fails because a font file went missing.
 """
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import json
 import logging
 import math
 import unicodedata
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, Iterator, List, Mapping, Optional, Sequence, Tuple
 
 _log = logging.getLogger(__name__)
 
@@ -248,8 +250,33 @@ def _family(font: str) -> str:
     return "hand" if font == "hand" else FONT_ALIASES.get(font, "sans")
 
 
+#: The browser's corrections in force (canvas v2 phase 1, ``/measure``): ``(token, {"sans-500|<line>": em})``. A
+#: line the page measured wider than the metrics say measures as the page's width; never narrower.
+_CORRECTIONS: "contextvars.ContextVar[Optional[Tuple[str, Mapping[str, float]]]]" = contextvars.ContextVar("canvas_text_corrections", default=None)
+
+
+@contextlib.contextmanager
+def corrected(table: Optional[Mapping[str, float]], token: str = "") -> Iterator[None]:
+    """Measure under ``table`` (``{"<face key>|<line>": em}``, from the page's check) inside the block.
+
+    ``token`` names the table (its digest) so caches never mix widths measured under different tables.
+    An empty table is the metrics alone."""
+    handle = _CORRECTIONS.set((token or str(id(table)), table) if table else None)
+    try:
+        yield
+    finally:
+        _CORRECTIONS.reset(handle)
+
+
+def correction_key(font: str, weight: int, text: str) -> str:
+    """The key a corrected line is stored under: the display list's font (``sans``/``mono``), its weight and the line."""
+    family = "mono" if FONT_ALIASES.get(str(font or "normal"), "sans") == "mono" else "sans"
+    return "{}-{}|{}".format(family, int(weight or DEFAULT_WEIGHT), text)
+
+
 def measure(text: str, font: str = "normal", size: float = 20, weight: int = DEFAULT_WEIGHT) -> Measure:
-    """One line's width at ``size`` (a newline counts as nothing; split lines first)."""
+    """One line's width at ``size`` (a newline counts as nothing; split lines first); a corrected line is never
+    narrower than the browser measured it (``corrected``)."""
     fc = face(font, weight)
     family = _family(font)
     text = str(text or "")
@@ -267,6 +294,11 @@ def measure(text: str, font: str = "normal", size: float = 20, weight: int = DEF
         if len(_RUN_CACHE) > CACHE_MAX:
             _RUN_CACHE.clear()
         hit = _RUN_CACHE[key] = (total, estimated)
+    active = _CORRECTIONS.get()
+    if active is not None:
+        em = active[1].get(correction_key(font, weight, text))
+        if isinstance(em, (int, float)) and em > hit[0] * SAFETY:
+            return Measure(float(em) * float(size), hit[1])
     return Measure(hit[0] * float(size) * SAFETY, hit[1])
 
 
@@ -294,7 +326,7 @@ def _joined_to_next(text: str, index: int) -> bool:
 
 def _soft_break(text: str, index: int) -> bool:
     """Whether a line may break before ``text[index]`` without a hard break (rules 2 and 3)."""
-    if _joined_to_next(text, index):
+    if index <= 0 or index >= len(text) or _joined_to_next(text, index):
         return False
     before, after = text[index - 1], text[index]
     return before in SOFT_BREAKS or (_wide(before) and not _zero_width(after)) or (_wide(after) and before not in "([{")
@@ -330,6 +362,8 @@ def _break_token(token: str, max_width: float, font: str, size: float, weight: i
             break
         # The longest prefix that fits (at least one character, never splitting a joined one).
         fits = max(start + 1, fits)
+        if fits >= len(token):
+            break  # only the last character is left: it is a piece of its own, however narrow the line
         cut = next((index for index in range(fits, start, -1) if _soft_break(token, index)), 0)
         if not cut:
             hard = True
@@ -349,13 +383,16 @@ def _wrap(text: str, max_width: float, font: str, size: float, weight: int) -> T
     lines: List[str] = []
     hard = False
     space = _width(" ", font, size, weight)
+    # Under the browser's corrections a whole line may measure wider than its words (``corrected``): check it.
+    whole = _CORRECTIONS.get() is not None
     for raw in str(text or "").replace("\r\n", "\n").split("\n"):
         line = ""
         line_w = 0.0
         started = False
         for word in raw.split(" "):
             word_w = _width(word, font, size, weight)
-            if started and line_w + space + word_w <= max_width + EPS:
+            if started and line_w + space + word_w <= max_width + EPS and \
+                    (not whole or _width(line + " " + word, font, size, weight) <= max_width + EPS):
                 line, line_w = line + " " + word, line_w + space + word_w
                 continue
             if started:
@@ -475,12 +512,13 @@ def _result(request: FitRequest, policy: str, w: float, h: float, size: float, l
                      estimated=_estimated(lines, request, size), **flags)
 
 
-_NATURAL_CACHE: Dict[Tuple[str, str, int], Tuple[float, float]] = {}
+_NATURAL_CACHE: Dict[Tuple[str, str, int, str], Tuple[float, float]] = {}
 
 
 def _natural(text: str, request: FitRequest, size: float) -> Tuple[float, float]:
     """The widest hard line unwrapped, and the widest piece no soft break splits (both at ``size``)."""
-    key = (str(text), _family(request.font), int(request.weight))
+    active = _CORRECTIONS.get()
+    key = (str(text), _family(request.font), int(request.weight), active[0] if active is not None else "")
     hit = _NATURAL_CACHE.get(key)
     if hit is None:
         widest = longest = 0.0

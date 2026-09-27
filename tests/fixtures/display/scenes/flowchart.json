@@ -1,0 +1,1926 @@
+{
+ "authors": {
+  "qa-drawer": {
+   "agent": "claude",
+   "color": "#1971c2",
+   "index": 0,
+   "kind": "member"
+  }
+ },
+ "batches": {
+  "B-1": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "qa-drawer",
+   "first_seq": 1,
+   "last_seq": 2,
+   "undone": false
+  }
+ },
+ "claims": [],
+ "counters": {
+  "B": 1,
+  "C": 0,
+  "E": 36,
+  "G": 0,
+  "K": 0,
+  "X": 0
+ },
+ "elements": [
+  {
+   "alias": "checkout",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "frame": null,
+   "group": null,
+   "h": 1840,
+   "id": "E-1",
+   "intent": "the checkout path",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#f0f1f4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Checkout flow for returning shoppers",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 580,
+   "x": 0,
+   "y": 0,
+   "z": 1
+  },
+  {
+   "alias": "checkout.start",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Shopper presses Pay",
+     "now on the cart page"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "scale_shape",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 140,
+   "id": "E-2",
+   "intent": "the checkout path",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Shopper presses Pay now on the cart page",
+   "type": "ellipse",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 340,
+   "x": 120,
+   "y": 40,
+   "z": 2
+  },
+  {
+   "alias": "checkout.auth",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Validate the session",
+     "token and the CSRF",
+     "cookie"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 100,
+   "id": "E-3",
+   "intent": "the checkout path",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Validate the session token and the CSRF cookie",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 240,
+   "x": 140,
+   "y": 280,
+   "z": 3
+  },
+  {
+   "alias": "checkout.reach",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Is the payment",
+     "provider reachable",
+     "within 800 ms?"
+    ],
+    "min": [
+     200,
+     120
+    ],
+    "policy": "scale_shape",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 240,
+   "id": "E-4",
+   "intent": "the checkout path",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Is the payment provider reachable within 800 ms?",
+   "type": "diamond",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 400,
+   "x": 60,
+   "y": 480,
+   "z": 4
+  },
+  {
+   "alias": "checkout.charge",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Charge the saved",
+     "card through the",
+     "provider API"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 100,
+   "id": "E-5",
+   "intent": "the checkout path",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Charge the saved card through the provider API",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 220,
+   "x": 120,
+   "y": 820,
+   "z": 5
+  },
+  {
+   "alias": "checkout.ok",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Payment",
+     "approved?"
+    ],
+    "min": [
+     200,
+     120
+    ],
+    "policy": "scale_shape",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 160,
+   "id": "E-6",
+   "intent": "the checkout path",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Payment approved?",
+   "type": "diamond",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 260,
+   "x": 100,
+   "y": 1020,
+   "z": 6
+  },
+  {
+   "alias": "checkout.order",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Write the order to",
+     "the orders database",
+     "(Postgres 17",
+     "primary)"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 140,
+   "id": "E-7",
+   "intent": "the checkout path",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Write the order to the orders database (Postgres 17 primary)",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 240,
+   "x": 20,
+   "y": 1280,
+   "z": 7
+  },
+  {
+   "alias": "checkout.retry",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Show a retry banner",
+     "and keep the cart",
+     "intact for 30 minutes"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 100,
+   "id": "E-8",
+   "intent": "the checkout path",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Show a retry banner and keep the cart intact for 30 minutes",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 240,
+   "x": 320,
+   "y": 1300,
+   "z": 8
+  },
+  {
+   "alias": "checkout.mail",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Send the",
+     "confirmation e-mail",
+     "with the invoice PDF",
+     "attached"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 140,
+   "id": "E-9",
+   "intent": "the checkout path",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#fff0a0",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Send the confirmation e-mail with the invoice PDF attached",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 240,
+   "x": 170,
+   "y": 1520,
+   "z": 9
+  },
+  {
+   "alias": "checkout.done",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Done"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "scale_shape",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 60,
+   "id": "E-10",
+   "intent": "the checkout path",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Done",
+   "type": "ellipse",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 160,
+   "x": 210,
+   "y": 1760,
+   "z": 10
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-2",
+   "group": "E-1",
+   "h": 92,
+   "head": "arrow",
+   "id": "E-11",
+   "intent": "the checkout path",
+   "points": [
+    [
+     279.93,
+     183.85
+    ],
+    [
+     267.36,
+     276.04
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-3",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 13,
+   "x": 267,
+   "y": 184,
+   "z": 11
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-3",
+   "group": "E-1",
+   "h": 92,
+   "head": "arrow",
+   "id": "E-12",
+   "intent": "the checkout path",
+   "points": [
+    [
+     260,
+     384
+    ],
+    [
+     260,
+     476
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-4",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 1,
+   "x": 260,
+   "y": 384,
+   "z": 12
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "yes"
+    ],
+    "size": 16
+   },
+   "frame": "E-1",
+   "from": "E-4",
+   "group": "E-1",
+   "h": 100,
+   "head": "arrow",
+   "id": "E-13",
+   "intent": "the checkout path",
+   "label_at": [
+    241.53,
+    766.25
+   ],
+   "points": [
+    [
+     247.06,
+     716.48
+    ],
+    [
+     236,
+     816.02
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "yes",
+   "to": "E-5",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 11,
+   "x": 236,
+   "y": 716,
+   "z": 13
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "no, provider timed out"
+    ],
+    "size": 16
+   },
+   "frame": "E-1",
+   "from": "E-4",
+   "group": "E-1",
+   "h": 601,
+   "head": "arrow",
+   "id": "E-14",
+   "intent": "the checkout path",
+   "label_at": [
+    409.98,
+    984.8
+   ],
+   "points": [
+    [
+     309.3,
+     695.08
+    ],
+    [
+     400,
+     870
+    ],
+    [
+     420,
+     1100
+    ],
+    [
+     435.68,
+     1296.01
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "no, provider timed out",
+   "to": "E-8",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 126,
+   "x": 309,
+   "y": 695,
+   "z": 14
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-5",
+   "group": "E-1",
+   "h": 92,
+   "head": "arrow",
+   "id": "E-15",
+   "intent": "the checkout path",
+   "points": [
+    [
+     230,
+     924
+    ],
+    [
+     230,
+     1016
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-6",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 1,
+   "x": 230,
+   "y": 924,
+   "z": 15
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "approved"
+    ],
+    "size": 16
+   },
+   "frame": "E-1",
+   "from": "E-6",
+   "group": "E-1",
+   "h": 107,
+   "head": "arrow",
+   "id": "E-16",
+   "intent": "the checkout path",
+   "label_at": [
+    185.81,
+    1222.75
+   ],
+   "points": [
+    [
+     205.07,
+     1169.25
+    ],
+    [
+     166.55,
+     1276.24
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "approved",
+   "to": "E-7",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 39,
+   "x": 167,
+   "y": 1169,
+   "z": 16
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "declined by the",
+     "issuing bank"
+    ],
+    "size": 16
+   },
+   "frame": "E-1",
+   "from": "E-6",
+   "group": "E-1",
+   "h": 141,
+   "head": "arrow",
+   "id": "E-17",
+   "intent": "the checkout path",
+   "label_at": [
+    336.15,
+    1226.37
+   ],
+   "points": [
+    [
+     276.87,
+     1155.8
+    ],
+    [
+     395.43,
+     1296.94
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "declined by the issuing bank",
+   "to": "E-8",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 119,
+   "x": 277,
+   "y": 1156,
+   "z": 17
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-7",
+   "group": "E-1",
+   "h": 93,
+   "head": "arrow",
+   "id": "E-18",
+   "intent": "the checkout path",
+   "points": [
+    [
+     185.87,
+     1423.39
+    ],
+    [
+     244.13,
+     1516.61
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-9",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 58,
+   "x": 186,
+   "y": 1423,
+   "z": 18
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-9",
+   "group": "E-1",
+   "h": 92,
+   "head": "arrow",
+   "id": "E-19",
+   "intent": "the checkout path",
+   "points": [
+    [
+     290,
+     1664
+    ],
+    [
+     290,
+     1756
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-10",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 1,
+   "x": 290,
+   "y": 1664,
+   "z": 19
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "shopper tries again"
+    ],
+    "size": 16
+   },
+   "frame": "E-1",
+   "from": "E-8",
+   "group": "E-1",
+   "h": 1115,
+   "head": "arrow",
+   "id": "E-20",
+   "intent": "the checkout path",
+   "label_at": [
+    493.57,
+    718.94
+   ],
+   "points": [
+    [
+     448.63,
+     1296.05
+    ],
+    [
+     480,
+     1100
+    ],
+    [
+     460,
+     870
+    ],
+    [
+     520,
+     600
+    ],
+    [
+     440,
+     330
+    ],
+    [
+     338.2,
+     180.7
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "dashed",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "shopper tries again",
+   "to": "E-2",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 182,
+   "x": 338,
+   "y": 181,
+   "z": 20
+  },
+  {
+   "alias": "refund",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "frame": null,
+   "group": null,
+   "h": 320,
+   "id": "E-21",
+   "intent": "the refund path as Mermaid",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#f0f1f4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Refund flow",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 2120,
+   "x": 0,
+   "y": 1920,
+   "z": 21
+  },
+  {
+   "alias": "refund.ledger",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "frame": "E-21",
+   "group": "E-21",
+   "h": 160,
+   "id": "E-22",
+   "intent": "the refund path as Mermaid",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#f0f1f4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Ledger and notifications",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 620,
+   "x": 1240,
+   "y": 2000,
+   "z": 22
+  },
+  {
+   "alias": "refund.req",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Customer asks for a",
+     "refund through the",
+     "support widget"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "scale_shape",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-21",
+   "group": "E-21",
+   "h": 140,
+   "id": "E-23",
+   "intent": "the refund path as Mermaid",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Customer asks for a refund through the support widget",
+   "type": "ellipse",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 380,
+   "x": 20,
+   "y": 2020,
+   "z": 23
+  },
+  {
+   "alias": "refund.policy",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Is the order",
+     "younger than",
+     "thirty days?"
+    ],
+    "min": [
+     200,
+     120
+    ],
+    "policy": "scale_shape",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-21",
+   "group": "E-21",
+   "h": 200,
+   "id": "E-24",
+   "intent": "the refund path as Mermaid",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Is the order younger than thirty days?",
+   "type": "diamond",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 320,
+   "x": 500,
+   "y": 1990,
+   "z": 24
+  },
+  {
+   "alias": "refund.auto",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Refund automatically",
+     "to the original",
+     "payment method"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-21",
+   "group": "E-21",
+   "h": 100,
+   "id": "E-25",
+   "intent": "the refund path as Mermaid",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Refund automatically to the original payment method",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 240,
+   "x": 920,
+   "y": 1960,
+   "z": 25
+  },
+  {
+   "alias": "refund.human",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Escalate to a human",
+     "agent in the Tier-2",
+     "queue"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-21",
+   "group": "E-21",
+   "h": 100,
+   "id": "E-26",
+   "intent": "the refund path as Mermaid",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Escalate to a human agent in the Tier-2 queue",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 240,
+   "x": 920,
+   "y": 2120,
+   "z": 26
+  },
+  {
+   "alias": "refund.book",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Book a negative",
+     "ledger entry with the",
+     "reason code"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-22",
+   "group": "E-21",
+   "h": 100,
+   "id": "E-27",
+   "intent": "the refund path as Mermaid",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Book a negative ledger entry with the reason code",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 240,
+   "x": 1260,
+   "y": 2040,
+   "z": 27
+  },
+  {
+   "alias": "refund.notify",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Notify the customer",
+     "and the accounting",
+     "mailbox"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-22",
+   "group": "E-21",
+   "h": 100,
+   "id": "E-28",
+   "intent": "the refund path as Mermaid",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Notify the customer and the accounting mailbox",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 240,
+   "x": 1600,
+   "y": 2040,
+   "z": 28
+  },
+  {
+   "alias": "refund.closed",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Closed"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "scale_shape",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-21",
+   "group": "E-21",
+   "h": 60,
+   "id": "E-29",
+   "intent": "the refund path as Mermaid",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Closed",
+   "type": "ellipse",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 160,
+   "x": 1940,
+   "y": 2060,
+   "z": 29
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-21",
+   "from": "E-23",
+   "group": "E-21",
+   "h": 1,
+   "head": "arrow",
+   "id": "E-30",
+   "intent": "the refund path as Mermaid",
+   "points": [
+    [
+     404,
+     2090
+    ],
+    [
+     496,
+     2090
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-24",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 92,
+   "x": 404,
+   "y": 2090,
+   "z": 30
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "yes"
+    ],
+    "size": 16
+   },
+   "frame": "E-21",
+   "from": "E-24",
+   "group": "E-21",
+   "h": 28,
+   "head": "arrow",
+   "id": "E-31",
+   "intent": "the refund path as Mermaid",
+   "label_at": [
+    849.85,
+    2050.03
+   ],
+   "points": [
+    [
+     783.6,
+     2063.98
+    ],
+    [
+     916.09,
+     2036.09
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "yes",
+   "to": "E-25",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 132,
+   "x": 784,
+   "y": 2036,
+   "z": 31
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "no"
+    ],
+    "size": 16
+   },
+   "frame": "E-21",
+   "from": "E-24",
+   "group": "E-21",
+   "h": 28,
+   "head": "arrow",
+   "id": "E-32",
+   "intent": "the refund path as Mermaid",
+   "label_at": [
+    849.85,
+    2129.97
+   ],
+   "points": [
+    [
+     783.6,
+     2116.02
+    ],
+    [
+     916.09,
+     2143.91
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "no",
+   "to": "E-26",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 132,
+   "x": 784,
+   "y": 2116,
+   "z": 32
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-21",
+   "from": "E-25",
+   "group": "E-21",
+   "h": 22,
+   "head": "arrow",
+   "id": "E-33",
+   "intent": "the refund path as Mermaid",
+   "points": [
+    [
+     1163.89,
+     2039.15
+    ],
+    [
+     1256.11,
+     2060.85
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-27",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 92,
+   "x": 1164,
+   "y": 2039,
+   "z": 33
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-21",
+   "from": "E-26",
+   "group": "E-21",
+   "h": 22,
+   "head": "arrow",
+   "id": "E-34",
+   "intent": "the refund path as Mermaid",
+   "points": [
+    [
+     1163.89,
+     2140.85
+    ],
+    [
+     1256.11,
+     2119.15
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-27",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 92,
+   "x": 1164,
+   "y": 2119,
+   "z": 34
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-21",
+   "from": "E-27",
+   "group": "E-21",
+   "h": 1,
+   "head": "arrow",
+   "id": "E-35",
+   "intent": "the refund path as Mermaid",
+   "points": [
+    [
+     1504,
+     2090
+    ],
+    [
+     1596,
+     2090
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-28",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 92,
+   "x": 1504,
+   "y": 2090,
+   "z": 35
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-21",
+   "from": "E-28",
+   "group": "E-21",
+   "h": 1,
+   "head": "arrow",
+   "id": "E-36",
+   "intent": "the refund path as Mermaid",
+   "points": [
+    [
+     1844,
+     2090
+    ],
+    [
+     1936,
+     2090
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-29",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 92,
+   "x": 1844,
+   "y": 2090,
+   "z": 36
+  }
+ ],
+ "homes": {
+  "qa-drawer": [
+   0,
+   -1000,
+   800,
+   -400
+  ]
+ },
+ "legend": [],
+ "locks": [],
+ "team": "qa",
+ "updated_at": "2026-01-01T00:00:00.000Z",
+ "v": 1,
+ "version": 2
+}

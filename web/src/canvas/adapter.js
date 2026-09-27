@@ -8,9 +8,9 @@
 //           if_version, so the server stays the only writer of the canonical scene.
 import { restoreElements } from "@excalidraw/excalidraw";
 import { activeClaims } from "../sceneStore.js";
-import { MUTED, authorChip, toneColors } from "../theme/tokens.js";
+import { GRID_LINE, MUTED, SURFACE, authorChip, toneColors } from "../theme/tokens.js";
 import {
-  BOUND_TEXT_PADDING, FONT_TO_EX, LINE_HEIGHT, absFrom, aliasOf, base, derived, exIdOf, label, serverLines, textStyleInputs, typedText,
+  BOUND_TEXT_PADDING, FONT_TO_EX, LINE_HEIGHT, ROUND_ADAPTIVE, absFrom, aliasOf, base, derived, exIdOf, label, serverLines, textStyleInputs, typedText,
 } from "./elements.js";
 import { creatorOf, isKnown, kindOf } from "./kinds/index.js";
 
@@ -98,12 +98,52 @@ export function build(scene, options) {
   const fitted = new Map();
   for (const el of visible) {
     const lines = serverLines(el);
-    if (lines && el.type !== "arrow") fitted.set(el.type === "text" ? exIdOf(el) : `${exIdOf(el)}~t`, lines);
+    if (lines) fitted.set(el.type === "text" ? exIdOf(el) : `${exIdOf(el)}~t`, lines);
   }
   widenForWords(raw, fitted);
   const restored = restoreElements(raw, null, { refreshDimensions: true, repairBindings: true });
-  const elements = centerBoundText(growForText(drawServerLines(restored, fitted)));
+  const centered = centerBoundText(growForText(drawServerLines(restored, fitted)));
+  const elements = liftArrowLabels(centered, new Set(body.map((el) => el.id)));
   return { elements, fileJobs: ctx.fileJobs };
+}
+
+// -- arrow labels sit in pills, above every mark ---------------------------------------------
+
+// The pill around an arrow label (design spec 6.1: surface fill, grid hairline, radius 6, padding 8 x 2),
+// as the server draws it (canvas_render._arrow_label).
+const PILL_PAD = [8, 2];
+const PILL_RADIUS = 6;
+
+// Every arrow's label (./kinds/arrow.js), centred where the server placed it (label_at: clear of every
+// mark and label) or else on the arrow's middle, with a pill behind it, goes right after the last canvas
+// mark (before claims, locks, pins and chips): a line drawn later never crosses a label (QA R-3), as in
+// the agent's picture.
+function liftArrowLabels(elements, bodyIds) {
+  const byId = new Map(elements.map((el) => [el.id, el]));
+  const labels = elements.filter((el) => el.type === "text" && el.customData?.synapse?.derived === "label").map((text) => {
+    const arrow = byId.get(text.id.replace(/~t$/, ""));
+    const at = text.customData.synapse.at;
+    const [cx, cy] = at || (arrow ? arrowMidpoint(arrow).map((v, i) => v + (i ? arrow.y : arrow.x)) : [text.x + text.width / 2, text.y + text.height / 2]);
+    return { ...text, x: cx - text.width / 2, y: cy - text.height / 2 };
+  });
+  if (!labels.length) return elements;
+  const lifted = new Set(labels.map((el) => el.id));
+  const rest = elements.filter((el) => !lifted.has(el.id));
+  const pills = restoreElements(labels.map((text) => {
+    const width = advanceWidth(text) + PILL_PAD[0] * 2;
+    const height = text.height + PILL_PAD[1] * 2;
+    const cx = text.x + text.width / 2;
+    const cy = text.y + text.height / 2;
+    return derived(`pill~${text.id}`, "pill", { type: "rectangle", x: cx - width / 2, y: cy - height / 2, width, height, strokeColor: GRID_LINE,
+      backgroundColor: SURFACE, strokeWidth: 1, roundness: { type: ROUND_ADAPTIVE, value: PILL_RADIUS }, frameId: text.frameId },
+    { id: text.customData?.synapse?.id });
+  }), null);
+  const layer = labels.flatMap((text, index) => [pills[index], text]);
+  let after = -1;
+  rest.forEach((el, index) => {
+    if (bodyIds.has(el.id) || el.customData?.synapse?.derived === "text") after = index;
+  });
+  return [...rest.slice(0, after + 1), ...layer, ...rest.slice(after + 1)];
 }
 
 // Excalidraw wraps a label at its own inner width (the container less 5 units a side), wider

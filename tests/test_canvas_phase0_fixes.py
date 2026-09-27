@@ -7,6 +7,7 @@ the system fonts skip without them; the rest are pure.
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 import unicodedata
 import unittest
@@ -20,8 +21,10 @@ from test_canvas_render_fonts import decode_png
 
 from herdr_team import canvas as C
 from herdr_team import canvas_check as K
+from herdr_team import canvas_display as D
 from herdr_team import canvas_layout as L
 from herdr_team import canvas_render as R
+from herdr_team import canvas_svg as S
 from herdr_team import canvas_text as X
 
 SVG = "http://www.w3.org/2000/svg"
@@ -34,6 +37,12 @@ def texts(markup):
     return [("".join(t.itertext()), float(t.get("y"))) for t in root.iter("{%s}text" % SVG)]
 
 
+def lines_svg(lines, x, top, size, fill="#000000", anchor="start"):
+    """Lines as the picture draws them (phase 1: a display-list text primitive through canvas_svg, which replaced
+    canvas_render._lines_svg)."""
+    return S.fragment([D.text_prim(lines, x, top, size, {}, fill, anchor, None)], resvg_text=True)
+
+
 def svg_doc(body, family="Inter"):
     return ('<svg xmlns="{}" width="600" height="120" viewBox="0 0 600 120" font-family="{}, sans-serif">'
             '<rect width="600" height="120" fill="#ffffff"/>{}</svg>').format(SVG, family, body)
@@ -41,8 +50,11 @@ def svg_doc(body, family="Inter"):
 
 class F4F8LinesEachInTheirOwnText(unittest.TestCase):
     def test_every_line_is_its_own_text_at_its_own_baseline_with_spaces_kept(self):
-        markup = R._lines_svg(["Next steps", "", "    1. indented"], 10, 0, 20, {}, "#000000", "start")
+        markup = lines_svg(["Next steps", "", "    1. indented"], 10, 0, 20)
         self.assertIn('xml:space="preserve"', markup)
+        # On each <text>, not the group: a browser's own <text> style resets an inherited white-space (QA phase 1 #4).
+        self.assertEqual(markup.count("<text "), markup.count('xml:space="preserve"'), markup)
+        self.assertEqual(len(re.findall(r'<text [^>]*xml:space="preserve"', markup)), 3, markup)
         drawn = texts(markup)
         self.assertEqual([t for t, _y in drawn], ["Next steps", "", "    1. indented"], "a blank line is kept, as is indentation")
         self.assertEqual([round(b - a, 6) for (_t, a), (_u, b) in zip(drawn, drawn[1:])], [X.line_height(20)] * 2)
@@ -51,16 +63,16 @@ class F4F8LinesEachInTheirOwnText(unittest.TestCase):
 
 class F9StoredLinesThatBreakInsideAToken(CanvasRig):
     def test_lines_broken_at_a_slash_still_match_their_text(self):
-        self.assertTrue(R._same_words(["https://example.com/", "docs/setup"], "https://example.com/docs/setup"))
-        self.assertTrue(R._same_words(["one two", "three"], "one  two\nthree"))
-        self.assertFalse(R._same_words(["one", "two"], "one three"))
+        self.assertTrue(D._same_words(["https://example.com/", "docs/setup"], "https://example.com/docs/setup"))
+        self.assertTrue(D._same_words(["one two", "three"], "one  two\nthree"))
+        self.assertFalse(D._same_words(["one", "two"], "one three"))
 
     def test_the_picture_draws_the_fitted_lines_of_a_url(self):
         url = "https://example.com/segment0-with-a-long-name/segment1-with-a-long-name/segment2-with-a-long-name"
         eid = self.ok({"op": "shape", "kind": "note", "text": url, "at": [0, 0], "intent": "t"})["ids"][0]
         lines = self.el(eid)["fit"]["lines"]
         self.assertGreater(len(lines), 1)
-        drawn = [t for t, _y in texts(R._label_svg(self.el(eid), None))]
+        drawn = [t for t, _y in texts(S.fragment([D.label(self.el(eid), "base.ink")]))]
         self.assertEqual(drawn, lines)
 
 
@@ -131,14 +143,14 @@ class RealResvgPicture(unittest.TestCase):
         return rows, "\n".join(seen)
 
     def test_a_blank_line_keeps_its_height(self):
-        rows, _err = self.render(svg_doc(R._lines_svg(["AAAA", "", "BBBB"], 20, 0, 20, {}, "#000000", "start")))
+        rows, _err = self.render(svg_doc(lines_svg(["AAAA", "", "BBBB"], 20, 0, 20)))
         inked = [y for y, row in enumerate(rows) if any(a > 128 and r + g + b < 300 for r, g, b, a in row)]
         gap = max(b - a for a, b in zip(inked, inked[1:]))
         self.assertGreater(gap, X.line_height(20), "the third line sits two line heights below the first")
 
     @unittest.skipUnless(os.path.exists(NASTALIQ), "macOS without its Nastaliq UI face")
     def test_arabic_and_japanese_after_inter_find_their_fonts(self):
-        _rows, err = self.render(svg_doc(R._lines_svg(["تم تأكيد الطلب — 注文確認済み ✔"], 20, 20, 20, {}, "#000000", "start")))
+        _rows, err = self.render(svg_doc(lines_svg(["تم تأكيد الطلب — 注文確認済み ✔"], 20, 20, 20)))
         self.assertNotIn("No fonts with", err)
         self.assertNotIn("Nastaleeq", err)
 
@@ -195,8 +207,18 @@ class F2GrownShapesMakeWay(CanvasRig):
         self.assertTrue(K._contains(C.bounds(frame), C.bounds(sun)), "its frame grew to hold it")
         self.assertFalse(K._intersects(C.bounds(sun), C.bounds(tree), K.TOUCH), "the next op's tree lands clear of it")
 
+    def test_an_unlabelled_shape_the_roof_grew_into_makes_way(self):
+        # QA R-1: at their asked sizes the walls sat under the roof; the roof grew, so the walls move down.
+        _frame, roof, walls, _sun, _tree = self.house()
+        self.assertFalse(K._intersects(C.bounds(roof), C.bounds(walls), K.TOUCH))
+        self.assertEqual((walls["x"], walls["w"], walls["h"]), (180, 200, 140), "only moved, straight down")
+
     def test_an_unlabelled_shape_goes_under_the_labels_it_covers(self):
-        frame, roof, walls, _sun, _tree = self.house()
+        frame = self.ok({"op": "frame", "title": "Home", "at": [100, 100], "w": 560, "h": 420, "intent": "t"})["ids"][0]
+        roof = self.ok({"op": "shape", "kind": "diamond", "text": "roof", "at": [180, 150], "w": 200, "h": 120, "intent": "t"})["ids"][0]
+        # Drawn over the roof on purpose (their asked boxes overlap): it stays, under the roof's label.
+        walls = self.el(self.ok({"op": "shape", "kind": "box", "at": [180, 240], "w": 200, "h": 140, "intent": "walls"})["ids"][0])
+        roof, frame = self.el(roof), self.el(frame)
         self.assertTrue(K._intersects(C.bounds(roof), C.bounds(walls), K.TOUCH))
         self.assertLess(walls["z"], roof["z"], "the walls' fill no longer hides the roof's label")
         self.assertGreaterEqual(walls["z"], frame["z"], "never under its own frame")
@@ -302,7 +324,7 @@ class F15PageGlyphOverhang(unittest.TestCase):
         adapter = (PLUGIN_ROOT / "web" / "src" / "canvas" / "adapter.js").read_text(encoding="utf-8")
         self.assertIn("export const GLYPH_OVERHANG = 2;", adapter)
         self.assertIn("advanceWidth(text)", adapter, "fitting checks ignore the overhang, so no container grows for it")
-        built = "".join(path.read_text(encoding="utf-8", errors="replace") for path in (PLUGIN_ROOT / "web" / "dist" / "assets").glob("index-*.js"))
+        built = "".join(path.read_text(encoding="utf-8", errors="replace") for path in (PLUGIN_ROOT / "web" / "dist" / "assets").glob("*.js"))
         self.assertIn("overhang", built, "rebuild web/dist")
 
 

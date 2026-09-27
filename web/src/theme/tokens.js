@@ -17,6 +17,7 @@ export const MUTED = BASE.ink_muted;
 export const CANVAS = BASE.canvas;
 export const SURFACE = BASE.surface;
 export const LINE = BASE.line;
+export const GRID_LINE = BASE.grid;
 
 // Excalidraw 0.18 font families (phase0_excalidraw.fontFamily): sans is family 2, the "Helvetica"
 // slot the page's @font-face fills with Inter (src/fonts.css).

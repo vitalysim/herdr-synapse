@@ -9,15 +9,21 @@ element. For a kind with ``measure``: the fit invariant holds on seeded random
 labels at random minimums, the result is never smaller than the minimum, and
 measuring is deterministic. For a kind with ``emit``: deterministic. For a kind
 above version 1: ``upgrade`` from every older version gives an element its
-readback and measure accept.
+readback and measure accept. Since canvas v2 phase 1, for every kind: its
+display-list entry validates (random and malformed elements alike), its
+``hit``, ``handles`` and ``edit`` are well formed, and a ``translate`` or
+``resize`` leaves an element that still validates.
 """
 from __future__ import annotations
 
 import random
 from typing import Any, Dict, List
 
+from herdr_team import canvas_display as D
 from herdr_team import canvas_kinds as R
 from herdr_team import canvas_text as X
+from herdr_team import canvas_theme as T
+from herdr_team.errors import HerdrTeamError
 
 SEED = 1301
 LABELS = 300
@@ -49,6 +55,7 @@ def element(kind: R.Kind, rng: random.Random) -> Dict[str, Any]:
 def check_kind(case: Any, kind: R.Kind) -> None:
     """Run every conformance check for ``kind`` inside ``case`` (a ``unittest.TestCase``)."""
     case.assertIn(kind.role, R.ROLES)
+    case.assertIn(kind.outline, R.OUTLINES, "{}'s outline is one layout can test".format(kind.name))
     case.assertGreaterEqual(kind.version, 1)
     if kind.fit is not None:
         case.assertIn(kind.fit, X.FIT_POLICIES, "{}'s default fit policy is registered".format(kind.name))
@@ -78,3 +85,55 @@ def check_kind(case: Any, kind: R.Kind) -> None:
         for stored in range(1, kind.version):
             upgraded = kind.upgrade(element(kind, rng), stored)  # type: ignore[misc]
             case.assertEqual(upgraded.get("type"), kind.name)
+    check_display(case, kind, rng)
+
+
+class _ResizeCtx:
+    """What a kind's ``resize`` may ask of its context, answered by the canvas's own validators."""
+
+    def number(self, op, field, low, high, default=None):
+        from herdr_team import canvas as C
+
+        return default if op.get(field) is None else C._num(op[field], field, low, high)
+
+    def invalid(self, field, message, **details):
+        from herdr_team import canvas as C
+
+        return C._invalid(field, message, **details)
+
+    def text_fields(self, el, text, style, wrap_w=None):
+        from herdr_team import canvas as C
+
+        return C._text_fields(el, text, style, wrap_w)
+
+
+def _valid_entry(case, kind, el, context):
+    entry = D.entry(el, D.environment({}))
+    doc = {"dl": 1, "palettes": {theme: T.palette(theme) for theme in T.THEMES}, "entries": [entry]}
+    case.assertEqual(D.validate(doc), [], context)
+    case.assertIn(entry["hit"]["shape"], D.HITS, context)
+    case.assertIn(entry["handles"], R.HANDLES, context)
+    if entry["edit"] is not None:
+        case.assertEqual(set(entry["edit"]) >= {"field", "value", "box", "font", "weight", "size", "lh", "align", "wrap", "fill"}, True, context)
+        case.assertEqual(len(entry["edit"]["box"]), 4, context)
+    return entry
+
+
+def check_display(case, kind, rng):
+    """The kind's display-list entry for random and malformed elements, and after a move and a resize."""
+    for index in range(20):
+        el = element(kind, rng)
+        el.update(points=[[0, 0], [rng.randint(10, 300), rng.randint(-100, 100)]], point=[5, 5], z=index, updated_seq=index)
+        entry = _valid_entry(case, kind, el, (kind.name, index))
+        case.assertEqual(entry, D.entry(el, D.environment({})), "an entry is a function of its element")
+        if kind.translate is not None:
+            moved = dict(el, x=el["x"] + 7, y=el["y"] - 3, **kind.translate(el, 7, -3))
+            _valid_entry(case, kind, moved, (kind.name, index, "moved"))
+        if kind.resize is not None:
+            try:
+                resized = dict(el, **kind.resize(el, 240, 120, _ResizeCtx()))
+            except HerdrTeamError:
+                continue  # a kind without a size (a comment pin) refuses a resize, and says so
+            _valid_entry(case, kind, resized, (kind.name, index, "resized"))
+    for bad in MALFORMED:
+        _valid_entry(case, kind, dict(bad, type=kind.name), (kind.name, bad))

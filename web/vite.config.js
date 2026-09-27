@@ -1,5 +1,6 @@
 // Build of the whiteboard page (web/dist). The Python server serves dist/ under a strict CSP:
 // no inline script, no remote origin, so everything here is bundled or copied locally.
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { defineConfig } from "vite";
@@ -32,6 +33,13 @@ const FONT_FILES = ["inter/Inter-Regular.ttf", "inter/Inter-Medium.ttf", "inter/
 for (const rel of FONT_FILES) {
   if (!fs.existsSync(path.join(REPO, "assets", "fonts", rel))) throw new Error(`assets/fonts/${rel} is missing: the page bundles it (src/fonts.css)`);
 }
+
+// The sha256 of the font metrics Python measures with (assets/fonts/font-metrics.json). The v2
+// board sends it with every POST /measure, so the server drops corrections a page built against
+// other metrics made (canvas-v2-phase1.md 3.3).
+const FONT_METRICS = path.join(REPO, "assets", "fonts", "font-metrics.json");
+if (!fs.existsSync(FONT_METRICS)) throw new Error("assets/fonts/font-metrics.json is missing: python3 -m herdr_team.canvas_fontgen --write");
+const FONT_METRICS_SHA = crypto.createHash("sha256").update(fs.readFileSync(FONT_METRICS)).digest("hex");
 
 // Records every npm package whose code ends up in the output chunks, so postbuild can
 // ship each one's licence (web/dist/licenses/) and version (MANIFEST.json "packages").
@@ -85,6 +93,15 @@ export default defineConfig({
   define: {
     // Excalidraw's documented Vite setting.
     "process.env.IS_PREACT": JSON.stringify("false"),
+    __SYNAPSE_FONT_METRICS_SHA__: JSON.stringify(FONT_METRICS_SHA),
+  },
+  // vitest (npm test): the page's pure units run in node; a component test opts into jsdom
+  // with a `// @vitest-environment jsdom` first line. The CDP interaction tests are separate
+  // (npm run test:e2e, web/test/e2e/run.mjs).
+  test: {
+    environment: "node",
+    include: ["src/**/*.test.{js,jsx}"],
+    restoreMocks: true,
   },
   build: {
     outDir: "dist",

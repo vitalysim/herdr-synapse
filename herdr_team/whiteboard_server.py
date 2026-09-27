@@ -42,6 +42,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import math
 import os
 import re
 import secrets
@@ -127,6 +128,10 @@ TICKET_RE = re.compile(r"^[A-Za-z0-9_-]{20,128}\Z")
 VIZ_LIB_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 MAX_SEND_IDS = 200
 MAX_NOTE_CHARS = 1000
+#: A page session reports the browser's text check at most this often (``POST /measure``, canvas v2 phase 1).
+MEASURE_INTERVAL_S = 2.0
+#: The engines ``?engine=`` may ask for; the ticket's redirect keeps a valid one (canvas v2 phase 1, 3.4).
+ENGINE_RE = re.compile(r"^(v1|v2)\Z")
 
 #: ``HerdrTeamError.code`` -> HTTP status (contract 13.4). Anything else is 500 ``internal``.
 HTTP_STATUS = {
@@ -141,7 +146,7 @@ HTTP_STATUS = {
     "canvas_stale": 409, "canvas_refused": 409, "alias_taken": 409,
     "canvas_limit": 413, "image_refused": 413, "body_too_large": 413,
     "unsupported_media_type": 415,
-    "canvas_rate": 429,
+    "canvas_rate": 429, "measure_rate": 429,
     "canvas_busy": 503, "page_not_built": 503, "too_many_streams": 503,
 }
 
@@ -913,6 +918,10 @@ class _Handler(BaseHTTPRequestHandler):
     def _send_error(self, code: str, message: str, details: Optional[Dict[str, Any]] = None) -> None:
         body: Dict[str, Any] = {}
         for key, value in (details or {}).items():
+            # A page never needs where the state lives: an absolute path in a detail stays on this machine
+            # (an unknown team's 404 carried the state directory, phase 1 QA #14).
+            if isinstance(value, str) and os.path.isabs(value):
+                continue
             body[key] = value
         body["code"] = code
         body["message"] = message
@@ -1006,9 +1015,11 @@ class _Handler(BaseHTTPRequestHandler):
         if grant is None:
             return self._send_html(401, "That link was already used or has expired.")
         token, _session = self.server.new_session(grant["writable"], grant["by"])
+        engine = (query.get("engine") or [""])[0]
         self._responded = True
         self.send_response(303)
-        self.send_header("Location", "/")
+        # Only the engine choice survives the redirect (anything else in the query is dropped with the ticket).
+        self.send_header("Location", "/?engine={}".format(engine) if ENGINE_RE.match(engine) else "/")
         self.send_header("Set-Cookie", "{}={}; HttpOnly; SameSite=Strict; Path=/".format(COOKIE_NAME, token))
         self.send_header("Content-Length", "0")
         self._base_headers()
@@ -1144,6 +1155,27 @@ class _Handler(BaseHTTPRequestHandler):
         if rest == "scene":
             self._need(method, "GET")
             return self._send_json(200, cv.load_scene(team))
+        if rest == "display":
+            self._need(method, "GET")
+            raw = (query.get("since") or [""])[0]
+            since = _int(raw) if raw else 0
+            if since is None or since < 0:
+                raise HerdrTeamError("usage", "since must be a version number", EXIT_REFUSED)
+            return self._send_json(200, cv.display(team) if since == 0 else cv.display_delta(team, since))
+        if rest == "measure":
+            self._need(method, "POST")
+            now = time.monotonic()
+            last = session.get("measure_at")
+            if isinstance(last, float) and now - last < MEASURE_INTERVAL_S:
+                raise HerdrTeamError("measure_rate", "the page reports its text check at most every {:g} s".format(MEASURE_INTERVAL_S),
+                                     EXIT_REFUSED, {"retry_after": max(1, int(math.ceil(MEASURE_INTERVAL_S - (now - last))))})
+            session["measure_at"] = now
+            raw_body = self._read_body(getattr(cv, "MAX_MEASURE_BYTES", MAX_BODY_BYTES))
+            try:
+                body = json.loads(raw_body.decode("utf-8"))
+            except (UnicodeDecodeError, ValueError):
+                raise HerdrTeamError("usage", "the body is not JSON", EXIT_REFUSED)
+            return self._send_json(200, cv.measure_report(layout, team, body, doc=doc))
         if rest == "changes":
             self._need(method, "GET")
             since = _int((query.get("since") or ["0"])[0])

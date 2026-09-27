@@ -13,6 +13,7 @@ from support import PLUGIN_ROOT
 from test_canvas import OPERATOR, CanvasRig, fake_resvg
 
 from herdr_team import canvas as C
+from herdr_team import canvas_display as D
 from herdr_team import canvas_render as R
 from herdr_team import canvas_text as X
 from herdr_team import whiteboard_server as W
@@ -26,8 +27,9 @@ def text_op(text, **extra):
 
 
 def drawn_lines(el):
-    """The lines the renderer draws for a text element."""
-    return R._text_block(el["text"], el["x"], el["y"], el["w"], el["h"], el["style"], align="start").count("<text")
+    """The lines the renderer draws for a text element (phase 1: its display-list label; a text with no ``wrap`` flag
+    here was sized at a set width, so it wraps there)."""
+    return len(D.label(dict(el, type="text", id="E-1", wrap=el.get("wrap", True)), "base.ink")["lines"])
 
 
 def width(text, size=20):
@@ -134,7 +136,9 @@ class Labels(unittest.TestCase):
 
     def test_drawn_labels_are_escaped_and_made_drawable(self):
         self.assertEqual(R._label("a<b ☀️"), "a&lt;b ☀")
-        block = R._text_block("door \U0001F6AA sun ☀️", 0, 0, 400, 25, {"size": 20}, align="start")
+        scene = {"elements": [{"id": "E-1", "type": "text", "text": "door \U0001F6AA sun ☀️", "x": 0, "y": 0, "w": 400, "h": 25,
+                               "style": {"size": 20}}]}
+        block = R.render_svg(scene, marks=False)  # phase 1: the picture's text rewriting is canvas_svg's resvg mode
         self.assertIn("☀", block)
         self.assertNotIn("️", block)
 

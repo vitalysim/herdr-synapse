@@ -92,7 +92,7 @@ def _look(args: argparse.Namespace) -> int:
     layout, _api, _author, team, doc, author = _open(args, write=False)
     result = C.look(layout, team, _reader(author), region=_json_arg(args.region), around=args.around, since=args.since,
                     image=bool(args.image or args.exact), grid=bool(args.grid), exact=bool(args.exact),
-                    advance=_may_advance(author), doc=doc)
+                    advance=_may_advance(author), doc=doc, theme=args.theme or "light")
     return emit(args, result, result["text"])
 
 
@@ -223,6 +223,13 @@ def _resolve(args: argparse.Namespace) -> int:
     return _apply(args, [{"op": "resolve", "id": args.id, "intent": args.intent or "resolve {}".format(args.id)}])
 
 
+def _refit(args: argparse.Namespace) -> int:
+    op: Dict[str, Any] = {"op": "refit", "intent": args.intent or "size labels again"}
+    if args.ids:
+        op["ids"] = [part.strip() for part in str(args.ids).split(",") if part.strip()]
+    return _apply(args, [op])
+
+
 def _undo(args: argparse.Namespace) -> int:
     return _apply(args, [{"op": "undo", "batch": args.batch, "intent": args.intent or "undo {}".format(args.batch)}])
 
@@ -321,7 +328,7 @@ def _mcp(args: argparse.Namespace) -> int:
 
 _ACTIONS = {
     "look": _look, "check": _check, "draw": _draw, "comment": _comment, "claim": _claim, "release": _release, "legend": _legend,
-    "portrait": _portrait, "changes": _changes, "resolve": _resolve, "undo": _undo, "lock": _lock, "unlock": _unlock,
+    "portrait": _portrait, "changes": _changes, "resolve": _resolve, "undo": _undo, "refit": _refit, "lock": _lock, "unlock": _unlock,
     "send": _send, "export": _export, "helper": _helper, "mcp": _mcp,
 }
 
@@ -337,6 +344,7 @@ _SPECS = (
     ("changes", "what changed since you last looked (or since a version)"),
     ("resolve", "mark a comment resolved"),
     ("undo", "undo a whole batch (B-n): yours; the manager any agent's; the operator any"),
+    ("refit", "size labels again (an old board, or text the page measured wider): --ids E-1,E-2, or every element you may edit"),
     ("lock", "lock a region so agents cannot draw in it (operator)"),
     ("unlock", "remove a lock (operator)"),
     ("send", "send elements to a member as a request, with their text form and a picture (operator)"),
@@ -361,6 +369,7 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
     p.add_argument("--image", action="store_true", help="also render a PNG with id marks (needs resvg; the SVG is written either way)")
     p.add_argument("--grid", action="store_true", help="add cell dots and names to the image")
     p.add_argument("--exact", action="store_true", help="ask an open whiteboard page for the engine's own export (falls back after 5 s)")
+    p.add_argument("--theme", choices=("light", "dark"), help="the image's theme (default light)")
     p = parsers["check"]
     where = p.add_mutually_exclusive_group()
     where.add_argument("--region", metavar="R", help='"c10r4:c40r22", "x0,y0,x1,y1", [x0,y0,x1,y1] or an element id')
@@ -397,6 +406,9 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
     p.add_argument("--intent", metavar="TEXT")
     p = parsers["undo"]
     p.add_argument("batch", metavar="B-n")
+    p.add_argument("--intent", metavar="TEXT")
+    p = parsers["refit"]
+    p.add_argument("--ids", metavar="E-1,E-2", help="the elements to size again (default: every element you may edit, up to 500)")
     p.add_argument("--intent", metavar="TEXT")
     p = parsers["lock"]
     p.add_argument("region", metavar="REGION")

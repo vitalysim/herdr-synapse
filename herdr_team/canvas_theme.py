@@ -11,6 +11,10 @@ keeps its contrast promises). This module is its one reader in Python:
 * ``default_tone(kind)``, ``size_min(kind)`` and ``padding(kind)`` are the
   defaults ``canvas`` and the kinds build elements with;
 * ``tone_of(value)`` maps a legacy Open Color name or stored hex to its tone;
+* ``resolve_ref``, ``palette(theme)`` and ``shadows(theme)`` are the same colours
+  as token references and the flat per-theme maps the display list carries
+  (canvas v2 phase 1: the list is theme-neutral, a renderer looks each
+  reference up in the theme it draws);
 * ``asset()`` is ``assets/canvas/tokens.json``, the resolved view the page
   imports at build time, written by ``python3 -m herdr_team.canvas_theme --write``
   (``--check`` fails when the token file changed and it was not rewritten).
@@ -38,9 +42,31 @@ VARIANTS = ("soft", "solid", "outline")
 THEMES = ("light", "dark")
 
 #: How each element kind uses a tone's roles (design spec 6): a note is sticky paper, a frame a tinted zone,
-#: an arrow a line with a muted label, free text and ink strokes are drawn in the text colour.
-KIND_GROUPS = {"box": "shape", "ellipse": "shape", "diamond": "shape", "note": "note", "frame": "frame", "arrow": "arrow",
-               "text": "text", "pen": "ink", "path": "ink"}
+#: an arrow a line with a muted label, free text and ink strokes are drawn in the text colour. Each kind
+#: says its own group (``canvas_kinds.Kind.tone_group``); ``KIND_GROUPS`` is the registry's view of them
+#: (every kind whose group is not ``other``), derived on first use (canvas v2 phase 1, 2.4).
+GROUPS = ("shape", "note", "frame", "arrow", "text", "ink", "other")
+
+
+def kind_groups() -> Dict[str, str]:
+    """``{kind: tone group}`` for every registered kind that is not in the ``other`` group."""
+    from herdr_team import canvas_kinds  # the registry imports this module; imported late on purpose
+
+    return {kind.name: kind.tone_group for kind in canvas_kinds.kinds() if kind.tone_group != "other"}
+
+
+def _group(kind: str) -> str:
+    from herdr_team import canvas_kinds
+
+    found = canvas_kinds.get(kind)
+    return found.tone_group if found is not None else "other"
+
+
+def __getattr__(name: str) -> Any:
+    # ``KIND_GROUPS`` stays importable (PEP 562) but is derived from the registry, never a second list.
+    if name == "KIND_GROUPS":
+        return kind_groups()
+    raise AttributeError("module {!r} has no attribute {!r}".format(__name__, name))
 
 #: Used only when ``canvas_tokens.json`` cannot be read (a broken install): the light neutral tone, so
 #: the canvas still draws legibly.
@@ -90,7 +116,7 @@ def resolve(tone: str, variant: str = "soft", kind: str = "box", theme: str = "l
     variant = variant if variant in VARIANTS else "soft"
     t = roles(tone, theme)
     b = base(theme)
-    group = KIND_GROUPS.get(kind, "other")
+    group = _group(kind)
     if group == "arrow":
         return {"stroke": b["line"] if tone == "neutral" else t["stroke"], "fill": None,
                 "text": b["ink_muted"] if tone == "neutral" else t["text"]}
@@ -107,6 +133,72 @@ def resolve(tone: str, variant: str = "soft", kind: str = "box", theme: str = "l
     if group == "other":
         return {"stroke": t["stroke"], "fill": None, "text": t["text"]}
     return {"stroke": t["stroke"], "fill": t["sticky"] if group == "note" else t["fill"], "text": t["text"]}
+
+
+def resolve_ref(tone: str, variant: str = "soft", kind: str = "box") -> Dict[str, Optional[str]]:
+    """``resolve`` as token references instead of colours (``tone.info.fill``, ``base.line``): the same branches,
+    so ``palette(theme)[resolve_ref(...)[role]] == resolve(..., theme=theme)[role]`` for every theme. The display
+    list carries these, and each renderer looks them up in the palette of the theme it draws (phase 1, 1.4)."""
+    tone = tone if tone in TONES else "neutral"
+    if tone not in (tokens()["theme"]["light"].get("tone") or {}):
+        tone = "neutral"
+    variant = variant if variant in VARIANTS else "soft"
+    group = _group(kind)
+
+    def t(role: str) -> str:
+        return "tone.{}.{}".format(tone, role)
+
+    if group == "arrow":
+        return {"stroke": "base.line" if tone == "neutral" else t("stroke"), "fill": None,
+                "text": "base.ink_muted" if tone == "neutral" else t("text")}
+    if group == "text":
+        return {"stroke": t("text"), "fill": None, "text": t("text")}
+    if group == "ink":
+        return {"stroke": "base.ink" if tone == "neutral" else t("stroke"), "fill": None, "text": t("text")}
+    if group == "frame":
+        return {"stroke": t("stroke") if variant == "solid" else t("zone_stroke"), "fill": t("zone"), "text": t("text")}
+    if variant == "solid":
+        return {"stroke": t("solid"), "fill": t("solid"), "text": t("on_solid")}
+    if variant == "outline":
+        return {"stroke": t("stroke"), "fill": "base.surface", "text": t("text")}
+    if group == "other":
+        return {"stroke": t("stroke"), "fill": None, "text": t("text")}
+    return {"stroke": t("stroke"), "fill": t("sticky") if group == "note" else t("fill"), "text": t("text")}
+
+
+def palette(theme: str = "light") -> Dict[str, str]:
+    """The flat ``{reference: "#rrggbb"}`` map of a theme: ``base.<role>``, ``tone.<tone>.<role>``, ``chip.<0-7>.<bg|fg>``
+    and ``chip.human.<bg|fg>`` (lower case). Every token reference the display list uses resolves here."""
+    themes = tokens()["theme"]
+    source = themes.get(theme) or themes["light"]
+    out: Dict[str, str] = {}
+    for role, value in sorted((source.get("base") or {}).items()):
+        out["base." + role] = str(value).lower()
+    for tone, values in (source.get("tone") or {}).items():
+        for role, value in sorted((values or {}).items()):
+            out["tone.{}.{}".format(tone, role)] = str(value).lower()
+    for index, chip in enumerate(source.get("author_chips") or []):
+        out["chip.{}.bg".format(index)] = str(chip.get("bg")).lower()
+        out["chip.{}.fg".format(index)] = str(chip.get("fg")).lower()
+    human = source.get("human_chip") or {}
+    if human:
+        out["chip.human.bg"] = str(human.get("bg")).lower()
+        out["chip.human.fg"] = str(human.get("fg")).lower()
+    return out
+
+
+def shadows(theme: str = "light") -> Dict[str, Any]:
+    """The theme's elevation shadows: ``{"1": [{"x", "y", "blur", "color", "alpha"}], "2": ..., "3": ...}``."""
+    themes = tokens()["theme"]
+    source = themes.get(theme) or themes["light"]
+    found = source.get("shadow") if isinstance(source.get("shadow"), dict) else {}
+    return {str(level): [dict(item) for item in items or []] for level, items in sorted(found.items())}
+
+
+def chip_count(theme: str = "light") -> int:
+    """How many author chips the theme has (8)."""
+    themes = tokens()["theme"]
+    return len((themes.get(theme) or themes["light"]).get("author_chips") or []) or 1
 
 
 def default_tone(kind: str) -> Tuple[str, str]:
@@ -183,7 +275,7 @@ def asset() -> Dict[str, Any]:
         "line": light["line"], "grid": light["grid"],
         "tones": resolved["shape"],
         "kinds": {group: resolved[group] for group in groups if group != "shape"},
-        "kind_groups": dict(KIND_GROUPS),
+        "kind_groups": kind_groups(),
         "defaults": {kind: list(default_tone(kind)) for kind in ("box", "ellipse", "diamond", "note", "text", "frame", "arrow", "pen")},
         "size_min": doc.get("size_min") or {},
         "padding": doc.get("padding") or {},

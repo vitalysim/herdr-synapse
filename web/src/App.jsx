@@ -1,16 +1,23 @@
 // The whiteboard page: a team selector, four tabs (Canvas, Team, Activity, Diagrams) and one
 // event stream per open page. Everything comes from the local server; nothing is fetched
 // from anywhere else.
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+//
+// The Canvas tab runs one of two engines (web/src/v2/interact/engine.js): v1, the Excalidraw
+// canvas (the default), or v2, the display-list board, with ?engine=v2 or the top bar toggle.
+// Both load lazily, so a v2 page never downloads Excalidraw and a v1 page never the board.
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getJSON, setCsrf } from "./api.js";
 import { createBus } from "./bus.js";
-import CanvasTab from "./canvas/CanvasTab.jsx";
 import { createSceneStore } from "./sceneStore.js";
 import { openStream } from "./stream.js";
 import { applyTheme } from "./theme/tokens.js";
 import ActivityTab from "./views/ActivityTab.jsx";
 import DiagramsTab from "./views/DiagramsTab.jsx";
 import TeamTab from "./views/TeamTab.jsx";
+import { engineFromQuery, engineOf, setEngine, withEngine } from "./v2/interact/engine.js";
+
+const CanvasTab = lazy(() => import("./canvas/CanvasTab.jsx"));
+const Board = lazy(() => import("./v2/Board.jsx"));
 
 const TABS = [
   ["canvas", "Canvas"],
@@ -79,6 +86,28 @@ function useTheme() {
   return [theme, choose];
 }
 
+function browserStorage() {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+// The canvas engine: the URL's, else the stored choice, else v1. A v2 page whose server or
+// display list it cannot draw falls back to v1 for this session only (Board's onFallback).
+function useEngine() {
+  const [engine, setEngineState] = useState(() => engineOf(window.location, browserStorage()));
+  const [fallback, setFallback] = useState(null);
+  const choose = useCallback((next) => {
+    setEngine(next, browserStorage());
+    if (engineFromQuery(window.location)) window.history.replaceState(null, "", withEngine(window.location.href, next));
+    setFallback(null);
+    setEngineState(next);
+  }, []);
+  return [fallback ? "v1" : engine, choose, setFallback, fallback];
+}
+
 function Toasts({ toasts, dismiss }) {
   return (
     <div className="toasts" role="status">
@@ -104,6 +133,7 @@ export default function App() {
   const [bye, setBye] = useState(null);
   const [toasts, setToasts] = useState([]);
   const [theme, setTheme] = useTheme();
+  const [engine, chooseEngine, fallBack, fallbackReason] = useEngine();
   const toastId = useRef(0);
   const store = useMemo(() => createSceneStore(), []);
   const bus = useMemo(() => createBus(), []);
@@ -204,6 +234,15 @@ export default function App() {
         <span className={`status ${streamStatus}`} title={`stream: ${streamStatus}`}>
           {streamStatus}
         </span>
+        <button
+          type="button"
+          className={engine === "v2" ? "chip on engine-toggle" : "chip engine-toggle"}
+          title={engine === "v2" ? "Back to the classic canvas" : "Try the new canvas (v2 preview)"}
+          aria-pressed={engine === "v2"}
+          onClick={() => chooseEngine(engine === "v2" ? "v1" : "v2")}
+        >
+          v2 preview
+        </button>
         <span className="muted small">v{session.server_version}</span>
         <button
           type="button"
@@ -222,21 +261,40 @@ export default function App() {
       ) : null}
       {!layerOn ? <div className="banner warn">{BYE.disabled}</div> : null}
       {bye ? <div className="banner warn">{BYE[bye] || BYE.stopped}</div> : null}
+      {fallbackReason ? <div className="banner warn">{fallbackReason}</div> : null}
       <main className="content">
         <div className={tab === "canvas" ? "pane" : "pane hidden"}>
           {teamRow ? (
-            <CanvasTab
-              key={teamRow.name}
-              team={teamRow.name}
-              teamRow={teamRow}
-              writable={Boolean(session.writable) && !bye}
-              store={store}
-              bus={bus}
-              visible={tab === "canvas"}
-              toast={toast}
-              theme={theme}
-              onTheme={setTheme}
-            />
+            <Suspense fallback={<div className="empty">Loading the canvas…</div>}>
+              {engine === "v2" ? (
+                <Board
+                  key={`v2:${teamRow.name}`}
+                  team={teamRow.name}
+                  teamRow={teamRow}
+                  writable={Boolean(session.writable) && !bye}
+                  store={store}
+                  bus={bus}
+                  visible={tab === "canvas"}
+                  toast={toast}
+                  theme={theme}
+                  onTheme={setTheme}
+                  onFallback={fallBack}
+                />
+              ) : (
+                <CanvasTab
+                  key={teamRow.name}
+                  team={teamRow.name}
+                  teamRow={teamRow}
+                  writable={Boolean(session.writable) && !bye}
+                  store={store}
+                  bus={bus}
+                  visible={tab === "canvas"}
+                  toast={toast}
+                  theme={theme}
+                  onTheme={setTheme}
+                />
+              )}
+            </Suspense>
           ) : (
             <div className="empty">No team has the whiteboard on. The operator turns a team on with: herdr-synapse --team T whiteboard team on</div>
           )}

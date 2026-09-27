@@ -2197,7 +2197,8 @@ Identity as for `post`; members write only as verified members of their own
 team; unverified callers, hooks and startup processes can read only.
 
 ```
-canvas look [--region R | --around ID] [--since N|last] [--image] [--grid] [--exact]
+canvas look [--region R | --around ID] [--since N|last] [--image] [--grid] [--exact] [--theme light|dark]
+canvas check [--region R | --around ID] [--mine]
 canvas draw [--file PATH|-] [--op JSON]... [--atomic]
 canvas comment AT TEXT [--mention NAME]... [--reply-to C-n] [--intent TEXT]
 canvas claim REGION LABEL [--intent TEXT]
@@ -2207,6 +2208,7 @@ canvas portrait (--from-todo | --step TEXT... [--current N]) [--title TEXT]
 canvas changes [--since N|last]
 canvas resolve C-n
 canvas undo B-n
+canvas refit [--ids E-1,E-2]
 canvas lock REGION [--label TEXT]            (operator)
 canvas unlock X-n                            (operator)
 canvas send ID... --to NAME [--note TEXT]    (operator)
@@ -2268,11 +2270,33 @@ too big inside someone else's frame refuses `element_not_yours`. A shape that
 grew to fit its label past the frame it was placed in grows that frame too,
 and every frame around it in turn, where its author may (0.22). A frame with no
 room left takes a new child in the next row below, or in a new column to its
-right when that keeps it nearer square. A new label that would cover a
-neighbour only because one of them grew moves to the free spot nearest where
-it was put (its frame grows to hold it) with a `moved_to_fit` warning; a
-collision the op itself asked for is left to `check`. An unlabelled shape
-drawn over labelled ones goes under them, so its fill never hides their text.
+right when that keeps it nearer square. Growth never covers a neighbour the
+op did not ask to cover (their asked boxes do not meet), and each move comes
+with a `moved_to_fit` warning. A mark whose asked box lies on a shape (a door
+on the walls) sits on it: the shape grows to hold it, like a frame, and
+carries it when it has to move. A new mark that would cover a neighbour only
+because one of them grew moves to the free spot nearest where it was put: on
+its own shape when it sits on one, else beside the neighbour (its frame grows
+to hold it). A shape that grows later (an edit, a restyle, a shape holding a
+grown mark) pushes what it now covers along the way it grew, by whole grid
+steps, with whatever sits on it; a neighbour its author may not change, or in
+a lock, stays. A moved mark keeps how far it was moved (`nudged`, cleared by
+a deliberate `move`), so a later point on where it was asked to be is a point
+on it, in the same batch or a later one. A collision the op itself asked for
+is left to `check`. An unlabelled shape drawn over labelled ones goes under
+them, so its fill never hides their text.
+
+**Arrow labels** (0.22). A label sits in a pill on its arrow's line (on a
+curve, the drawn curve), clear of every mark and every other label: nearest
+the middle, else further along the line, else beside it. A new arrow between
+two elements whose line is too short for its label moves its later end away
+along the arrow's main axis (and what sits on it, by whole grid steps) until
+the label fits between them; an arrow by `points` never moves anything. The
+arrow stores the spot (`label_at`, the pill's centre) and the lines
+(`"fit": {"lines", "size"}`, wrapped at 11 em however long the arrow); a
+label keeps its spot while it stays on the line and clear. The picture and
+the page draw labels above every mark; on the page the operator rewrites a
+label by typing on its arrow (double-click the line).
 
 **Style** (on `shape`, `arrow`, `frame`, `pen`, `path`, `graph` and its
 nodes, `mermaid`, `restyle`): `tone` is `neutral`, `info`, `success`,
@@ -2339,7 +2363,9 @@ author and direction, then the claims, locks, legend and the comments that
 mention the reader; `--since` adds the changes; `--image` renders a PNG with
 element ids (and `--grid` cell labels) through `resvg` when it is installed, drawn with the
 bundled Inter and Geist Mono at each label's stored lines
-(`image_error: "resvg_missing"` otherwise); `--exact` asks an open page for
+(`image_error: "resvg_missing"` otherwise); `--theme dark` draws it in the
+dark theme (since canvas v2 phase 1 the picture is the display list, drawn
+with the same token palettes the page uses); `--exact` asks an open page for
 Excalidraw's own export (5 s, else the server render). JSON
 `{"team","version","reader","switch","region","region_cells","level","elements","elsewhere","clusters","omitted","since","changes","claims","locks","legend","comments_for_you","image","svg","image_error","exact","text"}`.
 `look --since last` and `changes` advance the reader's cursor. `look` ends
@@ -2359,6 +2385,17 @@ that applies as it stands (`move … to` a free spot, a resize, a frame grown,
 or `inside` a frame) or null. JSON
 `{"team","version","reader","region","mine","problems":[{"code","ids","message","fix","yours"}],"text"}`.
 Reads only; the reader's own problems come first.
+
+**`refit [--ids E-1,E-2]`** (canvas v2 phase 1) sizes labelled elements again
+from their minimum (`fit.min`, or the size of an element stored before 0.22)
+with today's font metrics and the page's measurements (below): a board drawn
+before 0.22 gets the sizes its labels need, and a label the browser measured
+wider than the metrics said gets its room. It only ever grows a box; a shape
+that grows pushes its neighbours (`moved_to_fit`) like any other growth, and a
+labelled arrow places its label again. Without `--ids` it takes every element
+the caller may edit (at most 500; elements in a lock are left as they are).
+The op is `{"op": "refit", "ids": [...]}`; `if_version` holds with ids. Its
+result carries `geometry` as `shape` does.
 
 Storage, per team under `whiteboard/`: `events.jsonl` (one event per applied
 op, the source of truth), `scene.json`, `cursors/`, `assets/`, `stills/`,
@@ -2496,12 +2533,40 @@ read-only) and `HERDR_SYNAPSE_WB_BY` (JSON `{"name","via","verified"}`), plus
 `HERDR_TEAM_STATE_DIR` so the child resolves the same state root.
 
 The JSON API lives under `/api/`: `session`, `teams`, and per team
-`/api/teams/<t>/` `scene`, `changes?since=N`, `ops` (POST), `send` (POST),
+`/api/teams/<t>/` `scene`, `changes?since=N`, `display[?since=N]`, `measure`
+(POST), `ops` (POST), `send` (POST),
 `uploads` (POST, PNG or JPEG), `stills/<id>?v=N` (POST), `exports/<id>`
 (POST), `assets/<name>`, `artifact?path=`, `text?ids=E-1,C-2`, `views`; plus
 `/api/activity?team=` and the event stream `/api/stream?team=&since=` (`hello`,
 `scene`, `ops`, `state`, `views`, `activity`, `export_request`, `bye`).
 Errors are `{"code","message",…}` with these statuses:
+
+`GET display` (canvas v2 phase 1) answers the team's display list
+(`docs/display-list.md`): every element, claim and lock as drawing primitives
+with the text already broken into lines and colours as theme tokens, the list
+the v2 page and `look --image` draw. With `since=N` it answers what changed
+after version N, `{"dl","version","since","full":false,"bbox","upserts","removes"}`,
+or the whole list with `"full": true` when a delta cannot say it (the canvas was
+cleared, a lock or an author changed, more than 400 ids changed, or N is ahead).
+Read-only pages may read it.
+
+`POST measure` is the page's text check (writable pages only):
+`{"version","metrics","lines":[{"id","font","weight","size","t","w"}]}` with at
+most 200 lines and 64 KB, one request per 2 s per page (`429 measure_rate`,
+`retry_after`). A line is kept when it is one of that element's drawn lines at
+that font, weight and size, the element did not change after `version`, the
+page measured against the same font metrics (`metrics` is the sha256 of
+`assets/fonts/font-metrics.json`), and its width is more than 0.5 units over
+the server's and at most 4 times it; otherwise it is ignored with a reason
+(`not_a_line`, `not_wider`, `implausible`, `stale`). Kept widths go to
+`whiteboard/measure.json` (the widest ever seen per line, at most 5,000, the
+oldest dropped; other metrics empty it) and every measurement on the team uses
+them from then on; an element whose label no longer fits as stored is refitted
+by a `refit` op in the operator's name (intent "the page measured wider text").
+JSON `{"accepted","ignored":[{"i","why"}],"refit","batch","version"}`.
+
+The page opened with `?engine=v2` (and a ticket link with `&engine=v2`, whose
+redirect keeps it) is the display-list renderer; without it the Excalidraw page.
 
 | Status | Codes |
 | --- | --- |
@@ -2513,7 +2578,7 @@ Errors are `{"code","message",…}` with these statuses:
 | 409 | `canvas_stale`, `canvas_refused`, `alias_taken` |
 | 413 | `canvas_limit`, `image_refused`, `body_too_large` (bodies over 6 MB) |
 | 415 | `unsupported_media_type` |
-| 429 | `canvas_rate` |
+| 429 | `canvas_rate`, `measure_rate` |
 | 503 | `canvas_busy`, `page_not_built`, `too_many_streams` (more than 8) |
 | 500 | anything else, as `internal`, logged without a traceback to the page |
 

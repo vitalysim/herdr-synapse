@@ -1,0 +1,610 @@
+{
+ "authors": {
+  "qa-drawer": {
+   "agent": "claude",
+   "color": "#1971c2",
+   "index": 0,
+   "kind": "member"
+  }
+ },
+ "batches": {
+  "B-1": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "qa-drawer",
+   "first_seq": 1,
+   "last_seq": 11,
+   "undone": false
+  }
+ },
+ "claims": [],
+ "counters": {
+  "B": 1,
+  "C": 0,
+  "E": 11,
+  "G": 0,
+  "K": 0,
+  "X": 0
+ },
+ "elements": [
+  {
+   "alias": "s_box",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Small print: read the retention",
+     "policy before exporting"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "hug",
+    "size": 16,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 80,
+   "id": "E-1",
+   "intent": "s label in a box",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 16,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Small print: read the retention policy before exporting",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 280,
+   "x": 0,
+   "y": 0,
+   "z": 1
+  },
+  {
+   "alias": "xl_box",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Quarterly",
+     "revenue target"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "hug",
+    "size": 36,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 120,
+   "id": "E-2",
+   "intent": "xl label in a default box",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 36,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Quarterly revenue target",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 300,
+   "x": 320,
+   "y": 0,
+   "z": 2
+  },
+  {
+   "alias": "tiny",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Deploy"
+    ],
+    "min": [
+     80,
+     40
+    ],
+    "policy": "hug",
+    "size": 36,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 80,
+   "id": "E-3",
+   "intent": "xl label in a tiny box",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 36,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Deploy",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 160,
+   "x": 660,
+   "y": 0,
+   "z": 3
+  },
+  {
+   "alias": "s_ell",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 4,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "optional step, skip",
+     "when the cache is",
+     "warm"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "scale_shape",
+    "size": 16,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 120,
+   "id": "E-4",
+   "intent": "s label in an ellipse",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 16,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "optional step, skip when the cache is warm",
+   "type": "ellipse",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 4,
+   "w": 240,
+   "x": 0,
+   "y": 120,
+   "z": 4
+  },
+  {
+   "alias": "xl_ell",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 5,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Launch day"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "scale_shape",
+    "size": 36,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 180,
+   "id": "E-5",
+   "intent": "xl label in an ellipse",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 36,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Launch day",
+   "type": "ellipse",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 5,
+   "w": 340,
+   "x": 280,
+   "y": 120,
+   "z": 5
+  },
+  {
+   "alias": "xl_dia",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 6,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Ship it?"
+    ],
+    "min": [
+     200,
+     120
+    ],
+    "policy": "scale_shape",
+    "size": 36,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 180,
+   "id": "E-6",
+   "intent": "xl label in a diamond",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 36,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Ship it?",
+   "type": "diamond",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 6,
+   "w": 300,
+   "x": 660,
+   "y": 120,
+   "z": 6
+  },
+  {
+   "alias": "xl_note",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 7,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Big decision:",
+     "move the launch",
+     "to November"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 18,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 120,
+   "id": "E-7",
+   "intent": "xl note",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#fff0a0",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 36,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Big decision: move the launch to November",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 7,
+   "w": 180,
+   "x": 0,
+   "y": 280,
+   "z": 7
+  },
+  {
+   "alias": "code_xl",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 8,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "SELECT",
+     "count(*)",
+     "FROM orders",
+     "WHERE status",
+     "= 'paid';"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "hug",
+    "size": 36,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 260,
+   "id": "E-8",
+   "intent": "monospace at xl",
+   "nudged": [
+    0,
+    40
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "code",
+    "opacity": 100,
+    "rough": 0,
+    "size": 36,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "SELECT count(*) FROM orders WHERE status = 'paid';",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 8,
+   "w": 300,
+   "x": 220,
+   "y": 320,
+   "z": 8
+  },
+  {
+   "alias": "code_s",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 9,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "export",
+     "HERDR_SYNAPSE_RESVG=/opt/",
+     "homebrew/bin/resvg"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "hug",
+    "size": 16,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 100,
+   "id": "E-9",
+   "intent": "monospace at s",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "code",
+    "opacity": 100,
+    "rough": 0,
+    "size": 16,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "export HERDR_SYNAPSE_RESVG=/opt/homebrew/bin/resvg",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 9,
+   "w": 280,
+   "x": 560,
+   "y": 320,
+   "z": 9
+  },
+  {
+   "alias": "xl_text",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 10,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Everything",
+     "on this",
+     "board",
+     "must stay",
+     "readable"
+    ],
+    "min": [
+     180,
+     1
+    ],
+    "policy": "hug",
+    "size": 36,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 225,
+   "id": "E-10",
+   "intent": "xl free text in a narrow column",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 36,
+    "stroke": "#1c2024",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Everything on this board must stay readable",
+   "type": "text",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 191,
+   "wrap": true,
+   "x": 0,
+   "y": 440,
+   "z": 10
+  },
+  {
+   "alias": "s_text",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 11,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Footnote: numbers are preliminary and exclude",
+     "refunds issued after the 25th of the month."
+    ],
+    "min": [
+     16,
+     1
+    ],
+    "policy": "hug",
+    "size": 16,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 40,
+   "id": "E-11",
+   "intent": "s free text, auto width",
+   "nudged": [
+    9,
+    160
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 16,
+    "stroke": "#1c2024",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Footnote: numbers are preliminary and exclude refunds issued after the 25th of the month.",
+   "type": "text",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 11,
+   "w": 373,
+   "wrap": false,
+   "x": 240,
+   "y": 600,
+   "z": 11
+  }
+ ],
+ "homes": {
+  "qa-drawer": [
+   0,
+   -1000,
+   800,
+   -400
+  ]
+ },
+ "legend": [],
+ "locks": [],
+ "team": "qa",
+ "updated_at": "2026-01-01T00:00:00.000Z",
+ "v": 1,
+ "version": 11
+}

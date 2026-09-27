@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import unittest
 
 from support import PLUGIN_ROOT
 
+from herdr_team import canvas_display as D
 from herdr_team import canvas_fontgen as G
 from herdr_team import canvas_kinds as R
 from herdr_team import canvas_theme as T
@@ -25,7 +27,21 @@ class WebContract(unittest.TestCase):
         doc = json.loads((DIST / "kinds.json").read_text(encoding="utf-8"))
         self.assertEqual(doc["v"], 1)
         self.assertEqual(doc["kinds"], sorted(R.names(page_only=True)), "rebuild web/dist, or add the kind to web/src/canvas/kinds/")
-        self.assertIsNone(doc["display_list"], "Phase 0 has no display list yet")
+        if doc.get("display_list") is None:
+            # web/dist from before the v2 renderer: only its source is checked until the page is rebuilt (phase 1, I4).
+            return
+        low, high = doc["display_list"]
+        self.assertTrue(low <= D.DL_VERSION <= high, "the built page draws the display list the server writes")
+        self.assertEqual(doc["slots"], sorted(R.slots()), "every browser-drawn kind has a slot renderer in the build")
+
+    def test_the_v2_renderer_draws_this_display_list_and_every_slot(self):
+        # web/src/v2/render/version.js is data only; postbuild copies it into web/dist/kinds.json (J6).
+        source = (PLUGIN_ROOT / "web" / "src" / "v2" / "render" / "version.js").read_text(encoding="utf-8")
+        supported = re.search(r"DL_SUPPORTED\s*=\s*\[\s*(\d+)\s*,\s*(\d+)\s*\]", source)
+        slots = re.search(r"SLOT_KINDS\s*=\s*\[([^\]]*)\]", source)
+        self.assertIsNotNone(supported)
+        self.assertTrue(int(supported.group(1)) <= D.DL_VERSION <= int(supported.group(2)))
+        self.assertEqual(sorted(re.findall(r'"([a-z0-9_-]+)"', slots.group(1))), sorted(R.slots()))
 
     def test_the_page_draws_with_the_files_python_measures(self):
         shipped = {sha(path) for path in (DIST / "assets").glob("*.ttf")}

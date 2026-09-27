@@ -1,0 +1,82 @@
+/* The v2 canvas surface. No filter anywhere: dark mode is the display list's dark palette, so
+   emoji, images and charts keep their own colours (AC-4.2). */
+.sv2-surface {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+  outline: none;
+}
+
+.sv2-surface.sv2-pan {
+  cursor: grab;
+}
+
+.sv2-surface.sv2-pan:active {
+  cursor: grabbing;
+}
+
+/* Holds the SVG; while a wheel zoom settles it carries the CSS transform (Surface.jsx `drawn`). Its
+   own compositor layer, so that transform scales a picture and never lays SVG text out again. */
+.sv2-zoomer {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.sv2-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: hidden;
+  text-rendering: geometricPrecision;
+}
+
+/* Text is drawn, not typed into: no selection caret or I-beam over labels. */
+.sv2-svg text {
+  cursor: inherit;
+  pointer-events: none;
+}
+
+.sv2-ui {
+  pointer-events: none;
+}
+
+/* Live HTML slots (viz), placed in world units under the camera's transform. */
+.sv2-html {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+}
+
+.sv2-viz {
+  position: absolute;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.sv2-viz > * {
+  width: 100%;
+  height: 100%;
+}
+
+/* Screen-space HTML (the text editor): the layer lets pointer events through, its children do not. */
+.sv2-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.sv2-overlay > * {
+  pointer-events: auto;
+}

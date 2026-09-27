@@ -10,10 +10,11 @@ minimum instead.
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Tuple
 
+from herdr_team import canvas_display as D
 from herdr_team import canvas_text, canvas_theme
-from herdr_team.canvas_kinds import Kind
+from herdr_team.canvas_kinds import Kind, OpSpec, get, subkinds
 from herdr_team.canvas_kinds._common import Element, number, policy_of, readback, style_of, truncated_label
 
 #: The widest a shape grows before its label wraps; a single word wider than this still widens it.
@@ -38,6 +39,8 @@ def diamond_inset(w: float, h: float) -> Tuple[float, float, float, float]:
 
 
 INSETS = {"ellipse": ellipse_inset, "diamond": diamond_inset}
+#: The outline each shape draws (``canvas_kinds.OUTLINES``); a box and a note are their rectangle.
+OUTLINE = {"ellipse": "ellipse", "diamond": "diamond"}
 
 
 def request(el: Element, minimum: Tuple[float, float], size: Any = None) -> canvas_text.FitRequest:
@@ -68,12 +71,74 @@ def measure(el: Element, minimum: Tuple[float, float]) -> canvas_text.FitResult:
     return canvas_text.fit(policy_of(el, default or DEFAULT_POLICY.get(kind, "hug")), request(el, minimum))
 
 
+def radius(name: str) -> float:
+    """A shape's corner radius (design tokens ``radius``: 8 for a box, 4 for a note)."""
+    found = (canvas_theme.tokens().get("radius") or {}).get(name)
+    return float(found) if isinstance(found, (int, float)) else (4.0 if name == "note" else 8.0)
+
+
+def emit(el: Element, env: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """The outline (rectangle, ellipse or diamond) in its tone, then its label centred in its inner box."""
+    name = str(el.get("type"))
+    x0, y0, x1, y1 = D.box_of(el)
+    w, h = x1 - x0, y1 - y0
+    paints = D.paints(el)
+    body: Dict[str, Any]
+    if name == "ellipse":
+        body = {"k": "ellipse", "cx": x0 + w / 2, "cy": y0 + h / 2, "rx": w / 2, "ry": h / 2}
+    elif name == "diamond":
+        cx, cy = x0 + w / 2, y0 + h / 2
+        body = {"k": "poly", "points": [[cx, y0], [x1, cy], [cx, y1], [x0, cy]], "closed": True}
+    else:
+        body = {"k": "rect", "x": x0, "y": y0, "w": w, "h": h, "r": radius(name)}
+    body["fill"] = paints["fill"]
+    body.update(D.stroke_fields(el, paints["stroke"] or D.INK))
+    items = [D.with_opacity(body, el)]
+    # A note stored before 0.22 has no label colour: it was drawn in ink on its paper.
+    colour = D.INK if name == "note" and paints["text"] is None else D.text_paint(el, paints)
+    text = D.label(el, colour)
+    if text is not None:
+        items.append(text)
+    return items
+
+
+def hit(el: Element) -> Dict[str, Any]:
+    return {"shape": OUTLINE.get(str(el.get("type")), "rect"), "box": D.xywh(D.box_of(el))}
+
+
 def _kind(name: str, doc: str) -> Kind:
     return Kind(name=name, role="leaf", ops=("shape", "graph", "mermaid"),
                 fields=("text", "w", "h", "tone", "variant", "color", "fill", "font", "size"),
-                fit=DEFAULT_POLICY[name], inset=INSETS.get(name), measure=measure, readback=readback,
-                checks=(truncated_label,), doc=doc)
+                fit=DEFAULT_POLICY[name], page=True, outline=OUTLINE.get(name, "rect"), hosts=True, subkind_of="shape", solid=True,
+                labelled=True, cell=True, tone_group="note" if name == "note" else "shape", connectable=True, edit_limit="text",
+                inset=INSETS.get(name), measure=measure, readback=readback, checks=(truncated_label,), emit=emit, hit=hit, doc=doc,
+                noun=("box", "boxes") if name == "box" else ("", ""))
 
+
+def create(ctx: Any, op: Dict[str, Any]) -> None:
+    """The ``shape`` op: a kind it picks with ``kind`` (a box by default), sized from its label (0.22: ``w``/``h`` are
+    the minimum), then placed; the sized shape makes room for its neighbours (``OpContext.create``)."""
+    name = ctx.choice(op, "kind", [kind.name for kind in subkinds("shape")], "box")
+    kind = get(name)
+    # A kind whose whole content is its text (a free text) needs one; a shape may be blank.
+    text = ctx.text(op, "text", limit="text", required=kind is not None and kind.measure is not None and not kind.labelled)
+    style = ctx.style(op, name)
+    if kind is not None and kind.initial is not None:
+        fields, asked = kind.initial(ctx, op, text, style)
+    else:
+        fields = ctx.fit({"type": name, "text": text, "style": style}, ctx.size(op, *ctx.shape_size(name)))
+        asked = (float(fields["fit"]["min"][0]), float(fields["fit"]["min"][1]))
+    w, h = fields.pop("w"), fields.pop("h")
+    x, y, frame = ctx.place(op, w, h, (float(asked[0]), float(asked[1])))
+    ctx.create(name, x, y, w, h, op=op, text=text, style=style, frame=frame, **fields)
+
+
+OPS = (
+    OpSpec(name="shape", fields=("kind", "text", "w", "h", "id", "client_id"), create=create, style=True, place=True, order=10,
+           doc="a box, ellipse, diamond, note or free text, sized from its label (w/h are its minimum)",
+           mcp="shape {kind box|ellipse|diamond|note|text, text, at|right_of|below|inside, w, h (minimums: shapes grow to fit their "
+               "label), tone neutral|info|success|warning|danger|accent|idea|decision, variant soft|solid|outline, color, fill; a text wraps at w}"),
+)
 
 KINDS = (
     _kind("box", "a rectangle that grows to fit its label (w/h are its minimum)"),

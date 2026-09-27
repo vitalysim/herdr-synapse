@@ -33,7 +33,9 @@ element is sized from its label before it is placed or laid out: its kind in
 the ``canvas_kinds`` registry measures it with the bundled fonts' metrics
 (``canvas_text``), an op's ``w``/``h`` are the minimum, and the element stores
 a ``fit`` record. Colours come from a ``tone`` (``canvas_theme``), never from
-the author.
+the author. Growth makes room instead of overlap (section "making room", QA
+R-1), and every arrow label gets a spot on its line clear of other marks and
+labels (``canvas_labels``, section "arrow labels", QA R-3).
 """
 from __future__ import annotations
 
@@ -53,7 +55,9 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Sequence, Set, Tuple
 
 from herdr_team import canvas_check as _check
+from herdr_team import canvas_display as _display
 from herdr_team import canvas_kinds as _kinds
+from herdr_team import canvas_labels as _labels
 from herdr_team import canvas_layout as _layout
 from herdr_team import canvas_mermaid as _mermaid
 from herdr_team import canvas_render as _render
@@ -62,11 +66,20 @@ from herdr_team import canvas_theme as _theme
 from herdr_team import features as _features
 from herdr_team import sanitize as _sanitize
 from herdr_team import store
+from herdr_team.canvas_kinds import _common as _kc
+# Op limits live with the op in its kind module (canvas v2 phase 1); re-exported here for callers and tests.
+from herdr_team.canvas_kinds.arrow import MAX_ARROW_POINTS
+from herdr_team.canvas_kinds.chart import MAX_CHART_SPEC_BYTES, MAX_SPEC_DEPTH
+from herdr_team.canvas_kinds.diagram import MAX_GRAPH_EDGES, MAX_GRAPH_NODES, MAX_MERMAID_BYTES
+from herdr_team.canvas_kinds.frame import FRAME_PAD, FRAME_TOP
+from herdr_team.canvas_kinds.path import MAX_PATH_CHARS
+from herdr_team.canvas_kinds.pen import MAX_PEN_POINTS
+from herdr_team.canvas_kinds.viz import MAX_VIZ_BYTES, MAX_VIZ_DATA_BYTES, VIZ_LIBS
 from herdr_team.errors import HerdrTeamError, exit_code_for
 from herdr_team.paths import FILE_STEM_RE, TeamPaths, check_not_symlink, ensure_dir
 
 SCHEMA = 1
-GRID = 20
+GRID = _kc.GRID
 HOME_W, HOME_H = 800, 600
 HOME_STRIDE = 1000
 HOME_TOP = -1000
@@ -77,31 +90,22 @@ MAX_ELEMENTS = 2000
 MAX_BATCH_OPS = 100
 MAX_BATCH_BYTES = 512 * 1024
 MAX_OPS_PER_MINUTE = 300
-MAX_PEN_POINTS = 500
-MAX_ARROW_POINTS = 50
 MAX_TEXT_CHARS = 2000
 MAX_LABEL_CHARS = 200
 MAX_INTENT_CHARS = 200
 MAX_COMMENT_CHARS = 1000
 MAX_SVG_BYTES = 100 * 1024
 MAX_SVG_NODES = 5000
-MAX_PATH_CHARS = 20000
-MAX_MERMAID_BYTES = 20 * 1024
-MAX_CHART_SPEC_BYTES = 200 * 1024
 MAX_CHART_DATA_BYTES = 5 * 1024 * 1024
-MAX_VIZ_BYTES = 200 * 1024
-MAX_VIZ_DATA_BYTES = 64 * 1024
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_STILL_BYTES = 2 * 1024 * 1024
 MAX_EXPORT_BYTES = 8 * 1024 * 1024
-MAX_GRAPH_NODES = 200
-MAX_GRAPH_EDGES = 400
 MAX_CLAIMS_PER_AUTHOR = 3
 CLAIM_TTL_S = 300
 MAX_LEGEND = 50
 MAX_PORTRAIT_STEPS = 12
 MAX_COORD = 1_000_000
-MAX_SIZE = 20_000
+MAX_SIZE = _kc.MAX_SIZE
 #: A free-text legend symbol ("red cross") and the operator's note on "send to member".
 MAX_SYMBOL_CHARS = 80
 MAX_SEND_TEXT_CHARS = 1500
@@ -110,8 +114,6 @@ MAX_BATCHES_KEPT = 500
 MAX_OP_CHANGE_BYTES = 2 * 1024 * 1024
 #: What one agent author may append to the log in a rolling minute, next to ``MAX_OPS_PER_MINUTE``.
 MAX_CHANGE_BYTES_PER_MINUTE = 8 * 1024 * 1024
-#: How deep a chart spec may nest (Vega-Lite ``layer``/``concat``); deeper is refused, never skipped.
-MAX_SPEC_DEPTH = 64
 
 NOTICE_INTERVAL_S = 60.0
 LOOK_FULL_MAX = 60
@@ -125,20 +127,15 @@ EXPORT_MAX_AGE_S = 30.0
 LOCK_TIMEOUT_S = 5.0
 RATE_WINDOW_S = 60.0
 
-ELEMENT_TYPES = ("box", "ellipse", "diamond", "note", "text", "arrow", "frame", "pen", "path", "svg",
-                 "mermaid", "chart", "viz", "image", "comment")
-OPS = ("shape", "arrow", "frame", "pen", "path", "svg", "graph", "mermaid", "chart", "viz", "image", "comment",
-       "claim", "release", "legend", "move", "restyle", "edit", "delete", "portrait", "resolve", "lock", "unlock", "undo")
-VIZ_LIBS = ("d3", "three", "p5")
+#: The ops that act on any element rather than create one kind: ``canvas`` handles these itself. Every other op comes from
+#: the kind registry (``canvas_kinds``: each module's ``OPS``); ``OPS`` is theirs by ``order``, then these (phase 1, 2.4).
+CORE_OPS = ("claim", "release", "legend", "move", "restyle", "edit", "delete", "portrait", "resolve", "lock", "unlock", "undo", "refit")
 ID_PATTERN = r"^(E|C|K|X|G|B)-([1-9][0-9]{0,6})\Z"
 ALIAS_PATTERN = r"^[A-Za-z][A-Za-z0-9_.-]{0,63}\Z"
 CELL_PATTERN = r"^c(-?[0-9]{1,5})r(-?[0-9]{1,5})\Z"
 
-COLORS = {"black": "#1e1e1e", "gray": "#868e96", "red": "#e03131", "pink": "#c2255c", "purple": "#9c36b5",
-          "blue": "#1971c2", "teal": "#0c8599", "green": "#2f9e44", "orange": "#f08c00", "yellow": "#f59f00",
-          "white": "#ffffff"}
-FILLS = {"red": "#ffc9c9", "pink": "#fcc2d7", "purple": "#eebefa", "blue": "#a5d8ff", "teal": "#99e9f2",
-         "green": "#b2f2bb", "yellow": "#ffec99", "orange": "#ffd8a8", "gray": "#e9ecef", "white": "#ffffff"}
+COLORS = _kc.COLORS
+FILLS = _kc.FILLS
 NOTE_FILL = "#ffec99"
 AUTHOR_PALETTE = ("#1971c2", "#2f9e44", "#9c36b5", "#f08c00", "#0c8599", "#c2255c", "#e03131", "#5c940d")
 #: The light fill that goes with each author colour (a portrait's current step).
@@ -153,13 +150,8 @@ KIND_SYSTEM = "system"
 HUMAN_INTENT = "the operator's edit"
 CLI = "herdr-synapse"
 
-SHAPE_KINDS = ("box", "ellipse", "diamond", "note", "text")
-TEXT_TYPES = frozenset(SHAPE_KINDS)
-#: The minimum size of each shape kind (design tokens ``size_min``): an op's ``w``/``h`` replaces it, and a
-#: shape grows past it to fit its label (0.22).
-SHAPE_SIZES = {kind: (int(w), int(h)) for kind, (w, h) in ((k, _theme.size_min(k)) for k in ("box", "ellipse", "diamond", "note"))}
-HEADS = ("arrow", "triangle", "dot", "none")
-DASHES = ("solid", "dashed", "dotted")
+HEADS = _kc.HEADS
+DASHES = _kc.DASHES
 FONTS = ("hand", "normal", "code")
 #: Colour by meaning (0.22): a tone picks an element's stroke, fill and label colour; a variant how strongly.
 TONES = _theme.TONES
@@ -168,7 +160,6 @@ WIDTHS = {"thin": 1, "bold": 2, "extra": 4, "1": 1, "2": 2, "4": 4}
 SIZES = {"s": 16, "m": 20, "l": 28, "xl": 36, "16": 16, "20": 20, "28": 28, "36": 36}
 TEXT_MAX_W = 600
 NODE_W, NODE_H = _layout.NODE_W, _layout.NODE_H
-FRAME_PAD, FRAME_TOP = 20, 40
 PORTRAIT_W, PORTRAIT_STEP_W, PORTRAIT_STEP_H, PORTRAIT_STEP_GAP = 360, 320, 28, 8
 PORTRAIT_ROLE = "portrait"
 
@@ -934,7 +925,7 @@ def _minimum(el: Dict[str, Any], w: Any = None, h: Any = None) -> Tuple[float, f
     style = el.get("style") if isinstance(el.get("style"), dict) else {}
     fit = el.get("fit") if isinstance(el.get("fit"), dict) else {}
     stored = fit.get("min") if isinstance(fit.get("min"), list) and len(fit["min"]) == 2 and all(_is_number(v) for v in fit["min"]) else None
-    if el.get("type") == "text":
+    if _free_text(_kinds.get(el.get("type"))):
         if w is not None:
             return float(w), 1.0
         if el.get("wrap"):
@@ -1079,6 +1070,8 @@ class _Ctx:
         self.batch_id = batch_id
         #: Graph layouts ``apply_ops`` computed before taking ``canvas.lock`` (``_layout_key`` -> positions).
         self.layouts: Dict[Tuple[Any, ...], Dict[str, Tuple[float, float]]] = {}
+        #: Where every element stood when the batch began (QA R-1: a mark already there hosts what is put on it).
+        self.start: Dict[str, Tuple[float, float, float, float]] = {eid: bounds(el) for eid, el in state.elements.items()}
         self.begin(0, "")
 
     def begin(self, index: int, op_name: str) -> None:
@@ -1098,6 +1091,11 @@ class _Ctx:
         self.mention: Optional[Dict[str, Any]] = None
         self.new_author: Optional[Dict[str, Any]] = None
         self.z = self.state.max_z
+        #: Marks this op moved to make room (``_shift_group``), up to ``MAX_PUSHES``.
+        self.pushes = 0
+        #: How far ``_place`` moved the next element it creates from the point asked for (it followed a
+        #: mark the engine had moved, QA R-1); ``element`` records it as that element's ``nudged``.
+        self.placed_shift: Optional[Tuple[float, float]] = None
 
     # ids, z, lookups ----------------------------------------------------
 
@@ -1239,6 +1237,9 @@ class _Ctx:
         for key in ("x", "y"):
             if abs(el[key]) > MAX_COORD:
                 raise _invalid(key, "{} is outside the canvas (|{}| <= {})".format(key, key, MAX_COORD))
+        if self.placed_shift is not None:
+            el["nudged"] = [_r2(self.placed_shift[0]), _r2(self.placed_shift[1])]
+            self.placed_shift = None
         return el
 
     def event(self, author: CanvasAuthor) -> Dict[str, Any]:
@@ -1493,34 +1494,260 @@ def _asked_box(el: Dict[str, Any]) -> Tuple[float, float, float, float]:
     return x, y, x + min(float(found[0]), float(el.get("w") or 1)), y + min(float(found[1]), float(el.get("h") or 1))
 
 
-def _clear_of_growth(ctx: _Ctx, el: Dict[str, Any], asked: Tuple[float, float]) -> None:
-    """A new element that covers a neighbour only because one of them grew to fit its label (at the sizes they
-    were asked for they would not touch) moves, before it is recorded, to the nearest free spot beside that
-    neighbour, inside its frame, and says so (0.22): the later sibling makes way rather than overlap. A
-    collision the op asked for (the boxes overlap at their asked sizes, or it was put inside the other on
-    purpose) is left for ``check`` to report."""
-    if not str(el.get("text") or "").strip():
-        return  # an unlabelled shape is a background others sit on; it stays where it was put
+# --------------------------------------------------------------------------
+# making room (QA R-1): a shape that grows to fit its text never ends up covering a neighbour it did not
+# cover at the size the author asked for. The rules, in the order the ops meet them:
+#
+# - A mark placed on another (its asked box inside that one's asked box: a window on the walls) sits on
+#   it: that one is its host. The host grows to hold it, like a frame holds a child, and carries it when
+#   it moves. Only kinds whose registry record says ``hosts`` host (``canvas_kinds``).
+# - A new mark that covers a neighbour only because one of them grew moves to the free spot nearest where
+#   it was put: beside the neighbour, or elsewhere on its own host (the later sibling makes way).
+# - A mark that grows after it was placed (a host holding a grown child, a label edited longer, an
+#   arrow's end making room for its label) pushes the neighbours it now covers along the way it grew,
+#   each with what sits on it; they push theirs in turn.
+# - The author's coordinates stay the author's. Every mark the engine moved keeps how far (``nudged``,
+#   cleared when someone moves it on purpose), so a later op that puts a mark at a point on where that
+#   mark was asked to be puts it on the mark (``_follow``), in the same batch or a later one: an agent
+#   that draws one op at a time gets the picture a whole batch gets.
+#
+# A collision the author asked for (the asked boxes overlap) is left alone, for ``check`` to report.
+
+#: Room a host keeps between its edge and a mark on it, and between marks on it.
+HOST_PAD = GRID // 2
+#: How deep one growth may push neighbours that push theirs, and how many marks one op may move to make room.
+MAX_PUSH_DEPTH = 12
+MAX_PUSHES = 200
+
+
+def _nudged(el: Dict[str, Any]) -> Tuple[float, float]:
+    """How far the engine moved ``el`` from where it was asked to go (``nudged``), to make room."""
+    found = el.get("nudged")
+    if isinstance(found, list) and len(found) == 2 and all(_is_number(v) for v in found):
+        return float(found[0]), float(found[1])
+    return 0.0, 0.0
+
+
+def _nudge(el: Dict[str, Any], dx: float, dy: float) -> Optional[List[float]]:
+    """``el``'s ``nudged`` after the engine moves it by ``(dx, dy)`` (None when it is back where it was asked to go)."""
+    nx, ny = _nudged(el)
+    total = [_r2(nx + dx), _r2(ny + dy)]
+    return total if total[0] or total[1] else None
+
+
+def _author_box(ctx: _Ctx, el: Dict[str, Any]) -> Tuple[float, float, float, float]:
+    """Where the author meant ``el`` to be: the box its op asked for (``fit.min`` at its corner), before it
+    grew to fit its label and before the engine moved it to make room. Agents place marks without looking
+    at the sizes they grew to, so two marks whose asked boxes do not meet were meant apart."""
+    dx, dy = _nudged(el)
+    x0, y0, x1, y1 = _asked_box(el)
+    return x0 - dx, y0 - dy, x1 - dx, y1 - dy
+
+
+def _host_of(ctx: _Ctx, el: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The mark ``el`` was placed on: the smallest hosting mark under it whose author box holds ``el``'s, or,
+    for a mark that was there before this batch, whose whole box as it then stood does (a chimney put on
+    walls that grew in an earlier batch)."""
+    mine = _author_box(ctx, el)
+    z = int(el.get("z") or 0)
+    best: Optional[Tuple[float, int, Dict[str, Any]]] = None
+    for other in ctx.live():
+        if other["id"] == el["id"] or not _kinds.hosts(other) or int(other.get("z") or 0) >= z:
+            continue
+        box = _author_box(ctx, other)
+        if tuple(box) == tuple(mine) or not _contains(box, mine):
+            # A mark already there when the batch began hosts what lies inside its outline as it then stood.
+            start = ctx.start.get(other["id"])
+            if start is None or tuple(start) == tuple(mine) or not _kinds.outline_holds(start, _kinds.outline(other), mine):
+                continue
+            box = start
+        key = ((box[2] - box[0]) * (box[3] - box[1]), -int(other.get("z") or 0), other)
+        if best is None or key[:2] < best[:2]:
+            best = key
+    return best[2] if best else None
+
+
+def _host_chain(ctx: _Ctx, el: Dict[str, Any]) -> List[str]:
+    """``el``'s host, that one's host, and so on."""
+    chain: List[str] = []
+    host = _host_of(ctx, el)
+    while host is not None and host["id"] not in chain and len(chain) < MAX_PUSH_DEPTH:
+        chain.append(host["id"])
+        host = _host_of(ctx, host)
+    return chain
+
+
+def _riders(ctx: _Ctx, el: Dict[str, Any]) -> List[str]:
+    """What moves with ``el``: a frame's children, or the marks drawn on a hosting mark (inside it, above it).
+    An arrow bound to an element is left out: it is rerouted instead."""
+    if el.get("type") == "frame":
+        return _descendants(ctx, [el["id"]])
+    if not _kinds.hosts(el):
+        return []
+    box, z = bounds(el), int(el.get("z") or 0)
+    return [other["id"] for other in ctx.live()
+            if other["id"] != el["id"] and other.get("type") != "frame" and int(other.get("z") or 0) > z and _contains(box, bounds(other))
+            and not (other.get("type") == "arrow" and (other.get("from") or other.get("to")))]
+
+
+def _follow(ctx: _Ctx, box: Sequence[float]) -> Tuple[float, float]:
+    """How far a mark asked for at ``box`` moves with a mark the engine moved: the ``nudged`` of the smallest such
+    mark whose author box holds it, unless it lies on a mark where that mark stands now (that is where it was put)."""
+    best: Optional[Tuple[float, Tuple[float, float], str]] = None
+    live = list(ctx.live())
+    for el in live:
+        shift = _nudged(el)
+        if not (shift[0] or shift[1]) or el.get("type") in ("arrow", "comment", "pen"):
+            continue
+        author = _author_box(ctx, el)
+        if _contains(author, box) and tuple(author) != tuple(box):
+            area = (author[2] - author[0]) * (author[3] - author[1])
+            if best is None or area < best[0]:
+                best = (area, shift, el["id"])
+    if best is None:
+        return 0.0, 0.0
+    if any(other["id"] != best[2] and _kinds.hosts(other) and _kinds.outline_holds(bounds(other), _kinds.outline(other), box) for other in live):
+        return 0.0, 0.0
+    return best[1]
+
+
+def _shift_group(ctx: _Ctx, el: Dict[str, Any], dx: float, dy: float) -> bool:
+    """Move ``el`` and what rides on it by ``(dx, dy)`` to make room; False (nothing moved) when one of them is
+    not the author's to move, a lock is in the way, or it would leave the canvas."""
+    ids = [el["id"]] + [r for r in _riders(ctx, el) if r != el["id"]]
+    members = [m for m in (ctx.el(i) for i in ids) if m is not None]
+    if not (dx or dy) or ctx.pushes >= MAX_PUSHES or any(not _may_edit(ctx.author, m) for m in members):
+        return False
+    ctx.pushes += 1
+    try:
+        moves = [(m, dict(_translated(m, dx, dy, unbind=False), nudged=_nudge(m, dx, dy))) for m in members]
+        _check_locks(ctx, [(f["x"], f["y"], f["x"] + bounds(m)[2] - bounds(m)[0], f["y"] + bounds(m)[3] - bounds(m)[1]) for m, f in moves])
+    except HerdrTeamError:
+        return False
+    for member, fields in moves:
+        ctx.update(member, **fields)
+    moved = ctx.el(el["id"]) or el
+    if moved.get("frame"):
+        _grow_parents(ctx, moved)
+    _reroute_bound(ctx, ids, skip=[i for i in ids if (ctx.el(i) or {}).get("type") == "arrow"])
+    return True
+
+
+def _push_vector(old: Sequence[float], new: Sequence[float], other: Sequence[float], ways: Sequence[str]) -> Tuple[int, int]:
+    """The shortest move of ``other`` along a way the grower grew that clears it, keeping the gap they had (at most a grid step)."""
+    options: List[Tuple[int, int]] = []
+
+    def gap(value: float) -> float:
+        return float(GRID) if value < 0 else min(value, float(GRID))
+
+    if "right" in ways:
+        options.append((_grid_step(new[2] + gap(other[0] - old[2]) - other[0]), 0))
+    if "down" in ways:
+        options.append((0, _grid_step(new[3] + gap(other[1] - old[3]) - other[1])))
+    if "left" in ways:
+        options.append((_grid_step(new[0] - gap(old[0] - other[2]) - other[2]), 0))
+    if "up" in ways:
+        options.append((0, _grid_step(new[1] - gap(old[1] - other[3]) - other[3])))
+    return min(options, key=lambda v: (abs(v[0]) + abs(v[1]), options.index(v)))
+
+
+def _grid_step(value: float) -> int:
+    """A move rounded away from zero to whole grid steps, so a mark on the grid stays on it and never falls short."""
+    steps = math.ceil(abs(value) / GRID - 1e-9)
+    return int(math.copysign(steps * GRID, value)) if steps else 0
+
+
+def _push_from(ctx: _Ctx, grower: Dict[str, Any], old: Sequence[float], depth: int = 0) -> None:
+    """``grower`` grew or moved from ``old``: push each neighbour it now covers, and did not before, out of its way."""
+    if depth > MAX_PUSH_DEPTH:
+        return
+    new = bounds(grower)
+    ways = [way for way, grew in (("right", new[2] > old[2]), ("down", new[3] > old[3]), ("left", new[0] < old[0]),
+                                  ("up", new[1] < old[1])) if grew]
+    if not ways:
+        return
+    carried = {grower["id"]} | set(_riders(ctx, grower)) | set(_host_chain(ctx, grower))
+    mine = _author_box(ctx, grower)
+    neighbours = sorted((o for o in ctx.live() if o.get("type") in _check.solid_kinds() and o["id"] not in carried),
+                        key=lambda o: (int(o.get("created_seq") or 0), _id_number(o["id"])))
+    for neighbour in neighbours:
+        other = ctx.el(neighbour["id"])
+        if other is None:
+            continue
+        box = bounds(other)
+        if not _check._intersects(new, box, _check.TOUCH) or _check._intersects(old, box, _check.TOUCH) or _contains(box, new):
+            continue
+        if _check._intersects(mine, _author_box(ctx, other), _check.TOUCH):
+            continue  # the author put them together
+        dx, dy = _push_vector(old, new, box, ways)
+        if not _shift_group(ctx, other, dx, dy):
+            continue
+        ctx.warn("moved_to_fit", "{} moved {} to make room for {}".format(other["id"], _way_text(dx, dy), grower["id"]),
+                 [other["id"], grower["id"]])
+        moved = ctx.el(other["id"]) or other
+        _hold_on_host(ctx, moved, depth + 1)
+        _push_from(ctx, moved, box, depth + 1)
+
+
+def _way_text(dx: float, dy: float) -> str:
+    parts = [("right" if dx > 0 else "left", abs(dx)), ("down" if dy > 0 else "up", abs(dy))]
+    return " and ".join("{} {:g}".format(way, amount) for way, amount in parts if amount)
+
+
+def _hold_on_host(ctx: _Ctx, el: Dict[str, Any], depth: int = 0) -> None:
+    """``el`` sits on a host it no longer fits in: the host grows (right and down, keeping ``HOST_PAD``) to hold
+    it, where its author may and no lock is in the way, and pushes what that growth covers."""
+    host = _host_of(ctx, el)
+    if host is None or depth > MAX_PUSH_DEPTH:
+        return
+    box, old = bounds(el), bounds(host)
+    x1, y1 = max(old[2], box[2] + HOST_PAD), max(old[3], box[3] + HOST_PAD)
+    if (x1, y1) == (old[2], old[3]) or not _may_edit(ctx.author, host):
+        return
+    try:
+        _check_locks(ctx, [(old[0], old[1], x1, y1)])
+    except HerdrTeamError:
+        return
+    grown = ctx.update(host, w=_round(x1 - old[0]), h=_round(y1 - old[1]))
+    if grown.get("frame"):
+        _grow_parents(ctx, grown)
+    _reroute_bound(ctx, [grown["id"]])
+    _push_from(ctx, grown, old, depth + 1)
+    _hold_on_host(ctx, ctx.el(grown["id"]) or grown, depth + 1)
+
+
+def _after_growth(ctx: _Ctx, el: Dict[str, Any], old: Sequence[float]) -> None:
+    """An existing mark grew to fit its label: it pushes what it now covers, and its host grows to hold it."""
+    if bounds(el) == tuple(old):
+        return
+    _push_from(ctx, el, old)
+    _hold_on_host(ctx, ctx.el(el["id"]) or el)
+
+
+def _make_way(ctx: _Ctx, el: Dict[str, Any]) -> None:
+    """A new mark that covers a neighbour only because one of them grew (their author boxes do not meet) moves,
+    before it is recorded, to the nearest free spot: on its own host when it has one (the host then grows
+    to hold it), else beside the neighbour inside its frame, and says so (0.22, QA R-1)."""
     box = bounds(el)
     x, y = float(el["x"]), float(el["y"])
-    wanted = box if el.get("type") == "text" else (x, y, x + min(asked[0], box[2] - x), y + min(asked[1], box[3] - y))
-    solid = [other for other in ctx.live() if other.get("type") in _check.SOLID and other["id"] != el["id"]]
-    if any(_contains(_asked_box(other), wanted) for other in solid):
-        return  # drawn on another mark on purpose (a door on the walls): moving it would break the picture
-    labelled = [other for other in solid if other.get("type") in TEXT_TYPES and str(other.get("text") or "").strip()]
-
-    def covers(a: Sequence[float], b: Sequence[float]) -> bool:
-        w, h = min(a[2], b[2]) - max(a[0], b[0]), min(a[3], b[3]) - max(a[1], b[1])
-        return w > _check.TOUCH and h > _check.TOUCH and not _contains(a, b) and not _contains(b, a)
-
-    hit = next((other for other in labelled if covers(box, bounds(other)) and not covers(wanted, _asked_box(other))), None)
+    mine = _author_box(ctx, el)
+    chain = set(_host_chain(ctx, el))
+    solid = [other for other in ctx.live() if other.get("type") in _check.solid_kinds() and other["id"] != el["id"] and other["id"] not in chain]
+    hit = next((other for other in solid if _check._intersects(box, bounds(other), _check.TOUCH)
+                and not _check._intersects(mine, _author_box(ctx, other), _check.TOUCH)), None)
     if hit is None:
         return
-    frame = ctx.el(el["frame"]) if el.get("frame") else None
     boxes = [(str(other["id"]), bounds(other)) for other in solid]
-    # The free spot nearest where the author put it; in a frame its author may grow, past its right or bottom edge.
-    grows = frame is not None and _may_edit(ctx.author, frame)
-    spot = _check.free_spot(el, hit, boxes, bounds(frame) if frame is not None else None, near=(x, y), frame_grows=grows,
+    host = _host_of(ctx, el) if chain else None
+    frame = ctx.el(el["frame"]) if el.get("frame") else None
+    if host is not None:
+        hx0, hy0, hx1, hy1 = bounds(host)
+        area: Optional[Tuple[float, float, float, float]] = (hx0 + HOST_PAD, hy0 + HOST_PAD, hx1 - HOST_PAD, hy1 - HOST_PAD)
+        spot = _check.free_spot(el, hit, boxes, area, near=(x, y), frame_grows=_may_edit(ctx.author, host), clearance=HOST_PAD)
+    else:
+        # The free spot nearest where the author put it; in a frame its author may grow, past its right or bottom edge.
+        grows = frame is not None and _may_edit(ctx.author, frame)
+        spot = _check.free_spot(el, hit, boxes, bounds(frame) if frame is not None else None, near=(x, y), frame_grows=grows,
                                 clearance=GRID)
     if spot is None:
         return
@@ -1531,6 +1758,11 @@ def _clear_of_growth(ctx: _Ctx, el: Dict[str, Any], asked: Tuple[float, float]) 
         return
     ctx.warn("moved_to_fit", "{} would cover {} now that labels grow to fit; it went to {} instead".format(
         el["id"], hit["id"], cell_name(spot[0], spot[1])), [el["id"], hit["id"]])
+    nudged = _nudge(el, _round(spot[0]) - x, _round(spot[1]) - y)
+    if nudged is None:
+        el.pop("nudged", None)
+    else:
+        el["nudged"] = nudged
     el["x"], el["y"] = _round(spot[0]), _round(spot[1])
     if frame is None:
         el["frame"] = _enclosing_frame(ctx, moved)
@@ -1590,6 +1822,13 @@ def _place(ctx: _Ctx, op: Dict[str, Any], w: float, h: float,
         return x, y, None
     if key == "at":
         x, y = _point(op["at"], "at", lambda ref, field: ctx.lookup(ref, field))[:2]
+        if _is_point_form(op["at"]):
+            # A point on a mark this batch moved to make room is a point on that mark (QA R-1).
+            aw, ah = asked if asked is not None else (w, h)
+            dx, dy = _follow(ctx, (x, y, x + aw, y + ah))
+            if dx or dy:
+                x, y = x + dx, y + dy
+                ctx.placed_shift = (dx, dy)
     else:
         ref = ctx.lookup(op[key], key)
         rx0, ry0, rx1, ry1 = bounds(ref)
@@ -1695,24 +1934,190 @@ def _reroute_bound(ctx: _Ctx, changed: Iterable[str], skip: Iterable[str] = ()) 
 
 
 # --------------------------------------------------------------------------
+# arrow labels (QA R-3): each label sits in a pill on its route, clear of marks and of other labels
+
+
+#: How many times a new arrow moves its later end to make room for its label before the label settles beside the line.
+MAX_ROOM_TRIES = 3
+
+
+def _label_reach(el: Dict[str, Any], size: Tuple[float, float]) -> Tuple[float, float, float, float]:
+    """The box an arrow's label may end up anywhere in: its route, grown by the farthest spot beside it."""
+    x0, y0, x1, y1 = _bbox(_render.arrow_route(el) or [(float(el.get("x") or 0), float(el.get("y") or 0))])
+    reach = max(size) + _labels.CLEARANCE + _labels.SIDE_STEPS * _labels.STEP
+    return x0 - reach, y0 - reach, x1 + reach, y1 + reach
+
+
+def _label_marks(live: Sequence[Dict[str, Any]]) -> List[Tuple[Tuple[float, float, float, float], str]]:
+    """What a label keeps clear of besides other labels: every solid mark's outline, and frame titles."""
+    marks = [_labels.obstacle_of(el) for el in live if el.get("type") in _check.solid_kinds()]
+    for el in live:
+        if el.get("type") == "frame" and el.get("text"):
+            title = _render.frame_title_box(el, 1.0)
+            if title is not None:
+                marks.append((title, "rect"))
+    return marks
+
+
+def _label_size(el: Dict[str, Any]) -> Optional[Tuple[float, float]]:
+    found = _render.arrow_label_text(el)
+    return found[0] if found is not None else None
+
+
+def _room_for_label(ctx: _Ctx, arrow: Dict[str, Any], start_id: str, end_id: str, points: List[List[float]]) -> List[List[float]]:
+    """A new arrow whose label has no clear spot on its route moves its later end (and what rides on it) away
+    along the arrow, just far enough for the label to sit on the line next to that end, beside anything
+    already on the line; a mark the move then covers is pushed on in turn. Returns the route it ends with."""
+    for _attempt in range(MAX_ROOM_TRIES):
+        start, end = ctx.el(start_id), ctx.el(end_id)
+        if start is None or end is None or start_id == end_id or _check._intersects(bounds(start), bounds(end)):
+            return points
+        probe = dict(arrow, points=points, **_geometry(points))
+        size = _label_size(probe)
+        flat = _render.arrow_route(probe)
+        if size is None or _labels.length(flat) == 0:
+            return points
+        live = list(ctx.live())
+        reach = _label_reach(probe, size)
+        pills = [box for box in (_pill_box(other) for other in live) if box and _check._intersects(box, reach)]
+        near = [el for el in live if _check._intersects(bounds(el), reach)]
+        if not _labels.blocked_on_route(flat, size, _label_marks(near), pills):
+            return points
+        # The later end moves (the author placed it knowing the earlier one); the other only when it cannot.
+        ends = sorted([(end, False), (start, True)], key=lambda item: -int(item[0].get("created_seq") or 0))
+        mover, at_start = ends[0]
+        carried = {mover["id"]} | set(_riders(ctx, mover))
+        need = _labels.room_at_end(flat, size, _label_marks([el for el in near if el["id"] not in carried]), pills, at_start)
+        (x0, y0), (x1, y1) = flat[0], flat[-1]
+        if need <= 0:
+            return points  # the line is blocked in its middle (it runs through a mark): moving an end does not help
+        # Along the arrow's main axis, away from the other end, so rows and columns stay lined up.
+        ax, ay = (x0 - x1, y0 - y1) if at_start else (x1 - x0, y1 - y0)
+        span = max(abs(ax), abs(ay))
+        move = (_grid_step(math.copysign(need * math.hypot(ax, ay) / span, ax)), 0) if abs(ax) >= abs(ay) else \
+            (0, _grid_step(math.copysign(need * math.hypot(ax, ay) / span, ay)))
+        for candidate, _at_start in ends:
+            old = bounds(candidate)
+            if _shift_group(ctx, candidate, *(move if candidate is mover else (-move[0], -move[1]))):
+                moved = ctx.el(candidate["id"]) or candidate
+                ctx.warn("moved_to_fit", "{} moved {} to make room for the label of the arrow to it".format(
+                    candidate["id"], _way_text(bounds(moved)[0] - old[0], bounds(moved)[1] - old[1])), [candidate["id"]])
+                _push_from(ctx, moved, old)
+                _hold_on_host(ctx, moved)
+                break
+        else:
+            return points
+        start, end = ctx.el(start_id), ctx.el(end_id)
+        if start is None or end is None:
+            return points
+        points = _route(("element", start), ("element", end))
+    return points
+
+
+def _pill_box(el: Dict[str, Any]) -> Optional[Tuple[float, float, float, float]]:
+    pill = _render.arrow_label_pill(el) if el.get("type") == "arrow" and el.get("text") else None
+    if pill is None:
+        return None
+    (px, py, pw, ph), _size, _lines = pill
+    return px, py, px + pw, py + ph
+
+
+def _settle_labels(ctx: _Ctx) -> None:
+    """After each op: every labelled arrow the op touched, or whose label's reach meets a mark the op touched,
+    gets its label's spot (``label_at``) and lines (``fit``) again; one still on its route and clear stays
+    where it is. Labels far from the op are never measured."""
+    if not ctx.pending:
+        return
+    dirty: List[Tuple[float, float, float, float]] = []
+    for eid, value in ctx.pending.items():
+        for el in (ctx.state.elements.get(eid), value):
+            if el is not None:
+                dirty.append(_render.drawn_bounds(el))
+    live = list(ctx.live())
+    arrows = sorted((el for el in live if el.get("type") == "arrow" and str(el.get("text") or "") and len(el.get("points") or []) >= 2),
+                    key=lambda el: (int(el.get("created_seq") or 0), _id_number(el["id"])))
+    rough = {el["id"]: _label_reach(el, (_LABEL_BOUND, _LABEL_BOUND)) for el in arrows}
+    todo = [el for el in arrows if el["id"] in ctx.pending or any(_check._intersects(box, rough[el["id"]]) for box in dirty)]
+    if not todo:
+        return
+    sizes: Dict[str, Optional[Tuple[float, float]]] = {}
+    centers: Dict[str, Tuple[float, float]] = {}
+
+    def size_of(el: Dict[str, Any]) -> Optional[Tuple[float, float]]:
+        if el["id"] not in sizes:
+            sizes[el["id"]] = _label_size(el)
+        return sizes[el["id"]]
+
+    def center_of(el: Dict[str, Any]) -> Optional[Tuple[float, float]]:
+        # An arrow this op drew has no spot yet: it blocks nothing until it gets one (it comes last).
+        if el["id"] not in centers and (el.get("label_at") or el["id"] not in ctx.created):
+            centers[el["id"]] = _render.arrow_label_center(el)
+        return centers.get(el["id"])
+
+    marks = _label_marks(live)
+    for arrow in todo:
+        arrow = ctx.el(arrow["id"]) or arrow
+        size = size_of(arrow)
+        if size is None:
+            continue
+        reach = _label_reach(arrow, size)
+        near = [m for m in marks if _check._intersects(m[0], reach)]
+        pills = []
+        for other in arrows:
+            if other["id"] == arrow["id"] or not _check._intersects(rough[other["id"]], reach):
+                continue
+            other_size, other_center = size_of(other), center_of(other)
+            if other_size is not None and other_center is not None:
+                box = _labels.pill_box(other_center, other_size)
+                if _check._intersects(box, reach):
+                    pills.append(box)
+        stored = arrow.get("label_at")
+        current = (float(stored[0]), float(stored[1])) if isinstance(stored, list) and len(stored) == 2 else None
+        spot, _ring = _labels.place(_render.arrow_route(arrow), size, near, pills, current)
+        at = [_r2(spot[0]), _r2(spot[1])]
+        centers[arrow["id"]] = (at[0], at[1])
+        fields: Dict[str, Any] = {}
+        if stored != at:
+            fields["label_at"] = at
+        fit = _label_fit(arrow)
+        if fit is not None and arrow.get("fit") != fit:
+            fields["fit"] = fit
+        if fields:
+            ctx.update(arrow, **fields)
+
+
+#: The most an arrow label's pill reaches from its centre before it is measured: its wrap width plus padding.
+_LABEL_BOUND = float(_render.ARROW_LABEL_EMS * 36 * _render.ARROW_LABEL_SCALE + 2 * _render.ARROW_LABEL_PAD[0])
+
+
+def _label_fit(el: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """An arrow label's ``fit`` record: the lines the picture draws and their size, which the page draws too."""
+    found = _render.arrow_label_text(el)
+    if found is None:
+        return None
+    _size, size, lines = found
+    return {"lines": list(lines), "size": _r2(size)}
+
+
+# --------------------------------------------------------------------------
 # the operations (contract section 6)
 
 #: ``if_version`` is accepted on every op (the page sends it on all of them) and enforced on move, restyle, edit and delete.
 _COMMON = ("op", "intent", "if_version")
 _STYLE = STYLE_FIELDS
-_FIELDS: Dict[str, Tuple[str, ...]] = {
-    "shape": _COMMON + ("kind", "text", "w", "h", "id", "client_id") + PLACE_FIELDS + _STYLE,
-    "arrow": _COMMON + ("from", "to", "points", "label", "head", "tail", "curve", "id", "client_id") + _STYLE,
-    "frame": _COMMON + ("title", "w", "h", "children", "region", "id", "client_id") + PLACE_FIELDS + _STYLE,
-    "pen": _COMMON + ("points", "closed", "style", "width", "color", "fill", "opacity", "dash", "id", "client_id"),
-    "path": _COMMON + ("d", "scale", "id", "client_id") + PLACE_FIELDS + _STYLE,
-    "svg": _COMMON + ("svg", "w", "h", "sketchy", "title", "id", "client_id") + PLACE_FIELDS,
-    "graph": _COMMON + ("nodes", "edges", "layout", "direction", "title", "id") + PLACE_FIELDS + _STYLE,
-    "mermaid": _COMMON + ("source", "w", "h", "title", "id", "client_id") + PLACE_FIELDS + _STYLE,
-    "chart": _COMMON + ("spec", "data", "title", "w", "h", "id", "client_id") + PLACE_FIELDS,
-    "viz": _COMMON + ("html", "libs", "data", "data_path", "title", "w", "h", "id", "client_id") + PLACE_FIELDS,
-    "image": _COMMON + ("path", "asset", "w", "h", "id", "client_id") + PLACE_FIELDS,
-    "comment": _COMMON + ("at", "text", "mentions", "reply_to", "client_id"),
+#: One line on each core op, for ``docs/reference.md``.
+CORE_OP_DOCS = {
+    "claim": "an advisory claim on a region you are about to draw in (expires after 5 minutes)",
+    "release": "release your claim (or all of them)", "legend": "say what a symbol means, or remove a legend entry",
+    "move": "move, resize, re-point or re-frame elements, or rebind an arrow's ends",
+    "restyle": "change the tone, variant, colour, size, font or dash of elements", "edit": "change an element's text",
+    "delete": "delete elements (a frame with its children when asked)", "portrait": "your plan as a frame of steps in your home",
+    "resolve": "resolve a comment", "lock": "the operator locks a region against agents", "unlock": "the operator lifts a lock",
+    "undo": "undo a batch (yours; the manager any agent's; the operator anything)",
+    "refit": "size labels again from their minimum, under the fonts and the page's measurements (none named: all you may edit)",
+}
+#: The fields of the core ops; a kind module's op takes ``_COMMON`` + its ``OpSpec.fields`` (+ placement, + style).
+CORE_FIELDS: Dict[str, Tuple[str, ...]] = {
     "claim": _COMMON + ("region", "label"),
     "release": _COMMON + ("id",),
     "legend": _COMMON + ("symbol", "meaning", "remove"),
@@ -1726,6 +2131,7 @@ _FIELDS: Dict[str, Tuple[str, ...]] = {
     "lock": _COMMON + ("region", "label"),
     "unlock": _COMMON + ("id",),
     "undo": _COMMON + ("batch",),
+    "refit": _COMMON + ("id", "ids"),
 }
 
 
@@ -1739,37 +2145,14 @@ def _point_list(value: Any, field: str, maximum: int, limit_name: str, pressure:
     return [_point(p, field, None, pressure) for p in value]
 
 
-def _op_shape(ctx: _Ctx, op: Dict[str, Any]) -> None:
-    kind = _choice(op.get("kind"), "kind", SHAPE_KINDS, "box")
-    text = _text(op.get("text"), "text", MAX_TEXT_CHARS, "MAX_TEXT_CHARS", required=kind == "text")
-    style = _style(op, _default_style(kind), kind)
-    if kind == "text":
-        # A text's w is the width it wraps at; its height is what its lines need, so an h is ignored.
-        wrap_w = _size(op, 1, 1)[0] if op.get("w") is not None else None
-        fields = _text_fields({"type": "text"}, text, style, wrap_w)
-    else:
-        # Sized from the label before it is placed (0.22): w/h are the minimum, and the shape grows to fit.
-        fields = _fitted({"type": kind, "text": text, "style": style}, _size(op, *SHAPE_SIZES[kind]))
-    w, h = fields.pop("w"), fields.pop("h")
-    alias = _alias(ctx, op)
-    client = _client_id(op)
-    asked = fields["fit"]["min"] if kind != "text" else [fields["fit"]["min"][0], h]
-    x, y, frame = _place(ctx, op, w, h, (float(asked[0]), float(asked[1])))
-    ctx.alias = alias
-    el = ctx.element(kind, x, y, w, h, text=text, style=style, alias=alias, client_id=client, frame=frame, **fields)
-    if op.get("inside") is None:
-        _clear_of_growth(ctx, el, (float(asked[0]), float(asked[1])))
-    _under_labels(ctx, el)
-    _after_create(ctx, el)
-
-
 def _under_labels(ctx: _Ctx, el: Dict[str, Any]) -> None:
     """An unlabelled shape is a background others sit on (walls behind a door): drawn after a labelled shape
     it covers, its fill hid that shape's label (QA F-2, the walls over the roof's second line). It goes
     just under the lowest labelled shape it covers, never under its own frame; one it sits wholly inside
     (a panel it is drawn on) keeps it on top."""
-    if el.get("type") not in ("box", "ellipse", "diamond") or str(el.get("text") or "").strip():
-        return
+    kind = _kinds.get(el.get("type"))
+    if kind is None or not kind.hosts or kind.tone_group != "shape" or str(el.get("text") or "").strip():
+        return  # only a shape drawn as a background (box, ellipse, diamond): a note is paper, not a wall
     box = bounds(el)
     covered = [int(other.get("z") or 0) for other in ctx.live()
                if other["id"] != el["id"] and other.get("type") in TEXT_TYPES and str(other.get("text") or "").strip()
@@ -1779,142 +2162,6 @@ def _under_labels(ctx: _Ctx, el: Dict[str, Any]) -> None:
     frame = ctx.el(el["frame"]) if el.get("frame") else None
     floor = int(frame.get("z") or 0) if frame is not None else -(10 ** 9)
     el["z"] = max(min(covered) - 1, floor)
-
-
-def _op_arrow(ctx: _Ctx, op: Dict[str, Any]) -> None:
-    style = _style(op, _default_style("arrow"), "arrow")
-    label = _text(op.get("label"), "label", MAX_LABEL_CHARS, "MAX_LABEL_CHARS", one_line=True)
-    head = _choice(op.get("head"), "head", HEADS, "arrow")
-    tail = _choice(op.get("tail"), "tail", HEADS, "none")
-    curve = _bool(op.get("curve"), "curve", False)
-    alias = _alias(ctx, op)
-    client = _client_id(op)
-    start_id: Optional[str] = None
-    end_id: Optional[str] = None
-    if op.get("points") is not None:
-        if op.get("from") is not None or op.get("to") is not None:
-            raise _invalid("points", "an arrow takes points, or from and to, not both")
-        points = _point_list(op["points"], "points", MAX_ARROW_POINTS, "MAX_ARROW_POINTS")
-    else:
-        if op.get("from") is None or op.get("to") is None:
-            raise _invalid("from" if op.get("from") is None else "to", "an arrow needs from and to (an element or a point), or points")
-        start, end = _end(ctx, op["from"], "from"), _end(ctx, op["to"], "to")
-        points = _route(start, end)
-        start_id = start[1]["id"] if start[0] == "element" else None
-        end_id = end[1]["id"] if end[0] == "element" else None
-    geo = _geometry(points)
-    frame = _enclosing_frame(ctx, (geo["x"], geo["y"], geo["x"] + geo["w"], geo["y"] + geo["h"]))
-    el = ctx.element("arrow", geo["x"], geo["y"], geo["w"], geo["h"], text=label, style=style, alias=alias, client_id=client,
-                     frame=frame, **{"from": start_id, "to": end_id, "points": points, "head": head, "tail": tail, "curve": curve})
-    ctx.alias = alias
-    _after_create(ctx, el)
-
-
-def _op_frame(ctx: _Ctx, op: Dict[str, Any]) -> None:
-    title = _text(op.get("title"), "title", MAX_LABEL_CHARS, "MAX_LABEL_CHARS", one_line=True)
-    style = _style(op, _default_style("frame"), "frame")
-    alias = _alias(ctx, op)
-    client = _client_id(op)
-    children_raw, region_raw = op.get("children"), op.get("region")
-    if children_raw is not None and region_raw is not None:
-        raise _invalid("region", "a frame takes children or a region, not both")
-    placed = [key for key in PLACE_KEYS + ("w", "h") if op.get(key) is not None]
-    children: List[Dict[str, Any]] = []
-    if children_raw is not None:
-        if placed:
-            raise _invalid(placed[0], "a frame around children takes its bounds from them")
-        if not isinstance(children_raw, list) or not children_raw:
-            raise _invalid("children", "children must be a non-empty list of elements")
-        for ref in children_raw:
-            child = ctx.lookup(ref, "children")
-            if child.get("type") == "comment":
-                raise _invalid("children", "comments stay pinned where they are; frame the element they point at")
-            if all(c["id"] != child["id"] for c in children):
-                children.append(child)
-        for child in children:
-            if not _may_edit(ctx.author, child):
-                raise _error("element_not_yours", "{} is {}'s; a frame can only take elements you may edit".format(child["id"], _who(child.get("author"), None)),
-                             id=child["id"], author=child.get("author"))
-        boxes = [bounds(c) for c in children]
-        x0, y0 = min(b[0] for b in boxes) - FRAME_PAD, min(b[1] for b in boxes) - FRAME_TOP
-        x1, y1 = max(b[2] for b in boxes) + FRAME_PAD, max(b[3] for b in boxes) + FRAME_PAD
-        parent = _enclosing_frame(ctx, (x0, y0, x1, y1))
-    elif region_raw is not None:
-        if placed:
-            raise _invalid(placed[0], "a frame over a region takes its bounds from the region")
-        x0, y0, x1, y1 = _region(region_raw, "region", ctx.lookup)
-        parent = _enclosing_frame(ctx, (x0, y0, x1, y1))
-        inside = [el for el in ctx.live() if el.get("type") != "comment" and el["id"] != parent and _contains((x0, y0, x1, y1), bounds(el))]
-        inside_ids = {el["id"] for el in inside}
-        # Only the top level moves in: what sits in a frame that is itself inside keeps that frame.
-        children = [el for el in inside if el.get("frame") not in inside_ids and _may_edit(ctx.author, el)]
-    else:
-        w, h = _size(op, 400, 300)
-        x0, y0, parent = _place(ctx, op, w, h)
-        x1, y1 = x0 + w, y0 + h
-    frame = ctx.element("frame", x0, y0, x1 - x0, y1 - y0, text=title, style=style, alias=alias, client_id=client, frame=parent)
-    _check_locks(ctx, [bounds(frame)])
-    ctx.put(frame)
-    for child in children:
-        ctx.update(ctx.el(child["id"]) or child, frame=frame["id"])
-    ctx.alias = alias
-    _warn_claims(ctx, [frame["id"]], bounds(frame))
-
-
-def _op_pen(ctx: _Ctx, op: Dict[str, Any]) -> None:
-    points = _point_list(op.get("points"), "points", MAX_PEN_POINTS, "MAX_PEN_POINTS", pressure=True)
-    closed = _bool(op.get("closed"), "closed", False)
-    mode = _choice(op.get("style"), "style", ("smooth", "straight"), "smooth")
-    style = _style(op, _default_style("pen"), "pen")
-    if style.get("fill") and not closed:
-        raise _invalid("fill", "a pen stroke is filled only when closed: true")
-    alias = _alias(ctx, op)
-    client = _client_id(op)
-    geo = _geometry(points)
-    frame = _enclosing_frame(ctx, (geo["x"], geo["y"], geo["x"] + geo["w"], geo["y"] + geo["h"]))
-    ctx.alias = alias
-    _after_create(ctx, ctx.element("pen", geo["x"], geo["y"], geo["w"], geo["h"], style=style, alias=alias, client_id=client,
-                                   frame=frame, points=points, closed=closed, smooth=mode == "smooth"))
-
-
-def _op_path(ctx: _Ctx, op: Dict[str, Any]) -> None:
-    d = op.get("d")
-    if not isinstance(d, str) or not d.strip():
-        raise _invalid("d", "path needs d: SVG path data")
-    if len(d) > MAX_PATH_CHARS:
-        raise _too_big("d", "MAX_PATH_CHARS", MAX_PATH_CHARS, "path data is {} characters; the limit is {}".format(len(d), MAX_PATH_CHARS))
-    normalized, natural_w, natural_h = _render.normalize_path(d)
-    scale = _num(op["scale"], "scale", 0.01, 100) if op.get("scale") is not None else 1.0
-    w, h = natural_w * scale, natural_h * scale
-    if w > MAX_SIZE or h > MAX_SIZE:
-        raise _invalid("scale", "the path would be {:g} x {:g}; the limit is {} per side".format(w, h, MAX_SIZE))
-    style = _style(op, _default_style("path"), "path")
-    alias = _alias(ctx, op)
-    client = _client_id(op)
-    x, y, frame = _place(ctx, op, w, h)
-    ctx.alias = alias
-    _after_create(ctx, ctx.element("path", x, y, w, h, style=style, alias=alias, client_id=client, frame=frame, d=normalized, scale=_r2(scale)))
-
-
-def _op_svg(ctx: _Ctx, op: Dict[str, Any]) -> None:
-    markup = op.get("svg")
-    if not isinstance(markup, str) or not markup.strip():
-        raise _invalid("svg", "svg needs svg: the markup")
-    clean = _render.sanitize_svg(markup)
-    _guard_code(markup, "svg")
-    natural = _render.svg_size(clean) or _render.DEFAULT_SVG_SIZE
-    w, h = _size(op, min(natural[0], MAX_SIZE), min(natural[1], MAX_SIZE))
-    title = _text(op.get("title"), "title", MAX_LABEL_CHARS, "MAX_LABEL_CHARS", one_line=True)
-    sketchy = _bool(op.get("sketchy"), "sketchy", False)
-    alias = _alias(ctx, op)
-    client = _client_id(op)
-    x, y, frame = _place(ctx, op, w, h)
-    el = ctx.element("svg", x, y, w, h, text=title, style=_default_style("svg"), alias=alias, client_id=client,
-                     frame=frame, asset=None, sketchy=sketchy)
-    _check_locks(ctx, [bounds(el)])
-    el["asset"] = store_asset(ctx.team, clean.encode("utf-8"), "svg")["asset"]
-    ctx.alias = alias
-    _after_create(ctx, el)
 
 
 def _node_alias(ctx: _Ctx, alias: Optional[str], node_id: str) -> Optional[str]:
@@ -2126,175 +2373,10 @@ def _graph_nodes(nodes_raw: List[Any]) -> List[Dict[str, Any]]:
     return nodes
 
 
-def _op_graph(ctx: _Ctx, op: Dict[str, Any]) -> None:
-    nodes_raw, edges_raw = op.get("nodes"), op.get("edges") if op.get("edges") is not None else []
-    if not isinstance(nodes_raw, list) or not nodes_raw:
-        raise _invalid("nodes", "graph needs nodes: [{\"id\": \"a\", \"text\": \"...\"}, ...]")
-    if len(nodes_raw) > MAX_GRAPH_NODES:
-        raise _too_big("nodes", "MAX_GRAPH_NODES", MAX_GRAPH_NODES, "{} nodes; the limit is {}".format(len(nodes_raw), MAX_GRAPH_NODES))
-    if not isinstance(edges_raw, list):
-        raise _invalid("edges", "edges must be a list of {\"from\", \"to\"}")
-    if len(edges_raw) > MAX_GRAPH_EDGES:
-        raise _too_big("edges", "MAX_GRAPH_EDGES", MAX_GRAPH_EDGES, "{} edges; the limit is {}".format(len(edges_raw), MAX_GRAPH_EDGES))
-    nodes = _graph_nodes(nodes_raw)
-    seen = {node["id"] for node in nodes}
-    edges: List[Dict[str, Any]] = []
-    for index, edge in enumerate(edges_raw):
-        field = "edges[{}]".format(index)
-        if isinstance(edge, (list, tuple)) and len(edge) in (2, 3):
-            edge = {"from": edge[0], "to": edge[1], "label": edge[2] if len(edge) == 3 else None}
-        if not isinstance(edge, dict):
-            raise _invalid(field, "{} must be {{\"from\", \"to\", \"label\"}}".format(field))
-        for key in edge:
-            if key not in ("from", "to", "label", "dash"):
-                raise _invalid("{}.{}".format(field, key), "an edge takes from, to, label, dash")
-        for end in ("from", "to"):
-            value = edge.get(end)
-            if not isinstance(value, str) or value not in seen:
-                raise _invalid("{}.{}".format(field, end), "{} is not one of the graph's node ids".format(
-                    value if isinstance(value, str) else "{}.{}".format(field, end)))
-        dash = edge.get("dash")
-        dash_style = ("dashed" if dash else "solid") if isinstance(dash, bool) or dash is None else _choice(dash, field + ".dash", DASHES, "solid")
-        edges.append({"from": edge["from"], "to": edge["to"], "dash": dash_style, "head": "arrow", "thick": False,
-                      "label": _text(edge.get("label"), field + ".label", MAX_LABEL_CHARS, "MAX_LABEL_CHARS", one_line=True)})
-    algorithm = _choice(op.get("layout"), "layout", _layout.LAYOUTS, "layered")
-    direction = _choice(op.get("direction"), "direction", ("down", "right"), "down")
-    title = _text(op.get("title"), "title", MAX_LABEL_CHARS, "MAX_LABEL_CHARS", one_line=True)
-    _expand_graph(ctx, op, title or (op.get("id") if isinstance(op.get("id"), str) else "") or "graph", nodes, edges, algorithm, direction)
-
-
-def _op_mermaid(ctx: _Ctx, op: Dict[str, Any]) -> None:
-    source = op.get("source")
-    if not isinstance(source, str) or not source.strip():
-        raise _invalid("source", "mermaid needs source")
-    if len(source.encode("utf-8")) > MAX_MERMAID_BYTES:
-        raise _too_big("source", "MAX_MERMAID_BYTES", MAX_MERMAID_BYTES, "the Mermaid source is over {} KB".format(MAX_MERMAID_BYTES // 1024))
-    _guard_code(source, "source")
-    title = _text(op.get("title"), "title", MAX_LABEL_CHARS, "MAX_LABEL_CHARS", one_line=True)
-    kind = _mermaid.diagram_kind(source)
-    diagram = kind
-    if kind == "flowchart":
-        try:
-            parsed: Optional[Dict[str, Any]] = _mermaid.parse_flowchart(source)
-        except _mermaid.MermaidRefused as err:
-            raise _invalid("source", str(err))
-        except _mermaid.MermaidSyntax:
-            parsed = None
-        if parsed is not None:
-            if len(parsed["nodes"]) > MAX_GRAPH_NODES:
-                raise _too_big("source", "MAX_GRAPH_NODES", MAX_GRAPH_NODES, "{} nodes; the limit is {}".format(len(parsed["nodes"]), MAX_GRAPH_NODES))
-            if len(parsed["edges"]) > MAX_GRAPH_EDGES:
-                raise _too_big("source", "MAX_GRAPH_EDGES", MAX_GRAPH_EDGES, "{} edges; the limit is {}".format(len(parsed["edges"]), MAX_GRAPH_EDGES))
-            for node in parsed["nodes"]:
-                if not _NODE_ID_RE.match(node["id"]):
-                    raise _invalid("source", "node id {} is longer than 32 characters".format(node["id"][:40]))
-            nodes = [{"id": n["id"], "kind": n["kind"], "subgraph": n.get("subgraph"), "color": None, "fill": None, "fill_set": False,
-                      "text": _text(n["text"], "source", MAX_LABEL_CHARS, "MAX_LABEL_CHARS", one_line=True) or n["id"]} for n in parsed["nodes"]]
-            edges = [{"from": e["from"], "to": e["to"], "dash": "dashed" if e["dash"] else "solid", "head": e["head"], "thick": e["thick"],
-                      "label": _text(e.get("label"), "source", MAX_LABEL_CHARS, "MAX_LABEL_CHARS", one_line=True)} for e in parsed["edges"]]
-            subgraphs = [{"id": s["id"], "parent": s.get("parent"),
-                          "title": _text(s.get("title"), "source", MAX_LABEL_CHARS, "MAX_LABEL_CHARS", one_line=True)} for s in parsed["subgraphs"]]
-            _expand_graph(ctx, op, title or "flowchart", nodes, edges, "layered", parsed["direction"], subgraphs)
-            return
-        diagram = "other"
-    w, h = _size(op, 480, 320)
-    alias = _alias(ctx, op)
-    client = _client_id(op)
-    x, y, frame = _place(ctx, op, w, h)
-    ctx.alias = alias
-    _after_create(ctx, ctx.element("mermaid", x, y, w, h, text=title, style=_style(op, _default_style("mermaid"), "mermaid"),
-                                   alias=alias, client_id=client, frame=frame, source=source, diagram=diagram, still=None))
-
-
-def _find_key(obj: Any, keys: Sequence[str], depth: int = 0) -> Optional[str]:
-    """The first key named one of ``keys`` anywhere in ``obj``; a spec too deep to search is refused, never passed."""
-    if depth > MAX_SPEC_DEPTH:
-        raise _error("chart_refused", "the chart spec nests deeper than {} levels; flatten it".format(MAX_SPEC_DEPTH),
-                     limit="MAX_SPEC_DEPTH", max=MAX_SPEC_DEPTH)
-    if isinstance(obj, dict):
-        for key, value in obj.items():
-            if isinstance(key, str) and key.lower() in keys:
-                return key
-            found = _find_key(value, keys, depth + 1)
-            if found:
-                return found
-    elif isinstance(obj, list):
-        for value in obj:
-            found = _find_key(value, keys, depth + 1)
-            if found:
-                return found
-    return None
-
-
 def _artifact_rel(ctx: _Ctx, path: Path) -> str:
     root = artifacts_dir(ctx.layout, ctx.team, ctx.doc)
     base = Path(os.path.realpath(os.fspath(root))) if root is not None else path.parent
     return path.relative_to(base).as_posix()
-
-
-def _op_chart(ctx: _Ctx, op: Dict[str, Any]) -> None:
-    spec = op.get("spec")
-    if not isinstance(spec, dict):
-        raise _invalid("spec", "chart needs spec: a Vega-Lite object")
-    raw = json.dumps(spec, ensure_ascii=False, separators=(",", ":"))
-    if len(raw.encode("utf-8")) > MAX_CHART_SPEC_BYTES:
-        raise _error("chart_refused", "the chart spec is over {} KB; put the data in a file under artifacts/".format(MAX_CHART_SPEC_BYTES // 1024),
-                     limit="MAX_CHART_SPEC_BYTES", max=MAX_CHART_SPEC_BYTES)
-    found = _find_key(spec, ("url", "href"))
-    if found:
-        raise _error("chart_refused", "a chart spec may not load anything itself: remove {!r} and pass data (a file under artifacts/)".format(found), key=found)
-    _guard_code(raw, "spec")
-    data_rel: Optional[str] = None
-    if op.get("data") is not None:
-        inline = spec.get("data")
-        if isinstance(inline, dict) and "values" in inline:
-            raise _invalid("data", "give the data as a file (data) or inline (spec.data.values), not both")
-        data_rel = _artifact_rel(ctx, artifact_file(ctx.layout, ctx.team, op["data"], ctx.doc))
-    title = _text(op.get("title"), "title", MAX_LABEL_CHARS, "MAX_LABEL_CHARS", one_line=True)
-    w, h = _size(op, 480, 320)
-    alias = _alias(ctx, op)
-    client = _client_id(op)
-    x, y, frame = _place(ctx, op, w, h)
-    el = ctx.element("chart", x, y, w, h, text=title, style=_default_style("chart"), alias=alias, client_id=client,
-                     frame=frame, spec_asset=None, data=data_rel, still=None)
-    _check_locks(ctx, [bounds(el)])
-    el["spec_asset"] = store_asset(ctx.team, raw.encode("utf-8"), "json")["asset"]
-    ctx.alias = alias
-    _after_create(ctx, el)
-
-
-def _op_viz(ctx: _Ctx, op: Dict[str, Any]) -> None:
-    _features.require_viz(ctx.layout.session, ctx.team, ctx.doc)
-    html = op.get("html")
-    if not isinstance(html, str) or not html.strip():
-        raise _invalid("html", "viz needs html: the page body that draws it")
-    if len(html.encode("utf-8")) > MAX_VIZ_BYTES:
-        raise _too_big("html", "MAX_VIZ_BYTES", MAX_VIZ_BYTES, "the viz html is over {} KB".format(MAX_VIZ_BYTES // 1024))
-    _guard_code(html, "html")
-    libs_raw = op.get("libs") if op.get("libs") is not None else []
-    if not isinstance(libs_raw, list) or any(lib not in VIZ_LIBS for lib in libs_raw):
-        raise _invalid("libs", "libs is a list of: {}".format(", ".join(VIZ_LIBS)))
-    libs = list(dict.fromkeys(libs_raw))
-    data, data_path = op.get("data"), op.get("data_path")
-    if data is not None and data_path is not None:
-        raise _invalid("data", "give data inline or as data_path, not both")
-    if data is not None:
-        raw = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
-        if len(raw.encode("utf-8")) > MAX_VIZ_DATA_BYTES:
-            raise _too_big("data", "MAX_VIZ_DATA_BYTES", MAX_VIZ_DATA_BYTES, "inline viz data is over {} KB; use data_path".format(MAX_VIZ_DATA_BYTES // 1024))
-        _guard_code(raw, "data")
-    rel = _artifact_rel(ctx, artifact_file(ctx.layout, ctx.team, data_path, ctx.doc)) if data_path is not None else None
-    title = _text(op.get("title"), "title", MAX_LABEL_CHARS, "MAX_LABEL_CHARS", one_line=True, required=True)
-    w, h = _size(op, 480, 360)
-    alias = _alias(ctx, op)
-    client = _client_id(op)
-    x, y, frame = _place(ctx, op, w, h)
-    el = ctx.element("viz", x, y, w, h, text=title, style=_default_style("viz"), alias=alias, client_id=client,
-                     frame=frame, html_asset=None, libs=libs, data=data, data_path=rel, still=None)
-    _check_locks(ctx, [bounds(el)])
-    el["html_asset"] = store_asset(ctx.team, html.encode("utf-8"), "html")["asset"]
-    ctx.alias = alias
-    _after_create(ctx, el)
 
 
 def _under(path: Path, root: Path) -> bool:
@@ -2334,38 +2416,6 @@ def _image_source(ctx: _Ctx, raw: Any) -> Path:
         if any(_under(real, root) for root in real_roots) and real.is_file():
             return real
     raise _error("path_refused", "{} is not a file under the team's artifacts/, whiteboard/renders/, or your working directory".format(text), path=text)
-
-
-def _op_image(ctx: _Ctx, op: Dict[str, Any]) -> None:
-    path_raw, asset_raw = op.get("path"), op.get("asset")
-    if (path_raw is None) == (asset_raw is None):
-        raise _invalid("path", "image takes path (a PNG or JPEG file) or asset (a page upload), one of them")
-    if asset_raw is not None:
-        if not ctx.author.is_human:
-            raise _error("operator_only", "asset names come from the page's upload; agents pass path")
-        data = store.read_bytes(asset_path(ctx.team, str(asset_raw))) or b""
-    else:
-        location = _image_source(ctx, path_raw)
-        if location.stat().st_size > MAX_IMAGE_BYTES:
-            raise _error("image_refused", "the image is over {} MB".format(MAX_IMAGE_BYTES // (1024 * 1024)), limit="MAX_IMAGE_BYTES", max=MAX_IMAGE_BYTES)
-        data = store.read_bytes(location) or b""
-    if len(data) > MAX_IMAGE_BYTES:
-        raise _error("image_refused", "the image is over {} MB".format(MAX_IMAGE_BYTES // (1024 * 1024)), limit="MAX_IMAGE_BYTES", max=MAX_IMAGE_BYTES)
-    sniffed = _render.sniff_image(data)
-    if sniffed is None or sniffed[1] <= 0 or sniffed[2] <= 0:
-        raise _error("image_refused", "not a PNG or JPEG (checked by its bytes, not its name)")
-    mime, px_w, px_h = sniffed
-    shrink = min(1.0, 480.0 / px_w)
-    w, h = _size(op, max(1.0, min(MAX_SIZE, px_w * shrink)), max(1.0, min(MAX_SIZE, px_h * shrink)))
-    alias = _alias(ctx, op)
-    client = _client_id(op)
-    x, y, frame = _place(ctx, op, w, h)
-    el = ctx.element("image", x, y, w, h, style=_default_style("image"), alias=alias, client_id=client, frame=frame,
-                     asset=None, mime=mime, px_w=px_w, px_h=px_h)
-    _check_locks(ctx, [bounds(el)])
-    el["asset"] = store_asset(ctx.team, data, "image")["asset"]
-    ctx.alias = alias
-    _after_create(ctx, el)
 
 
 def _resolve_member(ctx: _Ctx, name: str) -> Optional[str]:
@@ -2408,37 +2458,6 @@ def _comment_ref(ctx: _Ctx, ref: Any, field: str) -> Dict[str, Any]:
     if el.get("type") != "comment":
         raise _error("element_unknown", "{} is not a comment".format(ref), ref=ref, field=field)
     return el
-
-
-def _op_comment(ctx: _Ctx, op: Dict[str, Any]) -> None:
-    at = op.get("at")
-    if at is None:
-        raise _invalid("at", "comment needs at: an element, a comment to reply to, or a point")
-    text = _text(op.get("text"), "text", MAX_COMMENT_CHARS, "MAX_COMMENT_CHARS", required=True)
-    client = _client_id(op)
-    reply_to = _comment_ref(ctx, op["reply_to"], "reply_to")["id"] if op.get("reply_to") is not None else None
-    if _is_point_form(at):
-        on, point = None, _point(at, "at")[:2]
-    else:
-        target = ctx.lookup(at, "at")
-        if target.get("type") == "comment":
-            if reply_to is not None and reply_to != target["id"]:
-                raise _invalid("reply_to", "at names comment {} but reply_to names {}".format(target["id"], reply_to))
-            reply_to = target["id"]
-            on = target.get("on")
-            base = target.get("point") if isinstance(target.get("point"), list) else [target.get("x"), target.get("y")]
-            point = [float(base[0]) + 16, float(base[1]) + 16]
-        else:
-            on = target["id"]
-            x0, y0, x1, _y1 = bounds(target)
-            point = [x1, y0]
-    mentions = _mentions(ctx, op.get("mentions"), text)
-    el = ctx.element("comment", point[0], point[1], 1, 1, text=text, style=_default_style("comment"), client_id=client,
-                     on=on, point=[_r2(point[0]), _r2(point[1])], mentions=mentions, reply_to=reply_to, resolved=False, resolved_by=None)
-    _check_locks(ctx, [bounds(el)])
-    ctx.put(el)
-    if mentions:
-        ctx.mention = el
 
 
 def _op_claim(ctx: _Ctx, op: Dict[str, Any]) -> None:
@@ -2582,44 +2601,34 @@ def _on_canvas(el: Dict[str, Any], fields: Dict[str, Any], field: str = "by") ->
 
 
 def _translated(el: Dict[str, Any], dx: float, dy: float, unbind: bool) -> Dict[str, Any]:
+    """The fields a move by ``(dx, dy)`` changes: its corner, and whatever its kind moves with it (``Kind.translate``: an
+    arrow's points and label spot, a comment's pin). ``unbind``: a connector moved on purpose lets go of its ends."""
     fields: Dict[str, Any] = {"x": _round(float(el.get("x") or 0) + dx), "y": _round(float(el.get("y") or 0) + dy)}
-    if isinstance(el.get("points"), list):
-        fields["points"] = [[_r2(p[0] + dx), _r2(p[1] + dy)] + list(p[2:]) for p in el["points"]]
-    if el.get("type") == "comment" and isinstance(el.get("point"), list):
-        fields["point"] = [_r2(el["point"][0] + dx), _r2(el["point"][1] + dy)]
-    if unbind and el.get("type") == "arrow":
+    kind = _kinds.get(el.get("type"))
+    if kind is not None and kind.translate is not None:
+        fields.update(kind.translate(el, dx, dy))
+    elif isinstance(el.get("points"), list):
+        fields["points"] = _kc.shifted_points(el, dx, dy)  # a kind this build does not know keeps its points with it
+    if unbind and kind is not None and kind.role == "connector":
         fields["from"] = None
         fields["to"] = None
     return _on_canvas(el, fields)
 
 
-def _resized(el: Dict[str, Any], w: Any, h: Any) -> Dict[str, Any]:
-    if el.get("type") == "comment":
-        raise _invalid("w", "a comment is a pin; it has no size")
-    if el.get("type") == "text":
-        # Resizing a text sets the width it wraps at; its height follows from its lines.
-        if w is None:
-            raise _invalid("h", "a text's height follows its lines; give w to set the width it wraps at")
-        style = el.get("style") if isinstance(el.get("style"), dict) else {}
-        return _on_canvas(el, _text_fields(el, str(el.get("text") or ""), style, float(max(1, _round(_num(w, "w", 1, MAX_SIZE))))), "w")
+def _resized(ctx: _Ctx, el: Dict[str, Any], w: Any, h: Any) -> Dict[str, Any]:
+    """The fields a resize to ``w`` x ``h`` changes: its kind's (``Kind.resize``), else its size, or for a kind sized from
+    its label the size that label needs over the new minimum (0.22)."""
+    kind = _kinds.get(el.get("type"))
+    if kind is not None and kind.resize is not None:
+        return _on_canvas(el, kind.resize(el, w, h, _KindCtx(ctx)), "w")
     old_w, old_h = max(1.0, float(el.get("w") or 1)), max(1.0, float(el.get("h") or 1))
     new_w = _num(w, "w", 1, MAX_SIZE) if w is not None else old_w
     new_h = _num(h, "h", 1, MAX_SIZE) if h is not None else old_h
-    if el.get("type") in TEXT_TYPES:
+    if kind is not None and kind.measure is not None:
         # A new minimum (0.22): the shape takes the size asked for, or more when its label needs more.
         minimum = _minimum(el, max(1, _round(new_w)) if w is not None else None, max(1, _round(new_h)) if h is not None else None)
         return _on_canvas(el, _fitted(el, minimum), "w")
-    fields: Dict[str, Any] = {"w": max(1, _round(new_w)), "h": max(1, _round(new_h))}
-    if el.get("type") in ("pen", "arrow") and isinstance(el.get("points"), list):
-        x0, y0 = float(el.get("x") or 0), float(el.get("y") or 0)
-        sx, sy = new_w / old_w, new_h / old_h
-        fields["points"] = [[_r2(x0 + (p[0] - x0) * sx), _r2(y0 + (p[1] - y0) * sy)] + list(p[2:]) for p in el["points"]]
-    elif el.get("type") == "path":
-        scale = float(el.get("scale") or 1) or 1.0
-        natural_w, natural_h = old_w / scale, old_h / scale
-        scale = new_w / natural_w
-        fields.update(w=max(1, _round(new_w)), h=max(1, _round(natural_h * scale)), scale=round(scale, 4))
-    return _on_canvas(el, fields, "w")
+    return _on_canvas(el, {"w": max(1, _round(new_w)), "h": max(1, _round(new_h))}, "w")
 
 
 def _op_move(ctx: _Ctx, op: Dict[str, Any]) -> None:
@@ -2674,14 +2683,17 @@ def _op_move(ctx: _Ctx, op: Dict[str, Any]) -> None:
                 raise _error("element_not_yours", "moving {} would move {} ({}'s)".format(first["id"], eid, _who(el.get("author"), None)),
                              id=eid, author=el.get("author"))
             boxes.append(bounds(el))
-            moved = ctx.update(el, **_translated(el, dx, dy, unbind=eid in explicit))
+            fields = _translated(el, dx, dy, unbind=eid in explicit)
+            if eid in explicit and el.get("nudged"):
+                fields["nudged"] = None  # put where it is on purpose: that is where its author wants it now
+            moved = ctx.update(el, **fields)
             boxes.append(bounds(moved))
             changed.append(eid)
     if resize:
         for eid in explicit:
             el = ctx.el(eid)
             boxes.append(bounds(el))  # type: ignore[arg-type]
-            resized = ctx.update(el, **_resized(el, op.get("w"), op.get("h")))  # type: ignore[arg-type]
+            resized = ctx.update(el, **_resized(ctx, el, op.get("w"), op.get("h")))  # type: ignore[arg-type]
             boxes.append(bounds(resized))
             changed.append(eid)
             if resized.get("type") in TEXT_TYPES or resized.get("type") == "frame":
@@ -2754,7 +2766,7 @@ def _op_restyle(ctx: _Ctx, op: Dict[str, Any]) -> None:
             raise _invalid("fill", "{} is an open stroke; only closed strokes take a fill".format(el["id"]))
         boxes.append(bounds(el))
         fields: Dict[str, Any] = {"style": style}
-        if kind == "text":
+        if _free_text(_kinds.get(kind)):
             fields.update(_text_fields(el, str(el.get("text") or ""), style))
         elif kind in TEXT_TYPES:
             # A new font or size refits the label (0.22).
@@ -2765,6 +2777,7 @@ def _op_restyle(ctx: _Ctx, op: Dict[str, Any]) -> None:
         if kind in TEXT_TYPES and bounds(restyled) != bounds(el):
             resized.append(el["id"])
             _grow_parents(ctx, restyled)
+            _after_growth(ctx, ctx.el(el["id"]) or restyled, bounds(el))
             _warn_frame_edge(ctx, ctx.el(el["id"]) or restyled)
     _check_locks(ctx, boxes)
     _reroute_bound(ctx, resized)
@@ -2772,21 +2785,17 @@ def _op_restyle(ctx: _Ctx, op: Dict[str, Any]) -> None:
 
 def _op_edit(ctx: _Ctx, op: Dict[str, Any]) -> None:
     el = _targets(ctx, op, single=True)[0]
-    kind = el.get("type")
+    kind = _kinds.get(el.get("type"))
     if "text" not in op:
         raise _invalid("text", "edit needs text")
-    if kind in TEXT_TYPES:
-        text = _text(op["text"], "text", MAX_TEXT_CHARS, "MAX_TEXT_CHARS", required=kind == "text")
-    elif kind == "comment":
-        text = _text(op["text"], "text", MAX_COMMENT_CHARS, "MAX_COMMENT_CHARS", required=True)
-    elif kind in ("arrow", "frame", "svg", "chart", "viz", "mermaid", "image"):
-        text = _text(op["text"], "text", MAX_LABEL_CHARS, "MAX_LABEL_CHARS", one_line=True, required=kind == "viz")
-    else:
-        raise _invalid("text", "a {} has no text".format(kind))
+    if kind is None or kind.edit_field is None:
+        raise _invalid("text", "a {} has no text".format(el.get("type")))
+    maximum, limit_name = _KindCtx.LIMITS.get(kind.edit_limit, _KindCtx.LIMITS["label"])
+    text = _text(op["text"], "text", maximum, limit_name, one_line=kind.edit_limit == "label", required=kind.edit_required)
     fields: Dict[str, Any] = {"text": text}
-    if kind == "text":
+    if _free_text(kind):
         fields.update(_text_fields(el, text, el.get("style") if isinstance(el.get("style"), dict) else {}))
-    elif kind in TEXT_TYPES:
+    elif kind.measure is not None:
         # The label is refitted from the element's minimum (0.22), so a shorter text shrinks the box back.
         fields.update(_fitted(dict(el, text=text), _minimum(el)))
     _check_locks(ctx, [bounds(el)])
@@ -2795,7 +2804,8 @@ def _op_edit(ctx: _Ctx, op: Dict[str, Any]) -> None:
     if bounds(edited) != bounds(el):
         _grow_parents(ctx, edited)
         _reroute_bound(ctx, [el["id"]])
-    _warn_overlap(ctx, edited)
+        _after_growth(ctx, ctx.el(el["id"]) or edited, bounds(el))
+    _warn_overlap(ctx, ctx.el(el["id"]) or edited)
     _warn_frame_edge(ctx, ctx.el(el["id"]) or edited)
 
 
@@ -3026,13 +3036,356 @@ def _op_undo(ctx: _Ctx, op: Dict[str, Any]) -> None:
     ctx.extra["undoes"] = bid
 
 
-_HANDLERS: Dict[str, Callable[[_Ctx, Dict[str, Any]], None]] = {
-    "shape": _op_shape, "arrow": _op_arrow, "frame": _op_frame, "pen": _op_pen, "path": _op_path, "svg": _op_svg,
-    "graph": _op_graph, "mermaid": _op_mermaid, "chart": _op_chart, "viz": _op_viz, "image": _op_image,
-    "comment": _op_comment, "claim": _op_claim, "release": _op_release, "legend": _op_legend, "move": _op_move,
+#: The most elements one ``refit`` sizes again (the whole canvas when it names none: every element the author may edit).
+MAX_REFIT = 500
+
+
+def _refittable(el: Dict[str, Any]) -> bool:
+    kind = _kinds.get(el.get("type"))
+    return (kind is not None and kind.measure is not None and bool(str(el.get("text") or "").strip())) or \
+        (el.get("type") == "arrow" and bool(el.get("text")))
+
+
+def _op_refit(ctx: _Ctx, op: Dict[str, Any]) -> None:
+    """Size labelled elements again from their minimum under today's metrics and the page's corrections (canvas v2
+    phase 1, 2.6): a board stored before 0.22 gets the sizes its labels need (QA R-9), and a line the browser measured
+    wider than the metrics said gets its room. It only ever grows a box; a grown shape makes room like any other."""
+    explicit = op.get("id") is not None or op.get("ids") is not None
+    if explicit:
+        if isinstance(op.get("ids"), list) and len(op["ids"]) > MAX_REFIT:
+            raise _too_big("ids", "MAX_REFIT", MAX_REFIT, "refit takes at most {} ids".format(MAX_REFIT))
+        targets = _targets(ctx, op)
+    else:
+        targets = [el for el in ctx.live() if _may_edit(ctx.author, el) and _refittable(el)]
+        targets.sort(key=lambda el: (int(el.get("z") or 0), _id_number(el.get("id"))))
+        targets = targets[:MAX_REFIT]
+    for target in targets:
+        el = ctx.el(target["id"]) or target
+        if not _refittable(el):
+            continue
+        old = bounds(el)
+        if el.get("type") == "arrow":
+            fit = _label_fit(el)
+            if fit is not None and el.get("fit") != fit:
+                ctx.update(el, fit=fit)  # the label settles (label_at, lines) after the op
+            continue
+        style = el.get("style") if isinstance(el.get("style"), dict) else {}
+        if el.get("type") == "text":
+            fields = _text_fields(el, str(el.get("text") or ""), style)
+        else:
+            asked = _minimum(el)
+            fields = _fitted(el, (max(asked[0], float(el.get("w") or 1)), max(asked[1], float(el.get("h") or 1))))
+            if fields.get("fit"):
+                fields["fit"]["min"] = [int(round(asked[0])), int(round(asked[1]))]
+        if not fields:
+            continue
+        # Grow only: a box keeps any room it had (a refit never moves what sits beside it back).
+        fields["w"] = max(int(fields["w"]), int(math.ceil(float(el.get("w") or 1) - 1e-9)))
+        fields["h"] = max(int(fields["h"]), int(math.ceil(float(el.get("h") or 1) - 1e-9)))
+        if all(el.get(key) == value for key, value in fields.items()):
+            continue
+        grown = (old[0], old[1], old[0] + fields["w"], old[1] + fields["h"])
+        if grown != tuple(old):
+            if explicit:
+                _check_locks(ctx, [grown])
+            else:
+                try:
+                    _check_locks(ctx, [grown])
+                except HerdrTeamError:
+                    continue  # a whole-canvas refit leaves what sits in a lock as it is
+        refitted = ctx.update(el, **fields)
+        if bounds(refitted) != tuple(old):
+            _grow_parents(ctx, refitted)
+            _reroute_bound(ctx, [el["id"]])
+            _after_growth(ctx, ctx.el(el["id"]) or refitted, old)
+
+
+CORE_HANDLERS: Dict[str, Callable[[_Ctx, Dict[str, Any]], None]] = {
+    "claim": _op_claim, "release": _op_release, "legend": _op_legend, "move": _op_move,
     "restyle": _op_restyle, "edit": _op_edit, "delete": _op_delete, "portrait": _op_portrait, "resolve": _op_resolve,
-    "lock": _op_lock, "unlock": _op_unlock, "undo": _op_undo,
+    "lock": _op_lock, "unlock": _op_unlock, "undo": _op_undo, "refit": _op_refit,
 }
+
+
+# --------------------------------------------------------------------------
+# the kind registry's ops (canvas v2 phase 1, 2): a kind module draws through ``_KindCtx``, never through ``canvas``
+
+
+def _free_text(kind: Optional[_kinds.Kind]) -> bool:
+    """A kind whose whole content is its text (a free ``text``): its box is its lines, and it needs a text."""
+    return kind is not None and kind.measure is not None and not kind.labelled
+
+
+class _KindCtx:
+    """The ``canvas_kinds.sdk.OpContext`` an op handler of a kind module gets: the batch's ``_Ctx``, narrowed."""
+
+    #: ``limit`` names of ``text``: the most characters, and the limit's name in a refusal.
+    LIMITS = {"text": (MAX_TEXT_CHARS, "MAX_TEXT_CHARS"), "label": (MAX_LABEL_CHARS, "MAX_LABEL_CHARS"),
+              "comment": (MAX_COMMENT_CHARS, "MAX_COMMENT_CHARS"), "symbol": (MAX_SYMBOL_CHARS, "MAX_SYMBOL_CHARS")}
+
+    def __init__(self, ctx: _Ctx) -> None:
+        self._ctx = ctx
+
+    @property
+    def author_name(self) -> str:
+        return self._ctx.author.name
+
+    @property
+    def author_is_human(self) -> bool:
+        return self._ctx.author.is_human
+
+    @property
+    def intent(self) -> str:
+        return self._ctx.intent
+
+    @property
+    def now(self) -> float:
+        return self._ctx.now
+
+    @property
+    def team_name(self) -> str:
+        return self._ctx.team.name
+
+    # refusals
+    def invalid(self, field: str, message: str, **details: Any) -> HerdrTeamError:
+        return _invalid(field, message, **details)
+
+    def error(self, code: str, message: str, **details: Any) -> HerdrTeamError:
+        return _error(code, message, **details)
+
+    def too_big(self, field: str, limit: str, maximum: int, message: str) -> HerdrTeamError:
+        return _too_big(field, limit, maximum, message)
+
+    # reading fields
+    def text(self, op: Dict[str, Any], field: str, *, limit: str = "text", one_line: bool = False, required: bool = False,
+             value: Any = ..., label: Optional[str] = None) -> str:
+        maximum, name = self.LIMITS[limit]
+        return _text(op.get(field) if value is ... else value, label or field, maximum, name, one_line=one_line, required=required)
+
+    def choice(self, op: Dict[str, Any], field: str, choices: Sequence[str], default: str, *, value: Any = ..., label: Optional[str] = None) -> str:
+        return _choice(op.get(field) if value is ... else value, label or field, choices, default)
+
+    def number(self, op: Dict[str, Any], field: str, low: float, high: float, default: Optional[float] = None) -> Optional[float]:
+        return default if op.get(field) is None else _num(op[field], field, low, high)
+
+    def boolean(self, op: Dict[str, Any], field: str, default: bool) -> bool:
+        return _bool(op.get(field), field, default)
+
+    def points(self, op: Dict[str, Any], field: str, maximum: int, *, pressure: bool = False, minimum: int = 2, limit_name: str = "") -> List[List[float]]:
+        return _point_list(op.get(field), field, maximum, limit_name or "MAX_POINTS", pressure, minimum)
+
+    def point(self, value: Any, field: str) -> List[float]:
+        return _point(value, field)
+
+    def is_point(self, value: Any) -> bool:
+        return _is_point_form(value)
+
+    def color(self, value: Any) -> str:
+        return _stroke_color(value)
+
+    def fill(self, value: Any) -> Optional[str]:
+        return _fill_color(value)
+
+    def guard_code(self, text: str, field: str) -> None:
+        _guard_code(text, field)
+
+    # style and size
+    def style(self, op: Dict[str, Any], kind: str, base: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        return _style(op, base if base is not None else _default_style(kind), kind)
+
+    def default_style(self, kind: str) -> Dict[str, Any]:
+        return _default_style(kind)
+
+    def size(self, op: Dict[str, Any], default_w: float, default_h: float) -> Tuple[float, float]:
+        return _size(op, default_w, default_h)
+
+    def fit(self, el: Dict[str, Any], minimum: Sequence[float]) -> Dict[str, Any]:
+        return _fitted(el, minimum)
+
+    def text_fields(self, el: Dict[str, Any], text: str, style: Dict[str, Any], wrap_w: Optional[float] = None) -> Dict[str, Any]:
+        return _text_fields(el, text, style, wrap_w)
+
+    def minimum(self, el: Dict[str, Any], w: Any = None, h: Any = None) -> Tuple[float, float]:
+        return _minimum(el, w, h)
+
+    def shape_size(self, kind: str) -> Tuple[float, float]:
+        found = SHAPE_SIZES.get(kind) or _theme.size_min(kind)
+        return float(found[0]), float(found[1])
+
+    # the canvas
+    def lookup(self, ref: Any, field: str) -> Dict[str, Any]:
+        return self._ctx.lookup(ref, field)
+
+    def live(self) -> List[Dict[str, Any]]:
+        return list(self._ctx.live())
+
+    def el(self, eid: str) -> Optional[Dict[str, Any]]:
+        return self._ctx.el(eid)
+
+    def may_edit(self, el: Dict[str, Any]) -> bool:
+        return _may_edit(self._ctx.author, el)
+
+    def update(self, el: Dict[str, Any], **fields: Any) -> Dict[str, Any]:
+        return self._ctx.update(el, **fields)
+
+    def region(self, value: Any, field: str) -> List[int]:
+        return _region(value, field, self._ctx.lookup)
+
+    def place(self, op: Dict[str, Any], w: float, h: float, asked: Optional[Tuple[float, float]] = None) -> Tuple[float, float, Optional[str]]:
+        return _place(self._ctx, op, w, h, asked)
+
+    def enclosing_frame(self, box: Sequence[float]) -> Optional[str]:
+        return _enclosing_frame(self._ctx, box)
+
+    def geometry(self, points: Sequence[Sequence[float]]) -> Dict[str, int]:
+        return _geometry(points)
+
+    def create(self, kind: str, x: float, y: float, w: float, h: float, *, op: Dict[str, Any], text: str = "", style: Optional[Dict[str, Any]] = None,
+               frame: Optional[str] = None, store: Optional[Dict[str, Tuple[bytes, str]]] = None, **fields: Any) -> Dict[str, Any]:
+        ctx = self._ctx
+        registered = _kinds.get(kind)
+        alias = _alias(ctx, op)
+        client = _client_id(op)
+        extra: Dict[str, Any] = {name: None for name in store or {}}
+        extra.update(fields)
+        ctx.alias = alias
+        el = ctx.element(kind, x, y, w, h, text=text, style=style, alias=alias, client_id=client, frame=frame, **extra)
+        role = registered.role if registered is not None else "leaf"
+        if role == "container":
+            _check_locks(ctx, [bounds(el)])
+            ctx.put(el)
+            _warn_claims(ctx, [el["id"]], bounds(el))
+            return el
+        if store:
+            _check_locks(ctx, [bounds(el)])  # before anything is stored: a refused op leaves no asset behind
+            for name, (data, asset_kind) in store.items():
+                el[name] = store_asset(ctx.team, data, asset_kind)["asset"]
+        if role == "overlay":
+            _check_locks(ctx, [bounds(el)])
+            ctx.put(el)
+            return el
+        # A kind sized from its label makes room for its neighbours and sits on its host (QA R-1).
+        sized = registered is not None and registered.measure is not None
+        if sized and op.get("inside") is None:
+            _make_way(ctx, el)
+        if sized:
+            _under_labels(ctx, el)
+        _after_create(ctx, el)
+        if sized:
+            _hold_on_host(ctx, el)
+        return ctx.el(el["id"]) or el
+
+    def route(self, op: Dict[str, Any], *, label: str, style: Dict[str, Any], curve: bool) -> Tuple[List[List[float]], Optional[str], Optional[str]]:
+        ctx = self._ctx
+        if op.get("points") is not None:
+            if op.get("from") is not None or op.get("to") is not None:
+                raise _invalid("points", "an arrow takes points, or from and to, not both")
+            return _point_list(op["points"], "points", MAX_ARROW_POINTS, "MAX_ARROW_POINTS"), None, None
+        if op.get("from") is None or op.get("to") is None:
+            raise _invalid("from" if op.get("from") is None else "to", "an arrow needs from and to (an element or a point), or points")
+        start, end = _end(ctx, op["from"], "from"), _end(ctx, op["to"], "to")
+        points = _route(start, end)
+        start_id = start[1]["id"] if start[0] == "element" else None
+        end_id = end[1]["id"] if end[0] == "element" else None
+        if label and start_id and end_id:
+            points = _room_for_label(ctx, {"type": "arrow", "text": label, "style": style, "curve": curve}, start_id, end_id, points)
+        return points, start_id, end_id
+
+    def image(self, op: Dict[str, Any]) -> Tuple[bytes, str, int, int]:
+        ctx = self._ctx
+        path_raw, asset_raw = op.get("path"), op.get("asset")
+        if (path_raw is None) == (asset_raw is None):
+            raise _invalid("path", "image takes path (a PNG or JPEG file) or asset (a page upload), one of them")
+        if asset_raw is not None:
+            if not ctx.author.is_human:
+                raise _error("operator_only", "asset names come from the page's upload; agents pass path")
+            data = store.read_bytes(asset_path(ctx.team, str(asset_raw))) or b""
+        else:
+            location = _image_source(ctx, path_raw)
+            if location.stat().st_size > MAX_IMAGE_BYTES:
+                raise _error("image_refused", "the image is over {} MB".format(MAX_IMAGE_BYTES // (1024 * 1024)), limit="MAX_IMAGE_BYTES", max=MAX_IMAGE_BYTES)
+            data = store.read_bytes(location) or b""
+        if len(data) > MAX_IMAGE_BYTES:
+            raise _error("image_refused", "the image is over {} MB".format(MAX_IMAGE_BYTES // (1024 * 1024)), limit="MAX_IMAGE_BYTES", max=MAX_IMAGE_BYTES)
+        sniffed = _render.sniff_image(data)
+        if sniffed is None or sniffed[1] <= 0 or sniffed[2] <= 0:
+            raise _error("image_refused", "not a PNG or JPEG (checked by its bytes, not its name)")
+        return data, sniffed[0], sniffed[1], sniffed[2]
+
+    def artifact(self, rel: Any) -> str:
+        ctx = self._ctx
+        return _artifact_rel(ctx, artifact_file(ctx.layout, ctx.team, rel, ctx.doc))
+
+    def require_viz(self) -> None:
+        _features.require_viz(self._ctx.layout.session, self._ctx.team, self._ctx.doc)
+
+    def expand_graph(self, op: Dict[str, Any], title: str, nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]], algorithm: str,
+                     direction: str, subgraphs: Sequence[Dict[str, Any]] = ()) -> None:
+        _expand_graph(self._ctx, op, title, nodes, edges, algorithm, direction, subgraphs)
+
+    def graph_nodes(self, raw: List[Any]) -> List[Dict[str, Any]]:
+        return _graph_nodes(raw)
+
+    def mentions(self, explicit: Any, text: str) -> List[str]:
+        return _mentions(self._ctx, explicit, text)
+
+    def warn(self, code: str, message: str, ids: Sequence[str]) -> None:
+        self._ctx.warn(code, message, ids)
+
+    def comment(self, ref: Any, field: str) -> Dict[str, Any]:
+        return _comment_ref(self._ctx, ref, field)
+
+    def mention(self, comment: Dict[str, Any]) -> None:
+        self._ctx.mention = comment
+
+
+def _kind_handler(spec: _kinds.OpSpec) -> Callable[[_Ctx, Dict[str, Any]], None]:
+    def handler(ctx: _Ctx, op: Dict[str, Any]) -> None:
+        spec.create(_KindCtx(ctx), op)
+    handler.__name__ = "_op_" + spec.name
+    return handler
+
+
+ELEMENT_TYPES: Tuple[str, ...] = ()
+SHAPE_KINDS: Tuple[str, ...] = ()
+TEXT_TYPES: frozenset = frozenset()
+CELL_TYPES: frozenset = frozenset()
+#: The minimum size of each shape kind (design tokens ``size_min``): an op's ``w``/``h`` replaces it, and a
+#: shape grows past it to fit its label (0.22).
+SHAPE_SIZES: Dict[str, Tuple[int, int]] = {}
+OPS: Tuple[str, ...] = ()
+_FIELDS: Dict[str, Tuple[str, ...]] = {}
+_HANDLERS: Dict[str, Callable[[_Ctx, Dict[str, Any]], None]] = {}
+_NOUNS: Dict[str, Tuple[str, str]] = {}
+_COUNT_ORDER: Tuple[str, ...] = ()
+
+
+def _derive() -> None:
+    """Every table a kind used to be listed in, from the registry (phase 1, 2.4): the element types, the shape kinds, the
+    kinds with text and with a cell, the ops with their fields and handlers, and the nouns change summaries use."""
+    global ELEMENT_TYPES, SHAPE_KINDS, TEXT_TYPES, CELL_TYPES, SHAPE_SIZES, OPS, _FIELDS, _NOUNS, _COUNT_ORDER
+    kinds = _kinds.kinds()
+    ELEMENT_TYPES = tuple(kind.name for kind in kinds)
+    SHAPE_KINDS = tuple(kind.name for kind in _kinds.subkinds("shape"))
+    TEXT_TYPES = frozenset(kind.name for kind in kinds if kind.measure is not None)
+    CELL_TYPES = frozenset(kind.name for kind in kinds if kind.cell)
+    SHAPE_SIZES = {kind.name: (int(w), int(h)) for kind, (w, h) in ((k, _theme.size_min(k.name)) for k in _kinds.subkinds("shape"))
+                   if kind.handles == "box"}
+    specs = _kinds.ops()
+    clash = [spec.name for spec in specs if spec.name in CORE_OPS]
+    if clash:
+        raise ValueError("kind ops {} clash with the core ops".format(", ".join(clash)))
+    OPS = tuple(spec.name for spec in specs) + CORE_OPS
+    fields = {spec.name: _COMMON + spec.fields + (PLACE_FIELDS if spec.place else ()) + (STYLE_FIELDS if spec.style else ()) for spec in specs}
+    fields.update(CORE_FIELDS)
+    _FIELDS = fields
+    _HANDLERS.clear()  # the same dict object: tests patch it in place
+    _HANDLERS.update({spec.name: _kind_handler(spec) for spec in specs})
+    _HANDLERS.update(CORE_HANDLERS)
+    _NOUNS = {kind.name: kind.nouns() for kind in kinds if kind.role != "overlay"}
+    _NOUNS.update(_OTHER_NOUNS)
+    _COUNT_ORDER = tuple(kind.name for kind in kinds if kind.role != "overlay") + _COUNT_TAIL
+
 
 
 # --------------------------------------------------------------------------
@@ -3135,7 +3488,15 @@ _OP_FAULTS = (TypeError, ValueError, KeyError, IndexError, RecursionError)
 
 def apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: CanvasAuthor, atomic: bool = False,
               doc: Optional[Dict[str, Any]] = None, now: Optional[float] = None) -> Dict[str, Any]:
-    """Validate and apply a batch under ``canvas.lock``; the apply result (contract 7.2). Batch-level refusals raise."""
+    """Validate and apply a batch under ``canvas.lock``; the apply result (contract 7.2). Batch-level refusals raise.
+
+    Labels are measured under the team's browser corrections (``measure.json``, canvas v2 phase 1)."""
+    with _corrected(team):
+        return _apply_ops(layout, team, ops, author, atomic, doc, now)
+
+
+def _apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: CanvasAuthor, atomic: bool,
+               doc: Optional[Dict[str, Any]], now: Optional[float]) -> Dict[str, Any]:
     moment = time.time() if now is None else float(now)
     doc = doc if isinstance(doc, dict) else store.RosterStore(team).load()
     _features.require_on(layout.session, team, doc)
@@ -3173,6 +3534,7 @@ def apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: C
                 ctx.intent = _intent(op, author)
                 ctx.author_color()  # an author's first applied op registers its colour and home
                 handler(ctx, op)
+                _settle_labels(ctx)
                 if ctx.live_delta() > 0 and len(state.elements) + ctx.live_delta() > MAX_ELEMENTS:
                     raise _too_big("ops", "MAX_ELEMENTS", MAX_ELEMENTS, "the canvas holds {} elements; the limit is {}".format(len(state.elements), MAX_ELEMENTS))
                 event = ctx.event(author)
@@ -3271,18 +3633,13 @@ def check_applied(result: Dict[str, Any]) -> Dict[str, Any]:
 # --------------------------------------------------------------------------
 # board records: canvas_changed (coalesced awareness) and canvas_sent (a named wake)
 
-_NOUNS = {
-    "box": ("box", "boxes"), "ellipse": ("ellipse", "ellipses"), "diamond": ("diamond", "diamonds"), "note": ("note", "notes"),
-    "text": ("text", "texts"), "arrow": ("arrow", "arrows"), "frame": ("frame", "frames"), "pen": ("pen stroke", "pen strokes"),
-    "path": ("path", "paths"), "svg": ("svg block", "svg blocks"), "mermaid": ("mermaid diagram", "mermaid diagrams"),
-    "chart": ("chart", "charts"), "viz": ("live visual", "live visuals"), "image": ("image", "images"),
-    "comments": ("comment", "comments"), "claims": ("claim", "claims"), "legend": ("legend entry", "legend entries"),
-    "locks": ("lock", "locks"),
-}
+#: What change summaries call the things that are not element kinds (the kinds say their own ``noun``).
+_OTHER_NOUNS = {"comments": ("comment", "comments"), "claims": ("claim", "claims"), "legend": ("legend entry", "legend entries"),
+                "locks": ("lock", "locks")}
 _VERB_COUNTS = {"move": "moved", "restyle": "restyled", "edit": "edited", "release": "released", "resolve": "resolved",
                 "undo": "undone", "unlock": "unlocked"}
-_COUNT_ORDER = tuple(t for t in ELEMENT_TYPES if t != "comment") + ("comments", "claims", "legend", "locks", "portrait",
-                                                                    "moved", "restyled", "edited", "deleted", "released", "resolved", "undone", "unlocked")
+_COUNT_TAIL = ("comments", "claims", "legend", "locks", "portrait", "moved", "restyled", "edited", "deleted", "released", "resolved", "undone",
+               "unlocked")
 
 
 def _event_counts(event: Dict[str, Any]) -> Dict[str, int]:
@@ -3543,9 +3900,6 @@ def _since_value(since: Any) -> int:
 # --------------------------------------------------------------------------
 # the text form (contract 8.1)
 
-CELL_TYPES = frozenset(TEXT_TYPES | {"frame", "svg", "chart", "viz", "mermaid", "image"})
-
-
 def _bounds_text(el: Dict[str, Any]) -> str:
     return "[{},{} {}x{}]".format(el.get("x"), el.get("y"), el.get("w"), el.get("h"))
 
@@ -3568,45 +3922,20 @@ def _end_name(el: Dict[str, Any], key: str, index: int) -> str:
 
 
 def describe(el: Dict[str, Any], reader: Optional[str] = None, full: bool = True) -> str:
-    """One element as ``look`` prints it: ``full`` adds the cell (for boxy things) and `` — intent``."""
+    """One element as ``look`` prints it: ``full`` adds the cell (for boxy things) and `` — intent``. Each kind reads itself
+    back (``Kind.readback``, or its whole ``line``); a kind this build does not know gets its type, text and box."""
     kind = str(el.get("type"))
     eid = str(el.get("id"))
     who = _who(el.get("author"), reader)
     text = str(el.get("text") or "")
     limit = 0 if full else 80
-    if kind == "comment":
-        point = el.get("point") if isinstance(el.get("point"), list) else [el.get("x") or 0, el.get("y") or 0]
-        where = "on {}".format(el["on"]) if el.get("on") else "at {}".format(cell_name(point[0], point[1]))
-        if el.get("reply_to"):
-            where = "reply to {} {}".format(el["reply_to"], where)
-        mentions = " → " + ", ".join("@" + str(m) for m in el.get("mentions") or []) if el.get("mentions") else ""
-        status = "(resolved by {})".format(_who(el.get("resolved_by"), reader)) if el.get("resolved") else "(open)"
-        return "{} comment {} by {}{}: {} {}".format(eid, where, who, mentions, _q(text, 0 if full else 60), status)
-    if kind == "arrow":
-        core = "{} arrow {} → {}{}".format(eid, _end_name(el, "from", 0), _end_name(el, "to", -1), " " + _q(text, limit) if text else "")
-    elif kind == "pen":
-        style = el.get("style") if isinstance(el.get("style"), dict) else {}
-        core = "{} pen {} pts{} {} {}".format(eid, len(el.get("points") or []), " closed" if el.get("closed") else "",
-                                               _color_name(style.get("stroke")), _bounds_text(el))
-    elif kind == "path":
-        core = "{} path {}".format(eid, _bounds_text(el))
-    elif kind == "chart":
-        core = "{} chart{} {} {}".format(eid, " " + _q(text, limit) if text else "", _bounds_text(el),
-                                         "data {}".format(el["data"]) if el.get("data") else "inline data")
-    elif kind == "viz":
-        libs = ", ".join(str(lib) for lib in el.get("libs") or [])
-        core = "{} viz {} ({}) {}".format(eid, _q(text, limit), "live: " + libs if libs else "live", _bounds_text(el))
-    elif kind == "mermaid":
-        lines = len(str(el.get("source") or "").strip().splitlines())
-        core = "{} mermaid {}{} ({} lines) {}".format(eid, el.get("diagram") or "other", " " + _q(text, limit) if text else "", lines, _bounds_text(el))
-    elif kind == "image":
-        core = "{} image {}x{}px {}".format(eid, el.get("px_w"), el.get("px_h"), _bounds_text(el))
+    registered = _kinds.get(kind)
+    if registered is not None and registered.line is not None:
+        return registered.line(el, reader, full)
+    if registered is not None and registered.readback is not None:
+        core = registered.readback(el, full)
     else:
-        registered = _kinds.get(kind)
-        if registered is not None and registered.readback is not None:
-            core = registered.readback(el, full)
-        else:
-            core = "{} {}{} {}".format(eid, kind, " " + _q(text, limit) if text else "", _bounds_text(el))
+        core = "{} {}{} {}".format(eid, kind, " " + _q(text, limit) if text else "", _bounds_text(el))
     if full and kind in CELL_TYPES:
         core += " " + cell_name(el.get("x") or 0, el.get("y") or 0)
     line = "{} by {}".format(core, who)
@@ -3701,7 +4030,8 @@ def summarize(event: Dict[str, Any], state: Optional[_State] = None) -> str:
         frame = added[0]
         name = frame.get("alias") or frame.get("text") or op
         return "added {} {} {} ({} elements)".format(_ids_text([a["id"] for a in added]), op, _q(name, 60), len(added))
-    if op in ("shape", "arrow", "frame", "pen", "path", "svg", "mermaid", "chart", "viz", "image") and added:
+    first = _kinds.get(added[0].get("type")) if added else None
+    if op not in CORE_OPS and first is not None and first.role != "overlay":
         el = added[0]
         kind = el.get("type")
         detail = ""
@@ -3901,6 +4231,12 @@ def _exact_export(layout: Any, team: TeamPaths, region: Sequence[float], grid: b
 def check(layout: Any, team: TeamPaths, reader: str, region: Any = None, around: Optional[str] = None, mine: bool = False,
           doc: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Every layout problem on the canvas (or in a region), each with ids and a fix to apply (``canvas_check``)."""
+    with _corrected(team):
+        return _check_canvas(layout, team, reader, region, around, mine, doc)
+
+
+def _check_canvas(layout: Any, team: TeamPaths, reader: str, region: Any, around: Optional[str], mine: bool,
+                  doc: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     doc = doc if isinstance(doc, dict) else store.RosterStore(team).load()
     _features.require_on(layout.session, team, doc)
     if around is not None and region is not None:
@@ -3932,8 +4268,15 @@ def check(layout: Any, team: TeamPaths, reader: str, region: Any = None, around:
 
 def look(layout: Any, team: TeamPaths, reader: str, region: Any = None, around: Optional[str] = None, since: Any = None,
          image: bool = False, grid: bool = False, exact: bool = False, advance: bool = True,
-         doc: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """What ``reader`` sees (contract 8.1 and 8.2): the three-level listing, changes, claims, legend, and an optional image."""
+         doc: Optional[Dict[str, Any]] = None, theme: str = "light") -> Dict[str, Any]:
+    """What ``reader`` sees (contract 8.1 and 8.2): the three-level listing, changes, claims, legend, and an optional image
+    (drawn in ``theme``, ``light`` or ``dark``)."""
+    with _corrected(team):
+        return _look(layout, team, reader, region, around, since, image, grid, exact, advance, doc, theme)
+
+
+def _look(layout: Any, team: TeamPaths, reader: str, region: Any, around: Optional[str], since: Any, image: bool, grid: bool,
+          exact: bool, advance: bool, doc: Optional[Dict[str, Any]], theme: str) -> Dict[str, Any]:
     doc = doc if isinstance(doc, dict) else store.RosterStore(team).load()
     switch = _features.require_on(layout.session, team, doc)
     _cursor_path(team, reader)  # validates the reader name before anything is written under it
@@ -3999,9 +4342,9 @@ def look(layout: Any, team: TeamPaths, reader: str, region: Any = None, around: 
             else:
                 result["image_error"] = "exact_timeout"
         if not result["exact"]:
-            key = hashlib.sha256(json.dumps([box, bool(grid)], separators=(",", ":")).encode("utf-8")).hexdigest()[:8]
+            key = hashlib.sha256(json.dumps([box, bool(grid), theme], separators=(",", ":")).encode("utf-8")).hexdigest()[:8]
             rendered = _render.render_region(team, scene, box, _dir(team) / RENDERS_DIR, "look-{}-v{}-{}".format(reader, state.version, key),
-                                             marks=True, grid=grid, reader=reader)
+                                             marks=True, grid=grid, reader=reader, theme=theme if theme in _theme.THEMES else "light")
             result["image"] = rendered["png"]
             result["svg"] = rendered["svg"]
             result["image_error"] = result["image_error"] or rendered["image_error"]
@@ -4067,6 +4410,263 @@ def apply_text(result: Dict[str, Any]) -> str:
     if notices.get("canvas_sent"):
         lines.append("sent: board #{}".format(", #".join(str(s) for s in notices["canvas_sent"])))
     return "\n".join(lines)
+
+
+# --------------------------------------------------------------------------
+# the display list and the browser's check (canvas v2 phase 1: ``GET /display``, ``POST /measure``)
+
+MEASURE_FILE = "measure.json"
+#: Lines the browser measured wider than the metrics, kept per team (the oldest go first).
+MAX_CORRECTIONS = 5000
+#: One ``/measure`` request carries at most this many lines (and ``MAX_MEASURE_BYTES``).
+MAX_MEASURE_LINES = 200
+MAX_MEASURE_BYTES = 64 * 1024
+#: A browser width is believed only between the metrics' width + ``MEASURE_SLACK`` and ``MEASURE_MAX_RATIO`` times it.
+MEASURE_SLACK = 0.5
+MEASURE_MAX_RATIO = 4.0
+#: ``GET /display?since=`` sends the whole list instead of a delta past this many changed ids.
+MAX_DELTA_IDS = 400
+MEASURE_INTENT = "the page measured wider text"
+_METRICS_SHA: Dict[str, Any] = {}
+#: The last full display list per team, patched forward by deltas: ``{team root: {"version", "token", "doc"}}``.
+_DISPLAY_CACHE: Dict[str, Dict[str, Any]] = {}
+
+
+def metrics_sha() -> str:
+    """The sha256 of the font metrics the server measures with (``assets/fonts/font-metrics.json``)."""
+    path = _ctext.METRICS_PATH
+    try:
+        stat_result = path.stat()
+        signature = (stat_result.st_mtime_ns, stat_result.st_size)
+    except OSError:
+        return ""
+    if _METRICS_SHA.get("signature") != signature:
+        data = store.read_bytes(path) or b""
+        _METRICS_SHA.update(signature=signature, sha=hashlib.sha256(data).hexdigest())
+    return str(_METRICS_SHA.get("sha") or "")
+
+
+def corrections(team: TeamPaths) -> Tuple[Dict[str, float], str]:
+    """``(table, token)``: the browser's corrections for this team, empty when they were measured against other metrics."""
+    doc = store.read_json(_file(team, MEASURE_FILE), default=None)
+    if not isinstance(doc, dict) or doc.get("v") != 1 or not doc.get("metrics") or doc.get("metrics") != metrics_sha():
+        return {}, ""
+    raw = doc.get("em") if isinstance(doc.get("em"), dict) else {}
+    table = {str(key): float(value) for key, value in raw.items() if _is_number(value) and float(value) > 0}
+    token = hashlib.sha256(json.dumps(sorted(table.items()), separators=(",", ":")).encode("utf-8")).hexdigest()[:16] if table else ""
+    return table, token
+
+
+class _corrected:  # noqa: N801 - used as a context manager, like the canvas_text one it wraps
+    """Measure under this team's corrections inside the block (a no-op for a team without any)."""
+
+    def __init__(self, team: TeamPaths) -> None:
+        try:
+            table, token = corrections(team)
+        except (OSError, HerdrTeamError, ValueError):
+            table, token = {}, ""
+        self._inner = _ctext.corrected(table, token)
+
+    def __enter__(self) -> None:
+        self._inner.__enter__()
+
+    def __exit__(self, *exc: Any) -> None:
+        self._inner.__exit__(*exc)
+
+
+def _stills(team: TeamPaths) -> Set[str]:
+    try:
+        return {entry.name for entry in os.scandir(_dir(team) / STILLS_DIR) if entry.name.endswith(".png")}
+    except OSError:
+        return set()
+
+
+def display(team: TeamPaths) -> Dict[str, Any]:
+    """The team's whole display list (``canvas_display``), cached per team by version and corrections."""
+    table, token = corrections(team)
+    version = current_version(team)
+    key = os.fspath(team.root)
+    cached = _DISPLAY_CACHE.get(key)
+    if cached is not None and cached["version"] == version and cached["token"] == token:
+        return cached["doc"]
+    doc: Optional[Dict[str, Any]] = None
+    if cached is not None and cached["token"] == token and cached["version"] < version:
+        doc = _patched(team, cached["doc"], table, token)
+    if doc is None:
+        with _ctext.corrected(table, token):
+            doc = _display.display_list(load_scene(team), stills=_stills(team))
+    _DISPLAY_CACHE[key] = {"version": int(doc["version"]), "token": token, "doc": doc}
+    while len(_DISPLAY_CACHE) > 16:
+        del _DISPLAY_CACHE[next(iter(_DISPLAY_CACHE))]
+    return doc
+
+
+def _changed_ids(team: TeamPaths, since: int) -> Optional[Tuple[int, Set[str]]]:
+    """``(version, ids)`` changed after ``since``, or None when only a whole list will do (a reset, a lock or an author
+    changed, too many changes, or ``since`` is ahead)."""
+    got = changes_since(team, since, limit=500)
+    if got["reset"] or not got["complete"]:
+        return None
+    ids: Set[str] = set()
+    for event in got["events"]:
+        for change in event.get("changes") or []:
+            target = change.get("target") if isinstance(change, dict) else None
+            if target in ("lock", "author"):
+                return None
+            if target in ("element", "claim") and isinstance(change.get("id"), str):
+                ids.add(change["id"])
+        if len(ids) > MAX_DELTA_IDS:
+            return None
+    return int(got["version"]), ids
+
+
+def _patched(team: TeamPaths, doc: Dict[str, Any], table: Dict[str, float], token: str) -> Optional[Dict[str, Any]]:
+    """``doc`` brought up to the current version by rebuilding only the entries that changed, or None."""
+    found = _changed_ids(team, int(doc["version"]))
+    if found is None:
+        return None
+    version, ids = found
+    scene = load_scene(team)
+    with _ctext.corrected(table, token):
+        fresh = {e["id"]: e for e in _display.entries(scene, ids, stills=_stills(team))}
+    kept = [e for e in doc["entries"] if e["id"] not in ids] + list(fresh.values())
+    kept.sort(key=_display.order_key)
+    return dict(doc, version=version, bbox=[_display.r2(v) for v in _display.bbox_of(kept)], entries=kept)
+
+
+def display_delta(team: TeamPaths, since: int) -> Dict[str, Any]:
+    """What changed in the display list after version ``since`` (phase 1, 3.2): upserts and removes, or the whole list
+    with ``full: true`` when a delta cannot say it."""
+    if not _is_number(since) or int(since) < 0:
+        raise _error("usage", "since must be a version number >= 0", since=since)
+    since = int(since)
+    doc = display(team)
+    found = _changed_ids(team, since) if 0 < since <= int(doc["version"]) else None
+    if found is None:
+        return dict(doc, since=since, full=True)
+    _version, ids = found
+    upserts = [e for e in doc["entries"] if e["id"] in ids]
+    live = {e["id"] for e in upserts}
+    return {"dl": _display.DL_VERSION, "version": doc["version"], "since": since, "full": False, "bbox": doc["bbox"],
+            "upserts": upserts, "removes": sorted((i for i in ids if i not in live), key=lambda i: (_id_number(i), i))}
+
+
+def _measure_lines(body: Any) -> Tuple[int, str, List[Dict[str, Any]]]:
+    if not isinstance(body, dict):
+        raise _invalid("lines", "a measure report is {version, metrics, lines: [...]}")
+    lines = body.get("lines")
+    if not isinstance(lines, list):
+        raise _invalid("lines", "lines must be a list")
+    if len(lines) > MAX_MEASURE_LINES:
+        raise _too_big("lines", "MAX_MEASURE_LINES", MAX_MEASURE_LINES, "at most {} lines per report".format(MAX_MEASURE_LINES))
+    version = body.get("version")
+    if not _is_number(version) or int(version) < 0:
+        raise _invalid("version", "version is the display list version the page measured")
+    return int(version), str(body.get("metrics") or ""), lines
+
+
+def _widest_known(entry: Dict[str, Any]) -> Dict[Tuple[str, int, float, str], float]:
+    """Every text line an entry draws: ``(font, weight, size, text) -> the metrics' width``."""
+    out: Dict[Tuple[str, int, float, str], float] = {}
+
+    def walk(items: Any) -> None:
+        for item in items or []:
+            if not isinstance(item, dict):
+                continue
+            if item.get("k") == "text" and item.get("zoom") is None:
+                for line in item.get("lines") or []:
+                    out[(str(item.get("font")), int(item.get("weight") or 400), float(item.get("size") or 0), str(line.get("t")))] = \
+                        float(line.get("w") or 0)
+            walk(item.get("items"))
+    walk(entry.get("items"))
+    return out
+
+
+def _outgrown(el: Dict[str, Any]) -> bool:
+    """Whether an element's label no longer fits its box as stored (or an arrow's pill its lines) under the corrections in force."""
+    if el.get("type") == "arrow":
+        return bool(el.get("text")) and el.get("fit") != _label_fit(el)
+    found = _kinds.drawn(el)
+    if found is None:
+        return False
+    fit = el.get("fit") if isinstance(el.get("fit"), dict) else {}
+    # A box that still holds its label may need new line breaks: the stored lines are what every renderer draws.
+    return found.w > float(el.get("w") or 1) + 1e-6 or found.h > float(el.get("h") or 1) + 1e-6 or \
+        (isinstance(fit.get("lines"), list) and not fit.get("truncated") and list(found.lines) != list(fit["lines"]))
+
+
+def measure_report(layout: Any, team: TeamPaths, body: Any, doc: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """The page's browser check (``POST /measure``, phase 1 3.3): keep each line it measured wider than the metrics say,
+    and refit what no longer fits. Grow only: a correction only ever widens a line, so a refit only grows a box."""
+    doc = doc if isinstance(doc, dict) else store.RosterStore(team).load()
+    _features.require_on(layout.session, team, doc)
+    version, metrics, lines = _measure_lines(body)
+    server_sha = metrics_sha()
+    ignored: List[Dict[str, Any]] = []
+    accepted: Dict[str, float] = {}
+    #: Per accepted key, the widest em a correction may hold (``MEASURE_MAX_RATIO`` times the metrics' own).
+    ceilings: Dict[str, float] = {}
+    touched: List[str] = []
+    lock = _canvas_lock(team)
+    lock.acquire()
+    try:
+        state = _load_state(team)
+        scene = state.to_scene(time.time())
+        table, token = corrections(team)
+        wanted = {str(line.get("id")) for line in lines if isinstance(line, dict)}
+        with _ctext.corrected(table, token):
+            known = {e["id"]: _widest_known(e) for e in _display.entries(scene, wanted)}
+        for index, line in enumerate(lines):
+            if not isinstance(line, dict) or not all(isinstance(line.get(k), str) for k in ("id", "t")) or \
+                    not all(_is_number(line.get(k)) for k in ("weight", "size", "w")) or line.get("font") not in ("sans", "mono"):
+                ignored.append({"i": index, "why": "not_a_line"})
+                continue
+            el = state.elements.get(line["id"])
+            if metrics != server_sha or el is None or int(el.get("updated_seq") or 0) > version:
+                ignored.append({"i": index, "why": "stale"})
+                continue
+            server_w = (known.get(line["id"]) or {}).get((line["font"], int(line["weight"]), float(line["size"]), line["t"]))
+            if server_w is None:
+                ignored.append({"i": index, "why": "not_a_line"})
+                continue
+            width = float(line["w"])
+            if width <= server_w + MEASURE_SLACK:
+                ignored.append({"i": index, "why": "not_wider"})
+                continue
+            # Plausible against the metrics alone, never against a width that already carries an earlier correction:
+            # else each report could widen the line by the ratio again, without limit (phase 1 QA, finding 5).
+            with _ctext.corrected(None):
+                raw_w = _ctext.measure(line["t"], line["font"], float(line["size"]), int(line["weight"])).width
+            if width > MEASURE_MAX_RATIO * max(raw_w, 1e-6):
+                ignored.append({"i": index, "why": "implausible"})
+                continue
+            key = _ctext.correction_key(line["font"], int(line["weight"]), line["t"])
+            accepted[key] = max(accepted.get(key, 0.0), width / float(line["size"]))
+            ceilings[key] = MEASURE_MAX_RATIO * raw_w / float(line["size"])
+            if line["id"] not in touched:
+                touched.append(line["id"])
+        if accepted:
+            merged = dict(table)
+            for key, em in accepted.items():
+                # Capped, so a table written before the cap (or by hand) cannot keep a runaway width either.
+                best = min(max(em, float(merged.pop(key, 0.0))), ceilings[key])
+                # Rounded up (never narrower than the page measured), and re-inserted: the newest last, so the oldest go first.
+                merged[key] = math.ceil(best * 1e6) / 1e6
+            while len(merged) > MAX_CORRECTIONS:
+                del merged[next(iter(merged))]
+            store.write_json(_file(team, MEASURE_FILE), {"v": 1, "metrics": server_sha, "em": merged}, fsync=False)
+    finally:
+        lock.release()
+    refit: List[str] = []
+    result: Optional[Dict[str, Any]] = None
+    if accepted:
+        with _corrected(team):
+            live = _load_state(team).elements
+            refit = [eid for eid in touched if eid in live and _outgrown(live[eid])]
+        if refit:
+            result = apply_ops(layout, team, [{"op": "refit", "ids": refit, "intent": MEASURE_INTENT}], page_author(True), doc=doc)
+    return {"accepted": len(lines) - len(ignored), "ignored": ignored, "refit": refit,
+            "batch": result.get("batch") if result else None, "version": result.get("version") if result else current_version(team)}
 
 
 # --------------------------------------------------------------------------
@@ -4388,3 +4988,8 @@ def portrait_op(plan: Dict[str, Any], intent: str, title: Optional[str] = None) 
     if title:
         op["title"] = title
     return op
+
+
+# The tables the registry answers, derived once every name they use exists (and again when a test adds a kind).
+_derive()
+_kinds.on_change(_derive)

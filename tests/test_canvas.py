@@ -297,7 +297,8 @@ class SpaceAndIds(CanvasRig):
         self.assertEqual(result["aliases"], {"drivers": "E-1", "price": "E-2", "onboard": "E-3"})
         price, onboard, arrow = self.el("E-2"), self.el("E-3"), self.el("E-4")
         self.assertEqual((price["x"], price["y"], price["frame"]), (220, 120, "E-1"))
-        self.assertEqual((onboard["x"], onboard["y"], onboard["frame"]), (460, 120, "E-1"))
+        # The arrow's "worsens" label did not fit the 60-unit gap, so the later note moved a grid step right (QA R-3).
+        self.assertEqual((onboard["x"], onboard["y"], onboard["frame"]), (520, 120, "E-1"))
         self.assertEqual((arrow["from"], arrow["to"], arrow["frame"]), ("E-2", "E-3", "E-1"))
         below = self.el(self.ok({"op": "shape", "text": "b", "below": "price", "intent": "t"})["ids"][0])
         self.assertEqual((below["x"], below["y"]), (220, 280))
@@ -365,7 +366,8 @@ class Operations(CanvasRig):
     def test_arrows_bind_follow_and_unbind(self):
         self.drivers()
         arrow = self.el("E-4")
-        self.assertEqual(arrow["points"], [[404, 180], [456, 180]], "centre to centre, clipped to each end plus a gap")
+        self.assertEqual(arrow["points"], [[404, 180], [516, 180]], "centre to centre, clipped to each end plus a gap")
+        self.assertEqual(arrow["label_at"], [460, 180], "the label sits on the line, between the notes")
         moved = self.ok({"op": "move", "id": "onboard", "by": [0, 200], "intent": "t"})
         self.assertIn("E-4", moved["ids"], "the bound arrow re-routes in the same event")
         self.assertNotEqual(self.el("E-4")["points"], arrow["points"])
@@ -426,7 +428,9 @@ class Operations(CanvasRig):
         self.assertEqual(len(made[6]["points"]), 5, "a self-loop goes around the node")
         self.assertEqual(self.el(C.parse_point("deps.a", scene, "alpha-worker") and "E-2")["text"], "API")
         self.assertEqual(self.refused({"op": "graph", "nodes": ["a"], "edges": [["a", "z"]], "intent": "t"})["details"]["field"], "edges[0].to")
-        with mock.patch.object(C, "MAX_GRAPH_NODES", 2):
+        # Phase 1: the graph op and its limits live in its kind module (canvas_kinds.diagram); canvas re-exports them.
+        from herdr_team.canvas_kinds import diagram
+        with mock.patch.object(diagram, "MAX_GRAPH_NODES", 2):
             self.assertEqual(self.refused({"op": "graph", "nodes": ["a", "b", "c"], "intent": "t"})["details"]["limit"], "MAX_GRAPH_NODES")
         for layout in ("radial", "force", "grid"):
             self.ok({"op": "graph", "nodes": ["x", "y", "z"], "edges": [["x", "y"], ["y", "z"]], "layout": layout, "at": "c100r0", "intent": layout})
@@ -770,7 +774,7 @@ class Look(CanvasRig):
             "region c10r4:c40r22:",
             '  E-1 frame "Churn drivers" [200,80 600x360] c10r4 by alpha-worker — group the drivers',
             '    E-2 note "Price rise in March" [220,120 180x120] c11r6 by alpha-worker — the biggest driver',
-            '    E-3 note "Slow onboarding" [460,120 180x120] c23r6 by alpha-worker — second driver',
+            '    E-3 note "Slow onboarding" [520,120 180x120] c26r6 by alpha-worker — second driver',
             '    E-4 arrow E-2 → E-3 "worsens" by alpha-worker — worsens',
             '  C-1 comment on E-2 by alpha-worker → @alpha-reviewer: "@reviewer please check" (open)',
             "elsewhere:",

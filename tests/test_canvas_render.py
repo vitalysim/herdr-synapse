@@ -162,13 +162,15 @@ class RenderSvg(CanvasRig):
         sticky = T.resolve("idea", "soft", "note")["fill"]
         self.assertTrue(any(r.get("fill") == sticky for r in root.iter("{%s}rect" % SVG)), "notes are sticky paper in their tone")
         self.assertTrue(any(r.get("stroke-dasharray") for r in root.iter("{%s}rect" % SVG)), "claims are dashed")
-        self.assertTrue(any(r.get("fill") == "url(#synapse-hatch)" for r in root.iter("{%s}rect" % SVG)), "locks are hatched")
+        # Phase 1: hatch patterns are numbered by first use (docs/display-list.md), synapse-hatch-0 here.
+        self.assertTrue(any(r.get("fill") == "url(#synapse-hatch-0)" for r in root.iter("{%s}rect" % SVG)), "locks are hatched")
         red = T.resolve("danger", "soft", "pen")["stroke"]
         self.assertTrue(any(p.get("fill") == red for p in root.iter("{%s}polygon" % SVG)), "the pen is a filled outline")
         nested = [n for n in root.iter("{%s}svg" % SVG) if n is not root]
         self.assertEqual(len(nested), 1, "the svg block is inlined")
         self.assertEqual(nested[0].get("viewBox"), "0 0 10 10")
-        self.assertTrue(any(p.get("transform", "").startswith("translate(400 800)") for p in root.iter("{%s}path" % SVG)))
+        # Phase 1: a path is placed and scaled by its group's matrix (the display list's group primitive).
+        self.assertTrue(any(g.get("transform", "") == "matrix(1 0 0 1 400 800)" for g in root.iter("{%s}g" % SVG)))
         no_marks = ET.fromstring(R.render_svg(scene, team=self.team, marks=False))
         self.assertNotIn("E-1", ["".join(t.itertext()) for t in no_marks.iter("{%s}text" % SVG)])
 

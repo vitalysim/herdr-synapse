@@ -72,3 +72,96 @@ def truncated_label(el: Element, env: Optional[Dict[str, Any]] = None) -> List[D
     return [{"code": "label_truncated", "ids": [str(el.get("id"))],
              "message": "{} {} shows {} of its lines (clamped); the full text is kept: widen it or shorten the text".format(
                  el.get("id"), el.get("type"), len(fit_of(el).get("lines") or [])), "fix": None}]
+
+
+# --------------------------------------------------------------------------
+# the vocabulary the canvas and its kinds share (``canvas`` imports these; kinds never import ``canvas``)
+
+#: The placement grid and cell names (``c<col>r<row>``).
+GRID = 20
+#: The largest side an element may have.
+MAX_SIZE = 20_000
+#: Named colours (legacy Open Color hexes); a named colour is read as its tone since 0.22.
+COLORS = {"black": "#1e1e1e", "gray": "#868e96", "red": "#e03131", "pink": "#c2255c", "purple": "#9c36b5",
+          "blue": "#1971c2", "teal": "#0c8599", "green": "#2f9e44", "orange": "#f08c00", "yellow": "#f59f00",
+          "white": "#ffffff"}
+FILLS = {"red": "#ffc9c9", "pink": "#fcc2d7", "purple": "#eebefa", "blue": "#a5d8ff", "teal": "#99e9f2",
+         "green": "#b2f2bb", "yellow": "#ffec99", "orange": "#ffd8a8", "gray": "#e9ecef", "white": "#ffffff"}
+DASHES = ("solid", "dashed", "dotted")
+HEADS = ("arrow", "triangle", "dot", "none")
+
+
+def round_int(value: float) -> int:
+    """Half up to an int (the canvas's coordinates)."""
+    import math
+
+    return int(math.floor(float(value) + 0.5))
+
+
+def r2(value: float) -> Any:
+    """Two decimals; an integral value as an int."""
+    rounded = round(float(value), 2)
+    return int(rounded) if rounded == int(rounded) else rounded
+
+
+def cell_name(x: Any, y: Any) -> str:
+    """``c<col>r<row>`` of the grid cell holding the point ``(x, y)``."""
+    import math
+
+    return "c{}r{}".format(int(math.floor(float(x) / GRID)), int(math.floor(float(y) / GRID)))
+
+
+def bounds(el: Element) -> Any:
+    """``(x0, y0, x1, y1)`` of an element (at least one unit wide and tall)."""
+    x, y = float(el.get("x") or 0), float(el.get("y") or 0)
+    return x, y, x + max(1.0, float(el.get("w") or 1)), y + max(1.0, float(el.get("h") or 1))
+
+
+def contains(outer: Any, inner: Any) -> bool:
+    return outer[0] <= inner[0] and outer[1] <= inner[1] and inner[2] <= outer[2] and inner[3] <= outer[3]
+
+
+def bounds_text(el: Element) -> str:
+    """``[x,y wxh]`` as ``look`` prints an element's box."""
+    return "[{},{} {}x{}]".format(el.get("x"), el.get("y"), el.get("w"), el.get("h"))
+
+
+def color_name(value: Any) -> str:
+    """A stored stroke's legacy colour name, else the hex."""
+    for name, hex_value in COLORS.items():
+        if hex_value == value:
+            return name
+    return str(value or "")
+
+
+def end_name(el: Element, key: str, index: int) -> str:
+    """An arrow end as ``look`` names it: the bound element's id, else the cell of its point."""
+    if el.get(key):
+        return str(el[key])
+    points = el.get("points") or []
+    if points:
+        try:
+            point = points[index]
+            return cell_name(point[0], point[1])
+        except (TypeError, ValueError, IndexError, KeyError):
+            return "?"
+    return "?"
+
+
+def who(name: Any, reader: Optional[str]) -> str:
+    """``you`` for the reader, ``the operator`` for the human, else the member name."""
+    if reader is not None and name == reader:
+        return "you"
+    return "the operator" if name == "human" else str(name)
+
+
+def scaled_points(el: Element, new_w: float, new_h: float) -> List[List[Any]]:
+    """An arrow's or a stroke's points scaled from its box's top-left corner to a new size."""
+    old_w, old_h = max(1.0, float(el.get("w") or 1)), max(1.0, float(el.get("h") or 1))
+    x0, y0 = float(el.get("x") or 0), float(el.get("y") or 0)
+    sx, sy = new_w / old_w, new_h / old_h
+    return [[r2(x0 + (p[0] - x0) * sx), r2(y0 + (p[1] - y0) * sy)] + list(p[2:]) for p in el.get("points") or []]
+
+
+def shifted_points(el: Element, dx: float, dy: float) -> List[List[Any]]:
+    return [[r2(p[0] + dx), r2(p[1] + dy)] + list(p[2:]) for p in el.get("points") or []]

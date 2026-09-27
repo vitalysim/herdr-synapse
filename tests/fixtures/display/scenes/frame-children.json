@@ -1,0 +1,1645 @@
+{
+ "authors": {
+  "qa-drawer": {
+   "agent": "claude",
+   "color": "#1971c2",
+   "index": 0,
+   "kind": "member"
+  }
+ },
+ "batches": {
+  "B-1": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "qa-drawer",
+   "first_seq": 1,
+   "last_seq": 32,
+   "undone": false
+  }
+ },
+ "claims": [],
+ "counters": {
+  "B": 1,
+  "C": 0,
+  "E": 32,
+  "G": 0,
+  "K": 0,
+  "X": 0
+ },
+ "elements": [
+  {
+   "alias": "retro",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "frame": null,
+   "group": null,
+   "h": 1125,
+   "id": "E-1",
+   "intent": "the retro frame, too small on purpose",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#f0f1f4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Sprint 42 retro: what went well, what to change, what to try",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 32,
+   "w": 1020,
+   "x": 0,
+   "y": 0,
+   "z": 1
+  },
+  {
+   "alias": "r1",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Standups ran",
+     "long"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-2",
+   "intent": "retro item 1",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffec99",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Standups ran long",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 180,
+   "x": 20,
+   "y": 40,
+   "z": 2
+  },
+  {
+   "alias": "r2",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "We shipped the",
+     "search rewrite",
+     "two days early"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 18,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-3",
+   "intent": "retro item 2",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#a5d8ff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "We shipped the search rewrite two days early",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 180,
+   "x": 220,
+   "y": 40,
+   "z": 3
+  },
+  {
+   "alias": "r3",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 4,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Flaky end-to-end tests"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 80,
+   "id": "E-4",
+   "intent": "retro item 3",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#b2f2bb",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Flaky end-to-end tests",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 4,
+   "w": 260,
+   "x": 20,
+   "y": 180,
+   "z": 4
+  },
+  {
+   "alias": "r4",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 5,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Too many",
+     "meetings on",
+     "Wednesday",
+     "afternoons"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 16,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-5",
+   "intent": "retro item 4",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#fcc2d7",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 28,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Too many meetings on Wednesday afternoons",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 5,
+   "w": 180,
+   "x": 300,
+   "y": 180,
+   "z": 5
+  },
+  {
+   "alias": "r5",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 6,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "More pairing"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "scale_shape",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 100,
+   "id": "E-6",
+   "intent": "retro item 5",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "More pairing",
+   "type": "ellipse",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 6,
+   "w": 200,
+   "x": 20,
+   "y": 280,
+   "z": 6
+  },
+  {
+   "alias": "r6",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 7,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Docs for the",
+     "new queue are",
+     "still missing"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-7",
+   "intent": "retro item 6",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#99e9f2",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Docs for the new queue are still missing",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 7,
+   "w": 180,
+   "x": 240,
+   "y": 320,
+   "z": 7
+  },
+  {
+   "alias": "r7",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 8,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Great support",
+     "rotation"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-8",
+   "intent": "retro item 7",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffec99",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Great support rotation",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 8,
+   "w": 180,
+   "x": 20,
+   "y": 400,
+   "z": 8
+  },
+  {
+   "alias": "r8",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 9,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Deploys",
+     "blocked by the",
+     "release freeze"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-9",
+   "intent": "retro item 8",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#a5d8ff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Deploys blocked by the release freeze",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 9,
+   "w": 180,
+   "x": 220,
+   "y": 460,
+   "z": 9
+  },
+  {
+   "alias": "r9",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 10,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Try async standups",
+     "for two weeks"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 80,
+   "id": "E-10",
+   "intent": "retro item 9",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#b2f2bb",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Try async standups for two weeks",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 240,
+   "x": 20,
+   "y": 600,
+   "z": 10
+  },
+  {
+   "alias": "r10",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 11,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Nobody owns",
+     "the staging",
+     "database"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-11",
+   "intent": "retro item 10",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#fcc2d7",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Nobody owns the staging database",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 11,
+   "w": 180,
+   "x": 420,
+   "y": 40,
+   "z": 11
+  },
+  {
+   "alias": "r11",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 12,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Celebrate the",
+     "1.0 launch"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "scale_shape",
+    "size": 28,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 160,
+   "id": "E-12",
+   "intent": "retro item 11",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 28,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Celebrate the 1.0 launch",
+   "type": "ellipse",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 12,
+   "w": 300,
+   "x": 280,
+   "y": 600,
+   "z": 12
+  },
+  {
+   "alias": "r12",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 13,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "On-call",
+     "handover notes",
+     "were excellent"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 18,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-13",
+   "intent": "retro item 12",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#99e9f2",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "On-call handover notes were excellent",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 13,
+   "w": 180,
+   "x": 420,
+   "y": 460,
+   "z": 13
+  },
+  {
+   "alias": "r13",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 14,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Design reviews",
+     "happen too late",
+     "in the sprint"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 18,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-14",
+   "intent": "retro item 13",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffec99",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Design reviews happen too late in the sprint",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 14,
+   "w": 180,
+   "x": 620,
+   "y": 40,
+   "z": 14
+  },
+  {
+   "alias": "r14",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 15,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Customer calls",
+     "were really",
+     "useful"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-15",
+   "intent": "retro item 14",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#a5d8ff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Customer calls were really useful",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 15,
+   "w": 180,
+   "x": 500,
+   "y": 180,
+   "z": 15
+  },
+  {
+   "alias": "r15",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 16,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Retry storms during",
+     "the Tuesday incident"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 80,
+   "id": "E-16",
+   "intent": "retro item 15",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#b2f2bb",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Retry storms during the Tuesday incident",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 16,
+   "w": 240,
+   "x": 440,
+   "y": 320,
+   "z": 16
+  },
+  {
+   "alias": "r16",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 17,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Rotate the",
+     "facilitator",
+     "every sprint"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-17",
+   "intent": "retro item 16",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#fcc2d7",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Rotate the facilitator every sprint",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 17,
+   "w": 180,
+   "x": 620,
+   "y": 420,
+   "z": 17
+  },
+  {
+   "alias": "r17",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 18,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Keep the",
+     "Friday demo"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "scale_shape",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-18",
+   "intent": "retro item 17",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Keep the Friday demo",
+   "type": "ellipse",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 18,
+   "w": 220,
+   "x": 20,
+   "y": 700,
+   "z": 18
+  },
+  {
+   "alias": "r18",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 19,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Estimate",
+     "spikes",
+     "separately"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 22,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-19",
+   "intent": "retro item 18",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#99e9f2",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 28,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Estimate spikes separately",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 19,
+   "w": 180,
+   "x": 620,
+   "y": 560,
+   "z": 19
+  },
+  {
+   "alias": "r19",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 20,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Move the backlog",
+     "grooming to",
+     "Monday morning"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 16,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-20",
+   "intent": "retro item 19",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffec99",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Move the backlog grooming to Monday morning",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 20,
+   "w": 180,
+   "x": 600,
+   "y": 700,
+   "z": 20
+  },
+  {
+   "alias": "r20",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 21,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Add alerts for",
+     "queue depth"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-21",
+   "intent": "retro item 20",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#a5d8ff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Add alerts for queue depth",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 21,
+   "w": 180,
+   "x": 260,
+   "y": 780,
+   "z": 21
+  },
+  {
+   "alias": "r21",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 22,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Thank you, Dana, for",
+     "the migration guide"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 80,
+   "id": "E-22",
+   "intent": "retro item 21",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#b2f2bb",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Thank you, Dana, for the migration guide",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 22,
+   "w": 240,
+   "x": 460,
+   "y": 840,
+   "z": 22
+  },
+  {
+   "alias": "r22",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 23,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Split the",
+     "monorepo CI into",
+     "two pipelines"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 16,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-23",
+   "intent": "retro item 22",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#fcc2d7",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Split the monorepo CI into two pipelines",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 23,
+   "w": 180,
+   "x": 820,
+   "y": 40,
+   "z": 23
+  },
+  {
+   "alias": "r23",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 24,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Pair new hires",
+     "with a buddy for",
+     "their first month"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "scale_shape",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 140,
+   "id": "E-24",
+   "intent": "retro item 23",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Pair new hires with a buddy for their first month",
+   "type": "ellipse",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 24,
+   "w": 280,
+   "x": 700,
+   "y": 180,
+   "z": 24
+  },
+  {
+   "alias": "r24",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 25,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Hard to find",
+     "the right",
+     "dashboard"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-25",
+   "intent": "retro item 24",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#99e9f2",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Hard to find the right dashboard",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 25,
+   "w": 180,
+   "x": 820,
+   "y": 340,
+   "z": 25
+  },
+  {
+   "alias": "r25",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 26,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Write down",
+     "decisions in the",
+     "board, not in chat"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 16,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-26",
+   "intent": "retro item 25",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffec99",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 28,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Write down decisions in the board, not in chat",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 26,
+   "w": 180,
+   "x": 820,
+   "y": 480,
+   "z": 26
+  },
+  {
+   "alias": "r26",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 27,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Stop merging",
+     "on Friday",
+     "evening"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-27",
+   "intent": "retro item 26",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#a5d8ff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Stop merging on Friday evening",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 27,
+   "w": 180,
+   "x": 820,
+   "y": 620,
+   "z": 27
+  },
+  {
+   "alias": "r27",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 28,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Less context switching"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 80,
+   "id": "E-28",
+   "intent": "retro item 27",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#b2f2bb",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Less context switching",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 28,
+   "w": 260,
+   "x": 720,
+   "y": 840,
+   "z": 28
+  },
+  {
+   "alias": "r28",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 29,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Ask finance",
+     "earlier about",
+     "cloud costs"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-29",
+   "intent": "retro item 28",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#fcc2d7",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Ask finance earlier about cloud costs",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 29,
+   "w": 180,
+   "x": 20,
+   "y": 840,
+   "z": 29
+  },
+  {
+   "alias": "r29",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 30,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Good use of",
+     "feature flags"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "scale_shape",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 100,
+   "id": "E-30",
+   "intent": "retro item 29",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Good use of feature flags",
+   "type": "ellipse",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 30,
+   "w": 200,
+   "x": 220,
+   "y": 920,
+   "z": 30
+  },
+  {
+   "alias": "r30",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 31,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Make the retro",
+     "shorter"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-31",
+   "intent": "retro item 30",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#99e9f2",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Make the retro shorter",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 31,
+   "w": 180,
+   "x": 440,
+   "y": 940,
+   "z": 31
+  },
+  {
+   "alias": "vote",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 32,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Dot-vote: three dots each, results on Monday"
+    ],
+    "min": [
+     20,
+     1
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 25,
+   "id": "E-32",
+   "intent": "voting instructions",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#1c2024",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Dot-vote: three dots each, results on Monday",
+   "type": "text",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 32,
+   "w": 448,
+   "wrap": false,
+   "x": 20,
+   "y": 1080,
+   "z": 32
+  }
+ ],
+ "homes": {
+  "qa-drawer": [
+   0,
+   -1000,
+   800,
+   -400
+  ]
+ },
+ "legend": [],
+ "locks": [],
+ "team": "qa",
+ "updated_at": "2026-01-01T00:00:00.000Z",
+ "v": 1,
+ "version": 32
+}

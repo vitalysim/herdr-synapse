@@ -30,16 +30,38 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, FrozenSet, Iterable, List, Optional, Sequence, Tuple
 
 from herdr_team import canvas_kinds as _kinds
 
-#: Marks that take room on the canvas and so can collide. Arrows, pens and comments are drawn over things on purpose.
-SOLID = frozenset(("box", "ellipse", "diamond", "note", "text", "path", "svg", "mermaid", "chart", "viz", "image"))
-LABELLED_SHAPES = frozenset(("box", "ellipse", "diamond", "note"))
-#: How much of a shape's box its label may use (an ellipse's and a diamond's inner boxes are smaller);
-#: the kinds' ``inset`` functions (``canvas_kinds.shape``) use the same factors.
-LABEL_ROOM = {"box": 1.0, "note": 1.0, "ellipse": math.sqrt(0.5), "diamond": 0.5}
+_KIND_SETS: Dict[str, FrozenSet[str]] = {}
+_kinds.on_change(_KIND_SETS.clear)
+
+
+def solid_kinds() -> FrozenSet[str]:
+    """Marks that take room on the canvas and so can collide (``Kind.solid``). Arrows, pens and comments are drawn over things on purpose."""
+    found = _KIND_SETS.get("solid")
+    if found is None:
+        found = _KIND_SETS["solid"] = frozenset(kind.name for kind in _kinds.kinds() if kind.solid)
+    return found
+
+
+def labelled_kinds() -> FrozenSet[str]:
+    """Shapes with a fitted label inside (``Kind.labelled``): a text on one covers its label."""
+    found = _KIND_SETS.get("labelled")
+    if found is None:
+        found = _KIND_SETS["labelled"] = frozenset(kind.name for kind in _kinds.kinds() if kind.labelled)
+    return found
+
+
+def __getattr__(name: str) -> Any:
+    # ``SOLID`` and ``LABELLED_SHAPES`` stay importable (PEP 562), derived from the registry (canvas v2 phase 1, 2.4).
+    if name == "SOLID":
+        return solid_kinds()
+    if name == "LABELLED_SHAPES":
+        return labelled_kinds()
+    raise AttributeError("module {!r} has no attribute {!r}".format(__name__, name))
+
 #: Overlaps thinner than this are edges touching, not marks on top of each other.
 TOUCH = 4.0
 #: A mark this far from its nearest neighbour is reported as stray (with at least ``STRAY_MIN_MARKS`` marks).
@@ -160,7 +182,7 @@ def _overlaps(solid: List[Dict[str, Any]], reader: Optional[str], by_id: Dict[st
             outer, inner = (other, el) if _contains(other_box, box) else (el, other) if _contains(box, other_box) else (None, None)
             if outer is not None and inner is not None:
                 # A mark wholly inside another is a grouping, except text on a shape that has its own label.
-                if inner.get("type") == "text" and outer.get("type") in LABELLED_SHAPES and outer.get("text"):
+                if inner.get("type") == "text" and outer.get("type") in labelled_kinds() and outer.get("text"):
                     out.append(_problem("text_on_label", [inner["id"], outer["id"]],
                                         "{} lies on {}, whose own label is there; move it off the shape or put the words in the label".format(_name(inner), _name(outer)),
                                         _move_away(inner, outer, boxes, by_id), reader, by_id))
@@ -334,7 +356,7 @@ class Check:
 
 
 def _groups(live: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
-    return {"solid": [el for el in live if el.get("type") in SOLID],
+    return {"solid": [el for el in live if el.get("type") in solid_kinds()],
             "frames": [el for el in live if el.get("type") == "frame" and el.get("role") != "portrait"],
             "arrows": [el for el in live if el.get("type") == "arrow"],
             "marks": [el for el in live if el.get("type") not in ("frame", "comment", "arrow")]}

@@ -43,10 +43,10 @@ and a region is two corners, `c10r4:c40r22`. Place with `at`, `right_of`,
 none, the element goes in your own home area. Your `id` is an alias for you;
 the reply maps it to the canonical id (`E-3`). Every op carries an `intent`,
 one line saying why. Shapes grow to fit their label, so `w`/`h` are a
-minimum (a text's `w` is the width it wraps at); the reply's `geometry` gives
-each sized element's real bounds. It also lists what was refused and why
-(`canvas_locked`, `element_not_yours`...), and warnings such as `overlap`,
-`inside_claim`, `frame_edge` or `moved_to_fit` (a label made way for another).
+minimum (a text's `w` is the width it wraps at); a mark put on a shape stays
+on it, and growth never covers a neighbour: it moves (`moved_to_fit`), as does
+an arrow's end when its label needs room. The reply's `geometry` gives real
+bounds, what was refused (`canvas_locked`...), and warnings (`overlap`...).
 
 `look` lists what is in view with ids, bounds, text, connections, authors and
 intents; `--image` adds a PNG with the ids drawn on. Read both.
@@ -55,8 +55,8 @@ intents; `--image` adds a PNG with the ids drawn on. Read both.
 
 After drawing, `canvas check --mine` lists what reads badly (overlaps, labels
 too big for their shape, marks half in a frame, arrows through shapes, strays),
-each usually with a `fix` op: apply one (`canvas draw --op '<fix>'`), check
-again, repeat. Then `look --image` for a last pass if you can read images.
+each usually with a `fix` op: apply one (`canvas draw --op '<fix>'`), check again
+(`canvas refit` sizes an old board's labels). Then `look --image` for a last pass.
 
 ## One example per layer
 

@@ -639,6 +639,7 @@ class ApiTests(ServerCase):
         for path in ("/api/teams/nobody/scene", "/api/teams/Bad..Name/scene", "/api/teams/%2e%2e/scene"):
             response = self.get(path)
             self.assertEqual((response.status, response.json()["code"]), (404, "team_not_found"), path)
+            self.assertNotIn(str(self.ts.tmp), response.body.decode("utf-8"), "no state path reaches the page (phase 1 QA #14)")
 
     def test_ops_apply_as_the_human_on_the_page(self):
         response = self.post_json("/api/teams/alpha/ops", {"ops": [{"op": "shape", "kind": "box", "at": "c1r1"}], "atomic": True}, self.cookie, self.csrf)

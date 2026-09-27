@@ -15,7 +15,8 @@ Each scene file (``tests/fixtures/canvas_scenes/*.json``) is ``{"name", "about",
    * ``overflow``: ink outside the element's own outline (a box's rectangle, an ellipse, a diamond),
      beyond ``--tolerance`` units;
    * ``collision``: ink on another solid mark the element does not sit inside (a label under a door,
-     a caption on a neighbour's box); for arrow labels this is tracked separately;
+     a caption on a neighbour's box); for arrow labels this is tracked separately, and another arrow
+     label's pill counts as a mark too;
    * ``contrast``: the WCAG ratio between the ink's core pixels and what is under them (4.5:1, or 3:1
      from 24 units up); run once per theme the renderer supports;
    * ``lines``: the line breaks the server drew (a ``<text>`` per line), to compare with the page's.
@@ -29,7 +30,9 @@ headless Chrome (its own profile, killed afterwards), reads the line breaks Exca
 them with the server's (blank lines and indentation included; emoji differences the server makes on
 purpose, ``canvas_render.render_text``, excused by rule), reads the page's own fit audit
 (``page_overflow``: a label wider or taller than the room its container gives it), and saves light and
-dark screenshots of the page.
+dark screenshots of the page. ``--engine v2`` opens the display-list page (``?engine=v2``, canvas v2 phase 1)
+instead and reads the same things through its QA hook ``window.__synapseV2`` (lines, the fit audit, fit to view),
+and also gates any CSS ``filter`` on the page (AC-4.2: nothing inverts colours in the dark theme).
 
 It prints one line per scene (``--json`` for everything) and exits 0 when every gated count is zero,
 1 when any is not, 2 when a scene is invalid (an op refused, a bad file), and 3 when resvg is missing.
@@ -38,6 +41,7 @@ It prints one line per scene (``--json`` for everything) and exits 0 when every 
     python3 tools/canvas_qa.py tests/fixtures/canvas_scenes/house.json --out /tmp/qa --json
     python3 tools/canvas_qa.py house --page-lines page-lines.json   # compare with lines read off the page
     python3 tools/canvas_qa.py --page                   # also read the page's line breaks in headless Chrome
+    python3 tools/canvas_qa.py --page --engine v2       # the same against the v2 (display-list) page
     python3 tools/canvas_qa.py house --serve 120        # also serve the scene to a browser for 120 s
 
 Stdlib only; it imports ``herdr_team`` from this checkout.
@@ -644,7 +648,7 @@ def _text_of(el: Dict[str, Any]) -> str:
 
 def evaluate(scene_doc: Dict[str, Any], out: Path, scale: float = PROBE_SCALE, tolerance: float = TOLERANCE,
              themes: Optional[Sequence[str]] = None, page_lines: Optional[Dict[str, List[str]]] = None,
-             strict: bool = False, serve: float = 0.0, browser: Optional[Browser] = None) -> Dict[str, Any]:
+             strict: bool = False, serve: float = 0.0, browser: Optional[Browser] = None, engine: str = "v1") -> Dict[str, Any]:
     """Apply, check, render and probe one scene; its report (``gate.ok`` says whether it passes)."""
     name = scene_doc["name"]
     themes = list(themes or themes_supported())
@@ -661,6 +665,9 @@ def evaluate(scene_doc: Dict[str, Any], out: Path, scale: float = PROBE_SCALE, t
         report["check"] = by_code
         report["check_problems"] = [{"code": p["code"], "ids": p["ids"], "message": p["message"]} for p in problems]
         solid = [e for e in live if e.get("type") in K.SOLID]
+        # Arrow labels also keep clear of each other's pills (QA R-3: they must never run into other text).
+        pills = [dict(id=e["id"] + "~label", type="label", of=e["id"], x=b[0][0], y=b[0][1], w=b[0][2], h=b[0][3])
+                 for e in live if e.get("type") == "arrow" for b in [R.arrow_label_pill(e)] if b is not None]
         texts = [e for e in live if (e.get("type") in LABELLED or e.get("type") == "arrow") and str(e.get("text") or "").strip()]
         work = Path(tempfile.mkdtemp(prefix="probe-", dir=os.fspath(qa.tmp)))
         report["renders"] = {}
@@ -668,7 +675,8 @@ def evaluate(scene_doc: Dict[str, Any], out: Path, scale: float = PROBE_SCALE, t
         for theme in themes:
             suffix = "" if theme == "light" else "-" + theme
             report["renders"][theme] = render_scene(qa, scene, out, name + suffix, theme)
-            probes = [probe(qa, scene, el, solid, work, theme, scale, tolerance) for el in texts]
+            probes = [probe(qa, scene, el, solid + [p for p in pills if p["of"] != el["id"]] if el.get("type") == "arrow" else solid,
+                            work, theme, scale, tolerance) for el in texts]
             by_id = {el["id"]: el for el in texts}
             overflow = [dict(p["overflow"], id=p["id"], type=p["type"], text=_text_of(by_id[p["id"]])) for p in probes if p.get("overflow")]
             collisions, arrow_hits = [], []
@@ -688,11 +696,16 @@ def evaluate(scene_doc: Dict[str, Any], out: Path, scale: float = PROBE_SCALE, t
             if theme == themes[0]:
                 report["lines"] = {p["id"]: p["lines"] for p in probes}
         if browser is not None:
-            shot = out / (name + "-page.png")
+            shot = out / (name + ("-page-v2.png" if engine == "v2" else "-page.png"))
             report["page_png"] = os.fspath(shot)
-            page_lines = read_page_lines(qa, browser, shot)
+            report["engine"] = engine
+            page_lines = read_page_lines(qa, browser, shot, engine)
             report["page_lines_read"] = page_lines
             report["page_overflow"] = [row for row in browser.audit if row.get("type") != "arrow" and (row.get("overflowPx") or 0) > 0.5]
+            # The v2 hook also reports lines whose whitespace the browser collapsed (a lost indent: phase 1 QA #4).
+            report["page_collapsed"] = [row for row in browser.audit if (row.get("collapsed") or 0) > 0]
+            if engine == "v2":
+                report["page_filters"] = list(getattr(browser, "filters", []) or [])
         if page_lines is not None:
             report["page_lines"] = compare_lines(report["lines"], page_lines, scene_doc.get("page_line_exempt"))
         if serve > 0:
@@ -754,6 +767,10 @@ def gate(report: Dict[str, Any], strict: bool) -> Dict[str, Any]:
         failed.append("page line breaks differ on {} of {}".format(len(page["mismatches"]), page["compared"]))
     if report.get("page_overflow"):
         failed.append("page overflow {}".format(len(report["page_overflow"])))
+    if report.get("page_collapsed"):
+        failed.append("page collapsed whitespace on {}".format(", ".join(r["id"] for r in report["page_collapsed"])))
+    if report.get("page_filters"):
+        failed.append("page css filter on {} (AC-4.2: nothing inverts colours)".format(", ".join(report["page_filters"])))
     return {"ok": not failed, "failed": failed}
 
 
@@ -795,7 +812,7 @@ PAGE_LINES_JS = r"""(() => {
   const out = {};
   for (const el of fiber.stateNode.scene.getNonDeletedElements()) {
     const s = el.customData && el.customData.synapse;
-    if (el.type === 'text' && s && s.id && (s.derived === null || s.derived === 'text')) out[s.id] = String(el.text).split('\n');
+    if (el.type === 'text' && s && s.id && (s.derived === null || s.derived === 'text' || s.derived === 'label')) out[s.id] = String(el.text).split('\n');
   }
   return out;
 })()"""
@@ -812,6 +829,21 @@ PAGE_FIT_JS = r"""(() => {
   fiber.stateNode.scrollToContent(undefined, { fitToViewport: true, viewportZoomFactor: 0.9, animate: false });
   return true;
 })()"""
+#: The v2 page (``?engine=v2``, canvas v2 phase 1) answers through its QA hook ``window.__synapseV2``
+#: (``web/src/v2/render/qa.js``): ``ready()``, ``lines()`` read off its rendered ``<text>`` nodes, ``audit()`` (each line's
+#: length against its box) and ``fit()`` (the camera fitted to the display list's bbox).
+PAGE_V2_LINES_JS = r"""(() => {
+  const qa = window.__synapseV2;
+  if (!qa) return 'no v2 page';
+  if (!qa.ready()) return 'not ready';
+  return qa.lines();
+})()"""
+PAGE_V2_AUDIT_JS = r"""(() => (window.__synapseV2 ? window.__synapseV2.audit() : []))()"""
+PAGE_V2_FIT_JS = r"""(() => (window.__synapseV2 ? (window.__synapseV2.fit(), true) : false))()"""
+#: AC-4.2: nothing on the page inverts colours (Phase 0's dark mode was an ``invert`` filter over the canvas).
+PAGE_FILTERS_JS = r"""(() => [...document.querySelectorAll('*')].filter((el) => getComputedStyle(el).filter !== 'none')
+  .map((el) => el.tagName.toLowerCase() + (el.className && typeof el.className === 'string' ? '.' + el.className.split(' ')[0] : '')).slice(0, 5))()"""
+ENGINES = ("v1", "v2")
 CHROME_PATHS = ("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "google-chrome", "chromium", "chromium-browser")
 PAGE_WAIT_S = 20.0
 
@@ -936,24 +968,29 @@ class Browser:
         self.cdp.call("Page.enable")
         self.cdp.call("Runtime.enable")
 
-    def lines(self, url: str, shot: Optional[Path] = None) -> Dict[str, List[str]]:
+    def lines(self, url: str, shot: Optional[Path] = None, engine: str = "v1") -> Dict[str, List[str]]:
         """Open ``url`` and read the page's line breaks once they hold still (fonts loaded, two equal reads)."""
+        v2 = engine == "v2"
+        self.filters: List[str] = []
         self.cdp.call("Emulation.setEmulatedMedia", features=[{"name": "prefers-color-scheme", "value": "light"}])
-        self.cdp.call("Page.navigate", url=url)
+        self.cdp.call("Page.navigate", url=url + ("&engine=v2" if v2 else ""))
         deadline, last = time.monotonic() + PAGE_WAIT_S, None
         while time.monotonic() < deadline:
             time.sleep(0.5)
-            value = self.cdp.evaluate(PAGE_LINES_JS)
+            value = self.cdp.evaluate(PAGE_V2_LINES_JS if v2 else PAGE_LINES_JS)
             if isinstance(value, dict) and value and value == last:
-                audit = self.cdp.evaluate(PAGE_AUDIT_JS)
+                audit = self.cdp.evaluate(PAGE_V2_AUDIT_JS if v2 else PAGE_AUDIT_JS)
                 self.audit = audit if isinstance(audit, list) else []
                 if shot is not None:
-                    self.cdp.evaluate(PAGE_FIT_JS)
+                    self.cdp.evaluate(PAGE_V2_FIT_JS if v2 else PAGE_FIT_JS)
                     time.sleep(0.5)
                     self.screenshot(shot)
                     self.cdp.call("Emulation.setEmulatedMedia", features=[{"name": "prefers-color-scheme", "value": "dark"}])
                     time.sleep(0.5)
                     self.screenshot(shot.with_name(shot.stem + "-dark.png"))
+                    if v2:
+                        found = self.cdp.evaluate(PAGE_FILTERS_JS)
+                        self.filters = found if isinstance(found, list) else []
                 return value
             last = value
         raise RuntimeError("the page never settled: {}".format(last if isinstance(last, str) else "lines kept changing"))
@@ -977,7 +1014,11 @@ class Browser:
         shutil.rmtree(self.profile, ignore_errors=True)
 
 
-def read_page_lines(qa: QaTeam, browser: Browser, shot: Optional[Path]) -> Dict[str, List[str]]:
+#: Test hook and ``--dist``: the page build ``--page`` serves (None: ``web/dist``).
+PAGE_DIST: Optional[Path] = None
+
+
+def read_page_lines(qa: QaTeam, browser: Browser, shot: Optional[Path], engine: str = "v1") -> Dict[str, List[str]]:
     """The scene's page served on loopback, opened in the browser, and its line breaks read."""
     import threading
     from unittest import mock
@@ -987,11 +1028,11 @@ def read_page_lines(qa: QaTeam, browser: Browser, shot: Optional[Path]) -> Dict[
 
     with mock.patch.object(views, "team_views", side_effect=lambda *a, **k: []), \
             mock.patch.object(activity, "cards", side_effect=lambda *a, **k: []):
-        server = W.make_server(qa.layout, qa.env, port=0, writable=False, api=None)
+        server = W.make_server(qa.layout, qa.env, port=0, static_dir=PAGE_DIST, writable=False, api=None)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
-            return browser.lines(W.mint_ticket(qa.layout, False, "human", port=server.server_address[1]), shot)
+            return browser.lines(W.mint_ticket(qa.layout, False, "human", port=server.server_address[1]), shot, engine)
         finally:
             server.shutdown()
             server.server_close()
@@ -1009,6 +1050,8 @@ def summary_line(report: Dict[str, Any]) -> str:
     page_text = "  page lines differ {}/{}".format(len(page["mismatches"]), page["compared"]) if page else ""
     if "page_overflow" in report:
         page_text += "  page overflow {}".format(len(report["page_overflow"]))
+    if report.get("engine") == "v2":
+        page_text += "  (v2 page, css filters {})".format(len(report.get("page_filters") or []))
     render = report["renders"][report["themes"][0]]
     return ("{:<16} {}  ops {}/{}  check: {}  label_overflow {}  pixel overflow {} collisions {} arrow-label {}  "
             "min contrast {}  tofu {} cut off {}{}\n    png {}").format(
@@ -1028,6 +1071,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--page-lines", help="JSON of line breaks read off the page: {scene: {element id: [lines]}} or {element id: [lines]}")
     parser.add_argument("--strict", action="store_true", help="also gate arrow_through, stray and arrow-label collisions (Phase 2)")
     parser.add_argument("--serve", type=float, default=0.0, metavar="SECONDS", help="serve each scene's page on loopback this long")
+    parser.add_argument("--dist", help="serve this page build instead of web/dist (a scratch `vite build --outDir`)")
+    parser.add_argument("--engine", choices=ENGINES, default="v1",
+                        help="the page engine --page opens: v1 (Excalidraw, the default) or v2 (the display-list renderer, ?engine=v2)")
     parser.add_argument("--page", nargs="?", const="", metavar="CHROME",
                         help="also open each scene's page in a throwaway headless Chrome, read its line breaks and compare them "
                              "(screenshots light and dark); CHROME defaults to $CHROME or the installed Chrome")
@@ -1036,6 +1082,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if R.find_resvg() is None:
         print("canvas_qa: resvg is not on PATH (brew install resvg)", file=sys.stderr)
         return 3
+    global PAGE_DIST
+    PAGE_DIST = Path(args.dist) if args.dist else None
     themes = args.theme or themes_supported()
     if "dark" in themes and "dark" not in themes_supported():
         print("canvas_qa: the server renderer has no dark theme yet (render_svg takes no theme)", file=sys.stderr)
@@ -1084,7 +1132,7 @@ def run_scenes(scenes: List[Dict[str, Any]], out: Path, args: argparse.Namespace
         if page is not None:
             lines = page.get(scene["name"]) if isinstance(page.get(scene["name"]), dict) else page
         try:
-            report = evaluate(scene, out, args.scale, args.tolerance, themes, lines, args.strict, args.serve, browser)
+            report = evaluate(scene, out, args.scale, args.tolerance, themes, lines, args.strict, args.serve, browser, args.engine)
         except Exception as err:  # one broken scene is a finding, not a crash of the run
             report = {"scene": scene["name"], "file": scene["file"], "error": "{}: {}".format(type(err).__name__, err),
                       "gate": {"ok": False, "failed": ["error"]}}

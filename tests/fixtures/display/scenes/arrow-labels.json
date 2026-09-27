@@ -1,0 +1,748 @@
+{
+ "authors": {
+  "qa-drawer": {
+   "agent": "claude",
+   "color": "#1971c2",
+   "index": 0,
+   "kind": "member"
+  }
+ },
+ "batches": {
+  "B-1": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "qa-drawer",
+   "first_seq": 1,
+   "last_seq": 12,
+   "undone": false
+  }
+ },
+ "claims": [],
+ "counters": {
+  "B": 1,
+  "C": 0,
+  "E": 12,
+  "G": 0,
+  "K": 0,
+  "X": 0
+ },
+ "elements": [
+  {
+   "alias": "client",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Client"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 80,
+   "id": "E-1",
+   "intent": "the caller",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Client",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 160,
+   "x": 0,
+   "y": 0,
+   "z": 1
+  },
+  {
+   "alias": "api",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "API"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 80,
+   "id": "E-2",
+   "intent": "the API",
+   "nudged": [
+    180,
+    0
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "API",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 6,
+   "w": 160,
+   "x": 380,
+   "y": 0,
+   "z": 2
+  },
+  {
+   "alias": "worker",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Worker"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 80,
+   "id": "E-3",
+   "intent": "the worker",
+   "nudged": [
+    500,
+    0
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Worker",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 8,
+   "w": 160,
+   "x": 900,
+   "y": 0,
+   "z": 3
+  },
+  {
+   "alias": "db",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 4,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Database"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "scale_shape",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 80,
+   "id": "E-4",
+   "intent": "the database",
+   "nudged": [
+    0,
+    60
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Database",
+   "type": "ellipse",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 9,
+   "w": 160,
+   "x": 200,
+   "y": 300,
+   "z": 4
+  },
+  {
+   "alias": "audit",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 5,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Audit log"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 80,
+   "id": "E-5",
+   "intent": "the audit log, in the way",
+   "nudged": [
+    340,
+    0
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Audit log",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 12,
+   "w": 160,
+   "x": 740,
+   "y": 140,
+   "z": 5
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 6,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "POST /orders with an",
+     "idempotency key"
+    ],
+    "size": 16
+   },
+   "frame": null,
+   "from": "E-1",
+   "group": null,
+   "h": 1,
+   "head": "arrow",
+   "id": "E-6",
+   "intent": "a long label across a 40-unit gap",
+   "label_at": [
+    270,
+    40
+   ],
+   "points": [
+    [
+     164,
+     40
+    ],
+    [
+     376,
+     40
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "POST /orders with an idempotency key",
+   "to": "E-2",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 6,
+   "w": 212,
+   "x": 164,
+   "y": 40,
+   "z": 6
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 7,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "enqueue a signed job",
+     "with retries and",
+     "backoff"
+    ],
+    "size": 16
+   },
+   "frame": null,
+   "from": "E-2",
+   "group": null,
+   "h": 1,
+   "head": "arrow",
+   "id": "E-7",
+   "intent": "another long label",
+   "label_at": [
+    650,
+    40
+   ],
+   "points": [
+    [
+     544,
+     40
+    ],
+    [
+     896,
+     40
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "enqueue a signed job with retries and backoff",
+   "to": "E-3",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 8,
+   "w": 352,
+   "x": 544,
+   "y": 40,
+   "z": 7
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 8,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "status callback"
+    ],
+    "size": 16
+   },
+   "frame": null,
+   "from": "E-3",
+   "group": null,
+   "h": 1,
+   "head": "arrow",
+   "id": "E-8",
+   "intent": "the reverse direction on the same pair",
+   "label_at": [
+    816,
+    40
+   ],
+   "points": [
+    [
+     896,
+     40
+    ],
+    [
+     544,
+     40
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "status callback",
+   "to": "E-2",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 8,
+   "w": 352,
+   "x": 544,
+   "y": 40,
+   "z": 8
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 9,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "INSERT ... ON",
+     "CONFLICT DO",
+     "NOTHING"
+    ],
+    "size": 16
+   },
+   "frame": null,
+   "from": "E-2",
+   "group": null,
+   "h": 215,
+   "head": "arrow",
+   "id": "E-9",
+   "intent": "a vertical label",
+   "label_at": [
+    331.05,
+    254.93
+   ],
+   "points": [
+    [
+     433.94,
+     83.43
+    ],
+    [
+     305.05,
+     298.26
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "INSERT ... ON CONFLICT DO NOTHING",
+   "to": "E-4",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 9,
+   "w": 129,
+   "x": 305,
+   "y": 83,
+   "z": 9
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 10,
+   "curve": true,
+   "fit": {
+    "lines": [
+     "cancels a job the user",
+     "no longer wants"
+    ],
+    "size": 16
+   },
+   "frame": null,
+   "from": "E-1",
+   "group": null,
+   "h": 1,
+   "head": "arrow",
+   "id": "E-10",
+   "intent": "a curved arrow over the row",
+   "label_at": [
+    530,
+    113.2
+   ],
+   "points": [
+    [
+     164,
+     40
+    ],
+    [
+     896,
+     40
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "cancels a job the user no longer wants",
+   "to": "E-3",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 732,
+   "x": 164,
+   "y": 40,
+   "z": 10
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 11,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "change data capture",
+     "stream"
+    ],
+    "size": 16
+   },
+   "frame": null,
+   "from": null,
+   "group": null,
+   "h": 260,
+   "head": "arrow",
+   "id": "E-11",
+   "intent": "an elbowed arrow by points, pinned to coordinates",
+   "label_at": [
+    640,
+    271
+   ],
+   "points": [
+    [
+     360,
+     300
+    ],
+    [
+     640,
+     300
+    ],
+    [
+     640,
+     40
+    ],
+    [
+     562,
+     40
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "change data capture stream",
+   "to": null,
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 11,
+   "w": 280,
+   "x": 360,
+   "y": 40,
+   "z": 11
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 12,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "nightly compliance",
+     "snapshot"
+    ],
+    "size": 16
+   },
+   "frame": null,
+   "from": "E-4",
+   "group": null,
+   "h": 114,
+   "head": "arrow",
+   "id": "E-12",
+   "intent": "an arrow toward the audit log",
+   "label_at": [
+    530.63,
+    215.14
+   ],
+   "points": [
+    [
+     352.66,
+     318.47
+    ],
+    [
+     736.16,
+     204.84
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "nightly compliance snapshot",
+   "to": "E-5",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 12,
+   "w": 383,
+   "x": 353,
+   "y": 205,
+   "z": 12
+  }
+ ],
+ "homes": {
+  "qa-drawer": [
+   0,
+   -1000,
+   800,
+   -400
+  ]
+ },
+ "legend": [],
+ "locks": [],
+ "team": "qa",
+ "updated_at": "2026-01-01T00:00:00.000Z",
+ "v": 1,
+ "version": 12
+}

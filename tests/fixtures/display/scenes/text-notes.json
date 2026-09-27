@@ -1,0 +1,468 @@
+{
+ "authors": {
+  "qa-drawer": {
+   "agent": "claude",
+   "color": "#1971c2",
+   "index": 0,
+   "kind": "member"
+  }
+ },
+ "batches": {
+  "B-1": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "qa-drawer",
+   "first_seq": 1,
+   "last_seq": 8,
+   "undone": false
+  }
+ },
+ "claims": [],
+ "counters": {
+  "B": 1,
+  "C": 0,
+  "E": 8,
+  "G": 0,
+  "K": 0,
+  "X": 0
+ },
+ "elements": [
+  {
+   "alias": "h1",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Decision record: move the",
+     "nightly export to the new queue"
+    ],
+    "min": [
+     36,
+     1
+    ],
+    "policy": "hug",
+    "size": 36,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 90,
+   "id": "E-1",
+   "intent": "the heading",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 36,
+    "stroke": "#1c2024",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Decision record: move the nightly export to the new queue",
+   "type": "text",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 563,
+   "wrap": false,
+   "x": 0,
+   "y": 0,
+   "z": 1
+  },
+  {
+   "alias": "para",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Context. The nightly export has failed four times this month",
+     "because the old queue drops jobs larger than 64 MB. The",
+     "new queue streams in chunks, keeps a dead-letter topic,",
+     "and already runs the invoice pipeline without incident since",
+     "July. Moving the export costs about two days of work and",
+     "removes the manual re-run that on-call does every Monday."
+    ],
+    "min": [
+     20,
+     1
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 150,
+   "id": "E-2",
+   "intent": "an auto-sized paragraph",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#1c2024",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Context. The nightly export has failed four times this month because the old queue drops jobs larger than 64 MB. The new queue streams in chunks, keeps a dead-letter topic, and already runs the invoice pipeline without incident since July. Moving the export costs about two days of work and removes the manual re-run that on-call does every Monday.",
+   "type": "text",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 593,
+   "wrap": false,
+   "x": 0,
+   "y": 110,
+   "z": 2
+  },
+  {
+   "alias": "narrow",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Owner:",
+     "platform",
+     "team.",
+     "Reviewers:",
+     "data,",
+     "finance."
+    ],
+    "min": [
+     100,
+     1
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 150,
+   "id": "E-3",
+   "intent": "a 100-unit column",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#1c2024",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Owner: platform team. Reviewers: data, finance.",
+   "type": "text",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 110,
+   "wrap": true,
+   "x": 0,
+   "y": 300,
+   "z": 3
+  },
+  {
+   "alias": "list",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 4,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Options",
+     "- keep the old queue",
+     "and raise the limit",
+     "- move to the new",
+     "queue",
+     "",
+     "Chosen: move to the",
+     "new queue"
+    ],
+    "min": [
+     220,
+     1
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 200,
+   "id": "E-4",
+   "intent": "a list in a 220-unit column",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#1c2024",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Options\n- keep the old queue and raise the limit\n- move to the new queue\n\nChosen: move to the new queue",
+   "type": "text",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 4,
+   "w": 220,
+   "wrap": true,
+   "x": 150,
+   "y": 300,
+   "z": 4
+  },
+  {
+   "alias": "indent",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 5,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Rollout",
+     "    step 1: dual-write for a week",
+     "    step 2: compare row counts daily",
+     "    step 3: switch the reader"
+    ],
+    "min": [
+     20,
+     1
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 100,
+   "id": "E-5",
+   "intent": "indented lines",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#1c2024",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Rollout\n    step 1: dual-write for a week\n    step 2: compare row counts daily\n    step 3: switch the reader",
+   "type": "text",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 5,
+   "w": 350,
+   "wrap": false,
+   "x": 410,
+   "y": 300,
+   "z": 5
+  },
+  {
+   "alias": "path",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 6,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Runbook:",
+     "/srv/runbooks/data-platform/exports/nightly-export-to-",
+     "streaming-queue-migration.md"
+    ],
+    "min": [
+     20,
+     1
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 75,
+   "id": "E-6",
+   "intent": "a long path",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#1c2024",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Runbook: /srv/runbooks/data-platform/exports/nightly-export-to-streaming-queue-migration.md",
+   "type": "text",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 6,
+   "w": 552,
+   "wrap": false,
+   "x": 0,
+   "y": 510,
+   "z": 6
+  },
+  {
+   "alias": "code",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 7,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "queue.publish(topic=\"exports.nightly\",",
+     "chunk_mb=8, dead_letter=\"exports.dlq\")"
+    ],
+    "min": [
+     20,
+     1
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 50,
+   "id": "E-7",
+   "intent": "a monospace line",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "code",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#1c2024",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "queue.publish(topic=\"exports.nightly\", chunk_mb=8, dead_letter=\"exports.dlq\")",
+   "type": "text",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 7,
+   "w": 470,
+   "wrap": false,
+   "x": 0,
+   "y": 625,
+   "z": 7
+  },
+  {
+   "alias": "sign",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 8,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Approved by the operator on 2026-09-27"
+    ],
+    "min": [
+     16,
+     1
+    ],
+    "policy": "hug",
+    "size": 16,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 20,
+   "id": "E-8",
+   "intent": "a small sign-off",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 16,
+    "stroke": "#1c2024",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Approved by the operator on 2026-09-27",
+   "type": "text",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 8,
+   "w": 330,
+   "wrap": false,
+   "x": 0,
+   "y": 715,
+   "z": 8
+  }
+ ],
+ "homes": {
+  "qa-drawer": [
+   0,
+   -1000,
+   800,
+   -400
+  ]
+ },
+ "legend": [],
+ "locks": [],
+ "team": "qa",
+ "updated_at": "2026-01-01T00:00:00.000Z",
+ "v": 1,
+ "version": 8
+}

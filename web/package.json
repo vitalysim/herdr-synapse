@@ -7,7 +7,9 @@
   "type": "module",
   "scripts": {
     "build": "vite build && node scripts/postbuild.mjs",
-    "dev": "vite"
+    "dev": "vite",
+    "test": "vitest run",
+    "test:e2e": "node test/e2e/run.mjs"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "0.18.1",
@@ -24,6 +26,8 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "6.1.1",
-    "vite": "8.3.1"
+    "jsdom": "30.1.1",
+    "vite": "8.3.1",
+    "vitest": "5.0.2"
   }
 }

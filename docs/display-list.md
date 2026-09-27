@@ -1,0 +1,191 @@
+# The display list
+
+The display list is the contract between the canvas geometry (Python) and
+every renderer: the agent's PNG (`herdr_team/canvas_svg.py` through resvg) and
+the v2 page (`web/src/v2/render/`). Python turns the canonical scene into a
+versioned list of drawing primitives in absolute world units, with text already
+broken into lines and colours as theme tokens. Renderers never wrap, measure or
+move text, and never compute geometry.
+
+- Producer: `herdr_team/canvas_display.py` (`display_list`, `entries`, `entry`,
+  `paints`, `validate`, `dumps`). Each kind draws itself through its
+  `canvas_kinds.Kind.emit` hook.
+- Served by `GET /api/teams/<team>/display[?since=<version>]` (full or delta).
+- Goldens: `tests/fixtures/display/<scene>.json`, `<scene>.light.svg`,
+  `<scene>.dark.svg` and `fmt-vectors.json`, regenerated only by
+  `python3 -m herdr_team.canvas_display --write-goldens`
+  (`--check-goldens` fails when they are stale). The Python writer and the
+  page's `toSVGString` must both produce the golden SVG byte for byte.
+
+## Document
+
+```json
+{"dl": 1, "generator": "herdr_team.canvas_display 1", "team": "alpha", "version": 412,
+ "bbox": [-40, -40, 1320, 760],
+ "layers": ["zones", "marks", "labels", "overlays"],
+ "fonts": {"sans": {"family": "Inter", "weights": [400, 500, 600, 700]}, "mono": {"family": "Geist Mono", "weights": [400]}},
+ "palettes": {"light": {"base.canvas": "#f7f8fa", "tone.info.fill": "#e8f2fe", "...": "..."}, "dark": {"...": "..."}},
+ "shadows": {"light": {"1": [{"x": 0, "y": 1, "blur": 2, "color": "#101828", "alpha": 0.06}]}, "dark": {}},
+ "entries": [Entry, ...]}
+```
+
+- `bbox` is `[x0, y0, x1, y1]`: every entry's `bbox` padded by 40, grown until
+  it also holds each frame title as a 1024-pixel picture of the board draws it
+  (the settling rule of `canvas_geometry.view_box`). The page fits to it.
+- `entries` come in render order: layer (`zones`, `marks`, `labels`,
+  `overlays`), then `z`, then the number in the id, then the id. Within an
+  entry, `items` draw in list order. Claims have `z` -1 and locks -2.
+- A **delta** (`GET /display?since=S`) is
+  `{"dl": 1, "version": V, "since": S, "full": false, "bbox": [...], "upserts": [Entry], "removes": ["E-9", "K-2"]}`.
+  With `"full": true` it is a whole document instead (`entries`, palettes,
+  shadows and fonts), and the page replaces what it holds.
+- `dl` changes only for a breaking change. A new primitive kind or an optional
+  field keeps it; renderers skip what they do not know.
+
+## Entry
+
+One per element, claim (`K-n`) or lock (`X-n`).
+
+```json
+{"id": "E-4", "kind": "box", "layer": "marks", "z": 7, "v": 12,
+ "bbox": [120, 40, 332, 104],
+ "hit": {"shape": "rect", "box": [120, 40, 212, 64]},
+ "handles": "box", "connect": true,
+ "edit": {"field": "text", "value": "Checkout API", "box": [136, 52, 180, 40], "font": "sans", "weight": 500,
+          "size": 20, "lh": 25, "align": "center", "wrap": "box", "fill": "tone.neutral.text"},
+ "frame": "E-2", "author": "alpha", "chip": {"bg": "chip.0.bg", "fg": "chip.0.fg", "initials": "AL"},
+ "locked": false, "items": [Primitive, ...]}
+```
+
+| Field | Meaning |
+|---|---|
+| `id`, `kind` | Element id and `type`, or `claim` / `lock`. An unknown type keeps its name and draws the placeholder card. |
+| `layer` | The entry's layer; an item may override it with its own `layer` (an arrow's label pill is in `labels`). |
+| `z`, `v` | The element's `z` and its `updated_seq`. Memoise an entry by `(id, v)`. |
+| `bbox` | `[x0, y0, x1, y1]` of everything the entry draws at any zoom, except the title above a frame (it depends on the zoom). |
+| `hit` | What a click selects. Boxes are `[x, y, w, h]`. `rect`, `ellipse`, `diamond` `{box}`; `line {points, tol_px}` (an arrow adds `pill: [x, y, w, h]`); `frame {box, band}` (only the title band and an 8 px screen rim hit); `pin {x, y, r_px}`; `none`. |
+| `handles` | `box` (8), `width` (east and west), `ends` (an arrow's start and end) or `none`. |
+| `connect` | An arrow may start or end on it. |
+| `edit` | What a double-click edits, or null. `box` is `[x, y, w, h]` in world units; `value` is the whole text; `align` is `center` or `start`; `wrap` is `box`, `width` (a text with a wrap width), `auto` (a text without one) or `line` (one line, a frame title). |
+| `frame` | The element's frame, or null. |
+| `author`, `chip` | The author and their chip: token references plus up to two initials. The operator is `chip.human`, initials `OP`. |
+| `locked` | The element lies in a lock's region. |
+| `until` | Claims only: the ISO expiry. |
+
+## Primitives
+
+Every primitive has `k`, and may have `layer`, `lod: [min_scale, max_scale]`
+(drawn only when `min <= scale < max`; either end may be null) and `op`
+(opacity 0 to 1). `scale` is screen pixels per world unit.
+
+Paint fields on shapes: `fill`, `stroke`, `sw` (world units), `sw_px` (screen
+pixels, wins over `sw`), `dash: [on, off]` (world units) and `elev` (1 to 3, a
+token shadow).
+
+| `k` | Fields | Notes |
+|---|---|---|
+| `rect` | `x y w h r` + paint | `r` is the corner radius. |
+| `ellipse` | `cx cy rx ry` + paint | |
+| `poly` | `points`, `closed` + paint | A diamond, a pen's smooth outline (filled with the stroke's paint). An open `poly` is never filled. |
+| `line` | `points` + `stroke sw dash` | A polyline, never filled. |
+| `path` | `d` + paint, `rule` | `d` is absolute `M L C Q Z` only; Python flattens arcs. |
+| `arrow` | `d`, `stroke sw dash`, `heads` | A head is `{"at": "end"\|"start", "shape": "chevron"\|"triangle", "points": [[x,y],[x,y],[x,y]]}` or `{"at", "shape": "dot", "cx", "cy", "r"}`, always in the shaft's stroke paint. |
+| `text` | `x`, `anchor`, `font` (`sans`/`mono`), `weight`, `size`, `lh`, `fill`, `box`, `lines` | Each line is `{"y", "t", "w", "dir"?}`: `y` its baseline, `w` Python's measured width at `size` (safety factor included), `dir: "rtl"` when its first strong character is right to left. `box` `[x, y, w, h]` is the room the lines were fitted to (it never clips). |
+| `image` | `x y w h`, `src: {"asset": name}` or `{"still": name}`, `fallback`? | Contained in its box. `fallback` is what to draw when the asset cannot be loaded. |
+| `slot` | `slot` (`chart`/`mermaid`/`viz`), `x y w h`, `ref: {id, v}`, `still` (a name or null), `fallback` | The browser draws the content live; without the browser, the still or else `fallback`. |
+| `group` | `items`, `t: [a,b,c,d,e,f]`?, `clip: [x,y,w,h]`?, `screen: [ax, ay]`? | With `screen` the children are in screen pixels around the anchor (comment pins, claim and lock labels). |
+
+**Paint** is `null`, a literal `"#rrggbb"` (the same in both themes), a token
+reference (`base.<role>`, `tone.<tone>.<role>`, `chip.<0-7|human>.<bg|fg>`) or
+`{"hatch": <paint>}`. A renderer resolves a reference with
+`palettes[theme][ref]`; an unknown one draws as `base.ink`. Nothing ever
+inverts colours.
+
+`canvas_display.paints(el)` is the only place stored colours become paints: a
+stored colour equal to what the element's tone resolves to in the light theme
+becomes that role's reference, any other hex stays literal, and an element from
+before 0.22 goes through the legacy tables. A label on a literal fill stays
+literal too, so it keeps its contrast in both themes.
+
+**Frame titles** (the one zoom rule): a frame emits its title twice. In the
+band: 16/600 at `(x + 20, y + 8)`, cut to the band's width, `lod: [0.75, null]`.
+Above the frame: the whole title, `lod: [null, 0.75]`,
+`zoom: {"min_px": 12, "grow": "up", "bottom": y0}` and `base_ratio`. A renderer
+draws it at `size_eff = max(size, min_px / scale)`; its block ends at `bottom`,
+each line `lh / size * size_eff` tall with its baseline `base_ratio * size_eff`
+below the line's top.
+
+## Numbers
+
+Every number in the document is rounded to 2 decimals half away from zero (an
+integral value is written as an int, never `-0`). `dumps` is
+`json.dumps(doc, sort_keys=True, separators=(",", ":"), ensure_ascii=False)`.
+
+`fmt(v)` is how both SVG writers print a number:
+`n = floor(abs(v) * 100 + 0.5)`; `"0"` when `n` is 0; else the sign, `n // 100`,
+and `"." + two digits` with trailing zeros stripped when `n % 100` is not 0.
+`tests/fixtures/display/fmt-vectors.json` holds the vectors both are tested on.
+
+## The canonical SVG
+
+Both writers produce exactly this, with no whitespace between elements:
+
+```
+<svg xmlns="http://www.w3.org/2000/svg" width="W" height="H" viewBox="x y w h">
+[<defs>filters synapse-elev-N (by N), patterns synapse-hatch-K, clipPaths synapse-clip-K (order of first use)</defs>]
+<rect x y width height fill="{base.canvas}"/>
+<g data-layer="zones"><g data-id="E-2">items</g>...</g><g data-layer="marks">...</g><g data-layer="labels">...</g><g data-layer="overlays">...</g>
+</svg>
+```
+
+- **The box** is the region asked for, else `bbox`, as `[x0, y0, x1, y1]` with
+  min and max per axis and at least one unit each way. `W` and `H` scale the
+  longer side to `max_px` (1024 by default), each rounded half to even, at
+  least 1. `u = (x1 - x0) / W`, and `scale = 1 / u` is what `lod`, zoomed text,
+  `sw_px` and screen groups use.
+- All four layer groups are always written. An entry appears in a layer when
+  its `bbox` meets the box (strictly) and at least one of its items in that
+  layer draws at this scale.
+- **Attributes.** Geometry first: `rect` is `x y width height [rx]` (rx only
+  when `r > 0`); `ellipse` `cx cy rx ry`; a closed `poly` is a `<polygon points>`,
+  an open one and a `line` a `<polyline points fill="none">`; `path` is
+  `d [fill-rule]`. Then paint: `fill stroke [stroke-width [stroke-dasharray]
+  stroke-linecap="round" stroke-linejoin="round"] [opacity] [filter]` (the
+  stroke group only when there is a stroke; `stroke-width` is `sw_px / scale`,
+  else `sw`, else 1). A missing paint is `none`; a hatch is
+  `url(#synapse-hatch-K)`.
+- **Arrows** are `<g [opacity]>` holding `<path d fill="none" stroke ...>` and
+  the heads: a dot `<circle cx cy r fill stroke="none">`, a triangle
+  `<polygon points fill stroke="none">`, a chevron
+  `<polyline points fill="none" stroke stroke-width linecap linejoin>` (never
+  dashed).
+- **Text** is `<g font-size font-family font-weight fill text-anchor
+  [opacity]>` with one `<text x y xml:space="preserve">` per line (on each
+  `<text>`, not the group: a browser's own style for `<text>` resets
+  `white-space`, so an inherited `xml:space` would collapse indentation); a line
+  with `dir: "rtl"` adds `unicode-bidi="plaintext"` (never `direction`: browsers
+  mirror `text-anchor` under it and resvg does not).
+- **Images** are `<image x y width height preserveAspectRatio="xMidYMid meet" href [opacity]>`;
+  slots are `<g data-slot="kind">` holding the still or the fallback.
+- **Groups** are `<g [transform] [clip-path] [opacity]>`; a screen group's
+  transform is `translate(ax ay) scale(u)` before any `matrix(...)`.
+- **Escaping** drops XML-invalid control characters and escapes `& < > "`.
+- **Canonical mode** (the goldens): families `Inter` and `Geist Mono`, urls
+  `synapse-asset:<name>` and `synapse-still:<name>`.
+- Outside canonical mode the agent's picture also rewrites emoji for resvg,
+  wraps each `dir: "rtl"` line in a right-to-left isolate (U+2067 … U+2069:
+  resvg ignores `unicode-bidi`, so the agent reads the line in the page's order),
+  inlines assets and stills, names `font-family="Inter, sans-serif"` on the
+  root, and adds id badges and the labelled grid (never display-list items).
+  The page uses the families `"Synapse Sans"` and `"Synapse Mono"`, each followed
+  by the script faces resvg falls back to (`SCRIPT_FALLBACKS` in
+  `web/src/v2/render/svgAttrs.js`: Arial Hebrew, Geeza Pro), and real urls.
+
+## Adding to it
+
+A new kind draws itself: its module's `emit(element, env)` returns primitives
+built with the helpers in `canvas_display` (`paints`, `label`, `text_prim`,
+`stroke_fields`, `card`). Nothing else changes, on either side, unless the kind
+needs browser-drawn content: then it names a `slot`, and the page adds one
+renderer under `web/src/v2/render/slots/`. A new primitive kind or field is
+added here first, then to both writers, then to the goldens.

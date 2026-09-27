@@ -1,0 +1,614 @@
+{
+ "authors": {
+  "qa-drawer": {
+   "agent": "claude",
+   "color": "#1971c2",
+   "index": 0,
+   "kind": "member"
+  }
+ },
+ "batches": {
+  "B-1": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "qa-drawer",
+   "first_seq": 1,
+   "last_seq": 11,
+   "undone": false
+  }
+ },
+ "claims": [],
+ "counters": {
+  "B": 1,
+  "C": 0,
+  "E": 11,
+  "G": 0,
+  "K": 0,
+  "X": 0
+ },
+ "elements": [
+  {
+   "alias": "intl",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "frame": null,
+   "group": null,
+   "h": 640,
+   "id": "E-1",
+   "intent": "the markets",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#f0f1f4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Launch checklist per market 🌍",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 11,
+   "w": 1180,
+   "x": 0,
+   "y": 0,
+   "z": 1
+  },
+  {
+   "alias": "zh",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": true,
+    "lines": [
+     "中国市场：支付宝和微信支付",
+     "必须在上线前完成接入测试"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 80,
+   "id": "E-2",
+   "intent": "Chinese label with no spaces",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "中国市场：支付宝和微信支付必须在上线前完成接入测试",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 300,
+   "x": 40,
+   "y": 60,
+   "z": 2
+  },
+  {
+   "alias": "ja",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "fit": {
+    "estimated": true,
+    "lines": [
+     "日本：請求書払いとコンビニ",
+     "決済に対応し、敬語のメール",
+     "文面を確認する"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 100,
+   "id": "E-3",
+   "intent": "Japanese label",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "日本：請求書払いとコンビニ決済に対応し、敬語のメール文面を確認する",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 300,
+   "x": 380,
+   "y": 60,
+   "z": 3
+  },
+  {
+   "alias": "ko",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 4,
+   "fit": {
+    "estimated": true,
+    "lines": [
+     "한국: 카카오페이",
+     "연동과 개인정보",
+     "동의 문구 검토"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "scale_shape",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 140,
+   "id": "E-4",
+   "intent": "Korean label with spaces",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "한국: 카카오페이 연동과 개인정보 동의 문구 검토",
+   "type": "ellipse",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 4,
+   "w": 280,
+   "x": 720,
+   "y": 60,
+   "z": 4
+  },
+  {
+   "alias": "emoji",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 5,
+   "fit": {
+    "estimated": true,
+    "lines": [
+     "Team 👩‍💻👨‍👩‍👧‍👦 ready ✅",
+     "Blocked 🚧 on legal 👍🏽",
+     "Markets 🇩🇪 🇯🇵 🇧🇷 🇮🇱"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 14,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 120,
+   "id": "E-5",
+   "intent": "emoji with ZWJ, skin tones and flags",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#fff0a0",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Team 👩‍💻👨‍👩‍👧‍👦 ready ✅\nBlocked 🚧 on legal 👍🏽\nMarkets 🇩🇪 🇯🇵 🇧🇷 🇮🇱",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 5,
+   "w": 260,
+   "x": 40,
+   "y": 180,
+   "z": 5
+  },
+  {
+   "alias": "ar",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 6,
+   "fit": {
+    "estimated": true,
+    "lines": [
+     "السوق السعودية:",
+     "التحقق من ضريبة",
+     "القيمة المضافة وعرض",
+     "الأسعار بالريال"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 140,
+   "id": "E-6",
+   "intent": "Arabic, right to left",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "السوق السعودية: التحقق من ضريبة القيمة المضافة وعرض الأسعار بالريال",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 6,
+   "w": 320,
+   "x": 340,
+   "y": 180,
+   "z": 6
+  },
+  {
+   "alias": "he",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 7,
+   "fit": {
+    "estimated": true,
+    "lines": [
+     "האם התרגום",
+     "לעברית",
+     "אושר?"
+    ],
+    "min": [
+     200,
+     120
+    ],
+    "policy": "scale_shape",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 200,
+   "id": "E-7",
+   "intent": "Hebrew question in a diamond",
+   "nudged": [
+    140,
+    40
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "האם התרגום לעברית אושר?",
+   "type": "diamond",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 11,
+   "w": 320,
+   "x": 840,
+   "y": 220,
+   "z": 7
+  },
+  {
+   "alias": "bidi",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 8,
+   "fit": {
+    "estimated": true,
+    "lines": [
+     "Order #4521 — הזמנה מאושרת —",
+     "تم تأكيد الطلب — 注文確認済み ✔"
+    ],
+    "min": [
+     20,
+     1
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 50,
+   "id": "E-8",
+   "intent": "mixed bidirectional free text",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#1c2024",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Order #4521 — הזמנה מאושרת — تم تأكيد الطلب — 注文確認済み ✔",
+   "type": "text",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 8,
+   "w": 383,
+   "wrap": false,
+   "x": 40,
+   "y": 340,
+   "z": 8
+  },
+  {
+   "alias": "accents",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 9,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Ångström façade naïve",
+     "coöperate Zürich São Paulo",
+     "Kraków Ærøskøbing"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 100,
+   "id": "E-9",
+   "intent": "Latin with accents",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Ångström façade naïve coöperate Zürich São Paulo Kraków Ærøskøbing",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 9,
+   "w": 320,
+   "x": 40,
+   "y": 430,
+   "z": 9
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 10,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "上线前 ✅ 确认"
+    ],
+    "size": 16
+   },
+   "frame": "E-1",
+   "from": "E-2",
+   "group": null,
+   "h": 32,
+   "head": "arrow",
+   "id": "E-10",
+   "intent": "a CJK arrow label",
+   "label_at": [
+    181.43,
+    160
+   ],
+   "points": [
+    [
+     183.72,
+     143.96
+    ],
+    [
+     179.14,
+     176.04
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "上线前 ✅ 确认",
+   "to": "E-5",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 5,
+   "x": 179,
+   "y": 144,
+   "z": 10
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 11,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "مراجعة ← סקירה"
+    ],
+    "size": 16
+   },
+   "frame": "E-1",
+   "from": "E-6",
+   "group": null,
+   "h": 28,
+   "head": "arrow",
+   "id": "E-11",
+   "intent": "an RTL arrow label",
+   "label_at": [
+    764.64,
+    287.05
+   ],
+   "points": [
+    [
+     663.96,
+     272.95
+    ],
+    [
+     865.32,
+     301.14
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "مراجعة ← סקירה",
+   "to": "E-7",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 11,
+   "w": 201,
+   "x": 664,
+   "y": 273,
+   "z": 11
+  }
+ ],
+ "homes": {
+  "qa-drawer": [
+   0,
+   -1000,
+   800,
+   -400
+  ]
+ },
+ "legend": [],
+ "locks": [],
+ "team": "qa",
+ "updated_at": "2026-01-01T00:00:00.000Z",
+ "v": 1,
+ "version": 11
+}

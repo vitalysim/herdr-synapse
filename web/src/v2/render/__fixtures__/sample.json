@@ -1,0 +1,492 @@
+{
+ "dl": 1,
+ "generator": "herdr_team.canvas_display 1",
+ "team": "demo",
+ "version": 3,
+ "bbox": [
+  60,
+  60,
+  620,
+  300
+ ],
+ "layers": [
+  "zones",
+  "marks",
+  "labels",
+  "overlays"
+ ],
+ "fonts": {
+  "sans": {
+   "family": "Inter",
+   "weights": [
+    400,
+    500,
+    600,
+    700
+   ]
+  },
+  "mono": {
+   "family": "Geist Mono",
+   "weights": [
+    400
+   ]
+  }
+ },
+ "palettes": {
+  "light": {
+   "base.canvas": "#f7f8fa",
+   "base.surface": "#ffffff",
+   "base.grid": "#e3e5e9",
+   "base.line": "#6b7079",
+   "base.ink": "#1c2024",
+   "base.ink_muted": "#5b616b",
+   "base.selection": "#6e56cf",
+   "tone.neutral.fill": "#ffffff",
+   "tone.neutral.stroke": "#80858f",
+   "tone.neutral.text": "#1c2024",
+   "tone.neutral.zone": "#f0f1f4",
+   "tone.neutral.zone_stroke": "#d9dce1",
+   "tone.info.fill": "#e8f2fe",
+   "tone.info.stroke": "#3f84d8",
+   "tone.info.text": "#0b3a6e",
+   "chip.0.bg": "#3e5bd6",
+   "chip.0.fg": "#ffffff"
+  },
+  "dark": {
+   "base.canvas": "#111214",
+   "base.surface": "#1b1c20",
+   "base.grid": "#26282c",
+   "base.line": "#8a8f98",
+   "base.ink": "#edeef0",
+   "base.ink_muted": "#a8adb5",
+   "base.selection": "#9b8afb",
+   "tone.neutral.fill": "#1b1c20",
+   "tone.neutral.stroke": "#7b818b",
+   "tone.neutral.text": "#edeef0",
+   "tone.neutral.zone": "#17181b",
+   "tone.neutral.zone_stroke": "#2b2e33",
+   "tone.info.fill": "#122640",
+   "tone.info.stroke": "#4a8fe0",
+   "tone.info.text": "#c4dffd",
+   "chip.0.bg": "#9aabff",
+   "chip.0.fg": "#0d1433"
+  }
+ },
+ "shadows": {
+  "light": {},
+  "dark": {}
+ },
+ "entries": [
+  {
+   "id": "E-1",
+   "kind": "frame",
+   "layer": "zones",
+   "z": 1,
+   "v": 1,
+   "bbox": [
+    100,
+    100,
+    580,
+    260
+   ],
+   "hit": {
+    "shape": "frame",
+    "box": [
+     100,
+     100,
+     480,
+     160
+    ],
+    "band": 40
+   },
+   "handles": "box",
+   "connect": false,
+   "edit": {
+    "field": "text",
+    "value": "Checkout",
+    "box": [
+     120,
+     108,
+     440,
+     24
+    ],
+    "font": "sans",
+    "weight": 600,
+    "size": 16,
+    "lh": 20,
+    "align": "start",
+    "wrap": "line",
+    "fill": "tone.neutral.text"
+   },
+   "frame": null,
+   "author": "alpha",
+   "chip": {
+    "bg": "chip.0.bg",
+    "fg": "chip.0.fg",
+    "initials": "AL"
+   },
+   "locked": false,
+   "items": [
+    {
+     "k": "rect",
+     "x": 100,
+     "y": 100,
+     "w": 480,
+     "h": 160,
+     "r": 16,
+     "fill": "tone.neutral.zone",
+     "stroke": "tone.neutral.zone_stroke",
+     "sw": 1
+    },
+    {
+     "k": "text",
+     "lod": [
+      0.75,
+      null
+     ],
+     "x": 120,
+     "anchor": "start",
+     "font": "sans",
+     "weight": 600,
+     "size": 16,
+     "lh": 20,
+     "fill": "tone.neutral.text",
+     "box": [
+      120,
+      108,
+      440,
+      20
+     ],
+     "lines": [
+      {
+       "y": 123.1,
+       "t": "Checkout",
+       "w": 71.2
+      }
+     ]
+    },
+    {
+     "k": "text",
+     "lod": [
+      null,
+      0.75
+     ],
+     "x": 100,
+     "anchor": "start",
+     "font": "sans",
+     "weight": 600,
+     "size": 16,
+     "lh": 20,
+     "base_ratio": 0.95,
+     "zoom": {
+      "min_px": 12,
+      "grow": "up",
+      "bottom": 100
+     },
+     "fill": "tone.neutral.text",
+     "box": [
+      100,
+      80,
+      72,
+      20
+     ],
+     "lines": [
+      {
+       "y": 95.1,
+       "t": "Checkout",
+       "w": 71.2
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "E-2",
+   "kind": "box",
+   "layer": "marks",
+   "z": 2,
+   "v": 1,
+   "bbox": [
+    120,
+    160,
+    280,
+    240
+   ],
+   "hit": {
+    "shape": "rect",
+    "box": [
+     120,
+     160,
+     160,
+     80
+    ]
+   },
+   "handles": "box",
+   "connect": true,
+   "edit": {
+    "field": "text",
+    "value": "Checkout API",
+    "box": [
+     136,
+     172,
+     128,
+     56
+    ],
+    "font": "sans",
+    "weight": 500,
+    "size": 20,
+    "lh": 25,
+    "align": "center",
+    "wrap": "box",
+    "fill": "tone.info.text"
+   },
+   "frame": "E-1",
+   "author": "alpha",
+   "chip": {
+    "bg": "chip.0.bg",
+    "fg": "chip.0.fg",
+    "initials": "AL"
+   },
+   "locked": false,
+   "items": [
+    {
+     "k": "rect",
+     "x": 120,
+     "y": 160,
+     "w": 160,
+     "h": 80,
+     "r": 8,
+     "fill": "tone.info.fill",
+     "stroke": "tone.info.stroke",
+     "sw": 2
+    },
+    {
+     "k": "text",
+     "x": 200,
+     "anchor": "middle",
+     "font": "sans",
+     "weight": 500,
+     "size": 20,
+     "lh": 25,
+     "fill": "tone.info.text",
+     "box": [
+      136,
+      172,
+      128,
+      56
+     ],
+     "lines": [
+      {
+       "y": 206.5,
+       "t": "Checkout API",
+       "w": 121.8
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "E-3",
+   "kind": "box",
+   "layer": "marks",
+   "z": 3,
+   "v": 2,
+   "bbox": [
+    400,
+    160,
+    560,
+    240
+   ],
+   "hit": {
+    "shape": "rect",
+    "box": [
+     400,
+     160,
+     160,
+     80
+    ]
+   },
+   "handles": "box",
+   "connect": true,
+   "edit": {
+    "field": "text",
+    "value": "Orders DB",
+    "box": [
+     416,
+     172,
+     128,
+     56
+    ],
+    "font": "sans",
+    "weight": 500,
+    "size": 20,
+    "lh": 25,
+    "align": "center",
+    "wrap": "box",
+    "fill": "tone.neutral.text"
+   },
+   "frame": "E-1",
+   "author": "alpha",
+   "chip": {
+    "bg": "chip.0.bg",
+    "fg": "chip.0.fg",
+    "initials": "AL"
+   },
+   "locked": false,
+   "items": [
+    {
+     "k": "rect",
+     "x": 400,
+     "y": 160,
+     "w": 160,
+     "h": 80,
+     "r": 8,
+     "fill": "tone.neutral.fill",
+     "stroke": "tone.neutral.stroke",
+     "sw": 2
+    },
+    {
+     "k": "text",
+     "x": 480,
+     "anchor": "middle",
+     "font": "sans",
+     "weight": 500,
+     "size": 20,
+     "lh": 25,
+     "fill": "tone.neutral.text",
+     "box": [
+      416,
+      172,
+      128,
+      56
+     ],
+     "lines": [
+      {
+       "y": 206.5,
+       "t": "Orders DB",
+       "w": 98.4
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "E-4",
+   "kind": "arrow",
+   "layer": "marks",
+   "z": 4,
+   "v": 3,
+   "bbox": [
+    284,
+    180,
+    396,
+    220
+   ],
+   "hit": {
+    "shape": "line",
+    "points": [
+     [
+      284,
+      200
+     ],
+     [
+      396,
+      200
+     ]
+    ],
+    "tol_px": 6
+   },
+   "handles": "ends",
+   "connect": false,
+   "edit": {
+    "field": "text",
+    "value": "writes",
+    "box": [
+     316,
+     190,
+     48,
+     20
+    ],
+    "font": "sans",
+    "weight": 500,
+    "size": 16,
+    "lh": 20,
+    "align": "center",
+    "wrap": "box",
+    "fill": "base.ink_muted"
+   },
+   "frame": "E-1",
+   "author": "alpha",
+   "chip": {
+    "bg": "chip.0.bg",
+    "fg": "chip.0.fg",
+    "initials": "AL"
+   },
+   "locked": false,
+   "items": [
+    {
+     "k": "arrow",
+     "d": "M284 200 L396 200",
+     "stroke": "base.line",
+     "sw": 2,
+     "heads": [
+      {
+       "at": "end",
+       "shape": "chevron",
+       "points": [
+        [
+         382,
+         193
+        ],
+        [
+         396,
+         200
+        ],
+        [
+         382,
+         207
+        ]
+       ]
+      }
+     ]
+    },
+    {
+     "k": "rect",
+     "layer": "labels",
+     "x": 308,
+     "y": 188,
+     "w": 64,
+     "h": 24,
+     "r": 6,
+     "fill": "base.surface",
+     "stroke": "base.grid",
+     "sw": 1
+    },
+    {
+     "k": "text",
+     "layer": "labels",
+     "x": 340,
+     "anchor": "middle",
+     "font": "sans",
+     "weight": 500,
+     "size": 16,
+     "lh": 20,
+     "fill": "base.ink_muted",
+     "box": [
+      316,
+      190,
+      48,
+      20
+     ],
+     "lines": [
+      {
+       "y": 205.3,
+       "t": "writes",
+       "w": 46.1
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

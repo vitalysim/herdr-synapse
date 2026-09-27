@@ -8,8 +8,10 @@
 //                        three (one minified ES module), p5 (the unmodified distributed file).
 //   dist/licenses/       <package>.txt for every bundled or vendored package, fonts.txt,
 //                        and THIRD_PARTY.txt, the summary.
-//   dist/kinds.json      the canvas kinds the page draws (src/canvas/kinds/names.js), which a
-//                        Python test holds equal to herdr_team/canvas_kinds.
+//   dist/kinds.json      the canvas kinds the v1 page draws (src/canvas/kinds/names.js), and the
+//                        display-list versions and slot kinds the v2 renderer draws
+//                        (src/v2/render/version.js); a Python test holds it equal to
+//                        herdr_team/canvas_kinds.
 //
 // The bundled Inter and Geist Mono (assets/fonts/) are not copied here: src/fonts.css imports them
 // and Vite hashes them into dist/assets/. This script checks they arrived byte for byte.
@@ -186,8 +188,19 @@ fs.writeFileSync(
 
 // -- 4. the page's canvas kinds ------------------------------------------------------------
 
-const { PAGE_KINDS, DISPLAY_LIST } = await import(pathToFileURL(path.join(WEB, "src", "canvas", "kinds", "names.js")).href);
-fs.writeFileSync(path.join(DIST, "kinds.json"), `${JSON.stringify({ v: 1, kinds: [...PAGE_KINDS].sort(), display_list: DISPLAY_LIST })}\n`);
+// kinds: what the v1 (Excalidraw) page has a builder for (src/canvas/kinds/names.js).
+// display_list and slots: what the v2 renderer draws (src/v2/render/version.js, data only):
+// the display-list versions it supports and the slot kinds it draws in the browser.
+const { PAGE_KINDS } = await import(pathToFileURL(path.join(WEB, "src", "canvas", "kinds", "names.js")).href);
+const RENDER_VERSION = path.join(WEB, "src", "v2", "render", "version.js");
+const { DL_SUPPORTED, SLOT_KINDS } = await import(pathToFileURL(RENDER_VERSION).href);
+if (!Array.isArray(DL_SUPPORTED) || DL_SUPPORTED.length !== 2 || !Array.isArray(SLOT_KINDS)) {
+  throw new Error("postbuild: src/v2/render/version.js must export DL_SUPPORTED [min, max] and SLOT_KINDS");
+}
+fs.writeFileSync(
+  path.join(DIST, "kinds.json"),
+  `${JSON.stringify({ v: 1, kinds: [...PAGE_KINDS].sort(), display_list: DL_SUPPORTED, slots: [...SLOT_KINDS].sort() })}\n`,
+);
 
 // -- 5. hash lists -----------------------------------------------------------------------
 
