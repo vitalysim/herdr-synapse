@@ -709,15 +709,16 @@ row. The command contract is [cli.md section 9n](cli.md#9n-whiteboard-canvas-and
 
 | Capability | UI | CLI | What you observe |
 | --- | --- | --- | --- |
-| Turn the layer on or off (the operator in person) | — | `whiteboard enable`, `whiteboard disable`, `whiteboard status` | `status` shows the session switch, each team's canvas and live-visual switches, the page server and the watch count; each team's board gets one `whiteboard_state` line; `me` in a member pane changes from `whiteboard: off` to `whiteboard: on · live visuals on …` |
-| One team off, or its live visuals off (the operator or a delegate) | — | `--team T whiteboard team off`, `whiteboard viz off` | `team.json` `config.whiteboard`; a `whiteboard_state` line; that team's `canvas` commands refuse `whiteboard_off` (or `viz` ops `viz_off`); other teams are untouched |
-| Open the page | `prefix+a`, or action `herdr-synapse.whiteboard` | `whiteboard open [--no-browser]`, `whiteboard stop` | the browser opens `http://127.0.0.1:<port>/` with the Canvas, Team, Activity and Diagrams tabs; over SSH the command prints the URL and an `ssh -L` line; a page started from a shell that could not be verified as yours is read-only |
+| Turn the layer on or off (the operator in person) | `d` in `prefix+t`, then the last choice | `whiteboard enable`, `whiteboard disable`, `whiteboard status` | `status` shows the session switch, each team's canvas and live-visual switches, the page server and the watch count; each team's board gets one `whiteboard_state` line; `me` in a member pane changes from `whiteboard: off` to `whiteboard: on · live visuals on …` |
+| One team off, or its live visuals off (the operator or a delegate) | `d` on the team (or a member) in `prefix+t` | `--team T whiteboard team off`, `whiteboard viz off` | `team.json` `config.whiteboard`; a `whiteboard_state` line; that team's `canvas` commands refuse `whiteboard_off` (or `viz` ops `viz_off`); other teams are untouched |
+| Open the page | `prefix+a`, `d` in `prefix+t`, or action `herdr-synapse.whiteboard` | `whiteboard open [--no-browser]`, `whiteboard stop` | the browser opens `http://127.0.0.1:<port>/` with the Canvas, Team, Activity and Diagrams tabs; over SSH the command prints the URL and an `ssh -L` line; a page started from a shell that could not be verified as yours is read-only |
 | Draw, and read what others drew | the page's Excalidraw tools | `canvas look`, `canvas draw`, `canvas comment`, `canvas claim`, `canvas legend`, `canvas portrait`, `canvas changes` | agents' marks stream in stroke by stroke with their names; your edits become operations authored by you; `canvas look` lists everything as text, `--image` renders a PNG with element ids |
-| Agents' MCP tools | — | automatic for members Synapse starts while the canvas is on | Claude Code and Pi get `--mcp-config <team>/whiteboard/mcp.json`, Codex two `-c mcp_servers.synapse_canvas.*` overrides; `resume --print` and `restore --dry-run` show them; other kinds use the CLI |
+| Agents' MCP tools | — | automatic for members Synapse starts while the canvas is on | Claude Code gets `--mcp-config <team>/whiteboard/mcp.json`, Codex two `-c mcp_servers.synapse_canvas.*` overrides; `resume --print` and `restore --dry-run` show them; Pi and every other kind use the CLI |
 | Point an agent at something | "Send to…" on a selection, or a comment with `@name` | `canvas send E-3 E-4 --to NAME --note "…"`, `canvas comment E-3 "@name …"` | one `canvas_sent` record, a nudge through the usual gates; drawing alone never wakes anyone (one `canvas_changed` line per author per minute) |
 | You lead | lock a region, undo a batch, resolve, hide an author | `canvas lock`, `canvas undo B-n` | agents' ops inside a lock refuse `canvas_locked`; an undone batch disappears for everyone |
 | Team views | the page's Team tab | `whiteboard views` | JSON with `work`, `facts`, `topology`, `timeline`, `lanes`, `canvas` |
-| Watch an agent, in a team or not | `o` on an agent row in `prefix+t` (`◉` marks it) | `watch <pane\|name>`, `watch show`, `watch list`, `unwatch` | its sidebar row gains `▶ 3/7 run the tests` / `✎ invoice.py` within 15 s once `$team_doing` is in your sidebar block; the Activity tab shows its plan, recent actions and files |
+| Give one agent a canvas | `d` on an agent in no team in `prefix+t`, "Give it a canvas of its own" | `create <team> --member <pane>:<role>:<name> --brief <name>="…"` | a team of one (default name `<agent>-canvas`, the agent keeps its name); its canvas is on, and the whiteboard is turned on first if it was off |
+| Watch an agent, in a team or not | `o` on an agent row in `prefix+t` (`◉` marks it; while the whiteboard is off, `o` asks to turn it on first) | `watch <pane\|name>`, `watch show`, `watch list`, `unwatch` | its sidebar row gains `▶ 3/7 run the tests` / `✎ invoice.py` within 15 s once `$team_doing` is in your sidebar block; the Activity tab shows its plan, recent actions and files |
 | Clear or delete | — | `whiteboard clear` (archives), `whiteboard purge [--all-teams] --yes` | a cleared canvas starts empty with its history under `whiteboard/archive/`; purge deletes it |
 
 Off means nothing runs: no page server, no watch polling, no tokens, every
@@ -727,7 +728,7 @@ reference hidden from `skill get`. Nothing stored is deleted until `purge`.
 **Verified**: unit tests (`tests/test_features.py`, `tests/test_whiteboard_cmd.py`,
 `tests/test_canvas_launch.py`, `tests/test_views.py`, `tests/test_canvas*.py`,
 `tests/test_whiteboard_server.py`, `tests/test_activity.py`, `tests/test_watch.py`);
-the live checks are C35 to C44 below.
+the live checks are C35 to C45 below.
 
 ## 6a. Context windows
 
@@ -1193,6 +1194,7 @@ Each row: do this, expect that.
 | C42 | lock a region on the page; ask a member to draw inside it; undo one of its batches | its op is refused `canvas_locked` in the reply; the undone batch disappears for everyone |
 | C43 | `o` on an agent row in `prefix+t` (any agent, in a team or not) | `◉` on the row; within 15 s its sidebar row reads `▶ n/m <step>` or `✎ <file>` (with `$team_doing` pasted); the Activity tab shows its card; `unwatch` clears the token |
 | C44 | `herdr-synapse whiteboard disable`, then `doctor` | the page shows "whiteboard disabled by the operator" and the server exits; watch tokens vanish; `canvas look` refuses again; `doctor` lists the three switch levels, `page server: not running`, and warns if agents are still watched |
+| C45 | with the whiteboard off, `prefix+t`, `d` on an agent in no team, "Give it a canvas of its own", Enter, Enter | the header says `whiteboard on`; a team `<agent>-canvas` holds only that agent, named as before; its row says `canvas`; `d` again, "Open the whiteboard page", opens the page on it |
 
 Permission changes are operator-only and apply at the next launch. `permissions`,
 `/permissions` and `who` expose saved policy without claiming to observe the

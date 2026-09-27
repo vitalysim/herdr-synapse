@@ -2500,6 +2500,15 @@ class PickerModel:
     #: (None when unknown); ``o`` toggles a watch and watched rows carry ``WATCH_MARK`` (0.21).
     watched: Set[str] = field(default_factory=set)
     watch_layer: Optional[bool] = None
+    #: The whiteboard from the tree (``d``, ``picker_whiteboard``): each team's own canvas and live-visual
+    #: switches (``{team: {"canvas", "viz"}}``), whether the page server runs, the row the menu is about,
+    #: the highlighted choice, and the two fields of a team of one.
+    wb_teams: Dict[str, Dict[str, bool]] = field(default_factory=dict)
+    wb_page: bool = False
+    wb_target: Dict[str, Any] = field(default_factory=dict)
+    wb_index: int = 0
+    solo_team: str = ""
+    solo_mission: str = ""
 
     # ``edit_key`` expects ``cursor``; the picker's list cursor already uses
     # that name, so the text cursor is ``cursor_pos`` and this shim maps it.
@@ -2755,12 +2764,29 @@ def _wrap_picker_text(text: str, width: int, continuation: str = "  ") -> List[s
         return [text]
     continuation_width = min(display_width(continuation), max(0, width - 1))
     continuation = truncate_columns(continuation, continuation_width, ellipsis="")
-    chunks = wrap_columns(text, width, max(1, width - continuation_width))
+    # The leading indent is kept exactly: ``wrap_columns`` turns n leading spaces into n + 1,
+    # which pushed every wrapped menu choice after the highlighted one a column to the right.
+    body = text.lstrip(" ")
+    lead = " " * min(len(text) - len(body), max(0, width - 1))
+    chunks = wrap_columns(body, max(1, width - len(lead)), max(1, width - continuation_width))
     if not chunks:
         return [""]
-    return [truncate_columns(chunks[0], width)] + [
+    return [truncate_columns(lead + chunks[0], width)] + [
         truncate_columns(continuation + chunk, width) for chunk in chunks[1:]
     ]
+
+
+def picker_message_lines(model: "PickerModel", width: int, height: int = 1 << 30) -> List[str]:
+    """The error or status under a picker stage, wrapped rather than cut at the right edge.
+
+    A question such as "... y turns it off, n cancels" ends with the keys that
+    answer it, so losing its tail on a narrow popup lost the answer. At most
+    half the popup, so the list above it keeps some rows.
+    """
+    text = "error: {}".format(model.error) if model.error else (model.status or "")
+    if not text:
+        return []
+    return _wrap_picker_text(text, width, "  ")[: max(1, height // 2)]
 
 
 def _option_window(groups: List[List[str]], selected: int, height: int) -> List[str]:
@@ -3007,6 +3033,12 @@ def picker_apply_key(model: PickerModel, key: str) -> Optional[Intent]:
         return None
     if model.stage == "actions":
         return _actions_key(model, key)
+    if model.stage == "whiteboard":
+        from herdr_team import picker_whiteboard as _wb
+        return _wb.menu_key(model, key)
+    if model.stage in ("solo_name", "solo_mission"):
+        from herdr_team import picker_whiteboard as _wb
+        return _wb.solo_key(model, key)
     if model.stage == "rename":
         return _rename_key(model, key)
     if model.stage == "goal":
@@ -3075,8 +3107,8 @@ def _watch_key(model: PickerModel, node: PickerNode) -> Optional[Intent]:
         model.error = "put the cursor on an agent to watch it"
         return None
     if model.watch_layer is False:
-        model.error = WATCH_OFF_HINT
-        return None
+        from herdr_team import picker_whiteboard as _wb
+        return _wb.watch_offer(model, node)
     terminal = node_terminal(node)
     watching = bool(terminal) and terminal in model.watched
     row = node.row
@@ -3157,6 +3189,10 @@ def _select_key(model: PickerModel, key: str) -> Optional[Intent]:
         model.stage = "topology"
         model.topology_top = 0
         model.status = None
+        return None
+    if key == "d":
+        from herdr_team import picker_whiteboard as _wb
+        _wb.open_menu(model, node)
         return None
     if node is None:
         return None
@@ -3893,7 +3929,7 @@ def _members_key(model: PickerModel, key: str) -> Optional[Intent]:
     return None
 
 
-PICKER_TEXT_STAGES = ("name", "charter", "rules", "members", "rename", "goal", "model", "swap_model")
+PICKER_TEXT_STAGES = ("name", "charter", "rules", "members", "rename", "goal", "model", "swap_model", "solo_name", "solo_mission")
 
 #: The member action menu, in the order it is shown. ``{team}`` is filled in per member.
 ACTION_OPTIONS = (
@@ -4190,6 +4226,12 @@ def _team_header(model: PickerModel, node: PickerNode, width: int) -> str:
         if missing:
             label = "Mission missing: {}".format(", ".join(str(name) for name in missing))
             text += "  " + ("[! {}]".format(label) if model.ascii_only else "⚠ " + label)
+    if model.watch_layer and degrade_level(width) < 2:
+        switches = model.wb_teams.get(node.team) or {}
+        if not switches.get("canvas", True):
+            text += "  canvas off"
+        else:
+            text += "  canvas" + ("" if switches.get("viz", True) else " (live visuals off)")
     if degrade_level(width) < 2:
         manager = model.managers.get(node.team)
         text += "  " + (("manager: " + str(manager)) if manager else "no manager")
@@ -4232,7 +4274,7 @@ def _topology_lines(model: PickerModel, width: int, height: int) -> List[str]:
             continue
         continuation = "|       " if logical.startswith("|") else ("      " if logical.startswith("  ") else "    ")
         body.extend(_wrap_picker_text(logical, width, continuation))
-    status_rows = int(bool(model.error or model.status))
+    status_rows = len(picker_message_lines(model, width, height))
     capacity = max(1, height - len(header) - status_rows)
     scrolling = len(body) > capacity
     if scrolling:
@@ -4259,13 +4301,15 @@ def _tree_lines(model: PickerModel, width: int, height: int) -> List[str]:
     if model.scope_workspace:
         scope = "  unassigned: {}".format(model.scope_workspace)
     picked = len(selected_rows(model))
-    keys = "Enter acts | Space picks | s restore team | g go to pane | o watch | b board | c connect | v map | f folder | x dissolve | w scope | a all | n new agent | r refresh | Esc quit"
+    keys = "Enter acts | Space picks | s restore team | g go to pane | o watch | d whiteboard | b board | c connect | v map | f folder | x dissolve | w scope | a all | n new agent | r refresh | Esc quit"
     head = "{} team{} · {} agent{}{}".format(teams, "" if teams == 1 else "s", agents, "" if agents == 1 else "s", scope)
+    if model.watch_layer is not None:
+        head += " · whiteboard {}".format("on" if model.watch_layer else "off")
     if picked:
         head += " · {} selected".format(picked)
     lines = _picker_heading(head, keys, width)
     # Always leave room for the detail line and for the error or status the caller appends.
-    body = max(1, height - len(lines) - 2)
+    body = max(1, height - len(lines) - 1 - max(1, len(picker_message_lines(model, width, height))))
     if len(nodes) > body:
         body = max(1, body - 1)  # the "more" footer
     model.page_rows = body
@@ -4311,10 +4355,10 @@ def _tree_lines(model: PickerModel, width: int, height: int) -> List[str]:
 
 
 def _watch_hint(model: PickerModel, node: PickerNode) -> str:
-    """`` · o watches it`` (or ``stops watching``) while the whiteboard layer is on; nothing otherwise."""
+    """`` · o watches it`` (or ``stops watching``) while the whiteboard layer is on, then `` · d whiteboard``."""
     if model.watch_layer is not True:
-        return ""
-    return " · o stops watching" if node_terminal(node) in model.watched else " · o watches it"
+        return " · d whiteboard"
+    return (" · o stops watching" if node_terminal(node) in model.watched else " · o watches it") + " · d whiteboard"
 
 
 def _tree_detail(model: PickerModel, nodes: List[PickerNode]) -> str:
@@ -4329,10 +4373,10 @@ def _tree_detail(model: PickerModel, nodes: List[PickerNode]) -> str:
         if info is not None and not info.get("project_dir"):
             missing = info.get("missing_missions") or []
             mission = " · Mission missing: {}".format(", ".join(str(name) for name in missing)) if missing else ""
-            return "f creates one for {} · s restores agents · x dissolves it · no shared rules or member documents{}".format(node.team, mission)
+            return "f creates one for {} · s restores agents · x dissolves it · no shared rules or member documents{} · d whiteboard".format(node.team, mission)
         if info is not None:
-            return "s restores agents · Enter folds {} · f changes its folder · x dissolves it · folder: {}".format(node.team, folder_summary(info))
-        return "Enter folds {} · s restores missing agents · x dissolves it".format(node.team)
+            return "s restores agents · Enter folds {} · f changes its folder · x dissolves it · folder: {} · d whiteboard".format(node.team, folder_summary(info))
+        return "Enter folds {} · s restores missing agents · x dissolves it · d whiteboard".format(node.team)
     if node.kind == "member":
         goal = str((node.member or {}).get("brief") or "")
         location = " · g goes to pane {}".format(node.row.pane_id) if node.row is not None else ""
@@ -4391,7 +4435,7 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
                 header.extend(_wrap_picker_text("goal: {}".format(headline(goal, max(20, width - 8))) if goal else "goal: (none yet)", width, "      "))
                 header.append("")
             footer = _wrap_picker_text("type 1-9 or 0 | Up/Down move | Enter acts | Esc back", width, "  ")
-            reserved = int(bool(model.error or model.status))
+            reserved = len(picker_message_lines(model, width, height))
             selected = min(model.action_index, len(groups) - 1)
             if len(header) + len(footer) + len(groups[selected]) + reserved > height:
                 header = _wrap_picker_text("Actions: {}".format(member.get("name") or model.action_member), width, "  ")
@@ -4400,6 +4444,10 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
             lines.extend(header)
             lines.extend(_option_window(groups, selected, option_height))
             lines.extend(footer)
+    elif model.stage in ("whiteboard", "solo_name", "solo_mission"):
+        from herdr_team import picker_whiteboard as _wb
+        stage_lines, has_input = _wb.lines(model, width, height)
+        lines.extend(stage_lines)
     elif model.stage == "rename":
         lines.append("Rename {} (lowercase letters, digits, - and _, up to {} characters)".format(model.action_member, MAX_MEMBER_NAME_CHARS))
         lines.append("Enter renames the member and its Herdr agent; the old name still resolves for 10 min")
@@ -4448,7 +4496,7 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
             header = _wrap_picker_text("Connect {} to another team (its manager: {}). Enter links or breaks; Esc goes back".format(team, mine or "none yet"), width, "  ")
             header.extend(_wrap_picker_text("Messages cross a link between the two managers; the sending team sees a mirror, the receiving manager is nudged", width, "  "))
             footer = _wrap_picker_text("j/k or Up/Down move | Enter acts | Esc back", width, "  ")
-            reserved = int(bool(model.error or model.status))
+            reserved = len(picker_message_lines(model, width, height))
             if len(header) + len(footer) + len(groups[selected]) + reserved > height:
                 header = _wrap_picker_text("Team links: {} | manager: {}".format(team, mine or "none yet"), width, "  ")
                 footer = _wrap_picker_text("arrows, Enter, Esc", width, "  ")
@@ -4471,7 +4519,7 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
                 label = "create a new team"
             lead = "{} {}  ".format(pointer, i + 1)
             groups.append(_wrap_picker_text(lead + label, width, " " * display_width(lead)))
-        reserved = int(bool(model.error or model.status))
+        reserved = len(picker_message_lines(model, width, height))
         lines.extend(header)
         lines.extend(_option_window(groups, model.target_index, max(1, height - len(header) - reserved)))
     elif model.stage == "name":
@@ -4565,12 +4613,15 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
             untrusted = sorted({str(row.kind) for row in selected_rows(model) if row.kind and row.kind not in model.trusted_kinds})
             for kind in untrusted:
                 lines.append("note: {} is not trusted for delivery yet; nothing is typed into it until you run: herdr-synapse kinds trust {}".format(kind, kind))
-    if model.error:
-        lines.append("error: {}".format(model.error))
-    elif model.status:
-        lines.append(model.status)
-    if has_input and len(lines) > height:
-        lines = lines[-height:]  # the input line and its message must stay on screen
+    message = picker_message_lines(model, width, height)
+    if has_input:
+        lines.extend(message)
+        if len(lines) > height:
+            lines = lines[-height:]  # the input line and its message must stay on screen
+    elif len(lines) + len(message) > height:
+        lines = lines[: max(0, height - len(message))] + message  # the list gives up rows, the message none
+    else:
+        lines.extend(message)
     return [truncate_columns(line, width) for line in lines[:height]]
 
 

@@ -122,7 +122,30 @@ def build_model(api: Any, context: Dict[str, Any], layout: Optional[Layout] = No
     model.trusted_kinds = trusted_kinds(layout)
     model.scope_workspace = focused if focused and any(r.workspace_id == focused for r in rows) else None
     model.watched, model.watch_layer = watch_state(layout)
+    model.wb_teams, model.wb_page = whiteboard_state(layout, teams)
     return model
+
+
+def whiteboard_state(layout: Optional[Layout], teams: Dict[str, Dict[str, Any]]) -> Tuple[Dict[str, Dict[str, bool]], bool]:
+    """``({team: {"canvas", "viz"}}, page server running)`` for the ``d`` menu and the team rows."""
+    if layout is None:
+        return {}, False
+    switches: Dict[str, Dict[str, bool]] = {}
+    try:
+        from herdr_team import features as _features
+
+        for name, doc in teams.items():
+            switch = _features.team_switch(layout.session, layout.team(name), doc)
+            switches[name] = {"canvas": bool(switch.enabled), "viz": bool(switch.viz_enabled)}
+    except (HerdrTeamError, OSError, ValueError):
+        pass
+    try:
+        from herdr_team import whiteboard_server as _server
+
+        page = _server.status(layout) is not None
+    except (HerdrTeamError, OSError, ValueError):
+        page = False
+    return switches, page
 
 
 def watch_state(layout: Optional[Layout]) -> Tuple[Set[str], Optional[bool]]:
@@ -197,6 +220,7 @@ def refresh_rows(model: PickerModel, api: Any, layout: Optional[Layout]) -> None
     model.links = fresh.links
     model.managers = fresh.managers
     model.watched, model.watch_layer = fresh.watched, fresh.watch_layer
+    model.wb_teams, model.wb_page = fresh.wb_teams, fresh.wb_page
     model.collapsed &= set(model.rosters)
     model.collapsed_tabs &= {row.tab_id or "{}:tab?".format(row.workspace_id or "unknown") for row in model.rows}
     if not tui_model.focus_node(model, keep_key):
@@ -507,7 +531,7 @@ def run(layout: Layout, api: Any, env: Dict[str, str], actions: bool = True) -> 
 
 
 #: Member actions the tree can run while the popup stays open.
-ACTION_INTENTS = ("agent_focus", "agent_watch", "member_rename", "member_goal", "member_send_goal", "member_remove", "member_focus", "member_resume", "member_manager", "member_model", "team_folder_set", "team_board_open", "team_dissolve", "team_link")
+ACTION_INTENTS = ("agent_focus", "agent_watch", "whiteboard_steps", "member_rename", "member_goal", "member_send_goal", "member_remove", "member_focus", "member_resume", "member_manager", "member_model", "team_folder_set", "team_board_open", "team_dissolve", "team_link")
 #: ``remove`` and ``rename`` do several socket round trips plus a lock wait; the console's 20 s is too
 #: tight for them, and a timeout kills the CLI mid-change (M8 review).
 ACTION_TIMEOUT_S = 45.0
@@ -515,6 +539,7 @@ ACTION_TIMEOUT_S = 45.0
 ACTION_LABELS = {
     "agent_focus": "going to {member}",
     "agent_watch": "updating the watch on {member}",
+    "whiteboard_steps": "working on the whiteboard",
     "member_rename": "renaming {member}",
     "member_goal": "saving the goal for {member}",
     "member_send_goal": "sending the goal to {member}",
@@ -731,6 +756,8 @@ def execute_action(intent: Any, model: PickerModel, api: Any, layout: Optional[L
 
     if intent.kind == "agent_watch":
         return execute_watch(intent, model, api, layout, env)
+    if intent.kind == "whiteboard_steps":
+        return execute_whiteboard(intent, model, api, layout, env)
 
     if not member_still_matches(layout, intent):
         model.error = "{} changed while this was open; press r to refresh".format(intent.args.get("member"))
@@ -813,6 +840,76 @@ def execute_watch(intent: Any, model: PickerModel, api: Any, layout: Optional[La
     else:
         model.watched.discard(expected)
         model.status = "stopped watching {}".format(member)
+    return True
+
+
+def whiteboard_failure_status(argv: Sequence[str], err: Dict[str, Any]) -> str:
+    """One line for a whiteboard step the CLI refused."""
+    code = str(err.get("code") or "error")
+    message = str(err.get("message") or code)
+    if code == "author_mismatch":
+        return "the whiteboard switches are the operator's in person, and this popup could not be verified as you: {}".format(message)
+    if code == "watch_limit":
+        return "at most {} agents can be watched; stop watching one first".format(err.get("max") or 20)
+    if code == "cli_timeout":
+        return "{} took too long; press r to see what happened".format(" ".join(argv[:2]))
+    return "{}: {}".format(code, message)
+
+
+def _opened_status(out: Any) -> str:
+    """What ``whiteboard open`` did, for the status line."""
+    if not isinstance(out, dict):
+        return "opened the whiteboard page"
+    browser = out.get("browser")
+    if browser == "opened":
+        return "opened the whiteboard page in your browser"
+    hint = out.get("ssh_hint")
+    tail = "; on the machine with your browser run {}".format(hint) if hint else ""
+    return "the page is at {} (the link works once){}".format(out.get("url") or "?", tail)
+
+
+def execute_whiteboard(intent: Any, model: PickerModel, api: Any, layout: Optional[Layout], env: Dict[str, str]) -> bool:
+    """``d`` (and ``o`` while the whiteboard is off): run the steps in order, stop at the first refusal, keep the popup open."""
+    from herdr_team.console import run_cli
+
+    args = intent.args
+    pane_id = str(args.get("check_pane") or "")
+    expected = str(args.get("terminal_id") or "")
+    if pane_id:
+        # The same guard as ``o``: the pane must still host the agent the menu was opened on.
+        try:
+            found = api.request("agent.get", {"target": pane_id})
+            agent = found.get("agent") if isinstance(found, dict) else None
+        except HerdrTeamError as err_obj:
+            model.error = "cannot reach {}: {}".format(pane_id, err_obj.message)
+            model.stage = "select"
+            return True
+        if not isinstance(agent, dict) or (expected and str(agent.get("terminal_id") or "") != expected):
+            model.error = "{} changed while this was open; press r to refresh".format(pane_id)
+            model.stage = "select"
+            return True
+    status = str(args.get("done") or "done")
+    done: List[str] = []
+    for argv in args.get("steps") or []:
+        rc, out, err = run_cli([str(a) for a in argv], env, timeout=ACTION_TIMEOUT_S)
+        if err:
+            model.error = whiteboard_failure_status(argv, err)
+            if done:
+                model.error += " (already done: {})".format(", ".join(done))
+            break
+        done.append(" ".join(str(a) for a in argv))
+        if list(argv) == ["whiteboard", "open"]:
+            status = _opened_status(out)
+    else:
+        model.error = None
+        model.status = status
+    model.stage = "select"
+    try:
+        refresh_rows(model, api, layout)
+    except HerdrTeamError as err_obj:
+        model.status = "{} (refresh failed: {})".format(model.status or "", err_obj.message)
+    if args.get("focus"):
+        tui_model.focus_node(model, str(args["focus"]))
     return True
 
 

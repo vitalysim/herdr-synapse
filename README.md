@@ -158,7 +158,8 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
 - **A whiteboard, when you want one.** Off until you turn it on. Then each
   team gets a shared canvas that its agents and you draw on together, a page
   that draws the team's work, facts and people, and a watch that shows what
-  any agent is doing on its sidebar row. See [Whiteboard and watch](#whiteboard-and-watch).
+  any agent is doing on its sidebar row. All of it runs from `prefix+t`: `d`
+  on any agent or team. See [Whiteboard and watch](#whiteboard-and-watch).
 - **Mission control and templates.** `prefix+d` shows what needs you across every
   team. `create --template research-sprint | content-campaign | vuln-hunt |
   feature-team` starts a whole team, and `template save` keeps yours.
@@ -690,6 +691,8 @@ or share as a folder of Markdown.
 | `f` | set that team's project folder |
 | `x` | dissolve that team (asks first) |
 | `w` | show unassigned agents from this space only, or from every space |
+| `o` | watch the highlighted agent, in a team or not; while the whiteboard is off it asks to turn it on first |
+| `d` | the whiteboard menu for the highlighted row: watch, a canvas for one agent, a team's canvas and live visuals, the page, on/off ([Whiteboard and watch](#whiteboard-and-watch)) |
 | `r`, Esc | refresh, close |
 
 Closed your agents? Open a shell tab, press `Ctrl+B`, `T`, highlight the saved team and press `s`. Synapse creates a new `team:<name>` tab with panes for missing members, resumes their recorded conversations when available, and starts fresh when no conversation ID was saved. Names, roles, manager assignment, model/effort settings, instructions, board history and team links are preserved. Agents already running or with a reserved pane are skipped. Startup failures stay visible for inspection; after partial recovery, `g` on a team opens the restored tab. This restores saved teams in the same Herdr session; dissolved teams are archived and are not restored here.
@@ -769,6 +772,21 @@ A visual layer for your teams, **off until you turn it on**. When it is on:
   and current step, recent actions and files touched, on the page and as one
   line on its sidebar row.
 
+**All of it from `prefix+t`.** The teams view lists every agent, in a team or
+not. Press `d` on any row for its whiteboard menu:
+
+| On | `d` offers |
+| --- | --- |
+| an agent in no team | watch it; give it a canvas of its own (a team of one: Enter twice takes the prefilled name and Mission) |
+| a member | watch it; turn its team's canvas or live visuals on or off |
+| a team | turn its canvas or live visuals on or off |
+| any row | open the page; turn the whiteboard on or off for this session |
+
+A choice that needs the whiteboard while it is off turns it on first and says
+so, and `o` on an agent while it is off asks to turn it on and watch. The
+header shows `whiteboard on` or `off`, and each team row says whether its
+canvas is on. The same, from a shell:
+
 ```bash
 herdr-synapse whiteboard enable        # you, in person; every team is on from now
 herdr-synapse whiteboard open          # or prefix+a: opens the page in your browser
@@ -778,15 +796,16 @@ herdr-synapse watch w3:p2              # or `o` on an agent row in prefix+t
 herdr-synapse whiteboard disable       # everything stops; nothing drawn is lost
 ```
 
-**A team, or one agent.** `enable` is once per Herdr session, from your own
-shell, not an agent's pane. After that:
+**A team, or one agent.** The whiteboard is turned on once per Herdr session,
+by you: from `prefix+t`, the console, or your own shell, never an agent's
+pane. After that:
 
 - **Watch needs no team.** Flag any agent in any pane (`watch <pane>` or `o`
   in `prefix+t`); its sidebar row, `watch show` and the page's Activity tab
   follow it.
 - **A canvas belongs to a team, and a team can be one agent.** Every team you
   already have gets its canvas as soon as the layer is on. For a single agent,
-  make it a team of one:
+  make it a team of one: `d` on it in `prefix+t`, or from a shell:
 
 ```bash
 # an agent already running in pane w1:p3
@@ -1746,20 +1765,26 @@ session with Claude Code on Haiku and Codex 0.157.0:
 - watch showed a real member's plan, recent actions and context, and its
   sidebar line;
 - a person's text edit on the page reached the canvas as the operator's, with
-  the text as typed.
+  the text as typed;
+- in the Teams popup (the real plugin pane, driven by keystrokes), `d` on a
+  Claude Code agent in no team turned the whiteboard on and made it a team of
+  one, `d` on that member turned its team's canvas off, `o` watched it, and
+  turning the whiteboard off asked first; the switch recorded the popup as
+  the operator in person.
 
 That run found watch showing only an agent's last two actions (transcript
 lines carrying images are that large), labels with an emoji or a symbol
 drawn as boxes in the picture on macOS, text wrapped differently by the
 canvas, the picture and the page (and clipped when the page measured it
-before its font loaded), and live visuals drawn at a fixed size sitting in a
-corner of their frame; all are fixed with tests.
+before its font loaded), live visuals drawn at a fixed size sitting in a
+corner of their frame, and a narrow popup cutting a question off before the
+keys that answer it; all are fixed with tests.
 
 Not yet exercised live:
 
 - OpenCode and Pi members drawing through the `canvas` CLI, watch on OpenCode
   and Pi, the whiteboard on Linux, and the page in a person's own browser
-  (the remaining live checks are C35 to C44 in
+  (the remaining live checks are C35 to C45 in
   [docs/capabilities.md](docs/capabilities.md));
 - a Codex profile switch by `profile --apply restart`, and the popup inside a
   real `prefix+t` Herdr client rather than a plain pane;

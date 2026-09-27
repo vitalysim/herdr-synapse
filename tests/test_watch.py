@@ -419,8 +419,11 @@ class PickerKeyTests(unittest.TestCase):
     def test_o_explains_itself_instead_of_acting(self):
         model = self.model(layer=False)
         tui_model.focus_node(model, "pane:w1:p3")
+        # While the whiteboard is off, o asks to turn it on and watch (test_picker_whiteboard pins the answer).
         self.assertIsNone(picker_apply_key(model, "o"))
-        self.assertEqual(model.error, "whiteboard is off: herdr-synapse whiteboard enable")
+        self.assertIsNone(model.error)
+        self.assertIn("The whiteboard is off. Turn it on and watch w1:p3?", model.status)
+        self.assertEqual(model.pending_action.kind, "whiteboard_steps")
         model = self.model()
         tui_model.focus_node(model, "team:alpha")
         self.assertIsNone(picker_apply_key(model, "o"))

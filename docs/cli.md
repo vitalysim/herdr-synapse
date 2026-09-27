@@ -2500,7 +2500,14 @@ prefixes). The notifier stamps a watched pane's `team_doing` token (source
 `herdr-synapse:watch`, 60 s TTL, refreshed every 15 s, ≤ 32 columns) while the
 layer is on; for a command it shows only the program (`$ psql`, `$ git
 commit`), never its arguments, because every agent can read pane tokens; `setup --print-config` puts `$team_doing` on a row of its own.
-`o` on an agent row in `prefix+t` toggles watch.
+`o` on an agent row in `prefix+t` toggles watch; while the layer is off it
+asks to turn it on and watch in one step. `d` on any row of `prefix+t` opens
+the whiteboard menu, which runs these same commands from the popup (the
+operator in person): `watch`/`unwatch`, `whiteboard enable`/`disable` (off asks
+first), `whiteboard open`, `--team T whiteboard team|viz on|off`, and for an
+agent in no team `create <name> --member <pane>:<role>:<name> --brief
+<name>=<Mission>`, a team of one whose name defaults to `<agent>-canvas`. A
+choice that needs the layer while it is off runs `whiteboard enable` first.
 
 ### Board records
 

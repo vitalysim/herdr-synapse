@@ -85,7 +85,8 @@ Open it with `prefix+t`, `herdr-synapse ui picker`, or the
 | `f` | Set or change the highlighted team's project folder. |
 | `x` | Ask to dissolve the highlighted team. Its board is archived and its agents keep running. |
 | `w` | Show unassigned agents from the current Herdr space or from every space. |
-| `o` | Toggle watch on the highlighted agent, in a team or not (the operator; the whiteboard must be on). A watched row shows `◉` (`@` in ASCII mode) and its sidebar row shows what it is doing; with the whiteboard off it says `whiteboard is off: herdr-synapse whiteboard enable`. |
+| `o` | Toggle watch on the highlighted agent, in a team or not (the operator). A watched row shows `◉` (`@` in ASCII mode) and its sidebar row shows what it is doing. While the whiteboard is off it asks to turn it on and watch: `y` does both, `n` cancels. |
+| `d` | The whiteboard menu for the highlighted row: watch or stop watching an agent; give an agent in no team a canvas of its own (a team of one: a team name, then its Mission, both prefilled); turn a team's canvas or live visuals on or off; open the page; turn the whiteboard on or off for the session (off asks first). A choice that needs the whiteboard while it is off turns it on first and says so. `Esc` or `d` goes back. |
 | `r` | Refresh teams and agents. |
 | `Esc` / `q` / `Ctrl+C` | Close the view. |
 
