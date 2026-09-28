@@ -206,6 +206,29 @@ class Labels(unittest.TestCase):
         none = _project.project(element(*many, ground=False, labels="none"), "iso", BOX)
         self.assertEqual(self.labels(none), {})
 
+    def test_a_label_under_a_wide_object_sits_just_under_its_outline(self):
+        # QA phase34 L11: the table's label, pushed under it by the servers standing on it, sat under its bounding box, far
+        # below the table where the label was (the lowest corner is off to one side).
+        servers = [{"id": "s{}".format(i), "shape": "box", "size": [0.5, 0.6, 0.6], "tone": "info", "in": "row", "label": "s{}".format(i)}
+                   for i in (1, 2, 3)]
+        el = element({"id": "table", "shape": "box", "size": [3, 0.8, 1], "label": "table", "tone": "neutral"},
+                     {"id": "row", "shape": "group", "layout": "row", "gap": 0.2, "on": "table"}, *servers,
+                     {"id": "mon", "shape": "box", "size": [0.6, 0.4, 0.05], "tone": "accent", "label": "monitor", "above": "s2", "gap": 0.1},
+                     ground=False)
+        result = _project.project(el, "iso", BOX)
+        label = self.labels(result)["table"]
+        x0, x1 = label["box"][0], label["box"][0] + label["box"][2]
+        table = [pt for poly in polys(result, "mat.neutral") for pt in poly["points"]]
+        self.assertGreater(label["box"][1], min(y for _x, y in table), "the servers and the monitor push it under the table")
+        lowest = max(y for _x, y in table)
+        edge = _project._bottom_under([tuple(pt) for pt in table], x0, x1)
+        self.assertIsNotNone(edge)
+        self.assertLess(edge, lowest - 20, "the outline under the label is well above the table's lowest corner")
+        self.assertGreaterEqual(label["box"][1], edge, "the label is under the outline")
+        self.assertLess(label["box"][1], edge + 12, "and just under it")
+        self.assertEqual(_project._bottom_under([(0, 0), (10, 10)], 20, 30), None, "no outline there")
+        self.assertEqual(_project._bottom_under([(0, 0), (10, 10), (10, 0)], 2, 4), 4.0, "the lower edge at the span's far end")
+
     def test_a_link_label_sits_at_its_middle(self):
         el = element({"id": "a", "shape": "box"}, {"id": "b", "shape": "box", "right_of": "a", "gap": 3}, links=["a -> b: SQL"], ground=False)
         self.assertIn("SQL", self.labels(_project.project(el, "front", BOX)))

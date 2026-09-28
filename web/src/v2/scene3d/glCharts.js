@@ -17,7 +17,7 @@ import { Grid3DComponent } from "echarts-gl/components";
 import { resolveOption } from "../charts/resolve.js";
 import { ensureTheme } from "../charts/theme.js";
 import { glBudget } from "./budget.js";
-import { surfaceGrid } from "./glOption.js";
+import { cornerLabels, surfaceGrid } from "./glOption.js";
 
 echarts.use([CanvasRenderer, AriaComponent, LegendComponent, TooltipComponent, VisualMapComponent, Bar3DChart, Scatter3DChart, SurfaceChart, Grid3DComponent]);
 
@@ -64,7 +64,7 @@ function drawable(option, doc, theme, palette) {
   const resolved = resolveOption(option, doc, palette, theme);
   resolved.animation = false;
   if (Array.isArray(resolved.series)) resolved.series = resolved.series.map(surfaceGrid);
-  return resolved;
+  return cornerLabels(resolved);
 }
 
 let serial = Promise.resolve();

@@ -2,7 +2,10 @@
 
 ``x`` and ``y`` are the two categories (nominal, ordinal, or a small set of
 times or numbers such as hours), ``z`` the measure (summed when rows repeat,
-or ``aggregate``), coloured by value on the ``chart.seq`` ramp. At most 40 × 40
+or ``aggregate``), coloured by value on the ``chart.seq`` ramp. A nominal
+``x`` goes by total (``sort``, as a bar's axis); the depth axis ``y`` takes no
+``sort``, so a nominal one of weekday or month names keeps the calendar's order
+(Mon…Sun, Jan…Dec) and any other goes by total. At most 40 × 40
 cells: the rest of a long category folds away (the last 40 periods of a time
 axis, else the 40 largest), reported as ``chart_capped``.
 
@@ -56,6 +59,32 @@ def _categories(spec: Mapping[str, Any], table: _data.Table, field: str, totals:
     return cats, order
 
 
+#: Weekday and month names (English, full or three letters): a depth axis made only of them keeps the calendar's order.
+_CALENDARS = (("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"),
+              ("january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november",
+               "december"))
+
+
+def _calendar(cats: Sequence[Any]) -> Optional[List[Any]]:
+    """``cats`` in calendar order when every one names a weekday, or every one a month (QA phase34 L7: a 3D bar over
+    weekdays ranked its depth axis Mon, Fri, Thu, Wed, Tue by total); None otherwise."""
+    for names in _CALENDARS:
+        index: Dict[str, int] = {}
+        for i, name in enumerate(names):
+            index[name] = i
+            index[name[:3]] = i
+        keys = []
+        for value in cats:
+            key = index.get(str(value).strip().lower().rstrip(".")) if isinstance(value, str) else None
+            if key is None:
+                break
+            keys.append(key)
+        else:
+            if cats and len(set(keys)) == len(keys):
+                return [c for _k, c in sorted(zip(keys, cats), key=lambda pair: pair[0])]
+    return None
+
+
 def model(spec: Dict[str, Any], table: _data.Table) -> Dict[str, Any]:
     x, y, z = spec["x"], spec["y"], spec.get("z")
     how = SE.how_of(spec, table, [x, y]) if z else "count"
@@ -68,6 +97,8 @@ def model(spec: Dict[str, Any], table: _data.Table) -> Dict[str, Any]:
     capped: List[str] = []
     xs, x_order = _categories(spec, table, x, totals_x)
     ys, y_order = _categories(dict(spec, sort=None), table, y, totals_y)
+    if y_order == "sort":
+        ys = _calendar(ys) or ys
     xs = _cap(xs, x_order, totals_x, x, capped)
     ys = _cap(ys, y_order, totals_y, y, capped)
     xi = {k: i for i, k in enumerate(xs)}

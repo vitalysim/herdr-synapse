@@ -17,3 +17,20 @@ export function surfaceGrid(series) {
   const order = series.data.map((d, i) => [Number(pts[i][1]), Number(pts[i][0]), d]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   return { ...series, data: order.map((r) => r[2]), dataShape: [ys.length, xs.length] };
 }
+
+/**
+ * The value axis's lowest label left out (QA phase34 L7): echarts-gl puts it at the floor's near corner,
+ * where the first width-axis label is drawn too ("0" on "8", "−2" on "10"). The steps above it still
+ * read the axis. Only a zAxis3D with a numeric min and a function formatter (or none) is changed.
+ */
+export function cornerLabels(option) {
+  const z = option && option.zAxis3D;
+  if (!z || Array.isArray(z) || typeof z !== "object") return option;
+  const label = z.axisLabel || {};
+  const inner = label.formatter;
+  const min = Number(z.min);
+  if (label.show === false || (inner != null && typeof inner !== "function") || z.min == null || !Number.isFinite(min)) return option;
+  const tol = 1e-9 * Math.max(1, Math.abs(min));
+  const formatter = (value, ...rest) => (Math.abs(Number(value) - min) <= tol ? "" : inner ? inner(value, ...rest) : String(value));
+  return { ...option, zAxis3D: { ...z, axisLabel: { ...label, formatter } } };
+}

@@ -25,7 +25,8 @@ the still views (``iso``, ``front``, ``top``), as display-list primitives inside
    dashed edges.
 5. **Labels.** 12-unit text on a pill above each labelled object's projected
    top; a label that meets another moves up 8 units at a time (4 times), then
-   under its object, then beside it on a leader line (right, then left). A spot
+   under its object (just under its outline where the label spans it, not
+   under its bounding box), then beside it on a leader line (right, then left). A spot
    that covers no other object (what holds the labelled one up aside), leader
    included, wins over one that does. A label that meets another label
    everywhere is dropped from the picture (``labels: all`` keeps it) and
@@ -347,11 +348,11 @@ def _label_prims(text: str, rect: Sequence[float], leader: Optional[Tuple[P2, P2
 
 
 def _place_label(text: str, anchor: P2, placed: List[Sequence[float]], box: Sequence[float], keep: bool,
-                 avoid: Sequence[Sequence[float]] = (), outline: Optional[Sequence[float]] = None
-                 ) -> Tuple[Optional[Tuple[float, float, float, float]], Optional[Tuple[P2, P2]], bool]:
+                 avoid: Sequence[Sequence[float]] = (), outline: Optional[Sequence[float]] = None,
+                 corners: Sequence[P2] = ()) -> Tuple[Optional[Tuple[float, float, float, float]], Optional[Tuple[P2, P2]], bool]:
     """Where a label goes (3.8 point 5): above its object, moved up in steps (with a line back once it is well clear),
     then under it, then beside it on a leader, right then left (``outline``: the object's ``x0, y0, x1, y1`` on the
-    picture). A spot clear of ``avoid`` (every other object but what holds this one up), leader line included, is
+    picture; ``corners``, its projected corners, put the spots under it just under its outline). A spot clear of ``avoid`` (every other object but what holds this one up), leader line included, is
     preferred; only other labels and the box's edge rule a spot out. None when every spot meets another label
     (``keep``: the first spot anyway, and the last value says it is crowded)."""
     bx0, by0, bx1, by1 = box[0], box[1], box[0] + box[2], box[1] + box[3]
@@ -364,7 +365,7 @@ def _place_label(text: str, anchor: P2, placed: List[Sequence[float]], box: Sequ
             return False
         return leader is None or not any(_segment_meets(leader[0], leader[1], other) for other in avoid)
 
-    spots = _label_spots(text, anchor, box, outline)
+    spots = _label_spots(text, anchor, box, outline, corners)
     # Only what lies near the spots can meet them: one pass narrows both lists (the scene's labels grow quadratically).
     reach = (min(r[0] for r, _l in spots) - 1, min(r[1] for r, _l in spots) - 1, max(r[2] for r, _l in spots) + 1,
              max(r[3] for r, _l in spots) + 1)
@@ -401,7 +402,32 @@ def _segment_meets(a: P2, b: P2, rect: Sequence[float], inset: float = 2.0) -> b
     return True
 
 
-def _label_spots(text: str, anchor: P2, box: Sequence[float], outline: Optional[Sequence[float]]
+def _bottom_under(corners: Sequence[P2], x0: float, x1: float) -> Optional[float]:
+    """The lowest point on the picture of the outline of ``corners`` (a convex solid's projected corners) between ``x0``
+    and ``x1``; None when it does not reach there. The outline's lower edge is concave, so its lowest point over a span is
+    at an end of the span or at a corner inside it; every segment between two corners lies inside the outline, so the
+    lowest crossing over all of them is the outline's (QA phase34 L11: a wide object's label sat under its bounding box,
+    far below the object where the label was)."""
+    if len(corners) < 2:
+        return None
+    lo, hi = min(c[0] for c in corners), max(c[0] for c in corners)
+    a, b = max(x0, lo), min(x1, hi)
+    if a > b:
+        return None
+    xs = [a, b] + [c[0] for c in corners if a < c[0] < b]
+    best: Optional[float] = None
+    for i, p in enumerate(corners):
+        for q in corners[i + 1:]:
+            left, right = (p, q) if p[0] <= q[0] else (q, p)
+            for x in xs:
+                if left[0] - 1e-9 <= x <= right[0] + 1e-9:
+                    span = right[0] - left[0]
+                    y = max(left[1], right[1]) if span < 1e-9 else left[1] + (right[1] - left[1]) * (x - left[0]) / span
+                    best = y if best is None or y > best else best
+    return best
+
+
+def _label_spots(text: str, anchor: P2, box: Sequence[float], outline: Optional[Sequence[float]], corners: Sequence[P2] = ()
                  ) -> List[Tuple[Tuple[float, float, float, float], Optional[Tuple[P2, P2]]]]:
     """The spots a label tries, in order, each with its leader line (or None)."""
     bx0, bx1 = box[0], box[0] + box[2]
@@ -415,8 +441,10 @@ def _label_spots(text: str, anchor: P2, box: Sequence[float], outline: Optional[
         rect = (first[0], first[1] - step * LABEL_STEP, first[2], first[3] - step * LABEL_STEP)
         out.append((rect, (anchor, ((rect[0] + rect[2]) / 2.0, rect[3])) if step >= 2 else None))
     ox0, oy0, ox1, oy1 = outline if outline is not None else (anchor[0], anchor[1], anchor[0], anchor[1])
+    under = _bottom_under(corners, first[0], first[2])
+    under = oy1 if under is None else min(oy1, under)
     for step in range(3):
-        top = oy1 + LABEL_PAD + step * LABEL_STEP
+        top = under + LABEL_PAD + step * LABEL_STEP
         out.append(((first[0], top, first[2], top + height), None))
     mid = (oy0 + oy1) / 2.0
     for dy in (0.0, -LABEL_STEP, LABEL_STEP):
@@ -555,7 +583,7 @@ def _place_labels(scene: Mapping[str, Any], view: "View", box: Sequence[float], 
         own = _supports(scene, ident) | held.get(ident, set())
         avoid = [rect for rid, rect in rects if rid not in own]
         outline = (min(r[0] for r in corners), min(r[1] for r in corners), max(r[0] for r in corners), max(r[1] for r in corners))
-        rect, leader, crowd = _place_label(str(text), anchor, placed, box, labels_mode == "all", avoid, outline)
+        rect, leader, crowd = _place_label(str(text), anchor, placed, box, labels_mode == "all", avoid, outline, corners)
         if crowd:
             crowded.append(ident)
         if rect is None:

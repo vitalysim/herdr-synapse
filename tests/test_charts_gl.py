@@ -186,6 +186,24 @@ class Gists(unittest.TestCase):
         self.assertIn("capped: kept the 40 largest of 45 a values", capped.gist)
         self.assertEqual(capped.warnings[0]["code"], "chart_capped")
 
+    def test_bar3d_keeps_a_calendar_depth_axis_in_calendar_order(self):
+        # QA phase34 L7: the depth axis over weekdays was ranked by total (Mon, Fri, Thu, Wed, Tue).
+        import random
+
+        shuffled = list(LOAD)
+        random.Random(7).shuffle(shuffled)
+        for rows in (LOAD, shuffled):
+            result = compiled(dict(OPS["bar3d"], rows=rows))
+            self.assertEqual(result.model["ys"], ["Mon", "Tue", "Wed", "Thu", "Fri"])
+            self.assertEqual(result.option["yAxis3D"]["data"], ["Mon", "Tue", "Wed", "Thu", "Fri"])
+        months = [{"m": m, "k": k, "v": v} for v, m in enumerate(("Mar", "january", "Feb")) for k in ("a", "b")]
+        self.assertEqual(compiled({"type": "bar3d", "rows": months, "x": "k", "y": "m", "z": "v"}).model["ys"], ["january", "Feb", "Mar"])
+        other = [{"k": k, "t": t, "v": v} for v, t in enumerate(("Mon", "Tue", "later")) for k in ("a", "b")]
+        self.assertEqual(compiled({"type": "bar3d", "rows": other, "x": "k", "y": "t", "z": "v"}).model["ys"], ["later", "Tue", "Mon"],
+                         "not all calendar names: by total, as before")
+        hours = compiled(dict(OPS["bar3d"], x="day", y="hour"))
+        self.assertEqual(hours.model["xs"][0], "Mon", "the width axis still goes by total (a bar's sort)")
+
     def test_scatter3d(self):
         result = compiled(OPS["scatter3d"])
         self.assertEqual(result.gist[0], "x=lat · y=load · z=err · 120 points · color=zone (3) · size=n · inline rows 120 rows")
