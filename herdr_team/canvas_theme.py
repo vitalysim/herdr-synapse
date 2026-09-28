@@ -204,6 +204,10 @@ def resolve_ref(tone: str, variant: str = "soft", kind: str = "box") -> Dict[str
 def palette(theme: str = "light") -> Dict[str, str]:
     """The flat ``{reference: "#rrggbb"}`` map of a theme: ``base.<role>``, ``tone.<tone>.<role>``, ``chip.<0-7>.<bg|fg>``
     and ``chip.human.<bg|fg>`` (lower case). Every token reference the display list uses resolves here."""
+    key = "palette:{}:{}".format(theme, id(tokens()))
+    cached = _CACHE.get(key)
+    if cached is not None:
+        return dict(cached)
     themes = tokens()["theme"]
     source = themes.get(theme) or themes["light"]
     out: Dict[str, str] = {}
@@ -219,6 +223,105 @@ def palette(theme: str = "light") -> Dict[str, str]:
     if human:
         out["chip.human.bg"] = str(human.get("bg")).lower()
         out["chip.human.fg"] = str(human.get("fg")).lower()
+    out.update(chart_palette(theme, out))
+    out.update(mat_palette(theme))
+    _CACHE[key] = out
+    return dict(out)
+
+
+#: The chart paints every theme names (``chart.<key>``; lists become ``chart.<key>.<i>``).
+CHART_KEYS = ("paper", "ink", "muted", "axis", "gridline", "cat", "seq", "div", "highlight", "dim")
+#: The faces of a 3D material (``mat.<tone>.<face>``); ``base`` is the lit colour the page's material starts from.
+MAT_FACES = ("base", "top", "left", "right", "edge")
+
+
+def chart_tokens() -> Dict[str, Any]:
+    """The ``chart`` token group (paints per theme, ``font``, ``space``); an empty one when the file has none."""
+    found = tokens().get("chart")
+    return found if isinstance(found, dict) else {}
+
+
+def _ref_value(value: Any, flat: Dict[str, str]) -> Optional[str]:
+    """A chart token's colour: a hex as it is, or another token (``base.surface``, ``tone.accent.solid``) resolved."""
+    if isinstance(value, str) and value.startswith("#") and len(value) == 7:
+        return value.lower()
+    if isinstance(value, str):
+        return flat.get(value)
+    return None
+
+
+def chart_palette(theme: str = "light", flat: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+    """``{"chart.paper": "#ffffff", "chart.cat.0": ..., ...}`` for a theme (phases 3 and 4, 1.5)."""
+    if flat is None:
+        flat = {k: v for k, v in palette(theme).items() if not k.startswith(("chart.", "mat."))}
+    source = chart_tokens().get(theme) or chart_tokens().get("light") or {}
+    out: Dict[str, str] = {}
+    for key in CHART_KEYS:
+        value = source.get(key)
+        if isinstance(value, list):
+            for index, item in enumerate(value):
+                found = _ref_value(item, flat)
+                if found:
+                    out["chart.{}.{}".format(key, index)] = found
+        else:
+            found = _ref_value(value, flat)
+            if found:
+                out["chart." + key] = found
+    # Text on a filled mark (a slice's share, a cell's value): the chart's paper or ink, whichever reads better on it.
+    paper, ink = out.get("chart.paper"), out.get("chart.ink")
+    if paper and ink:
+        for key in ("cat", "seq", "div"):
+            for name in [k for k in out if k.startswith("chart.{}.".format(key))]:
+                fill = out[name]
+                out["chart.on_{}.{}".format(key, name.rsplit(".", 1)[1])] = paper if contrast(paper, fill) >= contrast(ink, fill) else ink
+        for key in ("highlight", "dim"):
+            fill = out.get("chart." + key)
+            if fill:
+                out["chart.on_" + key] = paper if contrast(paper, fill) >= contrast(ink, fill) else ink
+    return out
+
+
+def _mix(color: str, toward: str, amount: float) -> str:
+    """``color`` moved ``amount`` (0 to 1) of the way to ``toward``, as ``#rrggbb``."""
+    a = [int(color.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4)]
+    b = [int(toward.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4)]
+    amount = min(1.0, max(0.0, float(amount)))
+    return "#" + "".join("{:02x}".format(int(round(x + (y - x) * amount))) for x, y in zip(a, b))
+
+
+def mat_palette(theme: str = "light") -> Dict[str, str]:
+    """``{"mat.<tone>.<base|top|left|right|edge>": hex}`` for a theme: ``base`` is each tone's solid (the neutral one moved
+    toward the surface by ``mat.neutral_mix``), the page's lit material colour; the faces are it lightened by
+    ``mat.base_mix``, then shaded per face by ``scene3d.shade``; the edge is moved from it until it holds
+    ``mat.edge_contrast`` on the surface."""
+    doc = tokens()
+    config = doc.get("mat") if isinstance(doc.get("mat"), dict) else {}
+    shade = ((doc.get("scene3d") or {}).get("shade") or {"top": 1.0, "left": 0.82, "right": 0.68})
+    themes = doc["theme"]
+    source = themes.get(theme) or themes["light"]
+    surface = str((source.get("base") or {}).get("surface") or "#ffffff").lower()
+    base_mix = float((config.get("base_mix") or {}).get(theme, 0.45 if theme == "light" else 0.0))
+    edge_mix = float((config.get("edge_mix") or {}).get(theme, 0.3))
+    need = float(config.get("edge_contrast", 3.0))
+    toward = "#000000" if theme == "light" else "#ffffff"
+    # A dark theme's neutral solid is a light grey (it is text-on-dark's colour); as a lit ground plane it glared near
+    # white, so the neutral material is moved toward the surface by neutral_mix (QA phase34 L8).
+    neutral_mix = float((config.get("neutral_mix") or {}).get(theme, 0.0))
+    out: Dict[str, str] = {}
+    for tone, values in (source.get("tone") or {}).items():
+        solid = str((values or {}).get("solid") or "#808080").lower()
+        if tone == "neutral" and neutral_mix > 0:
+            solid = _mix(solid, surface, neutral_mix)
+        out["mat.{}.base".format(tone)] = solid
+        face = _mix(solid, "#ffffff", base_mix)
+        for name in ("top", "left", "right"):
+            out["mat.{}.{}".format(tone, name)] = _mix(face, "#000000", 1.0 - float(shade.get(name, 1.0)))
+        amount = edge_mix
+        edge = _mix(solid, toward, amount)
+        while contrast(edge, surface) < need and amount < 1.0:
+            amount = min(1.0, amount + 0.05)
+            edge = _mix(solid, toward, amount)
+        out["mat.{}.edge".format(tone)] = edge
     return out
 
 
@@ -358,6 +461,11 @@ def asset() -> Dict[str, Any]:
         "type": doc.get("type") or {},
         "legacy": doc.get("legacy") or {},
         "phase0_excalidraw": doc.get("phase0_excalidraw") or {},
+        # Charts and 3D (phases 3 and 4, 1.5): the paints resolved per theme, and the scene presets.
+        "chart": {"light": chart_palette("light"), "dark": chart_palette("dark"), "font": chart_tokens().get("font") or {},
+                  "space": chart_tokens().get("space") or {}},
+        "mat": {"light": mat_palette("light"), "dark": mat_palette("dark")},
+        "scene3d": {k: v for k, v in (doc.get("scene3d") or {}).items() if k != "doc"},
         "theme": doc.get("theme") or {},
     }
 

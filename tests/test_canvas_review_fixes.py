@@ -186,14 +186,14 @@ class ForceLayout(CanvasRig):
         real = canvas_layouts.run
         held = []
 
-        def probe(name, request):
+        def probe(name, request, **options):
             if name == "force":
                 lock = C._canvas_lock(self.team)
                 free = lock.try_acquire()
                 if free:
                     lock.release()
                 held.append(not free)
-            return real(name, request)
+            return real(name, request, **options)
 
         with mock.patch.object(canvas_layouts, "run", probe):
             self.ok({"op": "graph", "nodes": ["a", "b", "c"], "edges": [["a", "b"]], "layout": "force", "at": "c0r0", "intent": "t"})

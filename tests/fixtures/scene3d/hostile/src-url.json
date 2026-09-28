@@ -1,0 +1,8 @@
+{
+ "about": "a model URL",
+ "source": "op",
+ "src": "https://evil.example/model.glb",
+ "expect": {
+  "code": "path_refused"
+ }
+}

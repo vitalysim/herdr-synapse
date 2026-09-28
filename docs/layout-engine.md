@@ -22,8 +22,8 @@ finished geometry.
 | `grid` | `grid.py` | Row-major in `order`; columns as wide as their widest box, rows as tall as their tallest. | `cols`, `align` |
 | `row`, `column` | `stack.py` | In sequence, `gap` apart. | `align` |
 
-`run(name, request)` is the only entry point. It validates the request (a `LayoutError` names the field), runs the layout
-and enforces the contract: every pin held exactly (else a `LayoutError`: a bug in the layout), coordinates rounded to two
+`run(name, request, seconds=None)` is the only entry point. It validates the request (a `LayoutError` names the field),
+runs the layout under a time budget (below) and enforces the contract: every pin held exactly (else a `LayoutError`: a bug in the layout), coordinates rounded to two
 decimals, `bbox` computed. A layout with `pins=False` (the stacks and the grid: a stack is an order) gets its request
 without pins, and the result notes `pin_ignored <id>`.
 
@@ -36,7 +36,28 @@ without pins, and the result notes `pin_ignored <id>`.
 4. Fixed point: a request seeded with its own result comes back unchanged.
 5. Groups hug their members plus `pad`, nest by `parent`, and hold no other node.
 6. No node, one node, disconnected parts, self-loops, duplicate edges, cycles, and 200 nodes with 400 edges all work.
-7. No side exceeds `MAX_SIZE` (20,000); a caller refuses a bigger drawing with `too_big`.
+7. No side exceeds `MAX_SIZE` (20,000) on the conformance graphs. The layered layout closes its ranks up (down to
+   `MIN_RANK_GAP`, noted `ranks_closed_up`) when a long chain would run past it; a block laid out bigger than
+   `MAX_BLOCK_SIZE` (50,000) is refused `canvas_limit` by the caller.
+
+### Budgets
+
+No op holds the canvas lock for long, whatever the graph (QA phase 2, R2). `canvas_layouts._budget.Budget` carries a
+deterministic work cap (units a caller counts) and a wall-clock ceiling behind it; `running(budget)` makes it the one in
+force on the thread, and code outside one gets an unlimited budget.
+
+- **Layouts**: `run` gives each layout `LAYOUT_SECONDS` (0.45 s) under the lock, and a new graph's `prepare`
+  `PREPARE_SECONDS` (1.2 s) before it. The layered layout stops its network simplex (any tree it passes through is a
+  feasible ranking) and its ordering sweeps (the best order so far), and the force layout its rounds (the cells snap
+  what has settled); the result notes `layout_budget`. 50 nodes take a small fraction of it.
+- **Routing**: a graph routes every edge and detour under one budget: `graph.ROUTE_WORK` plus `ROUTE_WORK_PER_EDGE`
+  units (an A* state expanded is one, a leg's set-up `orthogonal.LEG_WORK` and a share of what it scans) and
+  `ROUTE_SECONDS`. Each leg's A* takes at most what is left; once it is spent, every remaining route is drawn straight
+  through its waypoints at once, marked `blocked`, and the graph notes `route_budget`. Because the cap counts work, not
+  time, the same graph routes the same way on every machine; the ceiling only guards a slow one. 50 nodes and 80
+  edges on any layout, and 200 nodes and 400 edges on the layered one, route in full on the dev Mac.
+- **The crossings check** lays a graph out again only when its layout counts crossings (`Layout.crossings`: the
+  layered one) and remembers the count per request.
 
 ### Incremental layout and pins
 
@@ -55,14 +76,16 @@ core; it is never moved by a layout again until someone unpins it.
 |---|---|---|
 | `straight` | `straight.py` | Each bound end clipped to its outline toward its neighbouring point, straight through the waypoints. Exactly `canvas._route`: an arrow without `style.route` keeps its geometry byte for byte (T-R1). |
 | `curved` (`curve`) | `curved.py` | The straight points, drawn as a smooth curve (`canvas_geometry.curve_pieces`). |
-| `orthogonal` (`elbow`) | `orthogonal.py` + `_grid`, `_astar` | Axis-aligned pieces around obstacles grown by `clearance`. Ports at side midpoints, spread when several edges share a side, straight across when two ends face each other; a stub out of each side first (two ends closer than their stubs share the room between them, and meet in one straight piece when they face each other in line). A straight, L or Z shape when one is clear, else A* over a sparse visibility grid (a turn costs `2 x clearance`, running alongside a placed route costs three times its length), 20,000 states per leg, then a straight fallback with `blocked`. Drawn with rounded elbows (`canvas_geometry.rounded_path`); its label sits on the longest inner piece, clear of obstacles. |
+| `orthogonal` (`elbow`) | `orthogonal.py` + `_grid`, `_astar` | Axis-aligned pieces around obstacles grown by `clearance`. Ports at side midpoints, spread when several edges share a side, straight across when two ends face each other; a stub out of each side first (two ends closer than their stubs share the room between them, and meet in one straight piece when they face each other in line). A stub takes at most half the room in front of its port, and an obstacle grows by `clearance` or only as far as leaves the stubs and waypoints outside it (so a card between two others in a tight stack stays in the way); a free end with less than `MIN_ROOM` in front of its side leaves by a side across. Straight runs of waypoints route as one leg. A straight, L or Z shape when one is clear, else A* over a sparse visibility grid (a turn costs `2 x clearance`, running alongside a placed route costs three times its length), 20,000 states per leg and never more than the budget in force has left, then a straight fallback with `blocked`. A `quick` request (a graph's detour) searches greedily on a grid without corridor midlines. Drawn with rounded elbows (`canvas_geometry.rounded_path`); its label sits on the longest inner piece, clear of obstacles. |
 
 `route(name, request)` rounds every point to two decimals; `route_many(name, requests)` spreads ports (`with_slots`) and
 lets each route see the ones before it as `others`. An orthogonal arrow keeps a stored route while it still leaves one end,
 reaches the other and runs through nothing (`arrow.route_fields`), so moving something else does not redraw it. A graph
-routed `straight` (the `force`, `grid` and `radial` default) routes an edge that would cross a node orthogonally
-instead, that edge alone (`graph.route_edges`). An arrow between neighbours of a `row` or `column` gets room for its label:
-the stack widens that gap (`_zone.stack_arrange`).
+routed `straight` or `curved` (the `force`, `grid`, `radial` and `tree` defaults) routes an edge that would be drawn
+through a node orthogonally instead, that edge alone (`graph.route_edges`); a curved edge keeps its curve, the detour's
+corners turned in small arcs (`graph.curve_friendly`). `check` reads a curved arrow along its drawn curve.
+An arrow between neighbours of a `row` or `column` gets room for its label: the stack widens that gap
+(`_zone.stack_arrange`); one that skips a card goes around it at any gap.
 
 ## Adding a layout or a router
 
@@ -82,7 +105,9 @@ LAYOUTS = (Layout(name="diagonal", run=diagonal, router="straight", doc="boxes o
 ```
 
 The new name is at once a `graph` layout (`canvas_layout.LAYOUTS` derives from the registry), and the conformance suite
-holds it to the contract. `tests/fixtures/layouts/layout_diagonal.py` and `router_zigzag.py` are dropped in this way by
+holds it to the contract. A layout with a long loop checks `_budget.active().over()` in it and returns its best drawing
+so far when it is; one that counts crossings in `stats` sets `crossings=True`. A router's search spends from the same
+`_budget.active()`. `tests/fixtures/layouts/layout_diagonal.py` and `router_zigzag.py` are dropped in this way by
 `tests/test_canvas_layouts.py` and `tests/test_canvas_routers.py`.
 
 ## Tests and gates
@@ -97,3 +122,5 @@ holds it to the contract. `tests/fixtures/layouts/layout_diagonal.py` and `route
   the self-loop, the dropped-in router, and T-R1 on every golden arrow.
 - `tests/test_kind_graph.py`, `test_kind_mindmap.py`, `test_kind_sequence.py`, `test_kind_arrow_routes.py`: the kinds
   that use them.
+- `tests/test_canvas_qa_phase2_verdict.py`: skip arrows in tight stacks, the budgets, tree cross links, long chains,
+  freed aliases. `tests/registry_conformance.py`: registry tests that hold whatever modules a package gains.

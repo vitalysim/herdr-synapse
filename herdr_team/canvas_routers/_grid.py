@@ -34,10 +34,11 @@ def _lines(values: Sequence[float], lo: float, hi: float, midlines: bool = True)
 class Grid:
     """Lines inside ``window`` and the obstacles (already inflated) that meet it."""
 
-    def __init__(self, window: Box, obstacles: Sequence[Box], extra_x: Sequence[float], extra_y: Sequence[float]) -> None:
+    def __init__(self, window: Box, obstacles: Sequence[Box], extra_x: Sequence[float], extra_y: Sequence[float],
+                 midlines: bool = True) -> None:
         x0, y0, x1, y1 = window
         self.boxes = [b for b in obstacles if b[0] < x1 and x0 < b[2] and b[1] < y1 and y0 < b[3]]
-        midlines = len(self.boxes) <= MIDLINES_UP_TO
+        midlines = midlines and len(self.boxes) <= MIDLINES_UP_TO
         self.xs = _lines([v for b in self.boxes for v in (b[0], b[2])] + list(extra_x), x0, x1, midlines)
         self.ys = _lines([v for b in self.boxes for v in (b[1], b[3])] + list(extra_y), y0, y1, midlines)
         # Per cell between neighbouring lines: the obstacles whose span covers it.
@@ -50,6 +51,9 @@ class Grid:
             for j in range(bisect.bisect_left(self.ys, by0 - 1e-6), bisect.bisect_left(self.ys, by1 - 1e-6)):
                 if 0 <= j < len(self.y_cells) and by0 - 1e-6 <= self.ys[j] and self.ys[j + 1] <= by1 + 1e-6:
                     self.y_cells[j].append(index)
+        # Per line: the obstacles whose span holds it strictly inside (the cells on both sides of it are theirs).
+        self._x_in: List[frozenset] = [self._strictly(self.x_cells, i, 0) for i in range(len(self.xs))]
+        self._y_in: List[frozenset] = [self._strictly(self.y_cells, j, 1) for j in range(len(self.ys))]
         self._point: Dict[Tuple[int, int], bool] = {}
         self._h: Dict[Tuple[int, int], bool] = {}
         self._v: Dict[Tuple[int, int], bool] = {}
@@ -60,13 +64,21 @@ class Grid:
     def index_y(self, y: float) -> int:
         return bisect.bisect_left(self.ys, round(y, 3) - 1e-6)
 
+    def _strictly(self, cells: List[List[int]], index: int, axis: int) -> frozenset:
+        """The obstacles whose span holds line ``index`` strictly inside. Inside the grid that is the obstacles that
+        cover the cells on both sides of it; on the first or last line, those reaching past it."""
+        lines = self.xs if axis == 0 else self.ys
+        if 0 < index < len(lines) - 1:
+            return frozenset(cells[index - 1]).intersection(cells[index])
+        at = lines[index]
+        return frozenset(k for k, b in enumerate(self.boxes) if b[axis] + 1e-6 < at < b[axis + 2] - 1e-6)
+
     def blocked_point(self, i: int, j: int) -> bool:
         """Whether the point is strictly inside an obstacle."""
         key = (i, j)
         found = self._point.get(key)
         if found is None:
-            x, y = self.xs[i], self.ys[j]
-            found = any(b[0] + 1e-6 < x < b[2] - 1e-6 and b[1] + 1e-6 < y < b[3] - 1e-6 for b in self.boxes)
+            found = not self._x_in[i].isdisjoint(self._y_in[j])
             self._point[key] = found
         return found
 

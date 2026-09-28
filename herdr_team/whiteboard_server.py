@@ -117,10 +117,15 @@ MIME_TYPES = {
     ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
     ".ico": "image/x-icon", ".webp": "image/webp", ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf",
     ".otf": "font/otf", ".wasm": "application/wasm", ".txt": "text/plain; charset=utf-8",
-    ".csv": "text/csv; charset=utf-8", ".tsv": "text/tab-separated-values; charset=utf-8",
+    ".csv": "text/csv; charset=utf-8", ".tsv": "text/tab-separated-values; charset=utf-8", ".glb": "model/gltf-binary",
 }
-#: ``canvas.store_asset`` names, minus ``.html`` (viz sources are never served as a document here).
-ASSET_NAME_RE = re.compile(r"^[0-9a-f]{32}\.(png|jpg|jpeg|svg|vl\.json|json)\Z")
+#: ``canvas.store_asset`` names, minus ``.html`` (viz sources are never served as a document here): images, Vega-Lite
+#: specs, the page's documents (a chart's datasets) and binary glTF models (canvas v2 phases 3 and 4, 1.2).
+ASSET_NAME_RE = re.compile(r"^[0-9a-f]{32}\.(png|jpg|jpeg|svg|vl\.json|json|glb)\Z")
+#: A still's view (``?view=iso``): a kind's ``still_views`` name, or empty for its one still.
+STILL_VIEW_RE = re.compile(r"^[a-z]{0,12}\Z")
+#: A still's name as the display list gives it: ``E-5-v40.png``, or ``E-5-v40-iso.png`` for a view.
+STILL_NAME_RE = re.compile(r"^(E-[1-9][0-9]{0,6})-v([0-9]{1,12})(?:-([a-z]{1,12}))?\.png\Z")
 ELEMENT_ID_RE = re.compile(r"^E-[1-9][0-9]{0,6}\Z")
 CANONICAL_ID_RE = re.compile(r"^(E|C|K|X|G|B)-[1-9][0-9]{0,6}\Z")
 REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}\Z")
@@ -1210,13 +1215,26 @@ class _Handler(BaseHTTPRequestHandler):
             stored = cv.store_asset(team, self._read_body(), kind)
             return self._send_json(200, {"asset": stored.get("asset"), "mime": stored.get("mime"), "px_w": stored.get("px_w"), "px_h": stored.get("px_h")})
         match = re.match(r"^stills/([^/]+)\Z", rest)
+        if match and method == "GET":
+            # A still the page posted, by the name the display list gives it (``E-5-v40.png``, ``E-5-v40-iso.png``).
+            found = STILL_NAME_RE.match(match.group(1))
+            path = cv.still_path(team, found.group(1), int(found.group(2)), found.group(3) or "") if found else None
+            data = store.read_bytes(path) if path is not None else None
+            if data is None:
+                raise HerdrTeamError("not_found", "no such still", EXIT_REFUSED)
+            return self._send_bytes(200, data, "image/png", csp=ASSET_CSP)
         if match:
             self._need(method, "POST")
             element_id = match.group(1)
             version = _int((query.get("v") or [""])[0])
-            if not ELEMENT_ID_RE.match(element_id) or version is None or version < 0:
-                raise HerdrTeamError("usage", "POST /stills/<E-n>?v=<updated_seq> with a PNG body", EXIT_REFUSED)
-            cv.store_still(team, element_id, version, self._read_body(getattr(cv, "MAX_STILL_BYTES", MAX_BODY_BYTES)))
+            view = (query.get("view") or [""])[0]
+            if not ELEMENT_ID_RE.match(element_id) or version is None or version < 0 or not STILL_VIEW_RE.match(view):
+                raise HerdrTeamError("usage", "POST /stills/<E-n>?v=<updated_seq>[&view=<view>] with a PNG body", EXIT_REFUSED)
+            body = self._read_body(getattr(cv, "MAX_STILL_BYTES", MAX_BODY_BYTES))
+            if view:
+                cv.store_still(team, element_id, version, body, view=view)
+            else:
+                cv.store_still(team, element_id, version, body)
             return self._send_json(200, {"ok": True})
         match = re.match(r"^exports/([^/]+)\Z", rest)
         if match:

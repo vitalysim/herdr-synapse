@@ -1,0 +1,522 @@
+{
+ "authors": {
+  "qa-drawer": {
+   "agent": "claude",
+   "color": "#1971c2",
+   "index": 0,
+   "kind": "member"
+  }
+ },
+ "batches": {
+  "B-1": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "qa-drawer",
+   "first_seq": 1,
+   "last_seq": 4,
+   "undone": false
+  }
+ },
+ "claims": [],
+ "counters": {
+  "B": 1,
+  "C": 0,
+  "E": 4,
+  "G": 0,
+  "K": 0,
+  "X": 0
+ },
+ "elements": [
+  {
+   "alias": "rev-vl",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "chart": {
+    "gl": false,
+    "type": "vega-lite"
+   },
+   "chart_frame": null,
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "data": "rev.csv",
+   "data_key": null,
+   "doc_asset": null,
+   "engine": "vega-lite",
+   "flat": null,
+   "frame": null,
+   "gist": [
+    "Vega-Lite line · fields month, revenue, region · rev.csv 36 rows",
+    "x=month (12 temporal: 2026-01, 2026-02, 2026-03, 2026-04)",
+    "y=revenue from 300K to 4.2M"
+   ],
+   "group": null,
+   "h": 320,
+   "id": "E-1",
+   "intent": "faceted view",
+   "kv": 2,
+   "model": null,
+   "option": null,
+   "resolved": null,
+   "role": null,
+   "seq": {},
+   "settings": {
+    "data": "rev.csv",
+    "spec_asset": "d5dca5f36bb5a941138455891e5957b2.vl.json"
+   },
+   "source": null,
+   "spec_asset": "d5dca5f36bb5a941138455891e5957b2.vl.json",
+   "stats": null,
+   "stripped": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Revenue, one panel per region",
+   "type": "chart",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "vl": {
+    "encoding": {
+     "row": {
+      "field": "region"
+     },
+     "x": {
+      "field": "month",
+      "type": "temporal"
+     },
+     "y": {
+      "field": "revenue",
+      "type": "quantitative"
+     }
+    },
+    "mark": "line"
+   },
+   "w": 480,
+   "x": 0,
+   "y": 0,
+   "z": 1
+  },
+  {
+   "alias": "vl-bar",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "chart": {
+    "gl": false,
+    "type": "vega-lite"
+   },
+   "chart_frame": {
+    "axes": {
+     "x": {
+      "extent": 15,
+      "hidden": 4,
+      "interval": 1,
+      "kind": "category",
+      "labels": [
+       {
+        "t": "Ads",
+        "v": 0,
+        "w": 22.62
+       },
+       {
+        "t": "Direct",
+        "v": 1,
+        "w": 34.88
+       },
+       {
+        "t": "Email",
+        "v": 2,
+        "w": 31.18
+       },
+       {
+        "t": "Events",
+        "v": 3,
+        "w": 39.45
+       },
+       {
+        "t": "Podcast",
+        "v": 4,
+        "w": 47.44
+       },
+       {
+        "t": "Referral",
+        "v": 5,
+        "w": 46.18
+       },
+       {
+        "t": "Search",
+        "v": 6,
+        "w": 41.1
+       },
+       {
+        "t": "Social",
+        "v": 7,
+        "w": 35.33
+       }
+      ],
+      "pos": "bottom",
+      "rotate": 0,
+      "width": null
+     },
+     "y": {
+      "fmt": "auto|",
+      "kind": "value",
+      "max": 10000,
+      "min": 0,
+      "pos": "left",
+      "step": 5000,
+      "ticks": [
+       {
+        "t": "0",
+        "v": 0,
+        "w": 7.8
+       },
+       {
+        "t": "5,000",
+        "v": 5000,
+        "w": 34.29
+       },
+       {
+        "t": "10,000",
+        "v": 10000,
+        "w": 39.78
+       }
+      ],
+      "title": "visits"
+     }
+    },
+    "box": [
+     456,
+     268
+    ],
+    "extra": {},
+    "font": 12,
+    "legend": null,
+    "legible": true,
+    "notes": [
+     "every 2nd x label shown"
+    ],
+    "plot": [
+     49.78,
+     26,
+     394.22,
+     215
+    ]
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "data": "traffic.json",
+   "data_key": null,
+   "doc_asset": null,
+   "engine": "vega-lite",
+   "flat": {
+    "sort": "x",
+    "type": "bar",
+    "x": "channel",
+    "y": "visits"
+   },
+   "frame": null,
+   "gist": [
+    "Vega-Lite bar · fields channel, visits · traffic.json 8 rows",
+    "x=channel (8 nominal: Search, Direct, Social, Email)",
+    "y=visits from 120 to 5,200"
+   ],
+   "group": null,
+   "h": 320,
+   "id": "E-2",
+   "intent": "a plain Vega-Lite bar",
+   "kv": 2,
+   "model": {
+    "capped": [],
+    "cats": [
+     "Ads",
+     "Direct",
+     "Email",
+     "Events",
+     "Podcast",
+     "Referral",
+     "Search",
+     "Social"
+    ],
+    "how": "none",
+    "keys": [
+     "Ads",
+     "Direct",
+     "Email",
+     "Events",
+     "Podcast",
+     "Referral",
+     "Search",
+     "Social"
+    ],
+    "order": "sort",
+    "series": [
+     {
+      "name": "visits",
+      "values": [
+       600,
+       2600,
+       1200,
+       120,
+       240,
+       800,
+       5200,
+       1700
+      ]
+     }
+    ]
+   },
+   "option": null,
+   "resolved": {
+    "_source": "traffic.json 8 rows",
+    "sort": "x",
+    "stack": false,
+    "type": "bar",
+    "x": "channel",
+    "y": "visits"
+   },
+   "role": null,
+   "seq": {},
+   "settings": {
+    "data": "traffic.json",
+    "spec_asset": "ff33fbdcf4dc7b0ddd7283783978b79c.vl.json"
+   },
+   "source": {
+    "columns": [
+     [
+      "channel",
+      "nominal"
+     ],
+     [
+      "visits",
+      "quantitative"
+     ]
+    ],
+    "data": "traffic.json",
+    "kept": 8,
+    "rows": 8,
+    "sha256": "347926d014a6a51d1708166e4ac38929c64a0b8b3e3f55c099c0af938d9f24f5"
+   },
+   "spec_asset": "ff33fbdcf4dc7b0ddd7283783978b79c.vl.json",
+   "stats": {
+    "max": [
+     "visits",
+     "Search",
+     5200
+    ],
+    "min": [
+     "visits",
+     "Events",
+     120
+    ],
+    "n_cats": 8,
+    "n_series": 1,
+    "top": [
+     [
+      "Search",
+      5200.0
+     ],
+     [
+      "Direct",
+      2600.0
+     ],
+     [
+      "Social",
+      1700.0
+     ]
+    ],
+    "total": 12460.0
+   },
+   "stripped": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Visits (Vega-Lite)",
+   "type": "chart",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "vl": {
+    "encoding": {
+     "x": {
+      "field": "channel",
+      "type": "nominal"
+     },
+     "y": {
+      "field": "visits",
+      "type": "quantitative"
+     }
+    },
+    "mark": "bar"
+   },
+   "w": 480,
+   "x": 560,
+   "y": 0,
+   "z": 2
+  },
+  {
+   "alias": "skills",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "chart": {
+    "gl": false,
+    "type": "echarts"
+   },
+   "chart_frame": null,
+   "client_id": null,
+   "colors": [],
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "data": null,
+   "data_key": null,
+   "doc_asset": "1c8829b2a0b30ca9206122c8c851055d.json",
+   "engine": "echarts-raw",
+   "frame": null,
+   "gist": [
+    "ECharts radar · 1 series",
+    "\"alpha\" Rust 4/5 · Python 3/5 · Web 5/5 · Infra 2/5 (best Web, weakest Infra)",
+    "\"beta\" Rust 2/5 · Python 5/5 · Web 3/5 · Infra 4/5 (best Python, weakest Rust)"
+   ],
+   "group": null,
+   "h": 320,
+   "id": "E-3",
+   "intent": "who covers what",
+   "kv": 2,
+   "model": null,
+   "option": null,
+   "resolved": null,
+   "role": null,
+   "seq": {},
+   "settings": {
+    "echarts_asset": "1c8829b2a0b30ca9206122c8c851055d.json"
+   },
+   "source": null,
+   "spec_asset": null,
+   "stats": null,
+   "stripped": [],
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Skill coverage",
+   "type": "chart",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "vl": null,
+   "w": 480,
+   "x": 0,
+   "y": 400,
+   "z": 3
+  },
+  {
+   "alias": "gauge",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "chart": {
+    "gl": false,
+    "type": "echarts"
+   },
+   "chart_frame": null,
+   "client_id": null,
+   "colors": [],
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 4,
+   "data": null,
+   "data_key": null,
+   "doc_asset": "8bf9921011d57a6349b28c4e98329fdc.json",
+   "engine": "echarts-raw",
+   "frame": null,
+   "gist": [
+    "ECharts gauge · 1 series",
+    "gauge \"budget\" 72 on 0…100 (72% of the dial)"
+   ],
+   "group": null,
+   "h": 320,
+   "id": "E-4",
+   "intent": "a raw gauge with a hostile formatter",
+   "kv": 2,
+   "model": null,
+   "option": null,
+   "resolved": null,
+   "role": null,
+   "seq": {},
+   "settings": {
+    "echarts_asset": "8bf9921011d57a6349b28c4e98329fdc.json"
+   },
+   "source": null,
+   "spec_asset": null,
+   "stats": null,
+   "stripped": [
+    "toolbox",
+    "series[0].title"
+   ],
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Error budget left",
+   "type": "chart",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 4,
+   "vl": null,
+   "w": 480,
+   "x": 560,
+   "y": 400,
+   "z": 4
+  }
+ ],
+ "homes": {
+  "qa-drawer": [
+   0,
+   -1000,
+   800,
+   -400
+  ]
+ },
+ "legend": [],
+ "locks": [],
+ "team": "qa",
+ "updated_at": "2026-01-01T00:00:00.000Z",
+ "v": 1,
+ "version": 4
+}

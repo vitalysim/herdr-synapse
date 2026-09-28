@@ -262,6 +262,19 @@ def _segments_cross(p1: Any, p2: Any, p3: Any, p4: Any) -> bool:
     return orient(p1, p2, p3) * orient(p1, p2, p4) < 0 and orient(p3, p4, p1) * orient(p3, p4, p2) < 0
 
 
+def _crosses_itself(pieces: List[Any]) -> bool:
+    """Whether two pieces of a route that are not neighbours cross. Only pieces whose boxes meet are tested, so a long
+    route (a big graph's edge through many hints) costs little more than its length (QA phase 2, R2)."""
+    boxes = [(min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1])) for a, b in pieces]
+    for i, a in enumerate(pieces):
+        ax0, ay0, ax1, ay1 = boxes[i]
+        for j in range(i + 2, len(pieces)):
+            bx0, by0, bx1, by1 = boxes[j]
+            if bx0 <= ax1 and ax0 <= bx1 and by0 <= ay1 and ay0 <= by1 and _segments_cross(a[0], a[1], pieces[j][0], pieces[j][1]):
+                return True
+    return False
+
+
 def _enters(a: Any, b: Any, box: Any, inset: float = 2.0) -> bool:
     """Whether the piece ``a``-``b`` runs through the inside of ``box`` (shrunk by ``inset``)."""
     x0, y0, x1, y1 = box[0] + inset, box[1] + inset, box[2] - inset, box[3] - inset
@@ -303,7 +316,7 @@ def route_checks(el: Element, env: Dict[str, Any]) -> List[Dict[str, Any]]:
     name = el.get("alias") or el.get("id")
     by_id = env.get("by_id") or {}
     pieces = list(zip(points, points[1:]))
-    loop = any(_segments_cross(a[0], a[1], b[0], b[1]) for i, a in enumerate(pieces) for b in pieces[i + 2:])
+    loop = _crosses_itself(pieces)
     if not loop and not el.get("curve"):
         for end, inner in ((by_id.get(el.get("from")), pieces[1:]), (by_id.get(el.get("to")), pieces[:-1])):
             if end is not None and any(_enters(a, b, _solid_core(end)) for a, b in inner):

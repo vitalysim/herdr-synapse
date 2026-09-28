@@ -1,0 +1,367 @@
+{
+ "box": {
+  "h": 368.0,
+  "w": 536.0
+ },
+ "doc": {
+  "chart": "bar3d",
+  "datasets": [],
+  "refs": {
+   "cells": [
+    [
+     0,
+     0,
+     120
+    ],
+    [
+     1,
+     0,
+     310
+    ],
+    [
+     0,
+     1,
+     150
+    ],
+    [
+     1,
+     1,
+     280
+    ]
+   ]
+  },
+  "source": {
+   "data": null,
+   "rows": 4,
+   "sha256": "ed8901296e526de2205c4c9248501385a87c0f108ad8643b276f032da1eb22d3"
+  },
+  "v": 1
+ },
+ "element": {
+  "alias": "load3d",
+  "chart": {
+   "gl": true,
+   "type": "bar3d"
+  },
+  "chart_frame": {
+   "axes": {},
+   "box": [
+    536,
+    368
+   ],
+   "extra": {
+    "z": {
+     "max": 400,
+     "min": 0,
+     "step": 100
+    }
+   },
+   "font": 12,
+   "legend": null,
+   "legible": true,
+   "notes": [],
+   "plot": [
+    0,
+    0,
+    536,
+    368
+   ]
+  },
+  "doc_asset": "e89b5803f905abcb71b51ad374c4b099.json",
+  "engine": "echarts",
+  "gist": [
+   "x=hour (2) · y=day (2) · z=requests · 4 bars · inline rows 4 rows",
+   "max 12 × Mon 310 · min 9 × Mon 120",
+   "highest: hour 12 (mean 295) · day Mon (mean 215)"
+  ],
+  "h": 420.0,
+  "id": "E-1",
+  "kv": 2,
+  "model": {
+   "capped": [],
+   "cells": [
+    [
+     0,
+     0,
+     120
+    ],
+    [
+     1,
+     0,
+     310
+    ],
+    [
+     0,
+     1,
+     150
+    ],
+    [
+     1,
+     1,
+     280
+    ]
+   ],
+   "how": "none",
+   "xs": [
+    "9",
+    "12"
+   ],
+   "ys": [
+    "Mon",
+    "Tue"
+   ]
+  },
+  "option": {
+   "animation": false,
+   "aria": {
+    "enabled": true,
+    "label": {
+     "description": "x=hour (2) · y=day (2) · z=requests · 4 bars · inline rows 4 rows max 12 × Mon 310 · min 9 × Mon 120 highest: hour 12 (mean 295) · day Mon (mean 215)"
+    }
+   },
+   "backgroundColor": "transparent",
+   "color": [
+    "chart.seq.4"
+   ],
+   "grid3D": {
+    "axisLabel": {
+     "textStyle": {
+      "color": "chart.muted",
+      "fontFamily": "$sans",
+      "fontSize": 12
+     }
+    },
+    "axisLine": {
+     "lineStyle": {
+      "color": "chart.axis"
+     }
+    },
+    "axisPointer": {
+     "show": false
+    },
+    "axisTick": {
+     "lineStyle": {
+      "color": "chart.axis"
+     }
+    },
+    "axisTitle": {
+     "textStyle": {
+      "color": "chart.ink",
+      "fontFamily": "$sans",
+      "fontSize": 12
+     }
+    },
+    "boxDepth": 100.0,
+    "boxHeight": 60.0,
+    "boxWidth": 100.0,
+    "environment": "none",
+    "light": {
+     "ambient": {
+      "intensity": 0.45
+     },
+     "main": {
+      "intensity": 1.1,
+      "shadow": false
+     }
+    },
+    "splitLine": {
+     "lineStyle": {
+      "color": "chart.gridline"
+     }
+    },
+    "viewControl": {
+     "alpha": 35.264,
+     "animation": false,
+     "autoRotate": false,
+     "beta": 45.0,
+     "projection": "orthographic"
+    }
+   },
+   "series": [
+    {
+     "bevelSize": 0,
+     "data": {
+      "$doc": "cells"
+     },
+     "emphasis": {
+      "label": {
+       "show": false
+      }
+     },
+     "itemStyle": {
+      "opacity": 1
+     },
+     "name": "requests",
+     "shading": "lambert",
+     "type": "bar3D"
+    }
+   ],
+   "textStyle": {
+    "color": "chart.ink",
+    "fontFamily": "$sans",
+    "fontSize": 12
+   },
+   "tooltip": {
+    "confine": true,
+    "renderMode": "richText",
+    "textStyle": {
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "trigger": "item"
+   },
+   "visualMap": {
+    "dimension": 2,
+    "inRange": {
+     "color": [
+      "chart.seq.1",
+      "chart.seq.2",
+      "chart.seq.3",
+      "chart.seq.4",
+      "chart.seq.5",
+      "chart.seq.6"
+     ]
+    },
+    "max": 310,
+    "min": 0.0,
+    "show": false
+   },
+   "xAxis3D": {
+    "data": [
+     "9",
+     "12"
+    ],
+    "name": "hour",
+    "nameTextStyle": {
+     "color": "chart.ink",
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "type": "category"
+   },
+   "yAxis3D": {
+    "data": [
+     "Mon",
+     "Tue"
+    ],
+    "name": "day",
+    "nameTextStyle": {
+     "color": "chart.ink",
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "type": "category"
+   },
+   "zAxis3D": {
+    "axisLabel": {
+     "formatter": {
+      "$fmt": "auto|"
+     }
+    },
+    "interval": 100.0,
+    "max": 400.0,
+    "min": 0.0,
+    "name": "requests",
+    "nameTextStyle": {
+     "color": "chart.ink",
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "type": "value"
+   }
+  },
+  "resolved": {
+   "_source": "inline rows 4 rows",
+   "type": "bar3d",
+   "x": "hour",
+   "y": "day",
+   "z": "requests"
+  },
+  "settings": {
+   "rows": [
+    {
+     "day": "Mon",
+     "hour": "09",
+     "requests": 120
+    },
+    {
+     "day": "Tue",
+     "hour": "09",
+     "requests": 150
+    },
+    {
+     "day": "Mon",
+     "hour": "12",
+     "requests": 310
+    },
+    {
+     "day": "Tue",
+     "hour": "12",
+     "requests": 280
+    }
+   ],
+   "type": "bar3d",
+   "x": "hour",
+   "y": "day",
+   "z": "requests"
+  },
+  "source": {
+   "columns": [
+    [
+     "hour",
+     "quantitative"
+    ],
+    [
+     "day",
+     "nominal"
+    ],
+    [
+     "requests",
+     "quantitative"
+    ]
+   ],
+   "data": null,
+   "kept": 4,
+   "rows": 4,
+   "sha256": "ed8901296e526de2205c4c9248501385a87c0f108ad8643b276f032da1eb22d3"
+  },
+  "stats": {
+   "best_x": [
+    "12",
+    295.0
+   ],
+   "best_y": [
+    "Mon",
+    215.0
+   ],
+   "max": [
+    "12",
+    "Mon",
+    310.0
+   ],
+   "min": [
+    "9",
+    "Mon",
+    120.0
+   ],
+   "n": 4,
+   "nx": 2,
+   "ny": 2,
+   "total": 860.0
+  },
+  "text": "Requests by hour × weekday",
+  "type": "chart",
+  "updated_seq": 1,
+  "w": 560.0,
+  "x": 0,
+  "y": 0
+ },
+ "gl": true,
+ "slot": [
+  12.0,
+  40.0,
+  536.0,
+  368.0
+ ],
+ "type": "bar3d"
+}

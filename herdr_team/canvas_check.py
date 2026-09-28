@@ -317,32 +317,79 @@ def _segment_hits_box(p: Sequence[float], q: Sequence[float], box: Sequence[floa
     return True
 
 
+def _drawn(arrow: Dict[str, Any], points: List[Any]) -> List[Any]:
+    """The line an arrow is drawn along: its points, or a curved one's curve sampled (a curve's points are only its
+    control points; QA phase 2, R3)."""
+    if not (arrow.get("curve") or (arrow.get("style") or {}).get("route") in ("curved", "curve")):
+        return points
+    from herdr_team import canvas_geometry
+
+    return canvas_geometry.arrow_route(dict(arrow, curve=True), per_piece=8)
+
+
+#: The cell of the coarse grid ``_arrows_through`` buckets marks in, so each arrow meets only the marks near it.
+THROUGH_CELL = 400.0
+
+
 def _arrows_through(arrows: List[Dict[str, Any]], solid: List[Dict[str, Any]], reader: Optional[str], by_id: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
     out = []
+    # Each mark's box once, bucketed by a coarse grid: a board of 400 arrows and 200 nodes tests each arrow against
+    # the marks near it, not all of them (QA phase 2, R2).
+    marks: List[Tuple[Dict[str, Any], Tuple[float, ...], Tuple[float, ...]]] = []
+    cells: Dict[Tuple[int, int], List[int]] = {}
+    for el in solid:
+        box = box_of(el)
+        inner = (box[0] + TOUCH, box[1] + TOUCH, box[2] - TOUCH, box[3] - TOUCH)
+        if inner[0] >= inner[2] or inner[1] >= inner[3]:
+            continue
+        index = len(marks)
+        marks.append((el, tuple(box), inner))
+        for cx in range(int(math.floor(box[0] / THROUGH_CELL)), int(math.floor(box[2] / THROUGH_CELL)) + 1):
+            for cy in range(int(math.floor(box[1] / THROUGH_CELL)), int(math.floor(box[3] / THROUGH_CELL)) + 1):
+                cells.setdefault((cx, cy), []).append(index)
     for arrow in arrows:
         points = [p for p in (arrow.get("points") or []) if isinstance(p, (list, tuple)) and len(p) >= 2]
         if len(points) < 2:
             continue
+        points = _drawn(arrow, points)
         ends = {arrow.get("from"), arrow.get("to")}
         arrow_box = box_of(arrow)
-        for el in solid:
-            if el["id"] in ends:
-                continue
-            box = box_of(el)
-            inner = (box[0] + TOUCH, box[1] + TOUCH, box[2] - TOUCH, box[3] - TOUCH)
-            if inner[0] >= inner[2] or inner[1] >= inner[3] or not _intersects(arrow_box, box):
+        xs, ys = [float(p[0]) for p in points], [float(p[1]) for p in points]
+        reach = (min(xs + [arrow_box[0]]), min(ys + [arrow_box[1]]), max(xs + [arrow_box[2]]), max(ys + [arrow_box[3]]))
+        pieces = [(min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1]), a, b) for a, b in zip(points, points[1:])]
+        # The marks each piece comes near (the cells it crosses), so a long route meets each mark with its own pieces only.
+        near: Dict[int, List[int]] = {}
+        for number, (sx0, sy0, sx1, sy1, _a, _b) in enumerate(pieces):
+            for cx in range(int(math.floor(sx0 / THROUGH_CELL)), int(math.floor(sx1 / THROUGH_CELL)) + 1):
+                for cy in range(int(math.floor(sy0 / THROUGH_CELL)), int(math.floor(sy1 / THROUGH_CELL)) + 1):
+                    for index in cells.get((cx, cy), ()):
+                        found = near.setdefault(index, [])
+                        if not found or found[-1] != number:
+                            found.append(number)
+        for index in sorted(near):
+            el, box, inner = marks[index]
+            if el["id"] in ends or not _intersects(reach, box):
                 continue
             # An end drawn from a point inside a shape starts there on purpose; only the path through counts.
             if any(inner[0] < p[0] < inner[2] and inner[1] < p[1] < inner[3] for p in (points[0], points[-1])):
                 continue
-            if any(_segment_hits_box(points[i], points[i + 1], inner) for i in range(len(points) - 1)):
-                # A bound arrow routes around what is in its way (phase 2, 3.4); a free one is moved by hand.
+            if any(sx0 <= inner[2] and inner[0] <= sx1 and sy0 <= inner[3] and inner[1] <= sy1 and _segment_hits_box(a, b, inner)
+                   for sx0, sy0, sx1, sy1, a, b in (pieces[number] for number in near[index])):
+                # A bound arrow routes around what is in its way (phase 2, 3.4); a free one is moved by hand. One that
+                # already routes orthogonal found no clear way: offering the route it has would change nothing, and an
+                # agent that follows the fix would loop (QA phase 2, R1).
                 bound = bool(arrow.get("from") or arrow.get("to"))
-                fix = {"op": "restyle", "ids": [arrow["id"]], "route": "orthogonal", "intent": "route around {}".format(el["id"])} if bound else None
+                routed = (arrow.get("style") or {}).get("route") in ("orthogonal", "elbow")
+                fix = {"op": "restyle", "ids": [arrow["id"]], "route": "orthogonal", "intent": "route around {}".format(el["id"])} \
+                    if bound and not routed else None
+                if fix is not None:
+                    advice = "route it around it (the fix: route orthogonal)"
+                elif bound:
+                    advice = "there is no clear way around it: move {} or an end of the arrow to open a gap".format(el["id"])
+                else:
+                    advice = "move it, or move {} out of its way".format(el["id"])
                 out.append(_problem("arrow_through", [arrow["id"], el["id"]],
-                                    "arrow {}{} passes through {}; {}".format(
-                                        arrow["id"], _label(arrow), _name(el),
-                                        "route it around it (the fix: route orthogonal)" if bound else "move it, or move {} out of its way".format(el["id"])),
+                                    "arrow {}{} passes through {}; {}".format(arrow["id"], _label(arrow), _name(el), advice),
                                     fix, reader, by_id))
     return out
 
@@ -411,6 +458,8 @@ def _kind_checks(live: List[Dict[str, Any]], env: Dict[str, Any]) -> List[Proble
         for check in kind.checks if kind is not None else ():
             for found in check(el, env) or []:
                 ids = [str(i) for i in found.get("ids") or [el.get("id")]]
+                if isinstance(found.get("severity"), int) and not isinstance(found.get("severity"), bool):
+                    SEVERITY.setdefault(str(found.get("code") or "kind"), int(found["severity"]))  # a kind's own code sorts where it says
                 out.append(_problem(str(found.get("code") or "kind"), ids, str(found.get("message") or ""), found.get("fix"),
                                     env["reader"], env["by_id"]))
     return out

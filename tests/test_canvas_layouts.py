@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 
 from layout_conformance import LayoutConformance, close
+from registry_conformance import assert_contains_in_order, assert_discovery_order, assert_registered_in_place
 
 from herdr_team import canvas_layout as L
 from herdr_team import canvas_layouts as CL
@@ -17,11 +18,16 @@ from herdr_team.canvas_layouts import LEdge, LNode, LayoutError, LayoutRequest
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "layouts"
 
 
+#: The layouts the package ships. Another module in the package may register among them (QA phase 2, R6).
+BUILT_IN = ["layers", "tree", "radial", "force", "grid", "stack"]
+BUILT_IN_NAMES = ["layers", "flow", "layered", "tree", "radial", "force", "grid", "row", "column"]
+
+
 class Registry(unittest.TestCase):
     def test_every_layout_module_is_found_with_no_list(self):
-        self.assertEqual(CL.modules()[:2], ["layers", "tree"])
-        self.assertEqual(set(CL.modules()), {"layers", "tree", "radial", "force", "grid", "stack"})
-        self.assertEqual(CL.names(), ["layers", "flow", "layered", "tree", "radial", "force", "grid", "row", "column"])
+        assert_contains_in_order(self, CL.modules(), BUILT_IN)
+        assert_discovery_order(self, CL, CL.modules())
+        assert_contains_in_order(self, CL.names(), BUILT_IN_NAMES)
         self.assertIs(CL.get("flow"), CL.get("layers"))
         self.assertIs(CL.get("layered"), CL.get("layers"))
         self.assertIsNone(CL.get("spiral"))
@@ -102,7 +108,7 @@ class DroppedInLayout(LayoutConformance, unittest.TestCase):
         CL._reload()
 
     def test_the_file_is_a_layout_with_no_list_edited(self):
-        self.assertEqual(CL.modules()[-1], "diagonal")
+        assert_registered_in_place(self, CL, CL.modules(), "diagonal")
         self.assertIn("diagonal", L.LAYOUTS)
         self.check_layout("diagonal")
         corners = L.layout(["a", "b", "c"], [("a", "b")], "diagonal")

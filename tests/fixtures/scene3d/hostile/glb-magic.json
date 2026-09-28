@@ -1,0 +1,11 @@
+{
+ "about": "not a GLB",
+ "source": "glb",
+ "glb": {
+  "magic": "glTX"
+ },
+ "expect": {
+  "code": "op_invalid",
+  "contains": "not a GLB"
+ }
+}

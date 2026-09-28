@@ -1,0 +1,13 @@
+{
+ "about": "a required extension outside the allowed list",
+ "source": "gltf",
+ "patch": {
+  "extensionsRequired": [
+   "EXT_future_thing"
+  ]
+ },
+ "expect": {
+  "code": "op_invalid",
+  "contains": "requires EXT_future_thing"
+ }
+}

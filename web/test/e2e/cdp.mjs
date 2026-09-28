@@ -42,6 +42,10 @@ export async function launchChrome(binary, { width = 1440, height = 900 } = {}) 
       "--disable-component-update",
       "--hide-scrollbars",
       "--mute-audio",
+      // WebGL through SwiftShader, so the 3D scenes and GL charts render headless on any machine
+      // (canvas-v2-phase3-4.md 8.4); correctness only, never a performance figure.
+      "--use-angle=swiftshader",
+      "--enable-unsafe-swiftshader",
       "about:blank",
     ],
     { stdio: ["ignore", "ignore", "pipe"] },

@@ -1,0 +1,93 @@
+{
+ "v": 1,
+ "source": "herdr_team/canvas_charts/_sanitize.py; run python3 -m herdr_team.canvas_charts._sanitize --write",
+ "top": [
+  "series",
+  "dataset",
+  "xAxis",
+  "yAxis",
+  "grid",
+  "legend",
+  "tooltip",
+  "color",
+  "radar",
+  "polar",
+  "radiusAxis",
+  "angleAxis",
+  "parallel",
+  "parallelAxis",
+  "singleAxis",
+  "calendar",
+  "visualMap",
+  "dataZoom",
+  "textStyle",
+  "aria",
+  "markLine",
+  "markPoint"
+ ],
+ "series": [
+  "bar",
+  "line",
+  "scatter",
+  "effectScatter",
+  "pie",
+  "heatmap",
+  "boxplot",
+  "funnel",
+  "treemap",
+  "sankey",
+  "radar",
+  "gauge",
+  "parallel",
+  "candlestick",
+  "themeRiver",
+  "bar3D",
+  "scatter3D",
+  "surface"
+ ],
+ "deny_keys": [
+  "extraCssText",
+  "toolbox",
+  "dataView",
+  "link",
+  "sublink",
+  "target",
+  "triggerEvent",
+  "transform",
+  "graphic",
+  "title",
+  "brush",
+  "timeline",
+  "geo",
+  "bmap",
+  "map",
+  "html",
+  "tooltipFormatter",
+  "renderItem"
+ ],
+ "deny_values": [
+  "http:",
+  "https:",
+  "//",
+  "data:",
+  "javascript:",
+  "vbscript:",
+  "blob:",
+  "file:",
+  "image://",
+  "url("
+ ],
+ "limits": {
+  "bytes": 65536,
+  "depth": 32,
+  "numbers": 20000,
+  "string": 1000
+ },
+ "forced": {
+  "animation": false,
+  "tooltip": {
+   "renderMode": "richText",
+   "confine": true
+  }
+ }
+}

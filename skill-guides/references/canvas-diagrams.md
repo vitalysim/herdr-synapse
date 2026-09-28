@@ -40,8 +40,7 @@ when a full layout would cross fewer edges.
   "b --> a: reply"], notes [{over: [ids], text}], groups [{kind loop|alt|opt|
   par, label, from, to}]}`: one element; `from`/`to` are message numbers.
 - `mermaid {source}`: a flowchart becomes a graph block; other Mermaid
-  diagrams render on the page. A `chart` draws a Vega-Lite spec over a file in
-  `artifacts/` (no URLs in a spec).
+  diagrams render on the page. Charts are in `canvas-charts`.
 
 ## Examples
 
@@ -68,14 +67,6 @@ A mind map:
           "Channels": {"Podcast tour": [], "Blog": ["SEO pillar post", "Guest posts"], "Conference talk": []},
           "Risks": ["Docs not ready", "Pricing unclear"]},
  "branch_tones": "auto", "side": "both"}
-```
-
-A chart over `artifacts/rev.csv`:
-
-```json
-{"op": "chart", "id": "rev", "intent": "compare regions", "title": "Revenue by region", "data": "rev.csv", "below": "checkout", "gap": "l",
- "spec": {"mark": "bar", "encoding": {"x": {"field": "month", "type": "ordinal"}, "y": {"field": "revenue", "type": "quantitative"},
-          "color": {"field": "region"}, "xOffset": {"field": "region"}}}}
 ```
 
 An incremental edit (the `if_version` is the graph's `v` from `look`); the

@@ -294,10 +294,19 @@ export function primitiveNode(p, ctx) {
   }
 }
 
-/** A slot drawn without the browser: its still when it has one, else its fallback primitives. */
+/**
+ * Whether a slot is drawn from its still (canvas-v2-phase3-4.md 1.4, the writers' still rule, the
+ * same in canvas_svg.slot_node): when it has one, and either the theme is light or its fallback is
+ * not a faithful drawing (`drawn`). Stills are light pictures; a dark board draws the drawing.
+ */
+export function usesStill(p, theme) {
+  return typeof p?.still === "string" && !!p.still && (theme !== "dark" || p.drawn !== true);
+}
+
+/** A slot drawn without the browser: its still when the still rule allows it, else its fallback primitives. */
 export function slotNode(p, ctx, { still = true } = {}) {
   const inner = [];
-  const href = still && typeof p.still === "string" && p.still && finite(p.x, p.y, p.w, p.h) ? ctx.url({ still: p.still }) : null;
+  const href = still && usesStill(p, ctx.theme) && finite(p.x, p.y, p.w, p.h) ? ctx.url({ still: p.still }) : null;
   if (href) inner.push(imageNode(p.x, p.y, p.w, p.h, href, null));
   else inner.push(...children(p.fallback, ctx));
   return ["g", [["data-slot", String(p.slot ?? "")]], inner];

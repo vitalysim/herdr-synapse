@@ -1,0 +1,382 @@
+{
+ "box": {
+  "h": 268.0,
+  "w": 396.0
+ },
+ "doc": {
+  "chart": "donut",
+  "datasets": [],
+  "refs": {
+   "slices": [
+    {
+     "label": {
+      "formatter": "42%"
+     },
+     "name": "Search",
+     "value": 5200
+    },
+    {
+     "label": {
+      "formatter": "21%"
+     },
+     "name": "Direct",
+     "value": 2600
+    },
+    {
+     "label": {
+      "formatter": "14%"
+     },
+     "name": "Social",
+     "value": 1700
+    },
+    {
+     "label": {
+      "formatter": "9.6%"
+     },
+     "name": "Email",
+     "value": 1200
+    },
+    {
+     "label": {
+      "formatter": "6.4%"
+     },
+     "name": "Referral",
+     "value": 800
+    },
+    {
+     "label": {
+      "formatter": "7.7%"
+     },
+     "name": "Other",
+     "value": 960
+    }
+   ]
+  },
+  "source": {
+   "data": "traffic.json",
+   "rows": 8,
+   "sha256": "347926d014a6a51d1708166e4ac38929c64a0b8b3e3f55c099c0af938d9f24f5"
+  },
+  "v": 1
+ },
+ "element": {
+  "alias": "mix",
+  "chart": {
+   "gl": false,
+   "type": "donut"
+  },
+  "chart_frame": {
+   "axes": {},
+   "box": [
+    396,
+    268
+   ],
+   "extra": {
+    "cx": 192,
+    "cy": 116,
+    "r": 100.48,
+    "r0": 55.27
+   },
+   "font": 12,
+   "legend": {
+    "box": [
+     12,
+     232,
+     372,
+     36
+    ],
+    "items": [
+     {
+      "color": "chart.cat.0",
+      "name": "Search",
+      "w": 57.1
+     },
+     {
+      "color": "chart.cat.1",
+      "name": "Direct",
+      "w": 50.88
+     },
+     {
+      "color": "chart.cat.2",
+      "name": "Social",
+      "w": 51.33
+     },
+     {
+      "color": "chart.cat.3",
+      "name": "Email",
+      "w": 47.18
+     },
+     {
+      "color": "chart.cat.4",
+      "name": "Referral",
+      "w": 62.18
+     },
+     {
+      "color": "chart.cat.5",
+      "name": "Other",
+      "w": 48.66
+     }
+    ],
+    "pos": "bottom",
+    "rows": [
+     [
+      0,
+      1,
+      2,
+      3,
+      4
+     ],
+     [
+      5
+     ]
+    ]
+   },
+   "legible": true,
+   "notes": [],
+   "plot": [
+    0,
+    8,
+    384,
+    216
+   ]
+  },
+  "doc_asset": "25e96a584779490c0be1fd4bc12cc252.json",
+  "engine": "echarts",
+  "gist": [
+   "category=channel (8 → 5 + Other) · value=visits · traffic.json 8 rows",
+   "Search 42% · Direct 21% · Social 14% · Other 7.7% · total 12.5K",
+   "capped: 3 of 8 channel values folded into Other"
+  ],
+  "h": 320.0,
+  "id": "E-1",
+  "kv": 2,
+  "model": {
+   "capped": [
+    "3 of 8 channel values folded into Other"
+   ],
+   "count": 8,
+   "how": "none",
+   "slices": [
+    [
+     "Search",
+     5200
+    ],
+    [
+     "Direct",
+     2600
+    ],
+    [
+     "Social",
+     1700
+    ],
+    [
+     "Email",
+     1200
+    ],
+    [
+     "Referral",
+     800
+    ],
+    [
+     "Other",
+     960
+    ]
+   ],
+   "total": 12460
+  },
+  "option": {
+   "animation": false,
+   "aria": {
+    "enabled": true,
+    "label": {
+     "description": "category=channel (8 → 5 + Other) · value=visits · traffic.json 8 rows Search 42% · Direct 21% · Social 14% · Other 7.7% · total 12.5K capped: 3 of 8 channel values folded into Other"
+    }
+   },
+   "backgroundColor": "transparent",
+   "color": [
+    "chart.cat.0",
+    "chart.cat.1",
+    "chart.cat.2",
+    "chart.cat.3",
+    "chart.cat.4",
+    "chart.cat.5"
+   ],
+   "legend": [
+    {
+     "data": [
+      "Search",
+      "Direct",
+      "Social",
+      "Email",
+      "Referral"
+     ],
+     "icon": "roundRect",
+     "itemGap": 16.0,
+     "itemHeight": 10.0,
+     "itemWidth": 10.0,
+     "left": 12.0,
+     "orient": "horizontal",
+     "padding": 0,
+     "show": true,
+     "textStyle": {
+      "color": "chart.ink",
+      "fontFamily": "$sans",
+      "fontSize": 12
+     },
+     "top": 236.0
+    },
+    {
+     "data": [
+      "Other"
+     ],
+     "icon": "roundRect",
+     "itemGap": 16.0,
+     "itemHeight": 10.0,
+     "itemWidth": 10.0,
+     "left": 12.0,
+     "orient": "horizontal",
+     "padding": 0,
+     "show": true,
+     "textStyle": {
+      "color": "chart.ink",
+      "fontFamily": "$sans",
+      "fontSize": 12
+     },
+     "top": 254.0
+    }
+   ],
+   "series": [
+    {
+     "avoidLabelOverlap": false,
+     "center": [
+      192.0,
+      116.0
+     ],
+     "clockwise": true,
+     "color": [
+      "chart.cat.0",
+      "chart.cat.1",
+      "chart.cat.2",
+      "chart.cat.3",
+      "chart.cat.4",
+      "chart.cat.5"
+     ],
+     "data": {
+      "$doc": "slices"
+     },
+     "itemStyle": {
+      "borderColor": "chart.paper",
+      "borderWidth": 1.5
+     },
+     "label": {
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "fontWeight": 600,
+      "position": "inside",
+      "show": true
+     },
+     "labelLine": {
+      "show": false
+     },
+     "minShowLabelAngle": 18.0,
+     "name": "channel",
+     "radius": [
+      55.27,
+      100.48
+     ],
+     "startAngle": 90,
+     "type": "pie"
+    }
+   ],
+   "textStyle": {
+    "color": "chart.ink",
+    "fontFamily": "$sans",
+    "fontSize": 12
+   },
+   "tooltip": {
+    "confine": true,
+    "renderMode": "richText",
+    "textStyle": {
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "trigger": "item"
+   }
+  },
+  "resolved": {
+   "_source": "traffic.json 8 rows",
+   "category": "channel",
+   "data": "traffic.json",
+   "top": 5,
+   "type": "donut",
+   "value": "visits"
+  },
+  "settings": {
+   "category": "channel",
+   "data": "traffic.json",
+   "top": 5,
+   "type": "donut",
+   "value": "visits"
+  },
+  "source": {
+   "columns": [
+    [
+     "channel",
+     "nominal"
+    ],
+    [
+     "visits",
+     "quantitative"
+    ]
+   ],
+   "data": "traffic.json",
+   "kept": 8,
+   "rows": 8,
+   "sha256": "347926d014a6a51d1708166e4ac38929c64a0b8b3e3f55c099c0af938d9f24f5"
+  },
+  "stats": {
+   "count": 8,
+   "shares": [
+    [
+     "Search",
+     0.4173354735152488
+    ],
+    [
+     "Direct",
+     0.2086677367576244
+    ],
+    [
+     "Social",
+     0.13643659711075443
+    ],
+    [
+     "Email",
+     0.09630818619582665
+    ],
+    [
+     "Referral",
+     0.06420545746388442
+    ],
+    [
+     "Other",
+     0.07704654895666131
+    ]
+   ],
+   "total": 12460.0
+  },
+  "text": "Visits by channel",
+  "type": "chart",
+  "updated_seq": 1,
+  "w": 420.0,
+  "x": 0,
+  "y": 0
+ },
+ "gl": false,
+ "slot": [
+  12.0,
+  40.0,
+  396.0,
+  268.0
+ ],
+ "type": "donut"
+}

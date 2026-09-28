@@ -7,3 +7,34 @@ This plugin talks to Herdr (https://github.com/herdrdev/herdr, Apache-2.0)
 over its socket API and bundles one file from that project for its tests:
 tests/fixtures/herdr-api-0.8.2.schema.json, the published JSON schema of the
 Herdr 0.8.2 socket API.
+
+It also bundles these third-party assets unmodified, each with its licence
+next to it:
+
+- assets/icons/lucide/: the Lucide icon set (https://github.com/lucide-icons/lucide),
+  as packaged by @iconify-json/lucide,
+  Copyright (c) 2026 Lucide Icons and Contributors, ISC License; the icons
+  Lucide derives from Feather are Copyright (c) 2013-present Cole Bemis, MIT
+  License. Both texts are in assets/icons/lucide/LICENSE.
+- assets/fonts/inter/: Inter 4.1 (https://github.com/rsms/inter), SIL Open
+  Font License 1.1, in assets/fonts/inter/OFL.txt.
+- assets/fonts/geist-mono/: Geist Mono 1.7.2 (https://github.com/vercel/geist-font),
+  SIL Open Font License 1.1, in assets/fonts/geist-mono/OFL.txt.
+
+The whiteboard page (web/dist/, built from web/) also bundles these npm
+packages, minified and tree-shaken; their licence and notice texts are copied
+into web/dist/licenses/ by the build:
+
+- echarts 6.1.0 (https://echarts.apache.org), Apache License 2.0; its NOTICE:
+  "Apache ECharts, Copyright 2017-2026 The Apache Software Foundation. This
+  product includes software developed at The Apache Software Foundation
+  (https://www.apache.org/)."
+- zrender 6.1.0 (a dependency of echarts), BSD 3-Clause License.
+- tslib 2.3.0 (a dependency of echarts), 0BSD.
+- echarts-gl 2.1.0 (https://github.com/ecomfe/echarts-gl), BSD 3-Clause
+  License per its LICENSE file (its package.json says MIT; the LICENSE text is
+  what ships).
+- claygl 1.3.0 (a dependency of echarts-gl), BSD 2-Clause License; the build
+  replaces one `new Function` in claygl/src/compositor/createCompositor.js with
+  an arithmetic evaluator so the page's Content-Security-Policy holds.
+- three 0.186.1 (https://threejs.org), MIT License.

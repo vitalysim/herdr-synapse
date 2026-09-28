@@ -70,6 +70,114 @@
   height: 100%;
 }
 
+/* A viz frame demoted by the live budget: its still, or a paused card. */
+.sv2-viz-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 12px;
+  border: 1px dashed #b9bbc6;
+  border-radius: 8px;
+  font: 500 12px/1.4 "Synapse Sans", system-ui, sans-serif;
+  color: #60646c;
+  text-align: center;
+}
+
+/* The GL host (canvas-v2-phase3-4.md WW-4): the shared 3D renderer's one canvas, over the SVG world
+   and under the HTML slots. It never takes pointer events. */
+.sv2-gl-host {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* A preview's move or resize of an entry, applied to its HTML-layer slots. */
+.sv2-html-preview {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+}
+
+/* A scene3d placeholder: transparent (the shared canvas draws into its rectangle, the SVG beneath
+   shows its still until then); it takes pointer events only while entered. */
+.sv2-scene3d {
+  position: absolute;
+  border-radius: 6px;
+}
+
+.sv2-scene3d.sv2-entered {
+  outline: 2px solid var(--sv2-entered, #6e56cf);
+  outline-offset: 2px;
+  cursor: grab;
+}
+
+.sv2-scene3d.sv2-entered:active {
+  cursor: grabbing;
+}
+
+/* The entered scene's orbit layer: the orbit controls listen here, under the bar's buttons. */
+.sv2-orbit {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+}
+
+/* The entered entry's live view (a chart's ECharts instance), at the slot box. */
+.sv2-live {
+  position: absolute;
+  overflow: hidden;
+  border-radius: 6px;
+  outline: 2px solid var(--sv2-entered, #6e56cf);
+  outline-offset: 2px;
+}
+
+.sv2-live > * {
+  width: 100%;
+  height: 100%;
+}
+
+.sv2-enter-bar {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font: 500 11px/1 "Synapse Sans", system-ui, sans-serif;
+}
+
+.sv2-enter-hint {
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.85);
+  color: #60646c;
+}
+
+.sv2-enter-bar button {
+  font: inherit;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid #d9d9e0;
+  background: #ffffff;
+  color: #1c2024;
+  cursor: pointer;
+}
+
+.sv2-surface[data-theme="dark"] .sv2-enter-hint {
+  background: rgba(24, 25, 27, 0.85);
+  color: #b0b4ba;
+}
+
+.sv2-surface[data-theme="dark"] .sv2-enter-bar button {
+  border-color: #3a3f42;
+  background: #212225;
+  color: #edeef0;
+}
+
 /* Screen-space HTML (the text editor): the layer lets pointer events through, its children do not. */
 .sv2-overlay {
   position: absolute;

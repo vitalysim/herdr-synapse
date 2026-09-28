@@ -1,0 +1,11 @@
+{
+ "about": "a first chunk that is not JSON",
+ "source": "glb",
+ "glb": {
+  "first_chunk": "BIN"
+ },
+ "expect": {
+  "code": "op_invalid",
+  "contains": "first GLB chunk is not JSON"
+ }
+}

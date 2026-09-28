@@ -1,0 +1,501 @@
+{
+ "box": {
+  "h": 328.0,
+  "w": 496.0
+ },
+ "doc": {
+  "chart": "scatter",
+  "datasets": [
+   {
+    "dimensions": [
+     "x",
+     "y",
+     "label"
+    ],
+    "id": "d0",
+    "source": [
+     [
+      800,
+      120,
+      "Email"
+     ],
+     [
+      2500,
+      60,
+      "Display"
+     ],
+     [
+      3100,
+      150,
+      "Social"
+     ],
+     [
+      4200,
+      260,
+      "Search"
+     ],
+     [
+      5600,
+      190,
+      "Video"
+     ],
+     [
+      9800,
+      410,
+      "Brand"
+     ]
+    ]
+   }
+  ],
+  "refs": {},
+  "source": {
+   "data": null,
+   "rows": 6,
+   "sha256": "f7ecdb875970470cbe413b0a5164d68538f8b68ad4e1f9c07664b5214db166f3"
+  },
+  "v": 1
+ },
+ "element": {
+  "alias": "spend",
+  "chart": {
+   "gl": false,
+   "type": "scatter"
+  },
+  "chart_frame": {
+   "axes": {
+    "x": {
+     "extent": 15,
+     "fmt": "auto|$",
+     "kind": "value",
+     "max": 10000,
+     "min": 0,
+     "pos": "bottom",
+     "step": 2000,
+     "ticks": [
+      {
+       "t": "$0",
+       "v": 0,
+       "w": 15.73
+      },
+      {
+       "t": "$2,000",
+       "v": 2000,
+       "w": 42.42
+      },
+      {
+       "t": "$4,000",
+       "v": 4000,
+       "w": 42.87
+      },
+      {
+       "t": "$6,000",
+       "v": 6000,
+       "w": 42.55
+      },
+      {
+       "t": "$8,000",
+       "v": 8000,
+       "w": 42.53
+      },
+      {
+       "t": "$10,000",
+       "v": 10000,
+       "w": 47.71
+      }
+     ],
+     "title": null
+    },
+    "y": {
+     "fmt": "auto|",
+     "kind": "value",
+     "max": 500,
+     "min": 0,
+     "pos": "left",
+     "step": 100,
+     "ticks": [
+      {
+       "t": "0",
+       "v": 0,
+       "w": 7.8
+      },
+      {
+       "t": "100",
+       "v": 100,
+       "w": 20.62
+      },
+      {
+       "t": "200",
+       "v": 200,
+       "w": 23.13
+      },
+      {
+       "t": "300",
+       "v": 300,
+       "w": 23.23
+      },
+      {
+       "t": "400",
+       "v": 400,
+       "w": 23.58
+      },
+      {
+       "t": "500",
+       "v": 500,
+       "w": 22.93
+      }
+     ],
+     "title": "signups"
+    }
+   },
+   "box": [
+    496,
+    328
+   ],
+   "extra": {},
+   "font": 12,
+   "legend": null,
+   "legible": true,
+   "notes": [],
+   "plot": [
+    33.58,
+    26,
+    450.42,
+    277
+   ]
+  },
+  "doc_asset": "340b29e07f230db53c765e59f7beb68d.json",
+  "engine": "echarts",
+  "gist": [
+   "x=spend · y=signups · 6 points · inline rows 6 rows",
+   "r = 0.90 (strong positive) · slope +0.0354 signups per spend",
+   "x $800…$9,800 · y 60…410"
+  ],
+  "h": 380.0,
+  "id": "E-1",
+  "kv": 2,
+  "model": {
+   "capped": [],
+   "fit": [
+    0.0353635,
+    45.0914
+   ],
+   "groups": [],
+   "n": 6,
+   "points": [
+    [
+     800,
+     120,
+     0
+    ],
+    [
+     2500,
+     60,
+     0
+    ],
+    [
+     3100,
+     150,
+     0
+    ],
+    [
+     4200,
+     260,
+     0
+    ],
+    [
+     5600,
+     190,
+     0
+    ],
+    [
+     9800,
+     410,
+     0
+    ]
+   ],
+   "size": null,
+   "x": [
+    800,
+    9800
+   ],
+   "y": [
+    60,
+    410
+   ]
+  },
+  "option": {
+   "animation": false,
+   "aria": {
+    "enabled": true,
+    "label": {
+     "description": "x=spend · y=signups · 6 points · inline rows 6 rows r = 0.90 (strong positive) · slope +0.0354 signups per spend x $800…$9,800 · y 60…410"
+    }
+   },
+   "backgroundColor": "transparent",
+   "color": [
+    "chart.cat.0"
+   ],
+   "dataset": {
+    "$doc": "datasets"
+   },
+   "grid": {
+    "containLabel": false,
+    "height": 277.0,
+    "left": 33.58,
+    "top": 26.0,
+    "width": 450.42
+   },
+   "legend": {
+    "show": false
+   },
+   "series": [
+    {
+     "datasetIndex": 0,
+     "encode": {
+      "tooltip": [
+       "label",
+       "x",
+       "y"
+      ],
+      "x": "x",
+      "y": "y"
+     },
+     "itemStyle": {
+      "borderColor": "chart.paper",
+      "borderWidth": 0.75,
+      "opacity": 0.8
+     },
+     "markLine": {
+      "data": [
+       [
+        {
+         "coord": [
+          0,
+          45.0914
+         ]
+        },
+        {
+         "coord": [
+          10000,
+          398.726
+         ]
+        }
+       ]
+      ],
+      "lineStyle": {
+       "color": "chart.ink",
+       "opacity": 0.8,
+       "type": "dashed"
+      },
+      "silent": true,
+      "symbol": "none"
+     },
+     "name": "signups",
+     "symbolSize": 7.0,
+     "type": "scatter"
+    }
+   ],
+   "textStyle": {
+    "color": "chart.ink",
+    "fontFamily": "$sans",
+    "fontSize": 12
+   },
+   "tooltip": {
+    "confine": true,
+    "renderMode": "richText",
+    "textStyle": {
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "trigger": "item"
+   },
+   "xAxis": {
+    "axisLabel": {
+     "color": "chart.muted",
+     "fontFamily": "$sans",
+     "fontSize": 12,
+     "formatter": {
+      "$fmt": "auto|$"
+     },
+     "margin": 8.0
+    },
+    "axisLine": {
+     "lineStyle": {
+      "color": "chart.axis"
+     },
+     "show": true
+    },
+    "axisTick": {
+     "alignWithLabel": true,
+     "length": 4.0,
+     "lineStyle": {
+      "color": "chart.axis"
+     },
+     "show": false
+    },
+    "interval": 2000.0,
+    "max": 10000.0,
+    "min": 0.0,
+    "position": "bottom",
+    "splitLine": {
+     "lineStyle": {
+      "color": "chart.gridline"
+     },
+     "show": true
+    },
+    "type": "value"
+   },
+   "yAxis": {
+    "axisLabel": {
+     "color": "chart.muted",
+     "fontFamily": "$sans",
+     "fontSize": 12,
+     "formatter": {
+      "$fmt": "auto|"
+     },
+     "margin": 8.0
+    },
+    "axisLine": {
+     "lineStyle": {
+      "color": "chart.axis"
+     },
+     "show": false
+    },
+    "axisTick": {
+     "alignWithLabel": true,
+     "length": 4.0,
+     "lineStyle": {
+      "color": "chart.axis"
+     },
+     "show": false
+    },
+    "interval": 100.0,
+    "max": 500.0,
+    "min": 0.0,
+    "name": "signups",
+    "nameGap": 4.0,
+    "nameLocation": "end",
+    "nameMoveOverlap": false,
+    "nameTextStyle": {
+     "align": "left",
+     "color": "chart.muted",
+     "fontFamily": "$sans",
+     "fontSize": 12,
+     "lineHeight": 15.0,
+     "verticalAlign": "bottom"
+    },
+    "position": "left",
+    "splitLine": {
+     "lineStyle": {
+      "color": "chart.gridline"
+     },
+     "show": true
+    },
+    "type": "value"
+   }
+  },
+  "resolved": {
+   "_source": "inline rows 6 rows",
+   "label": "campaign",
+   "trend": "linear",
+   "type": "scatter",
+   "units": {
+    "x": "$"
+   },
+   "x": "spend",
+   "y": "signups"
+  },
+  "settings": {
+   "label": "campaign",
+   "rows": [
+    {
+     "campaign": "Brand",
+     "signups": 410,
+     "spend": 9800
+    },
+    {
+     "campaign": "Search",
+     "signups": 260,
+     "spend": 4200
+    },
+    {
+     "campaign": "Social",
+     "signups": 150,
+     "spend": 3100
+    },
+    {
+     "campaign": "Video",
+     "signups": 190,
+     "spend": 5600
+    },
+    {
+     "campaign": "Email",
+     "signups": 120,
+     "spend": 800
+    },
+    {
+     "campaign": "Display",
+     "signups": 60,
+     "spend": 2500
+    }
+   ],
+   "trend": "linear",
+   "type": "scatter",
+   "units": {
+    "x": "$"
+   },
+   "x": "spend",
+   "y": "signups"
+  },
+  "source": {
+   "columns": [
+    [
+     "campaign",
+     "nominal"
+    ],
+    [
+     "spend",
+     "quantitative"
+    ],
+    [
+     "signups",
+     "quantitative"
+    ]
+   ],
+   "data": null,
+   "kept": 6,
+   "rows": 6,
+   "sha256": "f7ecdb875970470cbe413b0a5164d68538f8b68ad4e1f9c07664b5214db166f3"
+  },
+  "stats": {
+   "groups": 0,
+   "intercept": 45.091392715864174,
+   "n": 6,
+   "outliers": [],
+   "r": 0.8951105889436957,
+   "slope": 0.035363524757877504,
+   "x": [
+    800.0,
+    9800.0
+   ],
+   "y": [
+    60.0,
+    410.0
+   ]
+  },
+  "text": "Spend vs signups",
+  "type": "chart",
+  "updated_seq": 1,
+  "w": 520.0,
+  "x": 0,
+  "y": 0
+ },
+ "gl": false,
+ "slot": [
+  12.0,
+  40.0,
+  496.0,
+  328.0
+ ],
+ "type": "scatter"
+}

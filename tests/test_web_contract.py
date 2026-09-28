@@ -80,6 +80,19 @@ class WebContract(unittest.TestCase):
         vite = (PLUGIN_ROOT / "web" / "vite.config.js").read_text(encoding="utf-8")
         self.assertIn("assets/canvas/tokens.json", vite, "the page imports the generated token file, never a copy")
 
+    def test_the_page_bundles_every_chart_types_modules(self):
+        # D19 / I-12: postbuild writes web/dist/charts.json from charts/components.js and scene3d/manifest.js; until the
+        # first Phase 3-4 build it is absent, and this test waits for it by name.
+        path = DIST / "charts.json"
+        if not path.is_file():
+            self.skipTest("web/dist/charts.json is written by the first Phase 3-4 build (I-12)")
+        from herdr_team import canvas_charts as CC
+
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(doc["v"], 1)
+        self.assertLessEqual(set(CC.echarts_modules(gl=False)), set(doc["echarts"]), "a chart type needs an ECharts module the page lacks")
+        self.assertLessEqual(set(CC.echarts_modules(gl=True)), set(doc["gl"]), "a GL chart type needs an echarts-gl module the page lacks")
+
 
 if __name__ == "__main__":
     unittest.main()

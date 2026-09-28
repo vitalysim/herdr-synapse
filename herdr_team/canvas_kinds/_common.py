@@ -81,6 +81,9 @@ def truncated_label(el: Element, env: Optional[Dict[str, Any]] = None) -> List[D
 GRID = 20
 #: The largest side an element may have.
 MAX_SIZE = 20_000
+#: The largest side a laid-out block (a graph, a mind map, a stack) may reach: a layout places the members, so a big
+#: graph drawn to the right (200 nodes in a chain) is bigger than anything one op sizes by hand (QA phase 2, R4).
+MAX_BLOCK_SIZE = 50_000
 #: Named colours (legacy Open Color hexes); a named colour is read as its tone since 0.22.
 COLORS = {"black": "#1e1e1e", "gray": "#868e96", "red": "#e03131", "pink": "#c2255c", "purple": "#9c36b5",
           "blue": "#1971c2", "teal": "#0c8599", "green": "#2f9e44", "orange": "#f08c00", "yellow": "#f59f00",

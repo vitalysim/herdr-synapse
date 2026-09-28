@@ -157,6 +157,7 @@ def tool_definitions() -> List[Dict[str, Any]]:
              "exact": {"type": "boolean", "description": "ask an open whiteboard page for the engine's own picture"},
              "block": dict(text, description="a block (kanban, table, graph ...): its whole spec, one item per line"),
              "full": {"type": "boolean", "description": "also block part ids, top-level neighbours and details"},
+             "view": dict(text, description="with image: draw 3D scenes from this view (iso, front or top)"),
          })},
         {"name": "canvas_check",
          "description": ("Check the canvas layout (or a region): overlapping marks, text on a labelled shape, labels that do not fit "
@@ -252,7 +253,7 @@ def _tool_look(session: McpSession, args: Dict[str, Any]) -> Tuple[Dict[str, Any
     image = _flag(args, "image") or exact
     result = C.look(session.layout, team, author.name, region=_place(_str(args, "region")), around=_str(args, "around"),
                     since=_str(args, "since"), image=image, grid=_flag(args, "grid"), exact=exact, advance=True, doc=doc,
-                    block=_str(args, "block"), full=_flag(args, "full"))
+                    block=_str(args, "block"), full=_flag(args, "full"), view=_str(args, "view"))
     extra: List[Dict[str, Any]] = []
     if image and result.get("image"):
         try:

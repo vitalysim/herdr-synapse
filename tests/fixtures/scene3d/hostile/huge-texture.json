@@ -1,0 +1,14 @@
+{
+ "about": "a texture past 4,096 px a side",
+ "source": "gltf",
+ "texture": {
+  "png_header": [
+   8192,
+   16
+  ]
+ },
+ "expect": {
+  "code": "canvas_limit",
+  "contains": "4096 px or less"
+ }
+}

@@ -1,0 +1,9 @@
+{
+ "about": "a file that is not a model",
+ "source": "op",
+ "src": "models/notes.txt",
+ "expect": {
+  "code": "op_invalid",
+  "contains": ".glb or .gltf"
+ }
+}

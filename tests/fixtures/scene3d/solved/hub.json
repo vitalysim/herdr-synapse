@@ -1,0 +1,370 @@
+{
+ "element": {
+  "alias": "hub",
+  "h": 420,
+  "id": "E-4",
+  "kv": 1,
+  "links": [
+   {
+    "from": "a",
+    "id": "a->bus",
+    "to": "bus"
+   },
+   {
+    "from": "b",
+    "id": "b->bus",
+    "to": "bus"
+   },
+   {
+    "from": "c",
+    "id": "c->bus",
+    "to": "bus"
+   },
+   {
+    "from": "d",
+    "id": "d->bus",
+    "label": "alerts",
+    "to": "bus"
+   }
+  ],
+  "objects": [
+   {
+    "height": 0.3,
+    "id": "bus",
+    "label": "Kafka",
+    "radius": 0.8,
+    "shape": "cylinder",
+    "tone": "accent"
+   },
+   {
+    "around": "bus",
+    "id": "a",
+    "label": "billing",
+    "shape": "box",
+    "size": [
+     0.6,
+     0.6,
+     0.6
+    ],
+    "tone": "info"
+   },
+   {
+    "around": "bus",
+    "id": "b",
+    "label": "search",
+    "shape": "box",
+    "size": [
+     0.6,
+     0.6,
+     0.6
+    ],
+    "tone": "info"
+   },
+   {
+    "around": "bus",
+    "id": "c",
+    "label": "email",
+    "shape": "box",
+    "size": [
+     0.6,
+     0.6,
+     0.6
+    ],
+    "tone": "info"
+   },
+   {
+    "around": "bus",
+    "height": 0.7,
+    "id": "d",
+    "label": "fraud",
+    "radius": 0.35,
+    "shape": "cone",
+    "tone": "danger"
+   }
+  ],
+  "settings": {
+   "camera": "iso",
+   "ground": true,
+   "labels": "auto",
+   "lights": "studio",
+   "units": "m"
+  },
+  "solved": {
+   "bounds": [
+    -2.3763,
+    0.0,
+    -2.2556,
+    2.2556,
+    0.7,
+    2.2556
+   ],
+   "links": [
+    [
+     "a->bus",
+     "a",
+     "bus",
+     [
+      [
+       0.0,
+       0.277,
+       -1.6556
+      ],
+      [
+       0.0,
+       0.2114,
+       -0.8
+      ]
+     ],
+     null,
+     null
+    ],
+    [
+     "b->bus",
+     "b",
+     "bus",
+     [
+      [
+       1.6556,
+       0.277,
+       0.0
+      ],
+      [
+       0.8,
+       0.2114,
+       0.0
+      ]
+     ],
+     null,
+     null
+    ],
+    [
+     "c->bus",
+     "c",
+     "bus",
+     [
+      [
+       0.0,
+       0.277,
+       1.6556
+      ],
+      [
+       0.0,
+       0.2114,
+       0.8
+      ]
+     ],
+     null,
+     null
+    ],
+    [
+     "d->bus",
+     "d",
+     "bus",
+     [
+      [
+       -1.6763,
+       0.3155,
+       0.0
+      ],
+      [
+       -0.8,
+       0.229,
+       0.0
+      ]
+     ],
+     "alerts",
+     null
+    ]
+   ],
+   "objects": [
+    [
+     "bus",
+     [
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      1.6,
+      0.3,
+      1.6
+     ],
+     null,
+     ""
+    ],
+    [
+     "a",
+     [
+      0.0,
+      0.0,
+      -1.9556
+     ],
+     [
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.6,
+      0.6,
+      0.6
+     ],
+     null,
+     "around bus (ring 1.96, -90°)"
+    ],
+    [
+     "b",
+     [
+      1.9556,
+      0.0,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.6,
+      0.6,
+      0.6
+     ],
+     null,
+     "around bus (ring 1.96, 0°)"
+    ],
+    [
+     "c",
+     [
+      0.0,
+      0.0,
+      1.9556
+     ],
+     [
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.6,
+      0.6,
+      0.6
+     ],
+     null,
+     "around bus (ring 1.96, 90°)"
+    ],
+    [
+     "d",
+     [
+      -2.0263,
+      0.0,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.7,
+      0.7,
+      0.7
+     ],
+     null,
+     "around bus (ring 2.03, 180°)"
+    ]
+   ],
+   "v": 1
+  },
+  "text": "Event bus",
+  "type": "scene3d",
+  "updated_seq": 4,
+  "w": 640,
+  "x": 0,
+  "y": 0
+ },
+ "op": {
+  "id": "hub",
+  "intent": "event bus consumers",
+  "links": [
+   {
+    "from": "a",
+    "to": "bus"
+   },
+   {
+    "from": "b",
+    "to": "bus"
+   },
+   {
+    "from": "c",
+    "to": "bus"
+   },
+   {
+    "from": "d",
+    "label": "alerts",
+    "to": "bus"
+   }
+  ],
+  "objects": [
+   {
+    "height": 0.3,
+    "id": "bus",
+    "label": "Kafka",
+    "radius": 0.8,
+    "shape": "cylinder",
+    "tone": "accent"
+   },
+   {
+    "around": "bus",
+    "id": "a",
+    "label": "billing",
+    "shape": "box",
+    "size": [
+     0.6,
+     0.6,
+     0.6
+    ],
+    "tone": "info"
+   },
+   {
+    "around": "bus",
+    "id": "b",
+    "label": "search",
+    "shape": "box",
+    "size": [
+     0.6,
+     0.6,
+     0.6
+    ],
+    "tone": "info"
+   },
+   {
+    "around": "bus",
+    "id": "c",
+    "label": "email",
+    "shape": "box",
+    "size": [
+     0.6,
+     0.6,
+     0.6
+    ],
+    "tone": "info"
+   },
+   {
+    "around": "bus",
+    "height": 0.7,
+    "id": "d",
+    "label": "fraud",
+    "radius": 0.35,
+    "shape": "cone",
+    "tone": "danger"
+   }
+  ],
+  "op": "scene3d",
+  "title": "Event bus"
+ }
+}

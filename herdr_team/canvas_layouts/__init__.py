@@ -31,6 +31,7 @@ import sys
 from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
+from herdr_team.canvas_layouts import _budget
 from herdr_team.canvas_layouts._discovery import discover
 
 #: The version of this registry's contract; bumped when a dataclass or ``run`` changes meaning.
@@ -39,6 +40,12 @@ API_VERSION = 1
 DIRECTIONS = ("down", "right", "up", "left")
 #: The largest side a laid-out drawing may have (the canvas's ``MAX_SIZE``); a bigger one is the caller's ``too_big``.
 MAX_SIZE = 20_000
+#: The wall-clock budget of one layout run under the canvas lock (``_budget``; QA phase 2, R2). The shipped layouts
+#: take a fraction of it at 50 nodes; a 200-node graph can reach it on 3.9, and then they stop their long loops and
+#: return the best drawing found so far.
+LAYOUT_SECONDS = 0.45
+#: The budget of a layout computed before the lock is taken (a new graph's ``prepare``): nothing waits on it.
+PREPARE_SECONDS = 1.2
 
 Point = Tuple[float, float]
 Box = Tuple[float, float, float, float]  # (x0, y0, x1, y1)
@@ -151,6 +158,9 @@ class Layout:
     doc: str = ""
     #: It holds pins. A stack or a grid is an order: ``run`` takes pins out of its request and notes ``pin_ignored``.
     pins: bool = True
+    #: Its result counts edge crossings (``stats["crossings"]``): the graph check ``crossings_high`` compares a drawing
+    #: against a fresh run of it. A layout that does not count them is not run again just to find that out.
+    crossings: bool = False
 
 
 _REGISTRY: Dict[str, Layout] = {}
@@ -346,8 +356,12 @@ def _r2p(point: Sequence[float]) -> Point:
     return (_r2(point[0]), _r2(point[1]))
 
 
-def run(name: str, request: LayoutRequest) -> LayoutResult:
+def run(name: str, request: LayoutRequest, seconds: Optional[float] = None) -> LayoutResult:
     """Validate ``request``, run the layout ``name`` on it, then enforce the contract.
+
+    It runs under a time budget of ``seconds`` (``LAYOUT_SECONDS`` by default: a layout under the canvas lock; one
+    computed before the lock is taken may have more): past it, a shipped layout returns the best drawing so far and
+    the result notes ``layout_budget``.
 
     Every pin is held exactly (else ``LayoutError``: that is a bug in the layout),
     every other coordinate is rounded to two decimals, and ``bbox`` covers every
@@ -364,7 +378,14 @@ def run(name: str, request: LayoutRequest) -> LayoutResult:
         request = replace(request, nodes=tuple(replace(node, pin=None, pin_by=None) for node in request.nodes))
     if not request.nodes:
         return LayoutResult(positions={}, notes=tuple(notes))
-    result = layout.run(request)
+    # Every layout runs under a time budget (QA phase 2, R2): the shipped ones stop their long loops when it runs out
+    # and return the best drawing so far (a force layout snaps what has settled, the layered one keeps its best order
+    # and a feasible ranking), and ``out of time`` is noted.
+    allowed = LAYOUT_SECONDS if seconds is None else seconds
+    with _budget.running(_budget.Budget(seconds=allowed)) as budget:
+        result = layout.run(request)
+    if budget.exhausted is not None:
+        notes.append("layout_budget: {} ran out of its {:g} s budget and stopped early".format(layout.name, allowed))
     positions: Dict[str, Point] = {}
     for node in request.nodes:
         found = result.positions.get(node.id)

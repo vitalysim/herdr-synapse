@@ -1,0 +1,539 @@
+{
+ "name": "scene3d",
+ "about": "3D scenes (canvas v2 phase 4, 3.10): the guide's worked examples (the topology, a rack stacked inside a glass cabinet, a glTF arm on its bench, services around a hub) and every primitive once (a rotated box, grid and ring groups, text3d, arrow3d, a textured glTF packed from a .gltf with its .bin and .png), then a patch that adds a replica and saves an orbit view. The WEB e2e runs (S1-S5, S8, S9) drive the shared renderer here.",
+ "stresses": [
+  "relations and group layouts solved in Python",
+  "glTF read, checked and packed into assets",
+  "server projections as the agent's picture",
+  "one shared WebGL renderer",
+  "stills per view"
+ ],
+ "artifacts": "scene3d",
+ "gates": {
+  "strict": true
+ },
+ "batches": [
+  [
+   {
+    "op": "scene3d",
+    "id": "topo",
+    "intent": "the prod topology in 3D",
+    "title": "Prod topology",
+    "units": "m",
+    "camera": "iso",
+    "lights": "studio",
+    "ground": true,
+    "labels": "auto",
+    "objects": [
+     {
+      "id": "base",
+      "shape": "plane",
+      "size": [
+       8,
+       5
+      ],
+      "tone": "neutral"
+     },
+     {
+      "id": "lb",
+      "shape": "box",
+      "size": [
+       1.2,
+       0.4,
+       1.2
+      ],
+      "tone": "info",
+      "label": "Load balancer",
+      "on": "base",
+      "at": [
+       -3,
+       0
+      ]
+     },
+     {
+      "id": "api",
+      "shape": "group",
+      "layout": "row",
+      "gap": 0.3,
+      "on": "base",
+      "right_of": "lb",
+      "label": "API pool"
+     },
+     {
+      "id": "api1",
+      "shape": "box",
+      "size": [
+       0.8,
+       1.2,
+       0.8
+      ],
+      "tone": "accent",
+      "in": "api"
+     },
+     {
+      "id": "api2",
+      "shape": "box",
+      "size": [
+       0.8,
+       1.2,
+       0.8
+      ],
+      "tone": "accent",
+      "in": "api"
+     },
+     {
+      "id": "db",
+      "shape": "cylinder",
+      "radius": 0.6,
+      "height": 1.4,
+      "tone": "success",
+      "label": "Postgres",
+      "on": "base",
+      "right_of": "api",
+      "gap": 1
+     },
+     {
+      "id": "cache",
+      "shape": "sphere",
+      "radius": 0.35,
+      "tone": "warning",
+      "label": "Redis",
+      "above": "api",
+      "gap": 0.3
+     }
+    ],
+    "links": [
+     {
+      "from": "lb",
+      "to": "api"
+     },
+     {
+      "from": "api",
+      "to": "db",
+      "label": "SQL"
+     },
+     {
+      "from": "api",
+      "to": "cache",
+      "tone": "warning"
+     }
+    ],
+    "at": [
+     0,
+     0
+    ]
+   },
+   {
+    "op": "scene3d",
+    "id": "rack",
+    "intent": "rack layout for the new cluster",
+    "title": "Rack R12",
+    "camera": "front",
+    "objects": [
+     {
+      "id": "cab",
+      "shape": "box",
+      "size": [
+       1.0,
+       2.0,
+       1.0
+      ],
+      "tone": "neutral",
+      "finish": "glass",
+      "label": "R12"
+     },
+     {
+      "id": "nodes",
+      "shape": "group",
+      "layout": "stack",
+      "gap": 0.05,
+      "inside": "cab"
+     },
+     {
+      "id": "n1",
+      "shape": "box",
+      "size": [
+       0.9,
+       0.2,
+       0.9
+      ],
+      "tone": "info",
+      "label": "gpu-1",
+      "in": "nodes"
+     },
+     {
+      "id": "n2",
+      "shape": "box",
+      "size": [
+       0.9,
+       0.2,
+       0.9
+      ],
+      "tone": "info",
+      "label": "gpu-2",
+      "in": "nodes"
+     },
+     {
+      "id": "n3",
+      "shape": "box",
+      "size": [
+       0.9,
+       0.2,
+       0.9
+      ],
+      "tone": "warning",
+      "label": "gpu-3 (degraded)",
+      "in": "nodes"
+     },
+     {
+      "id": "sw",
+      "shape": "box",
+      "size": [
+       0.9,
+       0.1,
+       0.9
+      ],
+      "tone": "accent",
+      "label": "ToR switch",
+      "in": "nodes"
+     }
+    ],
+    "right_of": "topo"
+   },
+   {
+    "op": "scene3d",
+    "id": "robot",
+    "intent": "the arm prototype on its bench",
+    "title": "Arm v3 on bench",
+    "camera": "orbit",
+    "lights": "soft",
+    "objects": [
+     {
+      "id": "bench",
+      "shape": "box",
+      "size": [
+       2.0,
+       0.9,
+       1.0
+      ],
+      "tone": "neutral"
+     },
+     {
+      "id": "arm",
+      "shape": "gltf",
+      "src": "models/arm-v3.glb",
+      "height": 0.8,
+      "on": "bench",
+      "label": "Arm v3"
+     },
+     {
+      "id": "tag",
+      "shape": "text3d",
+      "text": "payload 1.2 kg",
+      "height": 0.08,
+      "above": "arm",
+      "gap": 0.1
+     }
+    ],
+    "below": "rack"
+   },
+   {
+    "op": "scene3d",
+    "id": "hub",
+    "intent": "event bus consumers",
+    "title": "Event bus",
+    "objects": [
+     {
+      "id": "bus",
+      "shape": "cylinder",
+      "radius": 0.8,
+      "height": 0.3,
+      "tone": "accent",
+      "label": "Kafka"
+     },
+     {
+      "id": "a",
+      "shape": "box",
+      "size": [
+       0.6,
+       0.6,
+       0.6
+      ],
+      "tone": "info",
+      "label": "billing",
+      "around": "bus"
+     },
+     {
+      "id": "b",
+      "shape": "box",
+      "size": [
+       0.6,
+       0.6,
+       0.6
+      ],
+      "tone": "info",
+      "label": "search",
+      "around": "bus"
+     },
+     {
+      "id": "c",
+      "shape": "box",
+      "size": [
+       0.6,
+       0.6,
+       0.6
+      ],
+      "tone": "info",
+      "label": "email",
+      "around": "bus"
+     },
+     {
+      "id": "d",
+      "shape": "cone",
+      "radius": 0.35,
+      "height": 0.7,
+      "tone": "danger",
+      "label": "fraud",
+      "around": "bus"
+     }
+    ],
+    "links": [
+     {
+      "from": "a",
+      "to": "bus"
+     },
+     {
+      "from": "b",
+      "to": "bus"
+     },
+     {
+      "from": "c",
+      "to": "bus"
+     },
+     {
+      "from": "d",
+      "to": "bus",
+      "label": "alerts"
+     }
+    ],
+    "right_of": "robot"
+   },
+   {
+    "op": "scene3d",
+    "id": "shapes",
+    "intent": "every primitive once",
+    "title": "Every primitive",
+    "labels": "all",
+    "objects": [
+     {
+      "id": "floor",
+      "shape": "plane",
+      "size": [
+       9,
+       6
+      ],
+      "thickness": 0.05
+     },
+     {
+      "id": "turned",
+      "shape": "box",
+      "size": [
+       1.6,
+       0.5,
+       0.8
+      ],
+      "rotate": 30,
+      "tone": "info",
+      "on": "floor",
+      "at": [
+       -3,
+       -1.5
+      ]
+     },
+     {
+      "id": "ball",
+      "shape": "sphere",
+      "radius": 0.4,
+      "tone": "warning",
+      "on": "floor",
+      "at": [
+       -1,
+       -1.5
+      ]
+     },
+     {
+      "id": "tank",
+      "shape": "cylinder",
+      "radius": 0.5,
+      "height": 1.2,
+      "tone": "success",
+      "on": "floor",
+      "at": [
+       1,
+       -1.5
+      ]
+     },
+     {
+      "id": "peak",
+      "shape": "cone",
+      "radius": 0.5,
+      "height": 1.0,
+      "tone": "danger",
+      "on": "floor",
+      "at": [
+       3,
+       -1.5
+      ]
+     },
+     {
+      "id": "grid",
+      "shape": "group",
+      "layout": "grid",
+      "cols": 3,
+      "gap": 0.15,
+      "on": "floor",
+      "at": [
+       -2.5,
+       1.5
+      ]
+     },
+     {
+      "id": "g1",
+      "shape": "box",
+      "size": [
+       0.4,
+       0.4,
+       0.4
+      ],
+      "tone": "accent",
+      "in": "grid"
+     },
+     {
+      "id": "g2",
+      "shape": "box",
+      "size": [
+       0.4,
+       0.6,
+       0.4
+      ],
+      "tone": "accent",
+      "in": "grid"
+     },
+     {
+      "id": "g3",
+      "shape": "box",
+      "size": [
+       0.4,
+       0.8,
+       0.4
+      ],
+      "tone": "accent",
+      "in": "grid"
+     },
+     {
+      "id": "g4",
+      "shape": "box",
+      "size": [
+       0.4,
+       0.3,
+       0.4
+      ],
+      "tone": "accent",
+      "in": "grid"
+     },
+     {
+      "id": "ring",
+      "shape": "group",
+      "layout": "ring",
+      "gap": 0.2,
+      "on": "floor",
+      "at": [
+       0.5,
+       1.5
+      ]
+     },
+     {
+      "id": "r1",
+      "shape": "sphere",
+      "radius": 0.2,
+      "tone": "info",
+      "in": "ring"
+     },
+     {
+      "id": "r2",
+      "shape": "sphere",
+      "radius": 0.2,
+      "tone": "info",
+      "in": "ring"
+     },
+     {
+      "id": "r3",
+      "shape": "sphere",
+      "radius": 0.2,
+      "tone": "info",
+      "in": "ring"
+     },
+     {
+      "id": "crate",
+      "shape": "gltf",
+      "src": "models/crate.gltf",
+      "height": 0.6,
+      "on": "floor",
+      "at": [
+       3,
+       1.5
+      ]
+     },
+     {
+      "id": "sign",
+      "shape": "text3d",
+      "text": "loading dock",
+      "height": 0.3,
+      "above": "crate",
+      "gap": 0.2
+     },
+     {
+      "id": "flow",
+      "shape": "arrow3d",
+      "from": "ball",
+      "to": "tank",
+      "tone": "accent"
+     }
+    ],
+    "below": "topo"
+   }
+  ],
+  [
+   {
+    "op": "patch",
+    "id": "topo",
+    "intent": "add a read replica",
+    "add": {
+     "objects": [
+      {
+       "id": "replica",
+       "shape": "cylinder",
+       "radius": 0.5,
+       "height": 1.2,
+       "tone": "success",
+       "label": "Replica",
+       "on": "base",
+       "behind": "db",
+       "gap": 0.8
+      }
+     ],
+     "links": [
+      "db -> replica"
+     ]
+    },
+    "set": {
+     "camera": {
+      "preset": "orbit",
+      "az": 60,
+      "el": 30
+     }
+    }
+   }
+  ]
+ ]
+}

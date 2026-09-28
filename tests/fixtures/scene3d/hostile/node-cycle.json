@@ -1,0 +1,23 @@
+{
+ "about": "nodes that hold each other",
+ "source": "gltf",
+ "patch": {
+  "nodes": [
+   {
+    "children": [
+     1
+    ]
+   },
+   {
+    "children": [
+     0
+    ],
+    "mesh": 0
+   }
+  ]
+ },
+ "expect": {
+  "code": "canvas_limit",
+  "contains": "deeper than 256"
+ }
+}

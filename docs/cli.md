@@ -2197,7 +2197,7 @@ Identity as for `post`; members write only as verified members of their own
 team; unverified callers, hooks and startup processes can read only.
 
 ```
-canvas look [--region R | --around ID] [--since N|last] [--image] [--grid] [--exact] [--theme light|dark] [--block REF] [--full]
+canvas look [--region R | --around ID] [--since N|last] [--image] [--grid] [--exact] [--theme light|dark] [--block REF] [--full] [--view VIEW]
 canvas check [--region R | --around ID] [--mine]
 canvas draw [--file PATH|-] [--op JSON]... [--atomic]
 canvas comment AT TEXT [--mention NAME]... [--reply-to C-n] [--intent TEXT]
@@ -2215,6 +2215,7 @@ canvas send ID... --to NAME [--note TEXT]    (operator)
 canvas export [--format json|md|svg|png] [--region R] [--out PATH]
 canvas helper [--print]
 canvas icons [--search WORD]
+canvas catalog charts|scene3d [--type NAME]
 canvas mcp
 ```
 
@@ -2222,7 +2223,8 @@ canvas mcp
 names the point at a cell's top-left (`c17r6` = 340,120); a point is also
 `"x,y"`, `[x,y]` or an element (its centre); a region is `"c10r4:c40r22"`,
 `"x0,y0,x1,y1"`, `[x0,y0,x1,y1]` or an element (its bounds).
-`|x|,|y| ≤ 1,000,000`, sizes up to 20,000. Each author gets a home region
+`|x|,|y| ≤ 1,000,000`, sizes up to 20,000 (a laid-out block such as a graph up
+to 50,000). Each author gets a home region
 `[i*1000, -1000, i*1000+800, -400]` the first time it draws; an element with
 no placement goes to the next free slot there. Placement is one of `at`,
 `right_of`, `left_of`, `below`, `above` (with `gap`: `s` 20, `m` 40 (the
@@ -2252,7 +2254,7 @@ post, and secrets or marker text refuse):
 | `svg` | sanitised SVG markup ≤ 100 KB, `sketchy` | writer |
 | `graph` | nodes (`id`, `text`, `kind`, `tone`, `color`, `fill`) and edges laid out (`layered`, `radial`, `force`, `grid`) as native shapes, each node sized from its label before layout | writer |
 | `mermaid` | a flowchart becomes native shapes; other diagrams render on the page | writer |
-| `chart` | a Vega-Lite spec over a file in the team's `artifacts/` (no `url`/`href` keys) | writer |
+| `chart` | a chart block (canvas v2 phase 3): `type` (bar, line, area, scatter, pie, donut, heatmap, histogram, box, funnel, treemap, sankey, and the 3D bar3d, scatter3d, surface) over `data` (a `.csv`, `.tsv` or `.json` under the team's `artifacts/`, 5 MB and 100,000 rows) or inline `rows` (500, 32 KB), with its channels (`x`, `y`, `color`, `category`, `value` ...), `aggregate`, `filter`, `top`, `sort`, `stack`, `format`, `units`, `highlight`, `annotations`, `caption`; the data is read when the op runs and kept (`patch {relayout: "full"}` re-reads it). Or `spec` (a raw Vega-Lite spec, no `url`/`href` keys) or `echarts` (a raw ECharts option, sanitised). `canvas catalog charts` lists the types; `docs/charts.md` has the contract | writer |
 | `viz` | HTML and JavaScript for a sealed frame (`libs` ⊆ d3, three, p5; `data` or `data_path`); `synapse.width`/`height` are the frame's size and a lone fixed-size `<canvas>` or `<svg>` is scaled to it; `viz_off` unless the team's viz is on | writer |
 | `image` | a PNG or JPEG from `artifacts/`, `whiteboard/renders/` or the author's cwd (bytes checked) | writer |
 | `comment` | a pinned comment; `@name` and `mentions` post `canvas_sent` | writer |
@@ -2399,6 +2401,22 @@ Excalidraw's own export (5 s, else the server render). JSON
 `{"team","version","reader","switch","region","region_cells","level","elements","elsewhere","clusters","omitted","since","changes","claims","locks","legend","comments_for_you","image","svg","image_error","exact","text"}`.
 `look --since last` and `changes` advance the reader's cursor. `look` ends
 with the layout problems in view (at most 8; `canvas check` lists them all).
+A chart or 3D scene reads back as its gist (canvas v2 phases 3 and 4): the
+readback line, then up to 6 lines in words (a chart's channels and source,
+extremes with their categories, trends and shares; a scene's objects with
+their relations), all of them with `--full` (a chart adds its columns and
+the model's first rows); `--block REF` prints its spec. JSON gains `gist`
+(`{id: [lines]}`) and the facts a kind adds under its own key (`charts`:
+`{id: {type, engine, source, frame_notes}}`; `scene3d`). `--image --view
+iso|front|top` draws each slot with still views in that view: the page's still
+of it when there is one, else the kind's own drawing (a scene's projection).
+
+**`catalog charts|scene3d [--type NAME]`** prints what the chart types take
+(channels with the types they accept, options, caps and one example op each),
+or the 3D primitives with their parameters, the relations and the group
+layouts; generated from the registries, so a new type or primitive module
+shows up with no edit. It needs no team. JSON is the registry's
+`catalog()` with `what`.
 
 **`check [--region R | --around ID] [--mine]`** reviews the layout by geometry,
 for agents that cannot read images and for those that misjudge them:
@@ -2413,7 +2431,9 @@ itself or runs back through one of its own ends), `label_astray` (an arrow label
 placed so far beside its line that it reads as something else's) and `stray` (a
 mark 1500+ units from the rest). Each problem has `ids`, a `message`, `yours`, and `fix`: an operation
 that applies as it stands (`move … to` a free spot, a resize, a frame grown,
-or `inside` a frame) or null. JSON
+or `inside` a frame) or null; an `arrow_through` fix restyles a bound arrow
+orthogonal, and an arrow already routed orthogonal gets none (no clear way
+around: move what is in the way). JSON
 `{"team","version","reader","region","mine","problems":[{"code","ids","message","fix","yours"}],"text"}`.
 Reads only; the reader's own problems come first.
 
@@ -2566,7 +2586,7 @@ read-only) and `HERDR_SYNAPSE_WB_BY` (JSON `{"name","via","verified"}`), plus
 The JSON API lives under `/api/`: `session`, `teams`, and per team
 `/api/teams/<t>/` `scene`, `changes?since=N`, `display[?since=N]`, `measure`
 (POST), `ops` (POST), `send` (POST),
-`uploads` (POST, PNG or JPEG), `stills/<id>?v=N` (POST), `exports/<id>`
+`uploads` (POST, PNG or JPEG), `stills/<id>?v=N[&view=V]` (POST; `view` one of the element kind's still views, `iso`, `front` or `top` for a 3D scene), `exports/<id>`
 (POST), `assets/<name>`, `artifact?path=`, `text?ids=E-1,C-2`, `views`; plus
 `/api/activity?team=` and the event stream `/api/stream?team=&since=` (`hello`,
 `scene`, `ops`, `state`, `views`, `activity`, `export_request`, `bye`).

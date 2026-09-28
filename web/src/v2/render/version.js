@@ -7,4 +7,4 @@
 // SLOT_KINDS are the slot renderers in render/slots/: adding a browser-drawn kind is one file there
 // plus its name here (2.1).
 export const DL_SUPPORTED = [1, 1];
-export const SLOT_KINDS = ["chart", "mermaid", "viz"];
+export const SLOT_KINDS = ["chart", "mermaid", "scene3d", "viz"];

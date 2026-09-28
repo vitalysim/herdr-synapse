@@ -87,6 +87,8 @@ python3 -m herdr_team.canvas_fontgen --write        # after changing a font in a
 python3 -m herdr_team.canvas_theme --write          # after editing herdr_team/canvas_tokens.json or a kind (tests run --check)
 python3 tools/canvas_qa.py [--page [--engine v2]]   # the canvas v2 golden scenes: overflow, overlap, contrast, page lines
 python3 -m herdr_team.canvas_display --check-goldens    # display-list goldens (--write-goldens <scene> after a drawing change)
+python3 -m herdr_team.canvas_charts._sanitize --check   # the raw ECharts allow table and hostile corpus (--write after a change)
+python3 -m herdr_team.canvas_charts._fixtures --check   # the chart option and format fixtures the page tests read
 python3 -m herdr_team.canvas_icons --check          # the vendored Lucide icons match their checksums
 python3 tools/canvas_rig.py house --engine v2 --writable  # serve one scene on loopback for a browser or a CDP test
 ./bin/herdr-synapse --version
@@ -164,7 +166,32 @@ the same bytes: after a change to what a kind draws, run
 `python3 -m herdr_team.canvas_display --write-goldens <scene ...>` for the
 scenes you own (each scene file has one owner), look at the pictures before
 and after, and give the reason in the commit message; the page's vitest parity
-test reads the same files.
+test reads the same files. A scene that needs data files names a folder of
+`tests/fixtures/canvas_artifacts/` in its `artifacts` field; `canvas_qa` and
+`canvas_rig` copy it into the QA team's `artifacts/` before the ops apply.
+
+A kind the browser draws (a `slot`: chart, mermaid, viz, scene3d) uses slot
+contract v2 (canvas v2 phases 3 and 4, `.local/prd/canvas-v2-phase3-4.md`
+section 1): `Block.load(op, io)` reads `artifacts/` through a `FetchIO` before
+the canvas lock (its refusal refuses the op under it), `bctx.store_asset` keeps
+a content-addressed asset only when the op applies, `Kind.still_views` names
+the stills the page may post (`POST /stills/<E-n>?v=&view=`), `Kind.gist`
+reads the element back in words, and `Kind.draw_view` draws a view for
+`look --image --view`. `tests/test_slot_contract.py` proves it on a test-only
+`gauge` kind (`tests/fixtures/kind_gauge.py`).
+
+Charts (canvas v2 phase 3, `docs/charts.md`) are one module per chart type in
+`herdr_team/canvas_charts/` (a `ChartType` with its channels, options and
+hooks; `_*` modules are the shared helpers). Python compiles every chart:
+validation, the model and doc, the frame (axes, ticks, rotation), the ECharts
+option, its own drawing and the gist. `tests/test_charts_registry.py` runs
+`tests/chart_conformance.py` over every registered type and drops a
+`lollipop` type in from `tests/fixtures/chart_lollipop.py`. After changing a
+chart type, run `python3 -m herdr_team.canvas_charts._fixtures --write` (the
+option and format fixtures the page's tests read) and, after changing the
+raw-option sanitiser, `python3 -m herdr_team.canvas_charts._sanitize --write`
+(`assets/canvas/echarts-allow.json` and the shared hostile corpus); tests run
+both with `--check`.
 
 Rules for code in this package:
 

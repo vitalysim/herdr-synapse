@@ -19,6 +19,7 @@ import {
   applyDelta,
   camera as cameraMath,
   createIndex,
+  enterableSlotAt,
   installQAHook,
   isSupported,
   queryRect,
@@ -129,6 +130,11 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
   const [showChips, setShowChips] = useState(false);
   const [hidden, setHidden] = useState(() => new Set());
   const [failure, setFailure] = useState(null);
+  // The entry whose slot is live (a chart's ECharts, a scene's orbit): WW-3. A double-click on the
+  // slot enters it; Esc, a click elsewhere or the entry leaving the list exits.
+  const [entered, setEntered] = useState(null);
+  const enteredRef = useRef(null);
+  enteredRef.current = entered;
 
   const elementOf = useElements(store);
   const dlRef = useRef(null);
@@ -253,6 +259,7 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
       }
     }
     setSelectionState((prev) => (prev.every((id) => live.has(id)) ? prev : prev.filter((id) => live.has(id))));
+    if (enteredRef.current && !live.has(enteredRef.current)) setEntered(null);
     if (awaitSelect.current && live.has(awaitSelect.current)) {
       setSelectionState([awaitSelect.current]);
       awaitSelect.current = null;
@@ -412,6 +419,8 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
           return;
         case "down": {
           if (editorRef.current) return; // the textarea's blur commits it first
+          // A press outside the entered slot (the slot keeps its own presses) leaves it.
+          if (enteredRef.current) setEntered(null);
           const usedTool = toolRef.current;
           const g = beginGesture(usedTool, ev, {
             model: modelRef.current,
@@ -447,8 +456,16 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
           return;
         }
         case "dblclick": {
-          if (!writable || editorRef.current) return;
+          if (editorRef.current) return;
           const entry = ev.hit ? modelRef.current.entry(ev.hit) : null;
+          // A double-click on a live slot (a chart's plot, a 3D scene) enters it instead of editing.
+          const listed = entry && dlRef.current ? dlRef.current.entries.find((e) => e.id === entry.id) : null;
+          if (listed && enterableSlotAt(listed, ev.world)) {
+            setSelection([listed.id]);
+            setEntered(listed.id);
+            return;
+          }
+          if (!writable) return;
           // A part with an editor (a table cell, a card's title or body) edits just that part.
           if (entry && ev.part && ev.part.edit && openEditor(entry.id, ev.part.part)) return;
           if (entry) openEditor(entry.id);
@@ -490,6 +507,13 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
       if (editorRef.current) return;
       const cmd = commandOf(event, { writable });
       if (!cmd) return;
+      // An entered slot takes the keys: Esc leaves it (before it clears the selection), nothing else
+      // reaches the board meanwhile.
+      if (enteredRef.current) {
+        if (cmd.command === "cancel" && event.type === "keydown") setEntered(null);
+        if (cmd.command === "pan_end") setSpaceHeld(false);
+        return;
+      }
       const sel = selectionRef.current;
       const m = modelRef.current;
       switch (cmd.command) {
@@ -581,16 +605,22 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
     [team],
   );
 
+  // A still of an element's version, per still view ("" for a kind with one; iso, front and top for
+  // a scene: canvas-v2-phase3-4.md 1.3, D12).
   const onStill = useCallback(
-    (id, version, blob) => {
+    (id, version, blob, view = "") => {
       if (!writable || !blob) return;
-      const key = `${id}:${version}`;
+      const key = `${id}:${version}:${view || ""}`;
       if (stills.current.has(key)) return;
       stills.current.add(key);
-      postBytes(`${teamPath(team, `stills/${encodeURIComponent(id)}`)}?v=${version}`, blob, "image/png").catch(() => stills.current.delete(key));
+      const query = `?v=${version}${view ? `&view=${encodeURIComponent(view)}` : ""}`;
+      postBytes(`${teamPath(team, `stills/${encodeURIComponent(id)}`)}${query}`, blob, "image/png").catch(() => stills.current.delete(key));
     },
     [team, writable],
   );
+
+  // An op a slot sends itself (a scene's "Save view").
+  const onSlotOps = useCallback((list) => sendOps(list), [sendOps]);
 
   // The grow-only browser check: lines the browser draws wider than Python measured go to
   // POST /measure, once per version, from writable pages only (a 429 is simply skipped).
@@ -761,6 +791,9 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
           onPointer={onPointer}
           onStill={onStill}
           onRendered={onRendered}
+          entered={entered}
+          onEnter={setEntered}
+          onOps={writable ? onSlotOps : null}
         >
           {editor ? (
             <TextEditor

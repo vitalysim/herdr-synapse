@@ -52,6 +52,7 @@ viz-lib/p5.min.js; three is re-bundled and minified into viz-lib/three.module.mi
 aria-hidden 1.2.6  MIT  licenses/aria-hidden.txt
 browser-fs-access 0.29.1  Apache-2.0  licenses/browser-fs-access.txt
 canvas-roundrect-polyfill 0.0.1  MIT  licenses/canvas-roundrect-polyfill.txt
+claygl 1.3.0  BSD-3-Clause (from its licence file)  licenses/claygl.txt  (package.json has no licence field; its LICENSE file is BSD-2-Clause)
 clsx 1.1.1  MIT  licenses/clsx.txt
 cose-base 1.0.3  MIT  licenses/cose-base@1.0.3.txt
 cose-base 2.2.0  MIT  licenses/cose-base@2.2.0.txt
@@ -93,6 +94,8 @@ dagre-d3-es 7.0.14  MIT  licenses/dagre-d3-es.txt
 dayjs 1.11.23  MIT  licenses/dayjs.txt
 delaunator 5.1.0  ISC  licenses/delaunator.txt
 dompurify 3.4.16  (MPL-2.0 OR Apache-2.0)  licenses/dompurify.txt
+echarts 6.1.0  Apache-2.0  licenses/echarts.txt
+echarts-gl 2.1.0  MIT  licenses/echarts-gl.txt  (package.json says MIT; its LICENSE file is BSD-3-Clause (Baidu), which is the text shipped here)
 es-toolkit 1.52.0  MIT  licenses/es-toolkit.txt
 es6-promise-pool 2.5.0  MIT  licenses/es6-promise-pool.txt
 fastdom 1.0.12  MIT  licenses/fastdom.txt
@@ -144,7 +147,8 @@ three 0.186.1  MIT  licenses/three.txt
 tinycolor2 1.6.0  MIT  licenses/tinycolor2.txt
 topojson-client 3.1.0  ISC  licenses/topojson-client.txt
 ts-dedent 2.3.0  MIT  licenses/ts-dedent.txt
-tslib 2.8.1  0BSD  licenses/tslib.txt
+tslib 2.3.0  0BSD  licenses/tslib@2.3.0.txt
+tslib 2.8.1  0BSD  licenses/tslib@2.8.1.txt
 tunnel-rat 0.1.2  MIT  licenses/tunnel-rat.txt
 use-callback-ref 1.3.3  MIT  licenses/use-callback-ref.txt
 use-sidecar 1.1.3  MIT  licenses/use-sidecar.txt
@@ -182,6 +186,7 @@ vega-view 6.2.0  BSD-3-Clause  licenses/vega-view.txt
 vega-view-transforms 5.2.2  BSD-3-Clause  licenses/vega-view-transforms.txt
 vega-voronoi 5.1.3  BSD-3-Clause  licenses/vega-voronoi.txt
 vega-wordcloud 5.1.3  BSD-3-Clause  licenses/vega-wordcloud.txt
+zrender 6.1.0  BSD-3-Clause  licenses/zrender.txt
 zustand 4.5.7  MIT  licenses/zustand.txt
 fonts in dist/fonts  OFL-1.1 / MIT  licenses/fonts.txt
 Inter 4.1 and Geist Mono in dist/assets  OFL-1.1  licenses/fonts.txt

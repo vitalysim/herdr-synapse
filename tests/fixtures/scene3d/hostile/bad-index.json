@@ -1,0 +1,13 @@
+{
+ "about": "a mesh naming an accessor that is not there",
+ "source": "gltf",
+ "patch": {
+  "meshes[0].primitives[0].attributes": {
+   "POSITION": 42
+  }
+ },
+ "expect": {
+  "code": "op_invalid",
+  "contains": "names nothing"
+ }
+}

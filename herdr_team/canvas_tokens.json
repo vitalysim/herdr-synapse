@@ -165,6 +165,67 @@
     "assign": "chip index = the author's roster index modulo 8; the human always uses human_chip",
     "rule": "authorship never changes stroke, fill or text colour"
   },
+  "chart": {
+    "doc": "Charts (canvas v2 phase 3): the paints every chart draws with, per theme (a value naming another token, base.* or tone.*, resolves through it), label sizes and spacing. The display list carries them as chart.<name> references (chart.cat.3); ECharts options carry the same references. Categorical colours are >= 3:1 on the paper, ink and muted >= 4.5:1, and every cat, seq and div paint takes a label in paper or ink (chart.on_<ramp>.<i>, derived) at >= 4.5:1 (tests/test_canvas_theme.py).",
+    "light": {
+      "paper": "base.surface",
+      "ink": "base.ink",
+      "muted": "base.ink_muted",
+      "axis": "#8b8d98",
+      "gridline": "#e8e8ec",
+      "cat": ["#3e63dd", "#d13b40", "#2b9a66", "#ef5f00", "#8e4ec6", "#0d9b8a", "#c2298a", "#9a6b00", "#0588f0", "#7f6f55"],
+      "seq": ["#edf2fe", "#d2deff", "#abbdf9", "#8da4ef", "#5b5bd6", "#3e63dd", "#3358d4", "#1f2d5c", "#141726"],
+      "div": ["#b54548", "#d13b40", "#f4a9aa", "#fdd8d8", "#f0f0f3", "#d2deff", "#8da4ef", "#3e63dd", "#1f2d5c"],
+      "highlight": "tone.accent.solid",
+      "dim": "#d9d9e0"
+    },
+    "dark": {
+      "paper": "base.surface",
+      "ink": "base.ink",
+      "muted": "base.ink_muted",
+      "axis": "#6f7280",
+      "gridline": "#2b2d31",
+      "cat": ["#849dff", "#ff6369", "#3dd68c", "#ff801f", "#bf7af0", "#0bd8b6", "#ff8dcc", "#ffca16", "#70b8ff", "#cbb99f"],
+      "seq": ["#1f2335", "#1d2e62", "#25397e", "#304384", "#3a5bc7", "#3358d4", "#7b93f0", "#9eb1ff", "#d6e1ff"],
+      "div": ["#ff9592", "#ff6b70", "#8c333a", "#4f2128", "#2e3135", "#253974", "#304384", "#7b93f0", "#9eb1ff"],
+      "highlight": "tone.accent.solid",
+      "dim": "#3a3d43"
+    },
+    "font": {"axis": 12, "legend": 12, "label": 12, "title": 16, "caption": 12, "min": 11},
+    "space": {"pad": 12, "legend_gap": 8, "tick_len": 4, "bar_min_px": 6, "cat_min_px": 14, "title_gap": 8, "caption_h": 16}
+  },
+  "mat": {
+    "doc": "3D materials (canvas v2 phase 4): each tone's faces in the server projections, as mat.<tone>.<top|left|right|edge> references. canvas_theme computes them from the tone's solid (mat.<tone>.base, the page's lit colour; the neutral one moved toward base.surface by neutral_mix, so a dark ground plane does not glare): lightened toward white by base_mix, then each face darkened toward black by 1 - scene3d.shade[face]; the edge is the solid moved by edge_mix (toward black in light, white in dark) until it is >= edge_contrast on base.surface.",
+    "base_mix": {"light": 0.45, "dark": 0.0},
+    "neutral_mix": {"light": 0.0, "dark": 0.55},
+    "edge_mix": {"light": 0.3, "dark": 0.25},
+    "edge_contrast": 3.0
+  },
+  "scene3d": {
+    "doc": "3D scenes (canvas v2 phase 4): camera presets (az and el in degrees), light presets, material finishes, the face shading of the server projections and the label sizes.",
+    "cameras": {
+      "iso": {"projection": "ortho", "az": 45, "el": 35.264},
+      "front": {"projection": "ortho", "az": 0, "el": 0},
+      "top": {"projection": "ortho", "az": 0, "el": 90},
+      "side": {"projection": "ortho", "az": 90, "el": 0},
+      "orbit": {"projection": "persp", "az": 35, "el": 25, "fov": 35}
+    },
+    "lights": {
+      "studio": [{"type": "hemisphere", "sky": "#ffffff", "ground": "#d9d9e0", "i": 0.9}, {"type": "directional", "color": "#ffffff", "i": 1.4, "dir": [-0.5, -1, -0.35]}],
+      "soft": [{"type": "hemisphere", "sky": "#ffffff", "ground": "#e8e8ec", "i": 1.2}, {"type": "directional", "color": "#ffffff", "i": 0.6, "dir": [-0.3, -1, -0.5]}],
+      "day": [{"type": "hemisphere", "sky": "#dbeafe", "ground": "#d6c8a8", "i": 1.0}, {"type": "directional", "color": "#fff6e5", "i": 1.8, "dir": [-0.6, -1, -0.2]}],
+      "night": [{"type": "hemisphere", "sky": "#3a4a7a", "ground": "#101218", "i": 0.5}, {"type": "directional", "color": "#a8b8ff", "i": 0.8, "dir": [0.4, -1, -0.3]}],
+      "flat": [{"type": "ambient", "color": "#ffffff", "i": 1.0}]
+    },
+    "finish": {
+      "matte": {"roughness": 0.9, "metalness": 0},
+      "glossy": {"roughness": 0.35, "metalness": 0},
+      "metal": {"roughness": 0.3, "metalness": 0.8},
+      "glass": {"roughness": 0.1, "metalness": 0, "opacity": 0.35}
+    },
+    "shade": {"top": 1.0, "left": 0.82, "right": 0.68},
+    "label": {"size_px": 12, "min_px": 10}
+  },
   "tones": ["neutral", "info", "success", "warning", "danger", "accent", "idea", "decision"],
   "roles": {
     "fill": "soft tinted background of a shape or card",

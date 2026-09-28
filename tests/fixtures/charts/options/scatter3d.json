@@ -1,0 +1,414 @@
+{
+ "box": {
+  "h": 368.0,
+  "w": 536.0
+ },
+ "doc": {
+  "chart": "scatter3d",
+  "datasets": [],
+  "refs": {
+   "g0": [
+    [
+     12,
+     0.3,
+     1
+    ],
+    [
+     30,
+     0.7,
+     4
+    ]
+   ],
+   "g1": [
+    [
+     18,
+     0.5,
+     2
+    ],
+    [
+     44,
+     0.9,
+     7
+    ]
+   ]
+  },
+  "source": {
+   "data": null,
+   "rows": 4,
+   "sha256": "16a82c041247e521171d1d6bf861576c02a5a4cdb53705de27cd9a6b73435a9c"
+  },
+  "v": 1
+ },
+ "element": {
+  "alias": "clusters",
+  "chart": {
+   "gl": true,
+   "type": "scatter3d"
+  },
+  "chart_frame": {
+   "axes": {},
+   "box": [
+    536,
+    368
+   ],
+   "extra": {
+    "x": {
+     "max": 50,
+     "min": 10,
+     "step": 10
+    },
+    "y": {
+     "max": 1,
+     "min": 0.2,
+     "step": 0.2
+    },
+    "z": {
+     "max": 8,
+     "min": 0,
+     "step": 2
+    }
+   },
+   "font": 12,
+   "legend": null,
+   "legible": true,
+   "notes": [],
+   "plot": [
+    0,
+    0,
+    536,
+    368
+   ]
+  },
+  "doc_asset": "c686ece881842b7ee26f24a90ca5ff4a.json",
+  "engine": "echarts",
+  "gist": [
+   "x=lat · y=load · z=err · 4 points · color=zone (2) · inline rows 4 rows",
+   "lat 12…44 · load 0.3…0.9 · err 1…7",
+   "r: lat~load 0.99 (strong +) · lat~err 1.00 (strong +) · load~err 0.98 (strong +)",
+   "groups: eu 2 · us 2"
+  ],
+  "h": 420.0,
+  "id": "E-1",
+  "kv": 2,
+  "model": {
+   "capped": [],
+   "groups": [
+    "eu",
+    "us"
+   ],
+   "n": 4,
+   "points": [
+    [
+     12,
+     0.3,
+     1,
+     0
+    ],
+    [
+     18,
+     0.5,
+     2,
+     1
+    ],
+    [
+     30,
+     0.7,
+     4,
+     0
+    ],
+    [
+     44,
+     0.9,
+     7,
+     1
+    ]
+   ]
+  },
+  "option": {
+   "animation": false,
+   "aria": {
+    "enabled": true,
+    "label": {
+     "description": "x=lat · y=load · z=err · 4 points · color=zone (2) · inline rows 4 rows lat 12…44 · load 0.3…0.9 · err 1…7 r: lat~load 0.99 (strong +) · lat~err 1.00 (strong +) · load~err 0.98 (strong +) groups: eu 2 · us 2"
+    }
+   },
+   "backgroundColor": "transparent",
+   "color": [
+    "chart.cat.0",
+    "chart.cat.1"
+   ],
+   "grid3D": {
+    "axisLabel": {
+     "textStyle": {
+      "color": "chart.muted",
+      "fontFamily": "$sans",
+      "fontSize": 12
+     }
+    },
+    "axisLine": {
+     "lineStyle": {
+      "color": "chart.axis"
+     }
+    },
+    "axisPointer": {
+     "show": false
+    },
+    "axisTick": {
+     "lineStyle": {
+      "color": "chart.axis"
+     }
+    },
+    "axisTitle": {
+     "textStyle": {
+      "color": "chart.ink",
+      "fontFamily": "$sans",
+      "fontSize": 12
+     }
+    },
+    "boxDepth": 100.0,
+    "boxHeight": 70.0,
+    "boxWidth": 100.0,
+    "environment": "none",
+    "light": {
+     "ambient": {
+      "intensity": 0.45
+     },
+     "main": {
+      "intensity": 1.1,
+      "shadow": false
+     }
+    },
+    "splitLine": {
+     "lineStyle": {
+      "color": "chart.gridline"
+     }
+    },
+    "viewControl": {
+     "alpha": 35.264,
+     "animation": false,
+     "autoRotate": false,
+     "beta": 45.0,
+     "projection": "orthographic"
+    }
+   },
+   "legend": {
+    "data": [
+     "eu",
+     "us"
+    ],
+    "orient": "vertical",
+    "right": 4,
+    "show": true,
+    "textStyle": {
+     "color": "chart.ink",
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "top": 4
+   },
+   "series": [
+    {
+     "data": {
+      "$doc": "g0"
+     },
+     "itemStyle": {
+      "borderColor": "chart.paper",
+      "borderWidth": 0.5
+     },
+     "name": "eu",
+     "symbolSize": 6,
+     "type": "scatter3D"
+    },
+    {
+     "data": {
+      "$doc": "g1"
+     },
+     "itemStyle": {
+      "borderColor": "chart.paper",
+      "borderWidth": 0.5
+     },
+     "name": "us",
+     "symbolSize": 6,
+     "type": "scatter3D"
+    }
+   ],
+   "textStyle": {
+    "color": "chart.ink",
+    "fontFamily": "$sans",
+    "fontSize": 12
+   },
+   "tooltip": {
+    "confine": true,
+    "renderMode": "richText",
+    "textStyle": {
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "trigger": "item"
+   },
+   "xAxis3D": {
+    "axisLabel": {
+     "formatter": {
+      "$fmt": "auto|"
+     }
+    },
+    "interval": 10.0,
+    "max": 50.0,
+    "min": 10.0,
+    "name": "lat",
+    "nameTextStyle": {
+     "color": "chart.ink",
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "type": "value"
+   },
+   "yAxis3D": {
+    "axisLabel": {
+     "formatter": {
+      "$fmt": "auto|"
+     }
+    },
+    "interval": 0.2,
+    "max": 1.0,
+    "min": 0.2,
+    "name": "load",
+    "nameTextStyle": {
+     "color": "chart.ink",
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "type": "value"
+   },
+   "zAxis3D": {
+    "axisLabel": {
+     "formatter": {
+      "$fmt": "auto|"
+     }
+    },
+    "interval": 2.0,
+    "max": 8.0,
+    "min": 0.0,
+    "name": "err",
+    "nameTextStyle": {
+     "color": "chart.ink",
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "type": "value"
+   }
+  },
+  "resolved": {
+   "_source": "inline rows 4 rows",
+   "color": "zone",
+   "type": "scatter3d",
+   "x": "lat",
+   "y": "load",
+   "z": "err"
+  },
+  "settings": {
+   "color": "zone",
+   "rows": [
+    {
+     "err": 1,
+     "lat": 12,
+     "load": 0.3,
+     "zone": "eu"
+    },
+    {
+     "err": 4,
+     "lat": 30,
+     "load": 0.7,
+     "zone": "eu"
+    },
+    {
+     "err": 2,
+     "lat": 18,
+     "load": 0.5,
+     "zone": "us"
+    },
+    {
+     "err": 7,
+     "lat": 44,
+     "load": 0.9,
+     "zone": "us"
+    }
+   ],
+   "type": "scatter3d",
+   "x": "lat",
+   "y": "load",
+   "z": "err"
+  },
+  "source": {
+   "columns": [
+    [
+     "lat",
+     "quantitative"
+    ],
+    [
+     "load",
+     "quantitative"
+    ],
+    [
+     "err",
+     "quantitative"
+    ],
+    [
+     "zone",
+     "nominal"
+    ]
+   ],
+   "data": null,
+   "kept": 4,
+   "rows": 4,
+   "sha256": "16a82c041247e521171d1d6bf861576c02a5a4cdb53705de27cd9a6b73435a9c"
+  },
+  "stats": {
+   "groups": [
+    [
+     "eu",
+     2
+    ],
+    [
+     "us",
+     2
+    ]
+   ],
+   "n": 4,
+   "n_groups": 2,
+   "r": {
+    "xy": 0.9859,
+    "xz": 0.9978,
+    "yz": 0.9759
+   },
+   "ranges": [
+    [
+     12.0,
+     44.0
+    ],
+    [
+     0.3,
+     0.9
+    ],
+    [
+     1.0,
+     7.0
+    ]
+   ]
+  },
+  "text": "Latency, load and errors",
+  "type": "chart",
+  "updated_seq": 1,
+  "w": 560.0,
+  "x": 0,
+  "y": 0
+ },
+ "gl": true,
+ "slot": [
+  12.0,
+  40.0,
+  536.0,
+  368.0
+ ],
+ "type": "scatter3d"
+}

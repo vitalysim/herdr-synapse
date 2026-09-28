@@ -1,0 +1,371 @@
+{
+ "box": {
+  "h": 308.0,
+  "w": 576.0
+ },
+ "doc": {
+  "chart": "sankey",
+  "datasets": [],
+  "refs": {
+   "links": [
+    {
+     "source": "Search",
+     "target": "Signup",
+     "value": 5400
+    },
+    {
+     "source": "Signup",
+     "target": "Active",
+     "value": 4300
+    },
+    {
+     "source": "Signup",
+     "target": "Churned",
+     "value": 3200
+    },
+    {
+     "source": "Ads",
+     "target": "Signup",
+     "value": 2100
+    }
+   ],
+   "nodes": [
+    {
+     "depth": 0,
+     "name": "Search"
+    },
+    {
+     "depth": 0,
+     "name": "Ads"
+    },
+    {
+     "depth": 1,
+     "name": "Signup"
+    },
+    {
+     "depth": 2,
+     "name": "Active"
+    },
+    {
+     "depth": 2,
+     "name": "Churned"
+    }
+   ]
+  },
+  "source": {
+   "data": null,
+   "rows": 4,
+   "sha256": "6e2fdbcdfc774448a25cca991f7f1dabf4bae4d6a1f87346451509c898b3117b"
+  },
+  "v": 1
+ },
+ "element": {
+  "alias": "flows",
+  "chart": {
+   "gl": false,
+   "type": "sankey"
+  },
+  "chart_frame": {
+   "axes": {},
+   "box": [
+    576,
+    308
+   ],
+   "extra": {},
+   "font": 12,
+   "legend": null,
+   "legible": true,
+   "notes": [],
+   "plot": [
+    0,
+    8,
+    564,
+    296
+   ]
+  },
+  "doc_asset": "bceb6442029f86c5d8ee0fcb6f3033bf.json",
+  "engine": "echarts",
+  "gist": [
+   "from → to · value=n · 5 nodes in 3 columns, 4 flows · inline rows 4 rows",
+   "largest: Search → Signup 5,400 · Signup → Active 4,300 · Signup → Churned 3,200",
+   "out of: Signup 7,500 · Search 5,400 · Ads 2,100",
+   "ends: Active 4,300 · Churned 3,200"
+  ],
+  "h": 360.0,
+  "id": "E-1",
+  "kv": 2,
+  "model": {
+   "capped": [],
+   "links": [
+    [
+     "Search",
+     "Signup",
+     5400
+    ],
+    [
+     "Signup",
+     "Active",
+     4300
+    ],
+    [
+     "Signup",
+     "Churned",
+     3200
+    ],
+    [
+     "Ads",
+     "Signup",
+     2100
+    ]
+   ],
+   "nodes": [
+    {
+     "depth": 0,
+     "name": "Search",
+     "value": 5400
+    },
+    {
+     "depth": 0,
+     "name": "Ads",
+     "value": 2100
+    },
+    {
+     "depth": 1,
+     "name": "Signup",
+     "value": 7500
+    },
+    {
+     "depth": 2,
+     "name": "Active",
+     "value": 4300
+    },
+    {
+     "depth": 2,
+     "name": "Churned",
+     "value": 3200
+    }
+   ]
+  },
+  "option": {
+   "animation": false,
+   "aria": {
+    "enabled": true,
+    "label": {
+     "description": "from → to · value=n · 5 nodes in 3 columns, 4 flows · inline rows 4 rows largest: Search → Signup 5,400 · Signup → Active 4,300 · Signup → Churned 3,200 out of: Signup 7,500 · Search 5,400 · Ads 2,100 ends: Active 4,300 · Churned 3,200"
+    }
+   },
+   "backgroundColor": "transparent",
+   "color": [
+    "chart.cat.0",
+    "chart.cat.1",
+    "chart.cat.2",
+    "chart.cat.3",
+    "chart.cat.4",
+    "chart.cat.5",
+    "chart.cat.6",
+    "chart.cat.7",
+    "chart.cat.8",
+    "chart.cat.9"
+   ],
+   "legend": {
+    "show": false
+   },
+   "series": [
+    {
+     "data": [
+      {
+       "depth": 0,
+       "itemStyle": {
+        "color": "chart.cat.0"
+       },
+       "name": "Search"
+      },
+      {
+       "depth": 0,
+       "itemStyle": {
+        "color": "chart.cat.1"
+       },
+       "name": "Ads"
+      },
+      {
+       "depth": 1,
+       "itemStyle": {
+        "color": "chart.cat.2"
+       },
+       "name": "Signup"
+      },
+      {
+       "depth": 2,
+       "itemStyle": {
+        "color": "chart.cat.3"
+       },
+       "name": "Active"
+      },
+      {
+       "depth": 2,
+       "itemStyle": {
+        "color": "chart.cat.4"
+       },
+       "name": "Churned"
+      }
+     ],
+     "draggable": false,
+     "height": 296.0,
+     "label": {
+      "color": "chart.ink",
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "position": "right",
+      "show": true
+     },
+     "layoutIterations": 0,
+     "left": 0.0,
+     "lineStyle": {
+      "color": "source",
+      "curveness": 0.5,
+      "opacity": 0.35
+     },
+     "links": {
+      "$doc": "links"
+     },
+     "nodeAlign": "justify",
+     "nodeGap": 10.0,
+     "nodeWidth": 12.0,
+     "orient": "horizontal",
+     "top": 8.0,
+     "type": "sankey",
+     "width": 454.0
+    }
+   ],
+   "textStyle": {
+    "color": "chart.ink",
+    "fontFamily": "$sans",
+    "fontSize": 12
+   },
+   "tooltip": {
+    "confine": true,
+    "renderMode": "richText",
+    "textStyle": {
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "trigger": "item"
+   }
+  },
+  "resolved": {
+   "_source": "inline rows 4 rows",
+   "source": "from",
+   "target": "to",
+   "type": "sankey",
+   "value": "n"
+  },
+  "settings": {
+   "rows": [
+    {
+     "from": "Search",
+     "n": 5400,
+     "to": "Signup"
+    },
+    {
+     "from": "Ads",
+     "n": 2100,
+     "to": "Signup"
+    },
+    {
+     "from": "Signup",
+     "n": 4300,
+     "to": "Active"
+    },
+    {
+     "from": "Signup",
+     "n": 3200,
+     "to": "Churned"
+    }
+   ],
+   "source": "from",
+   "target": "to",
+   "type": "sankey",
+   "value": "n"
+  },
+  "source": {
+   "columns": [
+    [
+     "from",
+     "nominal"
+    ],
+    [
+     "to",
+     "nominal"
+    ],
+    [
+     "n",
+     "quantitative"
+    ]
+   ],
+   "data": null,
+   "kept": 4,
+   "rows": 4,
+   "sha256": "6e2fdbcdfc774448a25cca991f7f1dabf4bae4d6a1f87346451509c898b3117b"
+  },
+  "stats": {
+   "columns": 3,
+   "flows": [
+    [
+     "Search",
+     "Signup",
+     5400
+    ],
+    [
+     "Signup",
+     "Active",
+     4300
+    ],
+    [
+     "Signup",
+     "Churned",
+     3200
+    ]
+   ],
+   "links": 4,
+   "nodes": 5,
+   "sinks": [
+    [
+     "Active",
+     4300.0
+    ],
+    [
+     "Churned",
+     3200.0
+    ]
+   ],
+   "sources": [
+    [
+     "Signup",
+     7500.0
+    ],
+    [
+     "Search",
+     5400.0
+    ],
+    [
+     "Ads",
+     2100.0
+    ]
+   ]
+  },
+  "text": "Signup flows",
+  "type": "chart",
+  "updated_seq": 1,
+  "w": 600.0,
+  "x": 0,
+  "y": 0
+ },
+ "gl": false,
+ "slot": [
+  12.0,
+  40.0,
+  576.0,
+  308.0
+ ],
+ "type": "sankey"
+}

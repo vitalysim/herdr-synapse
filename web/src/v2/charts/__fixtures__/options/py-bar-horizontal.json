@@ -1,0 +1,308 @@
+{
+ "source": "snapshot of herdr_team.canvas_charts.compile (CHARTS-PY) on 2026-09-28; tests/fixtures/charts/options/ supersedes it",
+ "box": {
+  "w": 400,
+  "h": 220
+ },
+ "echarts": [
+  "BarChart",
+  "GridComponent",
+  "DatasetComponent",
+  "LegendComponent",
+  "TooltipComponent",
+  "MarkLineComponent",
+  "AriaComponent"
+ ],
+ "element": {
+  "id": "E-535",
+  "type": "chart",
+  "kv": 2,
+  "alias": "py-bar-horizontal",
+  "text": "py-bar-horizontal",
+  "w": 424,
+  "h": 290,
+  "settings": {
+   "type": "bar",
+   "x": "region",
+   "y": "revenue",
+   "horizontal": true,
+   "units": {
+    "y": "$"
+   },
+   "highlight": [
+    "EMEA"
+   ]
+  },
+  "engine": "echarts",
+  "chart": {
+   "type": "bar",
+   "gl": false
+  },
+  "frame": {
+   "box": [
+    400.0,
+    220.0
+   ],
+   "plot": [
+    45.076328125,
+    26.0,
+    342.92367187499997,
+    169.0
+   ],
+   "axes": {
+    "x": {
+     "kind": "category",
+     "labels": [
+      {
+       "v": 0,
+       "t": "EMEA",
+       "w": 34.55126953125
+      },
+      {
+       "v": 1,
+       "t": "AMER",
+       "w": 35.076328125
+      },
+      {
+       "v": 2,
+       "t": "APAC",
+       "w": 33.9779296875
+      }
+     ],
+     "rotate": 0,
+     "interval": 0,
+     "width": null,
+     "extent": 35.076328125,
+     "hidden": 0,
+     "pos": "left",
+     "title": "sum(revenue)"
+    },
+    "y": {
+     "kind": "value",
+     "min": 0.0,
+     "max": 40000000.0,
+     "step": 20000000.0,
+     "ticks": [
+      {
+       "v": 0.0,
+       "t": "$0",
+       "w": 15.7276171875
+      },
+      {
+       "v": 20000000.0,
+       "t": "$20M",
+       "w": 34.43056640625
+      },
+      {
+       "v": 40000000.0,
+       "t": "$40M",
+       "w": 34.87716796875
+      }
+     ],
+     "fmt": "auto|$",
+     "title": null,
+     "extent": 15.0,
+     "pos": "bottom"
+    }
+   },
+   "legend": null,
+   "font": 12,
+   "notes": [],
+   "legible": true
+  },
+  "option": {
+   "animation": false,
+   "backgroundColor": "transparent",
+   "color": [
+    "chart.cat.0"
+   ],
+   "textStyle": {
+    "fontFamily": "$sans",
+    "fontSize": 12,
+    "color": "chart.ink"
+   },
+   "aria": {
+    "enabled": true,
+    "label": {
+     "description": "x=region (3) · y=sum(revenue) · inline rows 36 rows max EMEA $21.6M · min APAC $11M · total $50.5M top: EMEA $21.6M · AMER $17.9M · APAC $11M"
+    }
+   },
+   "grid": {
+    "left": 45.08,
+    "top": 26.0,
+    "width": 342.92,
+    "height": 169.0,
+    "containLabel": false
+   },
+   "xAxis": {
+    "position": "bottom",
+    "axisLine": {
+     "show": true,
+     "lineStyle": {
+      "color": "chart.axis"
+     }
+    },
+    "axisTick": {
+     "show": false,
+     "alignWithLabel": true,
+     "length": 4.0,
+     "lineStyle": {
+      "color": "chart.axis"
+     }
+    },
+    "splitLine": {
+     "show": true,
+     "lineStyle": {
+      "color": "chart.gridline"
+     }
+    },
+    "type": "value",
+    "min": 0.0,
+    "max": 40000000.0,
+    "interval": 20000000.0,
+    "axisLabel": {
+     "fontFamily": "$sans",
+     "fontSize": 12,
+     "color": "chart.muted",
+     "margin": 8.0,
+     "formatter": {
+      "$fmt": "auto|$"
+     }
+    }
+   },
+   "yAxis": {
+    "position": "left",
+    "axisLine": {
+     "show": true,
+     "lineStyle": {
+      "color": "chart.axis"
+     }
+    },
+    "axisTick": {
+     "show": true,
+     "alignWithLabel": true,
+     "length": 4.0,
+     "lineStyle": {
+      "color": "chart.axis"
+     }
+    },
+    "splitLine": {
+     "show": false,
+     "lineStyle": {
+      "color": "chart.gridline"
+     }
+    },
+    "type": "category",
+    "boundaryGap": true,
+    "inverse": true,
+    "axisLabel": {
+     "fontFamily": "$sans",
+     "fontSize": 12,
+     "color": "chart.muted",
+     "margin": 8.0,
+     "interval": 0,
+     "rotate": 0
+    }
+   },
+   "legend": {
+    "show": false
+   },
+   "tooltip": {
+    "trigger": "axis",
+    "renderMode": "richText",
+    "confine": true,
+    "textStyle": {
+     "fontFamily": "$sans",
+     "fontSize": 12
+    }
+   },
+   "dataset": {
+    "$doc": "datasets"
+   },
+   "series": [
+    {
+     "type": "bar",
+     "name": "revenue",
+     "barCategoryGap": "20%",
+     "barGap": "0%",
+     "itemStyle": {
+      "borderRadius": 2
+     },
+     "data": {
+      "$doc": "bars"
+     },
+     "label": {
+      "show": true,
+      "position": "right",
+      "formatter": {
+       "$fmt": "auto|$"
+      },
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "color": "chart.ink"
+     }
+    }
+   ]
+  },
+  "gist": [
+   "x=region (3) · y=sum(revenue) · inline rows 36 rows",
+   "max EMEA $21.6M · min APAC $11M · total $50.5M",
+   "top: EMEA $21.6M · AMER $17.9M · APAC $11M"
+  ],
+  "updated_seq": 1
+ },
+ "doc": {
+  "v": 1,
+  "chart": "bar",
+  "source": {
+   "data": null,
+   "sha256": "18b2404aebb26afa4c208c049401e0f42c5f8816c893b284458a4924735db9bc",
+   "rows": 36
+  },
+  "datasets": [
+   {
+    "id": "d0",
+    "dimensions": [
+     "x",
+     "s0"
+    ],
+    "source": [
+     [
+      "EMEA",
+      21609800
+     ],
+     [
+      "AMER",
+      17917400
+     ],
+     [
+      "APAC",
+      10980700
+     ]
+    ]
+   }
+  ],
+  "refs": {
+   "bars": [
+    {
+     "value": 21609800,
+     "itemStyle": {
+      "color": "chart.highlight"
+     }
+    },
+    {
+     "value": 17917400,
+     "itemStyle": {
+      "color": "chart.dim"
+     }
+    },
+    {
+     "value": 10980700,
+     "itemStyle": {
+      "color": "chart.dim"
+     }
+    }
+   ]
+  }
+ }
+}

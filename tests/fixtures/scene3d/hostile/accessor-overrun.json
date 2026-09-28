@@ -1,0 +1,11 @@
+{
+ "about": "an accessor reading past its bufferView",
+ "source": "gltf",
+ "patch": {
+  "accessors[1].count": 5000
+ },
+ "expect": {
+  "code": "op_invalid",
+  "contains": "reaches past its bufferView"
+ }
+}

@@ -139,6 +139,11 @@ class Tools(McpRig):
         self.assertTrue(base64.b64decode(result["content"][1]["data"]).startswith(PNG_MAGIC))
         without = self.tool("canvas_look", {"image": True})
         self.assertEqual([c["type"] for c in without["content"]], ["text"], "no resvg: the text (with the svg path) only")
+        # Phases 3 and 4 (1.6): a view for the slots that have still views; an unknown one is refused with the list.
+        self.assertFalse(self.tool("canvas_look", {"image": True, "view": "iso"})["isError"])
+        wrong = self.tool("canvas_look", {"image": True, "view": "back"})
+        self.assertTrue(wrong["isError"])
+        self.assertIn("iso", wrong["content"][0]["text"])
 
     def test_comment_claim_legend_changes(self):
         self.tool("canvas_draw", {"ops": [{"op": "shape", "id": "a", "text": "x", "at": "c0r0", "intent": "t"}]})

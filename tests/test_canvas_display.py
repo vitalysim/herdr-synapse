@@ -79,6 +79,30 @@ class Goldens(unittest.TestCase):
                         self.assertEqual(S.write(doc, theme=theme), svg.read_text(encoding="utf-8").rstrip("\n"))
 
 
+class PhaseThreeAddsOnlyPaints(unittest.TestCase):
+    """G6 (canvas v2 phases 3 and 4): the goldens committed before them change only by the added chart and material paints
+    in their palettes; their SVGs do not change at all (the goldens test holds those)."""
+
+    SCENES = ("agent-board", "architecture", "arrow-labels", "blocks", "composed", "flowchart", "font-sizes", "frame-children", "graph-groups",
+              "house", "i18n", "kanban", "mindmap", "qa-kinds", "routing", "sequence", "sketch", "sticky-notes", "table", "text-notes", "timeline")
+
+    @staticmethod
+    def strip(doc):
+        for palette in (doc.get("palettes") or {}).values():
+            for key in [k for k in palette if k.startswith(("chart.", "mat."))]:
+                del palette[key]
+        return doc
+
+    def test_the_older_goldens_differ_only_in_palette_keys(self):
+        for name in self.SCENES:
+            with self.subTest(scene=name):
+                golden = json.loads((D.GOLDENS_DIR / (name + ".json")).read_text(encoding="utf-8"))
+                doc = D.display_list(json.loads((D.GOLDENS_DIR / "scenes" / (name + ".json")).read_text(encoding="utf-8")), stills=set())
+                self.assertIn("chart.cat.0", golden["palettes"]["light"])
+                self.assertIn("mat.info.edge", golden["palettes"]["dark"])
+                self.assertEqual(self.strip(json.loads(D.dumps(doc))), self.strip(golden))
+
+
 class Schema(unittest.TestCase):
     """T-D2: every golden validates, and an element no kind can draw is a placeholder, never an error."""
 

@@ -1,0 +1,598 @@
+{
+ "box": {
+  "h": 308.0,
+  "w": 536.0
+ },
+ "doc": {
+  "chart": "area",
+  "datasets": [
+   {
+    "dimensions": [
+     "x",
+     "y"
+    ],
+    "id": "d0",
+    "source": [
+     [
+      20654,
+      520
+     ],
+     [
+      20661,
+      560
+     ],
+     [
+      20668,
+      610
+     ]
+    ]
+   },
+   {
+    "dimensions": [
+     "x",
+     "y"
+    ],
+    "id": "d1",
+    "source": [
+     [
+      20654,
+      210
+     ],
+     [
+      20661,
+      260
+     ],
+     [
+      20668,
+      330
+     ]
+    ]
+   }
+  ],
+  "refs": {},
+  "source": {
+   "data": null,
+   "rows": 6,
+   "sha256": "0eddf544cead673836f5b93e0499442c9c3a040cfa07fa8d1068de8934d60ea5"
+  },
+  "v": 1
+ },
+ "element": {
+  "alias": "mix-trend",
+  "chart": {
+   "gl": false,
+   "type": "area"
+  },
+  "chart_frame": {
+   "axes": {
+    "x": {
+     "extent": 15,
+     "fmt": "date|",
+     "kind": "value",
+     "max": 20668,
+     "min": 20654,
+     "pos": "bottom",
+     "step": null,
+     "ticks": [
+      {
+       "t": "2026-07-20",
+       "v": 20654,
+       "w": 72.04
+      },
+      {
+       "t": "2026-07-27",
+       "v": 20661,
+       "w": 71.23
+      },
+      {
+       "t": "2026-08-03",
+       "v": 20668,
+       "w": 72.78
+      }
+     ],
+     "time": true
+    },
+    "y": {
+     "fmt": "auto|",
+     "kind": "value",
+     "max": 1000,
+     "min": 0,
+     "pos": "left",
+     "step": 200,
+     "ticks": [
+      {
+       "t": "0",
+       "v": 0,
+       "w": 7.8
+      },
+      {
+       "t": "200",
+       "v": 200,
+       "w": 23.13
+      },
+      {
+       "t": "400",
+       "v": 400,
+       "w": 23.58
+      },
+      {
+       "t": "600",
+       "v": 600,
+       "w": 23.26
+      },
+      {
+       "t": "800",
+       "v": 800,
+       "w": 23.24
+      },
+      {
+       "t": "1,000",
+       "v": 1000,
+       "w": 31.98
+      }
+     ],
+     "title": "visits"
+    }
+   },
+   "box": [
+    536,
+    308
+   ],
+   "extra": {},
+   "font": 12,
+   "legend": {
+    "box": [
+     478.9,
+     8,
+     57.1,
+     36
+    ],
+    "items": [
+     {
+      "color": "chart.cat.0",
+      "name": "Search",
+      "w": 57.1
+     },
+     {
+      "color": "chart.cat.1",
+      "name": "Social",
+      "w": 51.33
+     }
+    ],
+    "pos": "right",
+    "rows": [
+     [
+      0
+     ],
+     [
+      1
+     ]
+    ]
+   },
+   "legible": true,
+   "notes": [],
+   "plot": [
+    41.98,
+    26,
+    408.92,
+    257
+   ]
+  },
+  "doc_asset": "dac8b5cf2379de01475dbce01597302b.json",
+  "engine": "echarts",
+  "gist": [
+   "x=week (3 points, 2026-W30…2026-W32) · y=visits · color=channel (2) · inline rows 6 rows",
+   "Search 520 → 610 (+17%) · max 2026-W32 610 · min 2026-W30 520 · largest step +50 at 2026-W32",
+   "Social 210 → 330 (+57%) · max 2026-W32 330 · min 2026-W30 210 · largest step +70 at 2026-W32",
+   "Search stays above Social",
+   "at 2026-W32: Search 65% · Social 35%"
+  ],
+  "h": 360.0,
+  "id": "E-1",
+  "kv": 2,
+  "model": {
+   "capped": [],
+   "cats": [],
+   "grain": "week",
+   "how": "none",
+   "series": [
+    {
+     "name": "Search",
+     "x": [
+      20654,
+      20661,
+      20668
+     ],
+     "y": [
+      520,
+      560,
+      610
+     ]
+    },
+    {
+     "name": "Social",
+     "x": [
+      20654,
+      20661,
+      20668
+     ],
+     "y": [
+      210,
+      260,
+      330
+     ]
+    }
+   ],
+   "xkind": "time"
+  },
+  "option": {
+   "animation": false,
+   "aria": {
+    "enabled": true,
+    "label": {
+     "description": "x=week (3 points, 2026-W30…2026-W32) · y=visits · color=channel (2) · inline rows 6 rows Search 520 → 610 (+17%) · max 2026-W32 610 · min 2026-W30 520 · largest step +50 at 2026-W32 Social 210 → 330 (+57%) · max 2026-W32 330 · min 2026-W30 210 · largest step +70 at 2026-W32 Search stays above Social at 2026-W32: Search 65% · Social 35%"
+    }
+   },
+   "backgroundColor": "transparent",
+   "color": [
+    "chart.cat.0",
+    "chart.cat.1"
+   ],
+   "dataset": {
+    "$doc": "datasets"
+   },
+   "grid": {
+    "containLabel": false,
+    "height": 257.0,
+    "left": 41.98,
+    "top": 26.0,
+    "width": 408.92
+   },
+   "legend": {
+    "data": [
+     "Search",
+     "Social"
+    ],
+    "icon": "roundRect",
+    "itemGap": 8.0,
+    "itemHeight": 10.0,
+    "itemWidth": 10.0,
+    "left": 478.9,
+    "orient": "vertical",
+    "padding": 0,
+    "show": true,
+    "textStyle": {
+     "color": "chart.ink",
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "top": 12.0
+   },
+   "series": [
+    {
+     "areaStyle": {
+      "opacity": 0.55
+     },
+     "connectNulls": false,
+     "datasetIndex": 0,
+     "emphasis": {
+      "focus": "series"
+     },
+     "encode": {
+      "x": "x",
+      "y": "y"
+     },
+     "lineStyle": {
+      "width": 2
+     },
+     "name": "Search",
+     "showSymbol": false,
+     "smooth": false,
+     "stack": "total",
+     "symbol": "circle",
+     "symbolSize": 6,
+     "type": "line"
+    },
+    {
+     "areaStyle": {
+      "opacity": 0.55
+     },
+     "connectNulls": false,
+     "datasetIndex": 1,
+     "emphasis": {
+      "focus": "series"
+     },
+     "encode": {
+      "x": "x",
+      "y": "y"
+     },
+     "lineStyle": {
+      "width": 2
+     },
+     "name": "Social",
+     "showSymbol": false,
+     "smooth": false,
+     "stack": "total",
+     "symbol": "circle",
+     "symbolSize": 6,
+     "type": "line"
+    }
+   ],
+   "textStyle": {
+    "color": "chart.ink",
+    "fontFamily": "$sans",
+    "fontSize": 12
+   },
+   "tooltip": {
+    "confine": true,
+    "renderMode": "richText",
+    "textStyle": {
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "trigger": "axis"
+   },
+   "xAxis": {
+    "axisLabel": {
+     "color": "chart.muted",
+     "customValues": [
+      20654.0,
+      20661.0,
+      20668.0
+     ],
+     "fontFamily": "$sans",
+     "fontSize": 12,
+     "formatter": {
+      "$fmt": "date|"
+     },
+     "margin": 8.0
+    },
+    "axisLine": {
+     "lineStyle": {
+      "color": "chart.axis"
+     },
+     "show": true
+    },
+    "axisTick": {
+     "customValues": [
+      20654.0,
+      20661.0,
+      20668.0
+     ],
+     "length": 4.0,
+     "lineStyle": {
+      "color": "chart.axis"
+     },
+     "show": true
+    },
+    "max": 20668.0,
+    "min": 20654.0,
+    "position": "bottom",
+    "splitLine": {
+     "show": false
+    },
+    "type": "value"
+   },
+   "yAxis": {
+    "axisLabel": {
+     "color": "chart.muted",
+     "fontFamily": "$sans",
+     "fontSize": 12,
+     "formatter": {
+      "$fmt": "auto|"
+     },
+     "margin": 8.0
+    },
+    "axisLine": {
+     "lineStyle": {
+      "color": "chart.axis"
+     },
+     "show": false
+    },
+    "axisTick": {
+     "alignWithLabel": true,
+     "length": 4.0,
+     "lineStyle": {
+      "color": "chart.axis"
+     },
+     "show": false
+    },
+    "interval": 200.0,
+    "max": 1000.0,
+    "min": 0.0,
+    "name": "visits",
+    "nameGap": 4.0,
+    "nameLocation": "end",
+    "nameMoveOverlap": false,
+    "nameTextStyle": {
+     "align": "left",
+     "color": "chart.muted",
+     "fontFamily": "$sans",
+     "fontSize": 12,
+     "lineHeight": 15.0,
+     "verticalAlign": "bottom"
+    },
+    "position": "left",
+    "splitLine": {
+     "lineStyle": {
+      "color": "chart.gridline"
+     },
+     "show": true
+    },
+    "type": "value"
+   }
+  },
+  "resolved": {
+   "_source": "inline rows 6 rows",
+   "color": "channel",
+   "stack": true,
+   "type": "area",
+   "x": "week",
+   "y": "visits"
+  },
+  "settings": {
+   "color": "channel",
+   "rows": [
+    {
+     "channel": "Search",
+     "visits": 520,
+     "week": "2026-W30"
+    },
+    {
+     "channel": "Social",
+     "visits": 210,
+     "week": "2026-W30"
+    },
+    {
+     "channel": "Search",
+     "visits": 560,
+     "week": "2026-W31"
+    },
+    {
+     "channel": "Social",
+     "visits": 260,
+     "week": "2026-W31"
+    },
+    {
+     "channel": "Search",
+     "visits": 610,
+     "week": "2026-W32"
+    },
+    {
+     "channel": "Social",
+     "visits": 330,
+     "week": "2026-W32"
+    }
+   ],
+   "stack": true,
+   "type": "area",
+   "x": "week",
+   "y": "visits"
+  },
+  "source": {
+   "columns": [
+    [
+     "week",
+     "temporal"
+    ],
+    [
+     "channel",
+     "nominal"
+    ],
+    [
+     "visits",
+     "quantitative"
+    ]
+   ],
+   "data": null,
+   "kept": 6,
+   "rows": 6,
+   "sha256": "0eddf544cead673836f5b93e0499442c9c3a040cfa07fa8d1068de8934d60ea5"
+  },
+  "stats": {
+   "crossings": [
+    "Search",
+    "Social",
+    0
+   ],
+   "last_shares": [
+    "2026-W32",
+    [
+     [
+      "Search",
+      0.648936170212766
+     ],
+     [
+      "Social",
+      0.35106382978723405
+     ]
+    ]
+   ],
+   "points": 3,
+   "series": [
+    {
+     "first": [
+      "2026-W30",
+      520.0
+     ],
+     "last": [
+      "2026-W32",
+      610.0
+     ],
+     "max": [
+      "2026-W32",
+      610.0
+     ],
+     "min": [
+      "2026-W30",
+      520.0
+     ],
+     "n": 3,
+     "name": "Search",
+     "step": [
+      "2026-W32",
+      50.0,
+      20668.0
+     ],
+     "trend": {
+      "change": 0.17307692307692307,
+      "first": 520.0,
+      "last": 610.0,
+      "sign": "up",
+      "slope": 45.0
+     }
+    },
+    {
+     "first": [
+      "2026-W30",
+      210.0
+     ],
+     "last": [
+      "2026-W32",
+      330.0
+     ],
+     "max": [
+      "2026-W32",
+      330.0
+     ],
+     "min": [
+      "2026-W30",
+      210.0
+     ],
+     "n": 3,
+     "name": "Social",
+     "step": [
+      "2026-W32",
+      70.0,
+      20668.0
+     ],
+     "trend": {
+      "change": 0.5714285714285714,
+      "first": 210.0,
+      "last": 330.0,
+      "sign": "up",
+      "slope": 60.0
+     }
+    }
+   ],
+   "span": [
+    "2026-W30",
+    "2026-W32"
+   ]
+  },
+  "text": "Visits by channel",
+  "type": "chart",
+  "updated_seq": 1,
+  "w": 560.0,
+  "x": 0,
+  "y": 0
+ },
+ "gl": false,
+ "slot": [
+  12.0,
+  40.0,
+  536.0,
+  308.0
+ ],
+ "type": "area"
+}

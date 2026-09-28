@@ -297,11 +297,12 @@ def render_png(svg_text: str, out_path: Path, width_px: Optional[int] = None, en
 
 def render_region(team: TeamPaths, scene: Dict[str, Any], region: Optional[Sequence[float]], out_dir: Path, name: str,
                   marks: bool = True, grid: bool = False, reader: Optional[str] = None,
-                  env: Optional[Mapping[str, str]] = None, theme: str = "light") -> Dict[str, Any]:
-    """Write ``<name>.svg`` and ``<name>.png`` under ``out_dir``; ``{"svg", "png", "image_error", "width_px", "height_px", "region"}``."""
+                  env: Optional[Mapping[str, str]] = None, theme: str = "light", view: Optional[str] = None) -> Dict[str, Any]:
+    """Write ``<name>.svg`` and ``<name>.png`` under ``out_dir``; ``{"svg", "png", "image_error", "width_px", "height_px", "region"}``.
+    ``view`` draws every slot with still views (a 3D scene) in that view (``look --image --view``)."""
     out_dir = Path(out_dir)
     ensure_dir(out_dir)
-    svg_text, box = picture(scene, region, marks=marks, grid=grid, reader=reader, max_px=DEFAULT_MAX_PX, team=team, theme=theme)
+    svg_text, box = picture(scene, region, marks=marks, grid=grid, reader=reader, max_px=DEFAULT_MAX_PX, team=team, theme=theme, view=view)
     width_px, height_px = pixel_size(box, DEFAULT_MAX_PX)
     svg_path = out_dir / (name + ".svg")
     png_path = out_dir / (name + ".png")
@@ -690,7 +691,7 @@ def wrap_text(text: str, max_chars: int) -> List[str]:
 
 
 _ASSET_NAME = re.compile(r"^[0-9a-f]{32}\.(png|jpg|svg)\Z")
-_STILL_NAME = re.compile(r"^E-[0-9]+-v[0-9]+\.png\Z")
+_STILL_NAME = re.compile(r"^E-[0-9]+-v[0-9]+(-[a-z]{1,12})?\.png\Z")
 
 
 def _asset_bytes(team: Optional[TeamPaths], name: Any) -> Optional[bytes]:
@@ -776,9 +777,12 @@ def mark_anchor(el: Dict[str, Any]) -> Tuple[float, float]:
 
 def picture(scene: Dict[str, Any], region: Optional[Sequence[float]] = None, marks: bool = True, grid: bool = False,
             reader: Optional[str] = None, max_px: int = DEFAULT_MAX_PX, team: Optional[TeamPaths] = None,
-            theme: str = "light") -> Tuple[str, Tuple[float, float, float, float]]:
-    """``(svg, box)``: the agent's picture of the scene (or a region) and the box it shows."""
+            theme: str = "light", view: Optional[str] = None) -> Tuple[str, Tuple[float, float, float, float]]:
+    """``(svg, box)``: the agent's picture of the scene (or a region) and the box it shows; ``view`` draws the slots that
+    have still views in that one (phases 3 and 4, 1.4)."""
     dl = _display.display_list(scene, reader=reader)
+    if view:
+        in_view(dl, scene, view, team)
     box = normalize_region(region) if region is not None else tuple(float(v) for v in dl["bbox"])
     badges: List[Tuple[str, float, float, bool]] = []
     if marks:
@@ -792,6 +796,39 @@ def picture(scene: Dict[str, Any], region: Optional[Sequence[float]] = None, mar
             badges.append((str(el.get("id") or ""), x, y, el.get("type") == "text"))
     svg_text = _svg.write(dl, theme=theme, box=box, max_px=max_px, embed=embedder(team), resvg_text=True, marks=badges, grid=grid)
     return svg_text, box  # type: ignore[return-value]
+
+
+def in_view(dl: Dict[str, Any], scene: Mapping[str, Any], view: str, team: Optional[TeamPaths]) -> None:
+    """Each slot with still views drawn in ``view`` (1.4): its ``still`` becomes that view's still, and when the page posted
+    none, its ``fallback`` becomes the kind's drawing of that view (``Kind.draw_view``). Slots without views keep theirs."""
+    from herdr_team import canvas_kinds as _kinds_mod
+
+    by_id = {el.get("id"): el for el in scene.get("elements") or [] if isinstance(el, dict)}
+
+    def walk(items: Any, el: Optional[Mapping[str, Any]]) -> None:
+        for item in items or []:
+            if not isinstance(item, dict):
+                continue
+            if item.get("k") == "slot" and isinstance(item.get("views"), dict) and view in item["views"]:
+                name = item["views"][view]
+                if name and _still_bytes(team, name) is not None:
+                    item["still"] = name
+                    continue
+                item["still"] = None
+                kind = _kinds_mod.kind_of(el) if el is not None else None
+                drawing = None
+                if kind is not None and kind.draw_view is not None:
+                    try:
+                        drawing = kind.draw_view(dict(el), view)  # type: ignore[arg-type]
+                    except (TypeError, ValueError, KeyError, IndexError, AttributeError, ZeroDivisionError):
+                        drawing = None
+                if drawing is not None:
+                    item["fallback"] = drawing
+                    item["drawn"] = True
+            walk(item.get("items"), el)
+
+    for entry in dl.get("entries") or []:
+        walk(entry.get("items"), by_id.get(entry.get("id")))
 
 
 def render_svg(scene: Dict[str, Any], region: Optional[Sequence[float]] = None, marks: bool = True, grid: bool = False,

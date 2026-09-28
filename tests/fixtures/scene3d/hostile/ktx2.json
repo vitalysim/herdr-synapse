@@ -1,0 +1,13 @@
+{
+ "about": "KTX2/Basis textures are refused",
+ "source": "gltf",
+ "patch": {
+  "extensionsUsed": [
+   "KHR_texture_basisu"
+  ]
+ },
+ "expect": {
+  "code": "op_invalid",
+  "contains": "KTX2/Basis"
+ }
+}

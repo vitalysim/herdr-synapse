@@ -1,0 +1,16 @@
+{
+ "about": "Draco-compressed meshes need a decoder the page does not bundle",
+ "source": "gltf",
+ "patch": {
+  "extensionsUsed": [
+   "KHR_draco_mesh_compression"
+  ],
+  "extensionsRequired": [
+   "KHR_draco_mesh_compression"
+  ]
+ },
+ "expect": {
+  "code": "op_invalid",
+  "contains": "Draco"
+ }
+}

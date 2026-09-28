@@ -67,6 +67,7 @@ from herdr_team import features as _features
 from herdr_team import sanitize as _sanitize
 from herdr_team import store
 from herdr_team.canvas_kinds import _common as _kc
+from herdr_team.canvas_layouts import _budget as _work_budget
 # Op limits live with the op in its kind module (canvas v2 phase 1); re-exported here for callers and tests.
 from herdr_team.canvas_kinds.arrow import MAX_ARROW_POINTS
 from herdr_team.canvas_kinds.chart import MAX_CHART_SPEC_BYTES, MAX_SPEC_DEPTH
@@ -106,6 +107,7 @@ MAX_LEGEND = 50
 MAX_PORTRAIT_STEPS = 12
 MAX_COORD = 1_000_000
 MAX_SIZE = _kc.MAX_SIZE
+MAX_BLOCK_SIZE = _kc.MAX_BLOCK_SIZE
 #: A free-text legend symbol ("red cross") and the operator's note on "send to member".
 MAX_SYMBOL_CHARS = 80
 MAX_SEND_TEXT_CHARS = 1500
@@ -184,7 +186,7 @@ _XY_RE = re.compile(r"^\s*(-?[0-9]+(?:\.[0-9]+)?)\s*,\s*(-?[0-9]+(?:\.[0-9]+)?)\
 _XYXY_RE = re.compile(r"^\s*(-?[0-9]+(?:\.[0-9]+)?)\s*,\s*(-?[0-9]+(?:\.[0-9]+)?)\s*,\s*(-?[0-9]+(?:\.[0-9]+)?)\s*,\s*(-?[0-9]+(?:\.[0-9]+)?)\s*\Z")
 _CLIENT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}\Z")
 _NODE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}\Z")
-_ASSET_RE = re.compile(r"^[0-9a-f]{32}\.(png|jpg|svg|html|vl\.json)\Z")
+_ASSET_RE = re.compile(r"^[0-9a-f]{32}\.(png|jpg|svg|html|vl\.json|json|glb)\Z")
 _ELEMENT_ID_RE = re.compile(r"^E-[1-9][0-9]{0,6}\Z")
 _REQUEST_ID_RE = re.compile(r"^[0-9a-f]{16}\Z")
 _MENTION_RE = re.compile(r"(?<![A-Za-z0-9_.@-])@([A-Za-z][A-Za-z0-9_-]{0,63})")
@@ -479,6 +481,7 @@ class _State:
         if el is None:
             self.elements.pop(eid, None)
             return
+        el = _kinds.upgraded(el)  # an element an older version of its kind stored, read in today's shape (the log is never rewritten)
         self.elements[eid] = el
         if el.get("alias"):
             self.aliases.setdefault(el["alias"], {})[str(el.get("author"))] = eid
@@ -1095,6 +1098,8 @@ class _Ctx:
         self.start: Dict[str, Tuple[float, float, float, float]] = {eid: bounds(el) for eid, el in state.elements.items()}
         #: What a block kind's ``prepare`` computed before ``canvas.lock`` was taken, by op index (phase 2, 1.3).
         self.prepared: Dict[int, Any] = {}
+        #: What a block kind's ``load`` read and computed before the lock, by op index (phases 3 and 4, 1.2).
+        self.loaded: Dict[int, Any] = {}
         self.begin(0, "")
 
     def begin(self, index: int, op_name: str) -> None:
@@ -1133,6 +1138,8 @@ class _Ctx:
         self.local: Optional[Tuple[float, float, float, float]] = None
         #: ``(container id, index)``: the element this op creates joins that container's layout (``in``).
         self.join: Optional[Tuple[str, Optional[int]]] = None
+        #: Assets this op stores (``bctx.store_asset``): name -> bytes, written once the op applies (phases 3 and 4, 1.2).
+        self.staged: Dict[str, bytes] = {}
 
     # ids, z, lookups ----------------------------------------------------
 
@@ -3632,6 +3639,8 @@ def _apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: 
         result["version"] = current_version(team)
         return result
     prepared = _blocks().prepare(ops)  # a block kind's own precomputation (a big layout, phase 2 1.3): never under canvas.lock
+    loaded = _load_blocks(layout, team, doc, ops, author)  # artifact files a block reads (phases 3 and 4, 1.2): never under the lock
+    _find_secret("")  # the secret patterns' module is imported lazily; the first batch in a process pays that here (QA phase34 L12)
     lock = _canvas_lock(team)
     lock.acquire()
     notice: Optional[Dict[str, Any]] = None
@@ -3643,6 +3652,7 @@ def _apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: 
         batch_id = "B-{}".format(state.counters.get("B", 0) + 1)
         ctx = _Ctx(layout, team, author, doc, state, moment, batch_id)
         ctx.prepared = prepared
+        ctx.loaded = loaded
         touched: List[str] = []
         events: List[Dict[str, Any]] = []
         lines: List[bytes] = []
@@ -3656,8 +3666,12 @@ def _apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: 
                 _check_fields(op, _FIELDS[name])
                 ctx.intent = _intent(op, author)
                 ctx.author_color()  # an author's first applied op registers its colour and home
-                handler(ctx, op)
-                _blocks().settle(ctx)  # containers whose members changed are arranged again (phase 2, 1.5)
+                # Every arrow the op reroutes shares one budget (QA phase 2, R2): a move that drags a hundred orthogonal
+                # arrows along draws what is left straight, noted, instead of holding the lock. A graph routes its own
+                # edges under its own budget, and a layout runs under its own.
+                with _work_budget.running(_work_budget.Budget(work=OP_ROUTE_WORK, seconds=OP_ROUTE_SECONDS)):
+                    handler(ctx, op)
+                    _blocks().settle(ctx)  # containers whose members changed are arranged again (phase 2, 1.5)
                 _blocks().refresh_note(ctx)
                 _settle_labels(ctx)
                 if ctx.live_delta() > 0 and len(state.elements) + ctx.live_delta() > MAX_ELEMENTS:
@@ -3680,6 +3694,7 @@ def _apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: 
                                           "details": {"field": "op", "error": type(err).__name__}})
                 continue
             geometry = _sized(ctx)
+            _write_staged(ctx)
             state.fold(event)
             events.append(event)
             lines.append(line)
@@ -3692,6 +3707,9 @@ def _apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: 
                     entry["geometry_omitted"] = len(geometry) - MAX_GEOMETRY
             if ctx.block_info is not None:
                 entry["block"] = ctx.block_info
+                gist = _kinds.gist_of(state.elements.get(ctx.block_info.get("id")) or {}) if ctx.block_info.get("id") else []
+                if gist:
+                    entry["gist"] = gist[:APPLY_GIST_LINES]
             touched.extend(i for i in event["ids"] if i not in touched)
             result["applied"].append(entry)
             result["warnings"].extend(ctx.warnings)
@@ -3734,6 +3752,53 @@ def _apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: 
 
 #: Sized elements an apply result lists per op; a big graph lists this many and counts the rest.
 MAX_GEOMETRY = 50
+#: Gist lines an apply result carries under a created or patched chart or scene (phases 3 and 4, 1.6).
+APPLY_GIST_LINES = 2
+
+
+def _load_blocks(layout: Any, team: TeamPaths, doc: Dict[str, Any], ops: List[Dict[str, Any]], author: CanvasAuthor) -> Dict[int, Any]:
+    """``canvas_blocks.load`` over the batch, with the team's artifacts and the canvas as it stands, read without the lock
+    (only when some op may need it)."""
+    blocks = _blocks()
+    wanted = False
+    for op in ops:
+        name = op.get("op") if isinstance(op, dict) else None
+        kind = _kinds.get(name) if _kinds.op(name) is not None else None
+        if name == "patch" or (kind is not None and kind.block is not None and kind.block.load is not None):
+            wanted = True
+            break
+    if not wanted:
+        return {}
+    cache: Dict[str, Any] = {}
+
+    def find(ref: Any) -> Optional[Dict[str, Any]]:
+        if "state" not in cache:
+            try:
+                cache["state"] = _load_state(team)
+            except (OSError, ValueError, HerdrTeamError):
+                cache["state"] = None
+        state = cache["state"]
+        if state is None:
+            return None
+        return _lookup_in(state, ref, author.name, "id")
+
+    return blocks.load(ops, _FetchIO(layout, team, doc), find)
+
+
+def _write_staged(ctx: "_Ctx") -> None:
+    """Write the assets an applied op staged (``bctx.store_asset``): content-addressed, so a name already there is kept."""
+    for name, data in sorted(ctx.staged.items()):
+        path = _dir(ctx.team) / ASSETS_DIR / name
+        check_not_symlink(path)
+        if not path.is_file():
+            store.atomic_write(path, data, fsync=False)
+    ctx.staged = {}
+
+
+#: The routing budget of one op's rerouted arrows (``canvas_layouts._budget``; router work units, about 10 us each on
+#: the dev Mac) and its wall-clock ceiling.
+OP_ROUTE_WORK = 60_000
+OP_ROUTE_SECONDS = 0.6
 
 
 def _sized(ctx: _Ctx) -> List[Dict[str, Any]]:
@@ -4083,10 +4148,11 @@ def describe(el: Dict[str, Any], reader: Optional[str] = None, full: bool = True
 
 
 def _tree_lines(elements: Sequence[Dict[str, Any]], reader: Optional[str], base: int = 1, scene: Optional[Sequence[Dict[str, Any]]] = None,
-                verbose: bool = False) -> List[str]:
+                verbose: bool = False, stills: Optional[Set[str]] = None) -> List[str]:
     """Full lines with children indented under their frame (comments last). A block reads back as its spec, its members
     folded into it (phase 2, 5.3); an element in a container says where (`` in arch#1/2 (row)``, `` part c2 of work``);
-    ``verbose`` (``look --full``) adds a block's part ids and a top-level element's neighbours."""
+    ``verbose`` (``look --full``) adds a block's part ids and a top-level element's neighbours. ``stills`` (the still
+    files the page posted) lets a gist say which views exist."""
     blocks = _blocks()
     everything = list(scene) if scene is not None else list(elements)
     scene_by_id = {el["id"]: el for el in everything}
@@ -4113,7 +4179,7 @@ def _tree_lines(elements: Sequence[Dict[str, Any]], reader: Optional[str], base:
         if el["id"] in folded:
             return
         if blocks._is_root(el) and blocks.kind_of(el).name != "section":
-            block = blocks.block_lines(everything, el, reader, verbose)
+            block = blocks.block_lines(everything, el, reader, verbose, stills=stills)
             lines.extend("  " * depth + line for line in block)
             for child in children.get(el["id"], []):
                 walk(child, depth + 1)
@@ -4344,14 +4410,15 @@ def look_text(result: Dict[str, Any]) -> str:
     printed = {el.get("id") for el in full}
     scene_elements = result.get("_scene") or full
     verbose = bool(result.get("full"))
+    stills = result.get("_stills")
     if result.get("block_text"):
         lines.append(result["block_text"])
     elif region:
         lines.append("region {}:".format(result.get("region_cells") or region_cells(region)))
-        lines += _tree_lines(full, reader, scene=scene_elements, verbose=verbose) or ["  (nothing here)"]
+        lines += _tree_lines(full, reader, scene=scene_elements, verbose=verbose, stills=stills) or ["  (nothing here)"]
     elif result.get("level") == "full":
         lines.append("elements:")
-        lines += _tree_lines(full, reader, scene=scene_elements, verbose=verbose) or ["  (the canvas is empty)"]
+        lines += _tree_lines(full, reader, scene=scene_elements, verbose=verbose, stills=stills) or ["  (the canvas is empty)"]
     elsewhere = result.get("elsewhere") or []
     if elsewhere:
         lines.append("elsewhere:" if region else "elements (one line each):")
@@ -4439,17 +4506,31 @@ def _check_canvas(layout: Any, team: TeamPaths, reader: str, region: Any, around
 
 def look(layout: Any, team: TeamPaths, reader: str, region: Any = None, around: Optional[str] = None, since: Any = None,
          image: bool = False, grid: bool = False, exact: bool = False, advance: bool = True,
-         doc: Optional[Dict[str, Any]] = None, theme: str = "light", block: Optional[str] = None, full: bool = False) -> Dict[str, Any]:
+         doc: Optional[Dict[str, Any]] = None, theme: str = "light", block: Optional[str] = None, full: bool = False,
+         view: Optional[str] = None) -> Dict[str, Any]:
     """What ``reader`` sees (contract 8.1 and 8.2): the three-level listing, changes, claims, legend, and an optional image
     (drawn in ``theme``, ``light`` or ``dark``). ``block`` prints one block's whole spec, one item per line; ``full`` adds
-    part ids, neighbours and details (phase 2, 5.3)."""
+    part ids, neighbours and details (phase 2, 5.3). ``view`` draws the image's 3D scenes in that still view (``iso``,
+    ``front``, ``top``; phases 3 and 4, 1.4)."""
     with _corrected(team):
-        return _look(layout, team, reader, region, around, since, image, grid, exact, advance, doc, theme, block, full)
+        return _look(layout, team, reader, region, around, since, image, grid, exact, advance, doc, theme, block, full, view)
+
+
+#: The still views ``look --image --view`` takes: every view a kind declares (the registry's, so a new kind needs no edit).
+def still_views() -> List[str]:
+    found: List[str] = []
+    for kind in _kinds.kinds():
+        for view in kind.still_views:
+            if view and view not in found:
+                found.append(view)
+    return found
 
 
 def _look(layout: Any, team: TeamPaths, reader: str, region: Any, around: Optional[str], since: Any, image: bool, grid: bool,
           exact: bool, advance: bool, doc: Optional[Dict[str, Any]], theme: str, block: Optional[str] = None,
-          full_detail: bool = False) -> Dict[str, Any]:
+          full_detail: bool = False, still_view: Optional[str] = None) -> Dict[str, Any]:
+    if still_view is not None and still_view not in still_views():
+        raise _error("usage", "view is one of: {}".format(", ".join(still_views()) or "(no kind has still views)"), view=still_view)
     doc = doc if isinstance(doc, dict) else store.RosterStore(team).load()
     switch = _features.require_on(layout.session, team, doc)
     _cursor_path(team, reader)  # validates the reader name before anything is written under it
@@ -4513,6 +4594,24 @@ def _look(layout: Any, team: TeamPaths, reader: str, region: Any, around: Option
         "blocks": {el["id"]: blocks.spec_of(elements, el) for el in full if blocks._is_root(el)},
         "full": bool(full_detail), "_scene": elements,
     }
+    # What a kind reads back as in words (phases 3 and 4, 1.6): its gist, and the facts it adds under its own key.
+    gists: Dict[str, List[str]] = {}
+    stills = _stills(team)
+    result["_stills"] = stills
+    for el in full:
+        found = _kinds.gist_of(el, bool(full_detail), stills=stills)
+        if found:
+            gists[el["id"]] = found
+        kind = _kinds.kind_of(el)
+        if kind is not None and kind.look_json is not None:
+            key, fn = kind.look_json
+            try:
+                facts = fn(dict(el))
+            except (TypeError, ValueError, KeyError, IndexError, AttributeError, ZeroDivisionError):
+                facts = None
+            if isinstance(facts, dict) and key not in ("gist", "blocks", "text", "elements"):
+                result.setdefault(key, {})[el["id"]] = facts
+    result["gist"] = gists
     if block is not None:
         target = lookup(block, "block")
         root = target if blocks._is_root(target) else (blocks.root_of(state_ctx(state), target) or target)
@@ -4529,13 +4628,16 @@ def _look(layout: Any, team: TeamPaths, reader: str, region: Any, around: Option
                 result["image_error"] = "exact_timeout"
         if not result["exact"]:
             key = hashlib.sha256(json.dumps([box, bool(grid), theme], separators=(",", ":")).encode("utf-8")).hexdigest()[:8]
+            if still_view:
+                key += "-" + still_view
             rendered = _render.render_region(team, scene, box, _dir(team) / RENDERS_DIR, "look-{}-v{}-{}".format(reader, state.version, key),
-                                             marks=True, grid=grid, reader=reader, theme=theme if theme in _theme.THEMES else "light")
+                                             marks=True, grid=grid, reader=reader, theme=theme if theme in _theme.THEMES else "light", view=still_view)
             result["image"] = rendered["png"]
             result["svg"] = rendered["svg"]
             result["image_error"] = result["image_error"] or rendered["image_error"]
     result["text"] = look_text(result)
     result.pop("_scene", None)
+    result.pop("_stills", None)
     if advance:
         advance_cursor(team, reader, state.version)
     return result
@@ -4614,13 +4716,20 @@ def apply_text(result: Dict[str, Any]) -> str:
             if block.get("pins"):
                 names = block.get("pin_parts") or {}
                 parts.append("pins " + ", ".join("{}({})".format(names.get(k, k), v) for k, v in sorted(block["pins"].items())))
+            parts += [str(n) for n in block.get("notes") or [] if str(n).startswith("frame: ")]
             lines.append("   " + " · ".join(parts))
+        for line in entry.get("gist") or []:
+            lines.append("   " + str(line))
     if result.get("refused"):
         lines.append("refused:")
         lines += ["  #{} {} {}: {}".format(r.get("index"), r.get("op"), r.get("code"), r.get("message")) for r in result["refused"]]
-    if result.get("warnings"):
+    # A chart's frame note is already on its block line (phase 3, 2.11).
+    shown = {(e.get("index"), str(n)) for e in result.get("applied") or [] if isinstance(e.get("block"), dict)
+             for n in e["block"].get("notes") or [] if str(n).startswith("frame: ")}
+    warnings = [w for w in result.get("warnings") or [] if (w.get("index"), str(w.get("message"))) not in shown]
+    if warnings:
         lines.append("warnings:")
-        lines += ["  #{} {}: {}".format(w.get("index"), w.get("code"), w.get("message")) for w in result["warnings"]]
+        lines += ["  #{} {}: {}".format(w.get("index"), w.get("code"), w.get("message")) for w in warnings]
     check = result.get("check") if isinstance(result.get("check"), dict) else None
     if check is not None:
         counts = check.get("counts") or {}
@@ -4897,12 +5006,36 @@ def measure_report(layout: Any, team: TeamPaths, body: Any, doc: Optional[Dict[s
 # assets, stills and exports (what the page server reads and writes)
 
 _ASSET_KINDS = {"png": ("png", "image/png"), "jpeg": ("jpg", "image/jpeg"), "svg": ("svg", "image/svg+xml"),
-                "html": ("html", "text/html"), "json": ("vl.json", "application/json")}
+                "html": ("html", "text/html"), "json": ("vl.json", "application/json"),
+                # phases 3 and 4 (1.2): a document the page reads (a chart's datasets), and a binary glTF model
+                "doc": ("json", "application/json"), "glb": ("glb", "model/gltf-binary")}
+#: A ``doc`` asset (a chart's datasets for the page) is at most this big; a ``glb`` model at most ``MAX_GLB_ASSET_BYTES``.
+MAX_DOC_ASSET_BYTES = 2 * 1024 * 1024
+MAX_GLB_ASSET_BYTES = 16 * 1024 * 1024
+GLB_MAGIC = b"glTF"
 
 
 def store_asset(team: TeamPaths, data: bytes, kind: str) -> Dict[str, Any]:
     """Store bytes content-addressed under ``assets/``; ``{"asset", "mime", "px_w", "px_h"}`` (images checked by magic bytes)."""
     _team_dir_exists(team)
+    found = _asset_bytes(data, kind)
+    path = _dir(team) / ASSETS_DIR / found["asset"]
+    check_not_symlink(path)
+    if not path.is_file():
+        store.atomic_write(path, found.pop("data"), fsync=False)
+    found.pop("data", None)
+    return found
+
+
+def _stage_asset(ctx: "_Ctx", data: bytes, kind: str) -> str:
+    """``bctx.store_asset``: an asset checked and named now, written only once the op applies (``_write_staged``)."""
+    found = _asset_bytes(data, kind)
+    ctx.staged[found["asset"]] = found["data"]
+    return str(found["asset"])
+
+
+def _asset_bytes(data: Any, kind: str) -> Dict[str, Any]:
+    """An asset's checked bytes and name: ``{"asset", "mime", "px_w", "px_h", "data"}``; refused like ``store_asset``."""
     if not isinstance(data, (bytes, bytearray)):
         raise _invalid("asset", "asset data must be bytes")
     data = bytes(data)
@@ -4934,14 +5067,25 @@ def store_asset(team: TeamPaths, data: bytes, kind: str) -> Dict[str, Any]:
         except (UnicodeDecodeError, ValueError):
             raise _error("chart_refused", "the chart spec is not JSON")
         ext, mime = _ASSET_KINDS["json"]
+    elif kind == "doc":
+        if len(data) > MAX_DOC_ASSET_BYTES:
+            raise _too_big("data", "MAX_DOC_ASSET_BYTES", MAX_DOC_ASSET_BYTES, "the document is over {} MB; draw less data (top, filter, "
+                           "aggregate)".format(MAX_DOC_ASSET_BYTES // (1024 * 1024)))
+        try:
+            json.loads(data.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
+            raise _error("op_invalid", "a document asset is JSON", field="asset")
+        ext, mime = _ASSET_KINDS["doc"]
+    elif kind == "glb":
+        if len(data) > MAX_GLB_ASSET_BYTES:
+            raise _too_big("src", "MAX_GLB_ASSET_BYTES", MAX_GLB_ASSET_BYTES, "the model is over {} MB".format(MAX_GLB_ASSET_BYTES // (1024 * 1024)))
+        if not data.startswith(GLB_MAGIC) or len(data) < 12:
+            raise _error("op_invalid", "a model asset is a binary glTF (GLB)", field="asset")
+        ext, mime = _ASSET_KINDS["glb"]
     else:
-        raise _invalid("kind", "asset kind is png, jpeg, image, svg, html or json")
+        raise _invalid("kind", "asset kind is png, jpeg, image, svg, html, json, doc or glb")
     name = "{}.{}".format(hashlib.sha256(data).hexdigest()[:32], ext)
-    path = _dir(team) / ASSETS_DIR / name
-    check_not_symlink(path)
-    if not path.is_file():
-        store.atomic_write(path, data, fsync=False)
-    return {"asset": name, "mime": mime, "px_w": px_w, "px_h": px_h}
+    return {"asset": name, "mime": mime, "px_w": px_w, "px_h": px_h, "data": data}
 
 
 def _regular_file(path: Path) -> bool:
@@ -4962,31 +5106,41 @@ def asset_path(team: TeamPaths, name: str) -> Path:
     return path
 
 
-def _still_name(element_id: str, version: int) -> str:
-    return "{}-v{}.png".format(element_id, int(version))
+def _still_name(element_id: str, version: int, view: str = "") -> str:
+    """``E-5-v40.png``, or ``E-5-v40-iso.png`` for one of a kind's still views (phases 3 and 4, 1.3)."""
+    return "{}-v{}{}.png".format(element_id, int(version), "-" + view if view else "")
 
 
-def store_still(team: TeamPaths, element_id: str, version: int, png: bytes) -> Path:
-    """Keep a page-captured PNG of a chart, mermaid or viz element at its ``updated_seq``."""
+def store_still(team: TeamPaths, element_id: str, version: int, png: bytes, view: str = "") -> Path:
+    """Keep a page-captured PNG of a browser-drawn element (a kind with a ``slot``) at its ``updated_seq``, for one of its
+    kind's ``still_views`` (``""`` for a kind with one still); older versions of the same view are dropped."""
     if not isinstance(element_id, str) or not _ELEMENT_ID_RE.match(element_id):
         raise _error("element_unknown", "{!r} is not an element id".format(element_id), id=element_id)
     if not _is_number(version) or int(version) < 1:
         raise _invalid("v", "a still needs the element's version (updated_seq)")
+    if not isinstance(view, str):
+        raise _error("usage", "view is a still view's name", view=view)
     if not isinstance(png, (bytes, bytearray)) or not bytes(png).startswith(_render.PNG_MAGIC):
         raise _error("image_refused", "a still is a PNG")
     if len(png) > MAX_STILL_BYTES:
         raise _error("image_refused", "a still is at most {} MB".format(MAX_STILL_BYTES // (1024 * 1024)), limit="MAX_STILL_BYTES", max=MAX_STILL_BYTES)
     el = _load_state(team).elements.get(element_id)
-    if el is None or el.get("type") not in ("chart", "mermaid", "viz"):
-        raise _error("element_unknown", "{} is not a chart, mermaid or viz element on the canvas".format(element_id), id=element_id)
+    kind = _kinds.kind_of(el) if el is not None else None
+    if el is None or kind is None or kind.name not in _kinds.slot_kinds():
+        raise _error("element_unknown", "{} is not an element the page draws ({}) on the canvas".format(element_id, ", ".join(_kinds.slot_kinds())),
+                     id=element_id)
+    if view not in kind.still_views:
+        raise _error("usage", "a {} still's view is one of: {}".format(kind.name, ", ".join(v or '""' for v in kind.still_views)), view=view,
+                     views=list(kind.still_views))
     directory = _dir(team) / STILLS_DIR
-    path = directory / _still_name(element_id, int(version))
+    path = directory / _still_name(element_id, int(version), view)
     store.atomic_write(path, bytes(png), fsync=False)
     prefix = element_id + "-v"
+    tail = ("-" + view if view else "") + ".png"
     try:
         for entry in os.listdir(directory):
-            if entry.startswith(prefix) and entry.endswith(".png") and entry != path.name:
-                stem = entry[len(prefix):-4]
+            if entry.startswith(prefix) and entry.endswith(tail) and entry != path.name:
+                stem = entry[len(prefix):-len(tail)]
                 if stem.isdigit() and int(stem) < int(version):
                     os.unlink(directory / entry)
     except OSError:
@@ -4994,11 +5148,12 @@ def store_still(team: TeamPaths, element_id: str, version: int, png: bytes) -> P
     return path
 
 
-def still_path(team: TeamPaths, element_id: str, version: int) -> Optional[Path]:
-    """The still for that element version, when the page captured one."""
-    if not isinstance(element_id, str) or not _ELEMENT_ID_RE.match(element_id) or not _is_number(version):
+def still_path(team: TeamPaths, element_id: str, version: int, view: str = "") -> Optional[Path]:
+    """The still for that element version (and view), when the page captured one."""
+    if not isinstance(element_id, str) or not _ELEMENT_ID_RE.match(element_id) or not _is_number(version) or not isinstance(view, str) \
+            or (view and not view.isalpha()):
         return None
-    path = _dir(team) / STILLS_DIR / _still_name(element_id, int(version))
+    path = _dir(team) / STILLS_DIR / _still_name(element_id, int(version), view)
     return path if _regular_file(path) else None
 
 
@@ -5083,30 +5238,89 @@ def artifacts_dir(layout: Any, team: TeamPaths, doc: Optional[Dict[str, Any]] = 
     return Path(_workdir.paths_for(project, team.name)["artifacts"])
 
 
-def artifact_file(layout: Any, team: TeamPaths, rel: str, doc: Optional[Dict[str, Any]] = None) -> Path:
-    """A chart data file under the artifacts dir (csv/tsv/json, <= 5 MB); ``path_refused`` / ``artifacts_unset`` otherwise."""
-    root = artifacts_dir(layout, team, doc)
-    if root is None:
-        raise _error("artifacts_unset", "team {} has no project folder, so no artifacts/; the operator sets one with: {} project set <path>".format(team.name, CLI),
-                     team=team.name)
+def _artifact_path(root: Path, rel: Any, field: str = "data") -> Path:
+    """``rel`` resolved under ``root`` (the artifacts folder): relative, no ``..``, no backslash, no scheme, and a regular
+    file whose real path (symlinks resolved) stays under the folder's real path; ``path_refused`` otherwise."""
     if not isinstance(rel, str) or not rel.strip():
-        raise _error("path_refused", "data must name a file under artifacts/")
+        raise _error("path_refused", "{} must name a file under artifacts/".format(field), field=field)
     text = rel.strip()
     if text.startswith("artifacts/"):
         text = text[len("artifacts/"):]
     parts = Path(text).parts
-    if Path(text).is_absolute() or ".." in parts or "\\" in text or not parts:
-        raise _error("path_refused", "{} must be a path relative to the team's artifacts/ folder".format(rel), path=rel)
+    if Path(text).is_absolute() or ".." in parts or "\\" in text or not parts or ":" in parts[0]:
+        raise _error("path_refused", "{} must be a path relative to the team's artifacts/ folder".format(rel), path=rel, field=field)
     base = Path(os.path.realpath(os.fspath(root)))
     real = Path(os.path.realpath(os.fspath(root / text)))
-    if not _under(real, base) or not real.is_file():
-        raise _error("path_refused", "{} is not a file under the team's artifacts/ folder".format(rel), path=rel)
+    if not _under(real, base) or not _regular_file(real):
+        raise _error("path_refused", "{} is not a file under the team's artifacts/ folder".format(rel), path=rel, field=field)
+    return real
+
+
+def _artifacts_root(layout: Any, team: TeamPaths, doc: Optional[Dict[str, Any]]) -> Path:
+    root = artifacts_dir(layout, team, doc)
+    if root is None:
+        raise _error("artifacts_unset", "team {} has no project folder, so no artifacts/; the operator sets one with: {} project set <path>".format(team.name, CLI),
+                     team=team.name)
+    return root
+
+
+def artifact_file(layout: Any, team: TeamPaths, rel: str, doc: Optional[Dict[str, Any]] = None) -> Path:
+    """A chart data file under the artifacts dir (csv/tsv/json, <= 5 MB); ``path_refused`` / ``artifacts_unset`` otherwise."""
+    real = _artifact_path(_artifacts_root(layout, team, doc), rel)
     if real.suffix.lower() not in (".csv", ".tsv", ".json"):
         raise _error("chart_refused", "chart and viz data are .csv, .tsv or .json files", path=rel)
     if real.stat().st_size > MAX_CHART_DATA_BYTES:
         raise _error("chart_refused", "{} is over {} MB".format(rel, MAX_CHART_DATA_BYTES // (1024 * 1024)), path=rel,
                      limit="MAX_CHART_DATA_BYTES", max=MAX_CHART_DATA_BYTES)
     return real
+
+
+class _FetchIO:
+    """``canvas_kinds.sdk.FetchIO``: what ``Block.load`` may read, the team's artifacts only (phases 3 and 4, 1.2). The
+    same rules as ``artifact_file`` (root, real path, symlinks, ``..``), with the suffixes and size cap of each caller."""
+
+    def __init__(self, layout: Any, team: TeamPaths, doc: Optional[Dict[str, Any]]) -> None:
+        self._layout = layout
+        self._team = team
+        self._doc = doc
+        self._root: Optional[Path] = None
+
+    def _base(self) -> Path:
+        if self._root is None:
+            self._root = _artifacts_root(self._layout, self._team, self._doc)
+        return self._root
+
+    def _read(self, real: Path, rel_text: str, suffixes: Sequence[str], max_bytes: int, field: str) -> Any:
+        from herdr_team.canvas_kinds.sdk import Fetched
+
+        allowed = tuple(s.lower() for s in suffixes)
+        suffix = real.suffix.lower()
+        if suffix not in allowed:
+            raise _error("path_refused", "{} must be one of: {}".format(field, ", ".join(allowed)), path=rel_text, field=field, allowed=list(allowed))
+        size = real.stat().st_size
+        if size > max_bytes:
+            raise _too_big(field, "max_bytes", int(max_bytes), "{} is {} KB; the limit is {} KB".format(rel_text, (size + 1023) // 1024,
+                                                                                                     int(max_bytes) // 1024))
+        data = store.read_bytes(real)
+        if data is None:
+            raise _error("path_refused", "{} could not be read".format(rel_text), path=rel_text, field=field)
+        if len(data) > max_bytes:
+            raise _too_big(field, "max_bytes", int(max_bytes), "{} is over {} KB".format(rel_text, int(max_bytes) // 1024))
+        base = Path(os.path.realpath(os.fspath(self._base())))
+        rel = real.relative_to(base).as_posix()
+        return Fetched(rel=rel, data=data, sha256=hashlib.sha256(data).hexdigest(), suffix=suffix)
+
+    def read_artifact(self, rel: Any, suffixes: Sequence[str], max_bytes: int, *, field: str = "data") -> Any:
+        real = _artifact_path(self._base(), rel, field)
+        return self._read(real, str(rel), suffixes, max_bytes, field)
+
+    def sibling(self, fetched: Any, rel: str, suffixes: Sequence[str], max_bytes: int) -> Any:
+        if not isinstance(rel, str) or not rel.strip() or "://" in rel or rel.strip().startswith(("/", "data:")) or ":" in rel.split("/")[0]:
+            raise _error("path_refused", "{!r} must be a file next to {}".format(str(rel)[:80], fetched.rel), path=str(rel)[:200], field="src")
+        folder = Path(fetched.rel).parent.as_posix()
+        joined = rel.strip() if folder in ("", ".") else folder + "/" + rel.strip()
+        real = _artifact_path(self._base(), joined, "src")
+        return self._read(real, joined, suffixes, max_bytes, "src")
 
 
 # --------------------------------------------------------------------------

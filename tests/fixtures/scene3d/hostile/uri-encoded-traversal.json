@@ -1,0 +1,11 @@
+{
+ "about": "a percent-encoded ..",
+ "source": "gltf",
+ "patch": {
+  "images[0].uri": "%2e%2e/secret.png"
+ },
+ "expect": {
+  "code": "path_refused",
+  "contains": "no .."
+ }
+}

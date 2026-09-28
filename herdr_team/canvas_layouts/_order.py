@@ -20,6 +20,8 @@ from __future__ import annotations
 
 from typing import Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
+from herdr_team.canvas_layouts import _budget
+
 Adj = Mapping[str, Sequence[Tuple[str, float]]]
 Layers = List[List[str]]
 
@@ -512,9 +514,10 @@ def improve(model: Model, layers: Layers, incremental: bool = False) -> Tuple[La
     current = best
     last_best = 0
     sweeps = 0
+    budget = _budget.active()
     for i in range(MAX_SWEEPS):
-        if last_best >= patience or best_cc == 0:
-            break
+        if last_best >= patience or best_cc == 0 or budget.over():
+            break  # out of time: the best order so far
         sweeps += 1
         current = _sweep(model, current, downward=bool(i % 2), bias_right=i % 4 >= 2)
         current = reconcile(model, _transpose(model, current))

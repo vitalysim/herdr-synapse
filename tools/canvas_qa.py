@@ -78,6 +78,9 @@ from herdr_team import canvas_render as R  # noqa: E402
 from herdr_team import features, paths, store  # noqa: E402
 
 SCENES_DIR = REPO / "tests" / "fixtures" / "canvas_scenes"
+#: The data files a scene names in ``artifacts`` (a folder here) are copied into the QA team's ``artifacts/`` before it
+#: applies (canvas v2 phase 3: charts read CSV and JSON there; 3D scenes read glTF models).
+ARTIFACTS_DIR = REPO / "tests" / "fixtures" / "canvas_artifacts"
 OUT_DIR = REPO / ".local" / "qa" / "canvas"
 TEAM = "qa"
 MEMBER = "qa-drawer"
@@ -287,6 +290,25 @@ class QaTeam:
         self.layout = paths.resolve_layout(self.env)
         self.author = C.CanvasAuthor(MEMBER, C.KIND_MEMBER, "cli", True, agent="claude", team=TEAM)
 
+    def seed_artifacts(self, folders: Sequence[str]) -> Path:
+        """Give the team a project folder and copy each ``tests/fixtures/canvas_artifacts/<folder>`` into its ``artifacts/``
+        (subfolders kept); the team's artifacts folder."""
+        from herdr_team import workdir
+
+        project = self.tmp / "project"
+        project.mkdir(exist_ok=True)
+        doc = store.read_json(self.team.team_json)
+        doc.setdefault("config", {})["project_dir"] = os.fspath(project)
+        store.write_json(self.team.team_json, doc)
+        art = Path(workdir.paths_for(os.fspath(project), TEAM)["artifacts"])
+        art.mkdir(parents=True, exist_ok=True)
+        for folder in folders:
+            source = ARTIFACTS_DIR / folder
+            if not source.is_dir():
+                raise ValueError("no artifacts folder {} (tests/fixtures/canvas_artifacts)".format(folder))
+            shutil.copytree(os.fspath(source), os.fspath(art), dirs_exist_ok=True)
+        return art
+
     def cleanup(self) -> None:
         shutil.rmtree(self.tmp, ignore_errors=True)
 
@@ -314,11 +336,17 @@ def load_scene_file(path: Path) -> Dict[str, Any]:
     exempt = doc.get("page_line_exempt") or {}
     if not isinstance(exempt, dict):
         raise ValueError("{}: page_line_exempt maps element ids to the reason their page lines may differ".format(path))
+    artifacts = doc.get("artifacts") or []
+    if isinstance(artifacts, str):
+        artifacts = [artifacts]
+    if not isinstance(artifacts, list) or not all(isinstance(a, str) and a and "/" not in a and a not in (".", "..") for a in artifacts):
+        raise ValueError("{}: artifacts names folders under tests/fixtures/canvas_artifacts".format(path))
     gates = doc.get("gates") or {}
     if not isinstance(gates, dict) or any(key not in ("strict",) for key in gates):
         raise ValueError("{}: gates is {{\"strict\": true}} (a Phase 2 scene also gates arrow_through, stray and arrow-label collisions)".format(path))
     return {"name": str(doc.get("name") or Path(path).stem), "about": str(doc.get("about") or ""), "batches": batches,
-            "file": os.fspath(path), "page_line_exempt": {str(k): str(v) for k, v in exempt.items()}, "gates": dict(gates)}
+            "file": os.fspath(path), "page_line_exempt": {str(k): str(v) for k, v in exempt.items()}, "gates": dict(gates),
+            "artifacts": list(artifacts)}
 
 
 def scene_files(targets: Sequence[str]) -> List[Path]:
@@ -338,7 +366,9 @@ def scene_files(targets: Sequence[str]) -> List[Path]:
 
 
 def apply_scene(qa: QaTeam, scene: Dict[str, Any]) -> Dict[str, Any]:
-    """Apply every batch as the member; op counts, refusals and warning codes."""
+    """Apply every batch as the member (after copying the scene's artifacts in); op counts, refusals and warning codes."""
+    if scene.get("artifacts"):
+        qa.seed_artifacts(scene["artifacts"])
     ops = applied = 0
     refused: List[Dict[str, Any]] = []
     warnings: Dict[str, int] = {}
@@ -634,12 +664,18 @@ def probe(qa: QaTeam, scene: Dict[str, Any], el: Dict[str, Any], solid: List[Dic
     # The ink colour is the fill the text is drawn with; the pixels decide only when the SVG does not
     # say (a colour emoji's pixels are not the text colour, and thin strokes blend into the background).
     fills = {f for f in _text_fills(ink_svg)}
+    several = len(fills) > 1
     ink_rgb = _hex_rgb(fills.pop()) if len(fills) == 1 else None
     if ink_rgb is None:
         ink_rgb = [_median([ink[j][4 * i + c] for j, i in core]) for c in range(3)]
     below = [under_at(j, i) for j, i in core]
     bg_rgb = [_median([px_[c] for px_ in below]) for c in range(3)]
     ratio = contrast(ink_rgb, bg_rgb)
+    if several:
+        # Texts in several colours on several fills (a chart: ink on the paper, labels on bars): each glyph pixel against
+        # what is under it, then the median, since a median ink against a median background is neither.
+        ratios = sorted(contrast(list(ink[j][4 * i:4 * i + 3]), list(px_[:3])) for (j, i), px_ in zip(core, below))
+        ratio = ratios[len(ratios) // 2]
     need = CONTRAST_LARGE if size >= LARGE_TEXT else CONTRAST_BODY
     found["contrast"] = {"ratio": round(ratio, 2), "need": need, "ink": "#%02x%02x%02x" % tuple(ink_rgb),
                          "under": "#%02x%02x%02x" % tuple(bg_rgb)}
@@ -727,6 +763,7 @@ def evaluate(scene_doc: Dict[str, Any], out: Path, scale: float = PROBE_SCALE, t
             report["page_collapsed"] = [row for row in browser.audit if (row.get("collapsed") or 0) > 0]
             if engine == "v2":
                 report["page_filters"] = list(getattr(browser, "filters", []) or [])
+                report["page_hooks"] = hook_findings(getattr(browser, "hooks", None) or {}, chart_frame_texts(live))
         if page_lines is not None:
             report["page_lines"] = compare_lines(report["lines"], page_lines, scene_doc.get("page_line_exempt"))
         if serve > 0:
@@ -776,6 +813,82 @@ def compare_lines(server: Dict[str, List[str]], page: Dict[str, List[str]], exem
     return {"compared": compared, "mismatches": mismatches, "exempt": excused, "missing_on_page": missing}
 
 
+def chart_frame_texts(elements: Sequence[Dict[str, Any]]) -> Dict[str, List[str]]:
+    """Per flat ECharts chart, the axis labels, axis title and legend names its frame fixed (``chart_frame``): the texts
+    the page's ECharts picture must draw too, since Python laid its axes out for both pictures (phase 3, 2.5). A label the
+    frame thins away (``interval``) is not expected; a truncated one (``…``) is compared by what precedes the ellipsis."""
+    out: Dict[str, List[str]] = {}
+    for el in elements:
+        frame = el.get("chart_frame") if el.get("engine") == "echarts" else None
+        if not isinstance(frame, dict):
+            continue
+        want: List[str] = []
+        for axis in (frame.get("axes") or {}).values():
+            if not isinstance(axis, dict):
+                continue
+            every = int(axis.get("interval") or 0) + 1
+            for item in axis.get("labels") or []:
+                if isinstance(item, dict) and int(item.get("v") or 0) % every == 0 and item.get("t"):
+                    want.append(str(item["t"]))
+            want += [str(t["t"]) for t in axis.get("ticks") or [] if isinstance(t, dict) and t.get("t")]
+            if axis.get("title"):
+                want.append(str(axis["title"]))
+        legend = frame.get("legend")
+        for item in (legend.get("items") or []) if isinstance(legend, dict) else []:
+            if isinstance(item, dict) and item.get("name"):
+                want.append(str(item["name"]))
+        if want:
+            out[str(el["id"])] = want
+    return out
+
+
+def _drawn(text: str, texts: Sequence[str]) -> bool:
+    if text in texts:
+        return True
+    if text.endswith("…"):
+        stem = text[:-1].rstrip()
+        return any(str(t).startswith(stem) for t in texts)
+    return False
+
+
+def hook_findings(hooks: Dict[str, Any], frame_texts: Optional[Dict[str, List[str]]] = None) -> Dict[str, Any]:
+    """What the v2 page's chart and scene hooks say, per theme: every chart rendered with no overlapping labels, its
+    ECharts picture drawing every axis label, axis title and legend name its frame fixed (``frame_texts``; the chart
+    slot keeps the Python drawing's text hidden beneath the picture, so the page-line comparison cannot see the chart's
+    own text: QA phase34 L9), and every visible scene rendered (canvas v2 phases 3 and 4, G4). A page built before the
+    hooks reports ``absent``."""
+    out: Dict[str, Any] = {"problems": [], "charts": 0, "scenes": 0, "chart_texts_compared": 0}
+    frame_texts = frame_texts or {}
+    seen = False
+    for theme, found in sorted(hooks.items()):
+        charts = found.get("charts") if isinstance(found, dict) else None
+        scene3d = found.get("scene3d") if isinstance(found, dict) else None
+        if charts is None and scene3d is None:
+            continue
+        seen = True
+        for chart in charts or []:
+            out["charts"] = max(out["charts"], len(charts))
+            if chart.get("failed") or not chart.get("rendered"):
+                out["problems"].append("chart {} not rendered ({}): {}".format(chart.get("id"), theme, chart.get("failed") or "still waiting"))
+            elif chart.get("labelOverlaps"):
+                out["problems"].append("chart {} has {} overlapping labels ({})".format(chart.get("id"), chart["labelOverlaps"], theme))
+            want = frame_texts.get(str(chart.get("id")))
+            if want and chart.get("rendered") and isinstance(chart.get("texts"), list):
+                out["chart_texts_compared"] += 1
+                missing = [t for t in want if not _drawn(t, chart["texts"])]
+                if missing:
+                    out["problems"].append("chart {} does not draw {} of its frame's labels ({}): {}".format(
+                        chart.get("id"), len(missing), theme, ", ".join(repr(t) for t in missing[:6])))
+        scenes = (scene3d or {}).get("scenes") if isinstance(scene3d, dict) else None
+        for scene in scenes or []:
+            out["scenes"] = max(out["scenes"], len(scenes))
+            if scene.get("visible") and not scene.get("rendered"):
+                out["problems"].append("scene {} not rendered ({})".format(scene.get("id"), theme))
+    if not seen:
+        out["absent"] = True
+    return out
+
+
 def gate(report: Dict[str, Any], strict: bool) -> Dict[str, Any]:
     """Every reason this scene fails, gated counts first; ``ok`` when there is none."""
     failed: List[str] = []
@@ -802,6 +915,8 @@ def gate(report: Dict[str, Any], strict: bool) -> Dict[str, Any]:
         failed.append("page collapsed whitespace on {}".format(", ".join(r["id"] for r in report["page_collapsed"])))
     if report.get("page_filters"):
         failed.append("page css filter on {} (AC-4.2: nothing inverts colours)".format(", ".join(report["page_filters"])))
+    for line in (report.get("page_hooks") or {}).get("problems") or []:
+        failed.append("page {}".format(line))
     return {"ok": not failed, "failed": failed}
 
 
@@ -847,6 +962,14 @@ PAGE_LINES_JS = r"""(() => {
   }
   return out;
 })()"""
+#: How many elements the v1 page's scene holds (a scene whose elements draw no text still settles).
+PAGE_COUNT_JS = r"""(() => {
+  const root = document.querySelector('.excalidraw');
+  const key = root ? Object.keys(root).find((k) => k.startsWith('__reactFiber$')) : null;
+  let fiber = key ? root[key] : null;
+  while (fiber && !(fiber.stateNode && fiber.stateNode.scene && typeof fiber.stateNode.scene.getNonDeletedElements === 'function')) fiber = fiber.return;
+  return fiber ? fiber.stateNode.scene.getNonDeletedElements().length : 0;
+})()"""
 #: Fits the whole scene into the viewport before a screenshot (Excalidraw's own zoom-to-fit).
 #: The page's own fit audit (``window.__synapseFitAudit``, ``web/src/canvas/adapter.js``): per fitted label, how far
 #: its text runs past the room its container gives it.
@@ -885,6 +1008,15 @@ PAGE_V2_TILES_JS = r"""(() => {
 PAGE_V2_FIT_JS = r"""(() => (window.__synapseV2 ? (window.__synapseV2.fit(), true) : false))()"""
 #: AC-4.2: nothing on the page inverts colours (Phase 0's dark mode was an ``invert`` filter over the canvas). The display
 #: list's own elevation shadows (``elev``: ``filter="url(#synapse-elev-N)"`` on a card or a sticky, phase 2) change no colour.
+#: The v2 page's QA hooks for what it draws itself (canvas v2 phases 3 and 4, ``registerQA``): each chart's and scene's
+#: state; null for a page built before them.
+PAGE_V2_HOOKS_JS = r"""(() => {
+  const qa = window.__synapseV2 || {};
+  const read = (name) => (typeof qa[name] === 'function' ? qa[name]() : null);
+  return {charts: read('charts'), scene3d: read('scene3d')};
+})()"""
+#: Seconds the page gets to draw its charts and scenes (lazy chunks, WebGL) before their hooks are read.
+HOOKS_WAIT_S = 20.0
 PAGE_FILTERS_JS = r"""(() => [...document.querySelectorAll('*')].filter((el) => {
     const found = getComputedStyle(el).filter;
     return found !== 'none' && !/^url\("?#synapse-elev-\d+"?\)$/.test(found);
@@ -1025,7 +1157,9 @@ class Browser:
         while time.monotonic() < deadline:
             time.sleep(0.5)
             value = self.cdp.evaluate(PAGE_V2_LINES_JS if v2 else PAGE_LINES_JS)
-            if isinstance(value, dict) and value and value == last:
+            # A board of charts has no text the v1 page lays out: no lines, but its elements have arrived.
+            drawn = bool(value) or (not v2 and isinstance(value, dict) and (self.cdp.evaluate(PAGE_COUNT_JS) or 0) > 0)
+            if isinstance(value, dict) and drawn and value == last:
                 audit = self.cdp.evaluate(PAGE_V2_AUDIT_JS if v2 else PAGE_AUDIT_JS)
                 self.audit = audit if isinstance(audit, list) else []
                 if v2:
@@ -1033,9 +1167,13 @@ class Browser:
                 if shot is not None:
                     self.cdp.evaluate(PAGE_V2_FIT_JS if v2 else PAGE_FIT_JS)
                     time.sleep(0.5)
+                    if v2:
+                        self.hooks = {"light": self._hooks()}
                     self.screenshot(shot)
                     self.cdp.call("Emulation.setEmulatedMedia", features=[{"name": "prefers-color-scheme", "value": "dark"}])
                     time.sleep(0.5)
+                    if v2:
+                        self.hooks["dark"] = self._hooks()
                     self.screenshot(shot.with_name(shot.stem + "-dark.png"))
                     if v2:
                         found = self.cdp.evaluate(PAGE_FILTERS_JS)
@@ -1043,6 +1181,21 @@ class Browser:
                 return value
             last = value
         raise RuntimeError("the page never settled: {}".format(last if isinstance(last, str) else "lines kept changing"))
+
+    def _hooks(self) -> Dict[str, Any]:
+        """The page's chart and scene hooks once every chart has rendered or failed (or the wait is over)."""
+        deadline = time.monotonic() + HOOKS_WAIT_S
+        found: Any = None
+        while time.monotonic() < deadline:
+            found = self.cdp.evaluate(PAGE_V2_HOOKS_JS)
+            charts = (found or {}).get("charts") if isinstance(found, dict) else None
+            scenes = ((found or {}).get("scene3d") or {}).get("scenes") if isinstance(found, dict) and isinstance(found.get("scene3d"), dict) else None
+            waiting = [c for c in charts or [] if not c.get("rendered") and not c.get("failed")] + \
+                [s for s in scenes or [] if s.get("visible") and not s.get("rendered")]
+            if not waiting:
+                break
+            time.sleep(0.5)
+        return found if isinstance(found, dict) else {}
 
     def _tiled_v2(self, first: Dict[str, List[str]], first_audit: List[Dict[str, Any]]) -> Tuple[Dict[str, List[str]], List[Dict[str, Any]]]:
         """The v2 page's lines and audit read at ``PAGE_V2_SCALE``, one screen-sized tile at a time over the board."""

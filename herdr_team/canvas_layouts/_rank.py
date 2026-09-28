@@ -18,6 +18,8 @@ import math
 
 from typing import Dict, Hashable, List, Sequence, Set, Tuple
 
+from herdr_team.canvas_layouts import _budget
+
 Key = Hashable
 REdge = Tuple[Key, Key, int, float]  # (tail, head, minlen, weight)
 
@@ -313,10 +315,11 @@ def _network_simplex(nodes: Sequence[Key], edges: Sequence[REdge], ranks: Dict[K
     build_adj()
     post = low_lim()
     cut_values(post)
+    budget = _budget.active()
     for _round in range(MAX_EXCHANGES):
         leaving = next((i for i in sorted(tree_edges) if cut[i] < 0), None)
-        if leaving is None:
-            break
+        if leaving is None or budget.over():
+            break  # optimal, or out of time: every tree the exchanges pass through is a feasible ranking
         a, b = edges[leaving][0], edges[leaving][1]
         # The subtree side: the end deeper in the tree (the child of the tree edge).
         tail_side, flip = (a, False) if lim[a] < lim[b] else (b, True)

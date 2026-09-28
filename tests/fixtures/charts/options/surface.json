@@ -1,0 +1,369 @@
+{
+ "box": {
+  "h": 368.0,
+  "w": 536.0
+ },
+ "doc": {
+  "chart": "surface",
+  "datasets": [],
+  "refs": {
+   "grid": [
+    [
+     1,
+     16,
+     0.9
+    ],
+    [
+     1,
+     32,
+     0.8
+    ],
+    [
+     2,
+     16,
+     0.7
+    ],
+    [
+     2,
+     32,
+     0.5
+    ]
+   ]
+  },
+  "source": {
+   "data": null,
+   "rows": 4,
+   "sha256": "c3a03d4aa2b8e01863ccb8a2cf07df145c5f6b1119b7384ff23b791a8e261324"
+  },
+  "v": 1
+ },
+ "element": {
+  "alias": "loss",
+  "chart": {
+   "gl": true,
+   "type": "surface"
+  },
+  "chart_frame": {
+   "axes": {},
+   "box": [
+    536,
+    368
+   ],
+   "extra": {
+    "x": {
+     "max": 2,
+     "min": 1,
+     "step": 0.2
+    },
+    "y": {
+     "max": 35,
+     "min": 15,
+     "step": 5
+    },
+    "z": {
+     "max": 0.9,
+     "min": 0.5,
+     "step": 0.1
+    }
+   },
+   "font": 12,
+   "legend": null,
+   "legible": true,
+   "notes": [],
+   "plot": [
+    0,
+    0,
+    536,
+    368
+   ]
+  },
+  "doc_asset": "22d90b692c75f7478ff0af0bb5127ec4.json",
+  "engine": "echarts",
+  "gist": [
+   "x=lr (2) · y=batch (2) · z=loss · 4 grid points · inline rows 4 rows",
+   "peak 0.9 at lr=1, batch=16 · trough 0.5 at lr=2, batch=32",
+   "gradient: loss falls as lr grows (−0.25) and falls as batch grows (−0.15)"
+  ],
+  "h": 420.0,
+  "id": "E-1",
+  "kv": 2,
+  "model": {
+   "capped": [],
+   "filled": 4,
+   "grid": [
+    [
+     0.9,
+     0.7
+    ],
+    [
+     0.8,
+     0.5
+    ]
+   ],
+   "how": "none",
+   "xs": [
+    1,
+    2
+   ],
+   "ys": [
+    16,
+    32
+   ]
+  },
+  "option": {
+   "animation": false,
+   "aria": {
+    "enabled": true,
+    "label": {
+     "description": "x=lr (2) · y=batch (2) · z=loss · 4 grid points · inline rows 4 rows peak 0.9 at lr=1, batch=16 · trough 0.5 at lr=2, batch=32 gradient: loss falls as lr grows (−0.25) and falls as batch grows (−0.15)"
+    }
+   },
+   "backgroundColor": "transparent",
+   "color": [
+    "chart.seq.4"
+   ],
+   "grid3D": {
+    "axisLabel": {
+     "textStyle": {
+      "color": "chart.muted",
+      "fontFamily": "$sans",
+      "fontSize": 12
+     }
+    },
+    "axisLine": {
+     "lineStyle": {
+      "color": "chart.axis"
+     }
+    },
+    "axisPointer": {
+     "show": false
+    },
+    "axisTick": {
+     "lineStyle": {
+      "color": "chart.axis"
+     }
+    },
+    "axisTitle": {
+     "textStyle": {
+      "color": "chart.ink",
+      "fontFamily": "$sans",
+      "fontSize": 12
+     }
+    },
+    "boxDepth": 100.0,
+    "boxHeight": 60.0,
+    "boxWidth": 100.0,
+    "environment": "none",
+    "light": {
+     "ambient": {
+      "intensity": 0.45
+     },
+     "main": {
+      "intensity": 1.1,
+      "shadow": false
+     }
+    },
+    "splitLine": {
+     "lineStyle": {
+      "color": "chart.gridline"
+     }
+    },
+    "viewControl": {
+     "alpha": 35.264,
+     "animation": false,
+     "autoRotate": false,
+     "beta": 45.0,
+     "projection": "orthographic"
+    }
+   },
+   "series": [
+    {
+     "data": {
+      "$doc": "grid"
+     },
+     "name": "loss",
+     "shading": "color",
+     "type": "surface",
+     "wireframe": {
+      "lineStyle": {
+       "color": "chart.paper",
+       "width": 1
+      },
+      "show": true
+     }
+    }
+   ],
+   "textStyle": {
+    "color": "chart.ink",
+    "fontFamily": "$sans",
+    "fontSize": 12
+   },
+   "tooltip": {
+    "confine": true,
+    "renderMode": "richText",
+    "textStyle": {
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "trigger": "item"
+   },
+   "visualMap": {
+    "dimension": 2,
+    "inRange": {
+     "color": [
+      "chart.seq.1",
+      "chart.seq.2",
+      "chart.seq.3",
+      "chart.seq.4",
+      "chart.seq.5",
+      "chart.seq.6"
+     ]
+    },
+    "max": 0.9,
+    "min": 0.5,
+    "show": false
+   },
+   "xAxis3D": {
+    "axisLabel": {
+     "formatter": {
+      "$fmt": "auto|"
+     }
+    },
+    "interval": 0.2,
+    "max": 2.0,
+    "min": 1.0,
+    "name": "lr",
+    "nameTextStyle": {
+     "color": "chart.ink",
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "type": "value"
+   },
+   "yAxis3D": {
+    "axisLabel": {
+     "formatter": {
+      "$fmt": "auto|"
+     }
+    },
+    "interval": 5.0,
+    "max": 35.0,
+    "min": 15.0,
+    "name": "batch",
+    "nameTextStyle": {
+     "color": "chart.ink",
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "type": "value"
+   },
+   "zAxis3D": {
+    "axisLabel": {
+     "formatter": {
+      "$fmt": "auto|"
+     }
+    },
+    "interval": 0.1,
+    "max": 0.9,
+    "min": 0.5,
+    "name": "loss",
+    "nameTextStyle": {
+     "color": "chart.ink",
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "type": "value"
+   }
+  },
+  "resolved": {
+   "_source": "inline rows 4 rows",
+   "type": "surface",
+   "wireframe": true,
+   "x": "lr",
+   "y": "batch",
+   "z": "loss"
+  },
+  "settings": {
+   "rows": [
+    {
+     "batch": 16,
+     "loss": 0.9,
+     "lr": 1
+    },
+    {
+     "batch": 16,
+     "loss": 0.7,
+     "lr": 2
+    },
+    {
+     "batch": 32,
+     "loss": 0.8,
+     "lr": 1
+    },
+    {
+     "batch": 32,
+     "loss": 0.5,
+     "lr": 2
+    }
+   ],
+   "type": "surface",
+   "x": "lr",
+   "y": "batch",
+   "z": "loss"
+  },
+  "source": {
+   "columns": [
+    [
+     "lr",
+     "quantitative"
+    ],
+    [
+     "batch",
+     "quantitative"
+    ],
+    [
+     "loss",
+     "quantitative"
+    ]
+   ],
+   "data": null,
+   "kept": 4,
+   "rows": 4,
+   "sha256": "c3a03d4aa2b8e01863ccb8a2cf07df145c5f6b1119b7384ff23b791a8e261324"
+  },
+  "stats": {
+   "n": 4,
+   "nx": 2,
+   "ny": 2,
+   "peak": [
+    1.0,
+    16.0,
+    0.9
+   ],
+   "range": 0.4,
+   "rise": [
+    -0.25000000000000006,
+    -0.14999999999999997
+   ],
+   "trough": [
+    2.0,
+    32.0,
+    0.5
+   ]
+  },
+  "text": "Loss by learning rate and batch",
+  "type": "chart",
+  "updated_seq": 1,
+  "w": 560.0,
+  "x": 0,
+  "y": 0
+ },
+ "gl": true,
+ "slot": [
+  12.0,
+  40.0,
+  536.0,
+  368.0
+ ],
+ "type": "surface"
+}

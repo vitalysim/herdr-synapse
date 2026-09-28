@@ -1,0 +1,8 @@
+{
+ "about": "a model that is not there",
+ "source": "op",
+ "src": "models/missing.glb",
+ "expect": {
+  "code": "path_refused"
+ }
+}

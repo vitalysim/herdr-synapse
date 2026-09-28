@@ -1,0 +1,34 @@
+[
+ {
+  "channel": "Search",
+  "visits": 5200
+ },
+ {
+  "channel": "Direct",
+  "visits": 2600
+ },
+ {
+  "channel": "Social",
+  "visits": 1700
+ },
+ {
+  "channel": "Email",
+  "visits": 1200
+ },
+ {
+  "channel": "Referral",
+  "visits": 800
+ },
+ {
+  "channel": "Ads",
+  "visits": 600
+ },
+ {
+  "channel": "Podcast",
+  "visits": 240
+ },
+ {
+  "channel": "Events",
+  "visits": 120
+ }
+]

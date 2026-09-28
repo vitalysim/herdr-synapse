@@ -25,7 +25,9 @@
  * selection (id[]), hover (id|null), hoverPart ({id, part}|null), preview ({move?: {ids, by}, boxes?: {id: [x,y,w,h]},
  * hide?: id[], ghost?: Primitive[]} | null), panMode, showChips, writable, vizOn, team,
  * urls ({asset(name), still(name), viz(id), artifact(rel)}), elementOf(id), onPointer(SurfacePointer),
- * onStill(id, version, pngBlob), onRendered({version, root}), children (screen-space HTML).
+ * onStill(id, version, pngBlob, view), onRendered({version, root}), entered (id|null: the entry
+ * whose slot is live, WW-3), onEnter(id|null), onOps(ops) (a slot's own op, writable pages),
+ * children (screen-space HTML).
  */
 
 export { DL_SUPPORTED, SLOT_KINDS } from "./version.js";
@@ -39,5 +41,7 @@ export { CANONICAL_FAMILIES, PAGE_FAMILIES } from "./svgAttrs.js";
 export { toSVGString, CANONICAL_URLS } from "./svgString.js";
 export { fmt } from "./fmt.js";
 export { verifyText } from "./measure.js";
-export { installQAHook } from "./qa.js";
+export { installQAHook, registerQA } from "./qa.js";
+export { enterable, enterableSlotAt, slotRenderer } from "./slots/index.js";
+export { usesStill } from "./svgAttrs.js";
 export { resolvePaint, paletteOf } from "../theme/palette.js";

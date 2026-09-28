@@ -1,0 +1,8 @@
+{
+ "about": "an absolute model path",
+ "source": "op",
+ "src": "/etc/model.glb",
+ "expect": {
+  "code": "path_refused"
+ }
+}

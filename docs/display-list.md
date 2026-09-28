@@ -98,12 +98,14 @@ token shadow).
 | `arrow` | `d`, `stroke sw dash`, `heads` | A head is `{"at": "end"\|"start", "shape": "chevron"\|"triangle", "points": [[x,y],[x,y],[x,y]]}` or `{"at", "shape": "dot", "cx", "cy", "r"}`, always in the shaft's stroke paint. |
 | `text` | `x`, `anchor`, `font` (`sans`/`mono`), `weight`, `size`, `lh`, `fill`, `box`, `lines` | Each line is `{"y", "t", "w", "dir"?}`: `y` its baseline, `w` Python's measured width at `size` (safety factor included), `dir: "rtl"` when its first strong character is right to left. `box` `[x, y, w, h]` is the room the lines were fitted to (it never clips). |
 | `image` | `x y w h`, `src: {"asset": name}` or `{"still": name}`, `fallback`? | Contained in its box. `fallback` is what to draw when the asset cannot be loaded. |
-| `slot` | `slot` (`chart`/`mermaid`/`viz`), `x y w h`, `ref: {id, v}`, `still` (a name or null), `fallback` | The browser draws the content live; without the browser, the still or else `fallback`. |
+| `slot` | `slot` (a kind's renderer key: `chart`, `mermaid`, `viz`, `scene3d`), `x y w h`, `ref: {id, v, doc?}`, `still` (a name or null), `fallback`, and since phases 3 and 4 `views`?, `drawn`?, `gl`? | The browser draws the content live; without the browser, the still or else `fallback`. `ref.doc` names an asset the page fetches from `assets/<name>` (`<32 hex>.json`, a chart's datasets; `.glb`, a model), immutable, so cached by name. `views` maps each of the kind's still views to its still or null (`{"iso": "E-9-v12-iso.png", "front": null, "top": null}`), in order; `still` stays the first one's. `drawn: true` says `fallback` is a faithful drawing (a chart's axes and bars, a scene's projection), not a placeholder card. `gl: true` says the live content needs a WebGL context. |
 | `group` | `items`, `t: [a,b,c,d,e,f]`?, `clip: [x,y,w,h]`?, `screen: [ax, ay]`? | With `screen` the children are in screen pixels around the anchor (comment pins, claim and lock labels). |
 
 **Paint** is `null`, a literal `"#rrggbb"` (the same in both themes), a token
-reference (`base.<role>`, `tone.<tone>.<role>`, `chip.<0-7|human>.<bg|fg>`) or
-`{"hatch": <paint>}`. A renderer resolves a reference with
+reference (`base.<role>`, `tone.<tone>.<role>`, `chip.<0-7|human>.<bg|fg>`,
+and since phases 3 and 4 `chart.<name>` with an optional index (`chart.paper`,
+`chart.cat.3`, `chart.seq.6`, `chart.on_cat.3` for a label on that fill) and
+`mat.<tone>.<top|left|right|edge>` for a 3D face) or `{"hatch": <paint>}`. A renderer resolves a reference with
 `palettes[theme][ref]`; an unknown one draws as `base.ink`. Nothing ever
 inverts colours.
 
@@ -212,3 +214,11 @@ is one `group` with a scale, so neither side has icon code. Nothing else changes
 needs browser-drawn content: then it names a `slot`, and the page adds one
 renderer under `web/src/v2/render/slots/`. A new primitive kind or field is
 added here first, then to both writers, then to the goldens.
+
+**The still rule** (phases 3 and 4, D17), the same in `canvas_svg.slot_node`
+and the page's `svgAttrs.slotNode`: a slot draws its `still` when it has one
+and either the theme is light or `drawn` is not true (the page posts light
+stills only, so a dark picture draws the kind's own drawing); otherwise its
+`fallback`. `look --image --view <v>` first rewrites each slot that has `views`:
+`still` becomes `views[v]`, and when that is null `fallback` becomes the kind's
+`draw_view(el, v)`.

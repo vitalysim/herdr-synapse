@@ -1,0 +1,143 @@
+{
+ "box": {
+  "w": 616,
+  "h": 330
+ },
+ "element": {
+  "id": "E-54",
+  "type": "chart",
+  "kv": 2,
+  "alias": "sankey",
+  "text": "Revenue by region, 2026",
+  "x": 800,
+  "y": 40,
+  "w": 640,
+  "h": 400,
+  "settings": {
+   "type": "sankey",
+   "data": "rev.csv",
+   "x": "month",
+   "y": "revenue",
+   "color": "region"
+  },
+  "engine": "echarts",
+  "chart": {
+   "type": "sankey",
+   "gl": false
+  },
+  "option": {
+   "animation": false,
+   "textStyle": {
+    "fontFamily": "$sans",
+    "fontSize": 12,
+    "color": "chart.ink"
+   },
+   "color": [
+    "chart.cat.0",
+    "chart.cat.1",
+    "chart.cat.2",
+    "chart.cat.3",
+    "chart.cat.4"
+   ],
+   "tooltip": {
+    "trigger": "item",
+    "renderMode": "richText",
+    "confine": true
+   },
+   "aria": {
+    "enabled": true,
+    "label": {
+     "description": "largest flow Visit to Signup 5,400"
+    }
+   },
+   "series": [
+    {
+     "type": "sankey",
+     "left": 8,
+     "top": 8,
+     "right": 64,
+     "bottom": 8,
+     "nodeWidth": 12,
+     "nodeGap": 10,
+     "layoutIterations": 0,
+     "data": {
+      "$doc": "nodes"
+     },
+     "links": {
+      "$doc": "links"
+     },
+     "lineStyle": {
+      "color": "source",
+      "opacity": 0.35
+     },
+     "label": {
+      "color": "chart.ink",
+      "fontFamily": "$sans",
+      "fontSize": 12
+     }
+    }
+   ]
+  },
+  "doc_asset": "5b00000000000000000000000000000c.json",
+  "updated_seq": 12,
+  "gist": [
+   "x=month (12) \u00b7 y=sum(revenue) \u00b7 color=region (3)"
+  ]
+ },
+ "doc": {
+  "v": 1,
+  "chart": "sankey",
+  "source": {
+   "data": "funnel.csv",
+   "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+   "rows": 5
+  },
+  "datasets": [],
+  "refs": {
+   "nodes": [
+    {
+     "name": "Visit"
+    },
+    {
+     "name": "Signup"
+    },
+    {
+     "name": "Trial"
+    },
+    {
+     "name": "Paid"
+    },
+    {
+     "name": "Churn"
+    }
+   ],
+   "links": [
+    {
+     "source": "Visit",
+     "target": "Signup",
+     "value": 5400
+    },
+    {
+     "source": "Signup",
+     "target": "Trial",
+     "value": 3100
+    },
+    {
+     "source": "Trial",
+     "target": "Paid",
+     "value": 1200
+    },
+    {
+     "source": "Trial",
+     "target": "Churn",
+     "value": 1900
+    },
+    {
+     "source": "Signup",
+     "target": "Churn",
+     "value": 2300
+    }
+   ]
+  }
+ }
+}

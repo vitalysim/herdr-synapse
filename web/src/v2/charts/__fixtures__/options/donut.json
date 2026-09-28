@@ -1,0 +1,146 @@
+{
+ "box": {
+  "w": 616,
+  "h": 330
+ },
+ "element": {
+  "id": "E-53",
+  "type": "chart",
+  "kv": 2,
+  "alias": "donut",
+  "text": "Revenue by region, 2026",
+  "x": 800,
+  "y": 40,
+  "w": 640,
+  "h": 400,
+  "settings": {
+   "type": "donut",
+   "data": "rev.csv",
+   "x": "month",
+   "y": "revenue",
+   "color": "region"
+  },
+  "engine": "echarts",
+  "chart": {
+   "type": "donut",
+   "gl": false
+  },
+  "option": {
+   "animation": false,
+   "color": [
+    "chart.cat.0",
+    "chart.cat.1",
+    "chart.cat.2",
+    "chart.dim"
+   ],
+   "textStyle": {
+    "fontFamily": "$sans",
+    "fontSize": 12,
+    "color": "chart.ink"
+   },
+   "legend": {
+    "show": true,
+    "orient": "vertical",
+    "left": 420,
+    "top": 20,
+    "data": [
+     "EMEA",
+     "APAC",
+     "AMER",
+     "chart.cat.0"
+    ],
+    "textStyle": {
+     "color": "chart.ink"
+    }
+   },
+   "tooltip": {
+    "trigger": "item",
+    "renderMode": "richText",
+    "confine": true,
+    "formatter": "{b}: {d}%"
+   },
+   "aria": {
+    "enabled": true,
+    "label": {
+     "description": "EMEA 61%, AMER 22%, APAC 15%"
+    }
+   },
+   "series": [
+    {
+     "type": "pie",
+     "radius": [
+      "45%",
+      "75%"
+     ],
+     "center": [
+      200,
+      165
+     ],
+     "data": {
+      "$doc": "slices"
+     },
+     "label": {
+      "show": true,
+      "formatter": "{d}%",
+      "color": "chart.ink",
+      "fontFamily": "$sans"
+     },
+     "labelLine": {
+      "show": true,
+      "lineStyle": {
+       "color": "chart.axis"
+      }
+     },
+     "avoidLabelOverlap": true
+    }
+   ]
+  },
+  "doc_asset": "4a00000000000000000000000000000b.json",
+  "updated_seq": 12,
+  "gist": [
+   "x=month (12) \u00b7 y=sum(revenue) \u00b7 color=region (3)"
+  ]
+ },
+ "doc": {
+  "v": 1,
+  "chart": "donut",
+  "source": {
+   "data": null,
+   "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+   "rows": 4
+  },
+  "datasets": [],
+  "refs": {
+   "slices": [
+    {
+     "name": "EMEA",
+     "value": 31750000,
+     "itemStyle": {
+      "color": "chart.cat.0"
+     }
+    },
+    {
+     "name": "APAC",
+     "value": 7630000,
+     "itemStyle": {
+      "color": "chart.cat.1"
+     }
+    },
+    {
+     "name": "AMER",
+     "value": 11340000,
+     "itemStyle": {
+      "color": "chart.cat.2"
+     }
+    },
+    {
+     "name": "chart.cat.0",
+     "value": 1000000,
+     "itemStyle": {
+      "color": "chart.dim"
+     }
+    }
+   ]
+  }
+ }
+}

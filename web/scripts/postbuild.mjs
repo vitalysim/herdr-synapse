@@ -12,17 +12,27 @@
 //                        display-list versions and slot kinds the v2 renderer draws
 //                        (src/v2/render/version.js); a Python test holds it equal to
 //                        herdr_team/canvas_kinds.
+//   dist/charts.json     the ECharts modules the chart chunk bundles (src/v2/charts/components.js),
+//                        the echarts-gl ones the GL chunk bundles, and the scene3d primitives and
+//                        loaders (src/v2/scene3d/manifest.js); the Python tests hold every chart type
+//                        and 3D primitive against it (canvas-v2-phase3-4.md D19).
 //
+// Gates: no emitted JS chunk may call `new Function(` or `eval(` (the page's CSP refuses both; this
+// also proves ECharts' geo module stayed out and claygl's size expressions were patched), and the
+// lazy chunk sizes are printed (gzip -9) against the phase 3-4 budgets.
 // The bundled Inter and Geist Mono (assets/fonts/) are not copied here: src/fonts.css imports them
 // and Vite hashes them into dist/assets/. This script checks they arrived byte for byte.
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import zlib from "node:zlib";
 import { build as rolldownBuild } from "rolldown";
 
 const WEB = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const DIST = path.join(WEB, "dist");
+// SYNAPSE_DIST_DIR builds somewhere other than web/dist (a build under test, served to the e2e runs
+// with SYNAPSE_E2E_DIST); vite.config.js reads the same variable.
+const DIST = process.env.SYNAPSE_DIST_DIR ? path.resolve(process.env.SYNAPSE_DIST_DIR) : path.join(WEB, "dist");
 const REPO_FONTS = path.join(WEB, "..", "assets", "fonts");
 // The fonts src/fonts.css bundles: [licence heading, directory under assets/fonts, files].
 const BUNDLED_FONTS = [
@@ -59,6 +69,31 @@ function licenseText(dir) {
     if (/^licen[cs]e/i.test(name) && fs.statSync(path.join(dir, name)).isFile()) return fs.readFileSync(path.join(dir, name), "utf8");
   }
   return null;
+}
+
+// Packages whose declared licence and licence file disagree, or that ship notices besides the licence:
+// the licence file is what ships (canvas-v2-phase3-4.md 9.1).
+const LICENSE_NOTES = {
+  "echarts-gl": "package.json says MIT; its LICENSE file is BSD-3-Clause (Baidu), which is the text shipped here",
+  claygl: "package.json has no licence field; its LICENSE file is BSD-2-Clause",
+};
+
+// A package's NOTICE file and licenses/ directory (Apache-2.0 packages such as echarts), appended
+// after its licence.
+function noticeText(dir) {
+  let out = "";
+  for (const name of ["NOTICE", "NOTICE.md", "NOTICE.txt"]) {
+    const file = path.join(dir, name);
+    if (fs.existsSync(file) && fs.statSync(file).isFile()) out += `\n\n===== ${name} =====\n\n${fs.readFileSync(file, "utf8").trim()}\n`;
+  }
+  const extra = path.join(dir, "licenses");
+  if (fs.existsSync(extra) && fs.statSync(extra).isDirectory()) {
+    for (const name of fs.readdirSync(extra).sort()) {
+      const file = path.join(extra, name);
+      if (fs.statSync(file).isFile()) out += `\n\n===== licenses/${name} =====\n\n${fs.readFileSync(file, "utf8").trim()}\n`;
+    }
+  }
+  return out;
 }
 
 function licenseField(pkg, text) {
@@ -114,11 +149,13 @@ for (const item of seen.values()) nameCount.set(item.name, (nameCount.get(item.n
 for (const item of [...seen.values()].sort((a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version))) {
   const fileBase = item.name.replace(/^@/, "").replace(/\//g, "__") + (nameCount.get(item.name) > 1 ? `@${item.version}` : "");
   const text = licenseText(item.dir);
-  const head = `${item.name} ${item.version}\nlicense: ${item.license}\n${item.pkg.homepage ? `homepage: ${item.pkg.homepage}\n` : ""}\n`;
-  const body = text || `This package ships no licence file. Its package.json declares: ${item.license}.\n${item.pkg.author ? `Author: ${typeof item.pkg.author === "string" ? item.pkg.author : item.pkg.author.name}\n` : ""}`;
+  const note = LICENSE_NOTES[item.name] ? `note: ${LICENSE_NOTES[item.name]}\n` : "";
+  const head = `${item.name} ${item.version}\nlicense: ${item.license}\n${item.pkg.homepage ? `homepage: ${item.pkg.homepage}\n` : ""}${note}\n`;
+  let body = text || `This package ships no licence file. Its package.json declares: ${item.license}.\n${item.pkg.author ? `Author: ${typeof item.pkg.author === "string" ? item.pkg.author : item.pkg.author.name}\n` : ""}`;
+  body += noticeText(item.dir);
   fs.writeFileSync(path.join(LICENSES, `${fileBase}.txt`), head + body);
   packages[nameCount.get(item.name) > 1 ? `${item.name}@${item.version}` : item.name] = item.version;
-  summary.push(`${item.name} ${item.version}  ${item.license}  licenses/${fileBase}.txt`);
+  summary.push(`${item.name} ${item.version}  ${item.license}  licenses/${fileBase}.txt${LICENSE_NOTES[item.name] ? `  (${LICENSE_NOTES[item.name]})` : ""}`);
 }
 
 // Font licences: Excalidraw ships its font metadata (with the full OFL text) in its sources.
@@ -201,6 +238,70 @@ fs.writeFileSync(
   path.join(DIST, "kinds.json"),
   `${JSON.stringify({ v: 1, kinds: [...PAGE_KINDS].sort(), display_list: DL_SUPPORTED, slots: [...SLOT_KINDS].sort() })}\n`,
 );
+
+// -- 4b. the page's charts and 3D ------------------------------------------------------------
+
+// charts.json (D19): what the page can draw, as data. Neither file imports anything.
+const { ECHARTS_MODULES } = await import(pathToFileURL(path.join(WEB, "src", "v2", "charts", "components.js")).href);
+const { PRIMITIVES, LOADERS, GL_MODULES } = await import(pathToFileURL(path.join(WEB, "src", "v2", "scene3d", "manifest.js")).href);
+for (const [name, list] of [["ECHARTS_MODULES", ECHARTS_MODULES], ["GL_MODULES", GL_MODULES], ["PRIMITIVES", PRIMITIVES], ["LOADERS", LOADERS]]) {
+  if (!Array.isArray(list) || !list.every((item) => typeof item === "string")) throw new Error(`postbuild: ${name} must be a list of names`);
+}
+fs.writeFileSync(
+  path.join(DIST, "charts.json"),
+  `${JSON.stringify({ v: 1, echarts: [...new Set(ECHARTS_MODULES)].sort(), gl: [...new Set(GL_MODULES)].sort(), scene3d: { primitives: [...new Set(PRIMITIVES)].sort(), loaders: [...new Set(LOADERS)].sort() } })}\n`,
+);
+
+// The eval gate: the page's CSP (script-src 'self') refuses `new Function` and eval, so no chunk
+// may call either. The allowlist is empty. A method named eval (`eval(e, t) {` in vega's dataflow)
+// is a definition, not a call.
+const EVAL_CALL = /(?<![\w$.])eval\s*\((?![^()]*\)\s*\{)/g;
+const NEW_FUNCTION = /\bnew\s+Function\s*\(/g;
+const chunks = walk(path.join(DIST, "assets")).filter((rel) => rel.endsWith(".js"));
+const offenders = [];
+for (const rel of chunks) {
+  const code = fs.readFileSync(path.join(DIST, "assets", rel), "utf8");
+  const found = [...code.matchAll(NEW_FUNCTION), ...code.matchAll(EVAL_CALL)];
+  for (const m of found) offenders.push(`assets/${rel}: ${code.slice(Math.max(0, m.index - 60), m.index + 60).replace(/\s+/g, " ")}`);
+}
+if (offenders.length) throw new Error(`postbuild: the page's CSP refuses new Function and eval, found:\n  ${offenders.join("\n  ")}`);
+console.log(`postbuild: eval gate clean (${chunks.length} chunks, no new Function( or eval( call)`);
+
+// The bundle table (canvas-v2-phase3-4.md 9.2, gzip -9): the v2 first load (the entry and every
+// chunk it imports statically), then each lazy part by the chunk that holds its marker module.
+const gz = (rel) => zlib.gzipSync(fs.readFileSync(path.join(DIST, "assets", rel)), { level: 9 }).length;
+const indexHTML = fs.readFileSync(path.join(DIST, "index.html"), "utf8");
+const entries = [...indexHTML.matchAll(/(?:src|href)="\/?assets\/([^"]+\.js)"/g)].map((m) => m[1]);
+const staticImports = (rel, seen = new Set()) => {
+  if (seen.has(rel) || !fs.existsSync(path.join(DIST, "assets", rel))) return seen;
+  seen.add(rel);
+  const code = fs.readFileSync(path.join(DIST, "assets", rel), "utf8");
+  for (const m of code.matchAll(/(?:^|[;\s}])import\s*(?:[\w$*{}\s,]+from\s*)?["']\.\/([^"']+\.js)["']/g)) staticImports(m[1], seen);
+  return seen;
+};
+const firstLoad = new Set();
+for (const rel of entries) for (const dep of staticImports(rel)) firstLoad.add(dep);
+const boardChunk = chunks.find((rel) => /^Board-/.test(rel));
+if (boardChunk) for (const dep of staticImports(boardChunk)) firstLoad.add(dep);
+const sum = (list) => list.reduce((n, rel) => n + gz(rel), 0);
+const kb = (n) => `${(n / 1024).toFixed(1)} KB`;
+// A lazy part: the chunks its entry chunk pulls in statically that are not loaded already.
+const closureOf = (pattern, loaded) => {
+  const out = new Set();
+  for (const rel of chunks.filter((c) => pattern.test(c))) for (const dep of staticImports(rel)) if (!loaded.has(dep)) out.add(dep);
+  return out;
+};
+const chartsPart = closureOf(/^echartsCore-/, firstLoad);
+const scenePart = closureOf(/^renderer-/, firstLoad);
+const glPart = closureOf(/^glCharts-/, new Set([...firstLoad, ...chartsPart]));
+const table = [
+  ["v2 first load (the entry and the Board, static imports)", sum([...firstLoad]), 115.2 * 1024],
+  ["charts (echarts core, SVGRenderer, chart modules)", sum([...chartsPart]), 280 * 1024],
+  ["scene3d (three subset, GLTFLoader, OrbitControls, renderer)", sum([...scenePart]), 190 * 1024],
+  ["glcharts (CanvasRenderer, echarts-gl subset, claygl; after charts)", sum([...glPart]), 330 * 1024],
+];
+console.log("postbuild: bundle (gzip -9)");
+for (const [name, size, budget] of table) console.log(`  ${name.padEnd(64)} ${kb(size).padStart(10)}  budget ${kb(budget)}${size > budget ? "  OVER" : ""}`);
 
 // -- 5. hash lists -----------------------------------------------------------------------
 

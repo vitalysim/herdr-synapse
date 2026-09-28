@@ -1,0 +1,11 @@
+{
+ "about": "a GLB of version 1",
+ "source": "glb",
+ "glb": {
+  "version": 1
+ },
+ "expect": {
+  "code": "op_invalid",
+  "contains": "version 1"
+ }
+}

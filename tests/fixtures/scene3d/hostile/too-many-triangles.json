@@ -1,0 +1,9 @@
+{
+ "about": "a model over 300,000 triangles",
+ "source": "generated",
+ "generate": "triangles",
+ "expect": {
+  "code": "canvas_limit",
+  "contains": "300,000 or fewer"
+ }
+}

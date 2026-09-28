@@ -1,0 +1,437 @@
+{
+ "element": {
+  "alias": "topo",
+  "h": 420,
+  "id": "E-1",
+  "kv": 1,
+  "links": [
+   {
+    "from": "lb",
+    "id": "lb->api",
+    "to": "api"
+   },
+   {
+    "from": "api",
+    "id": "api->db",
+    "label": "SQL",
+    "to": "db"
+   },
+   {
+    "from": "api",
+    "id": "api->cache",
+    "to": "cache",
+    "tone": "warning"
+   }
+  ],
+  "objects": [
+   {
+    "id": "base",
+    "shape": "plane",
+    "size": [
+     8,
+     5
+    ],
+    "tone": "neutral"
+   },
+   {
+    "at": [
+     -3,
+     0
+    ],
+    "id": "lb",
+    "label": "Load balancer",
+    "on": "base",
+    "shape": "box",
+    "size": [
+     1.2,
+     0.4,
+     1.2
+    ],
+    "tone": "info"
+   },
+   {
+    "gap": 0.3,
+    "id": "api",
+    "label": "API pool",
+    "layout": "row",
+    "on": "base",
+    "right_of": "lb",
+    "shape": "group"
+   },
+   {
+    "id": "api1",
+    "in": "api",
+    "shape": "box",
+    "size": [
+     0.8,
+     1.2,
+     0.8
+    ],
+    "tone": "accent"
+   },
+   {
+    "id": "api2",
+    "in": "api",
+    "shape": "box",
+    "size": [
+     0.8,
+     1.2,
+     0.8
+    ],
+    "tone": "accent"
+   },
+   {
+    "gap": 1,
+    "height": 1.4,
+    "id": "db",
+    "label": "Postgres",
+    "on": "base",
+    "radius": 0.6,
+    "right_of": "api",
+    "shape": "cylinder",
+    "tone": "success"
+   },
+   {
+    "above": "api",
+    "gap": 0.3,
+    "id": "cache",
+    "label": "Redis",
+    "radius": 0.35,
+    "shape": "sphere",
+    "tone": "warning"
+   }
+  ],
+  "settings": {
+   "camera": "iso",
+   "ground": true,
+   "labels": "auto",
+   "lights": "studio",
+   "units": "m"
+  },
+  "solved": {
+   "bounds": [
+    -4.0,
+    0.0,
+    -2.5,
+    4.0,
+    2.22,
+    2.5
+   ],
+   "links": [
+    [
+     "lb->api",
+     "lb",
+     "api",
+     [
+      [
+       -2.4,
+       0.3497,
+       0.0
+      ],
+      [
+       -2.1,
+       0.4146,
+       0.0
+      ]
+     ],
+     null,
+     null
+    ],
+    [
+     "api->db",
+     "api",
+     "db",
+     [
+      [
+       -0.2,
+       0.6573,
+       0.0
+      ],
+      [
+       0.8,
+       0.6965,
+       0.0
+      ]
+     ],
+     "SQL",
+     null
+    ],
+    [
+     "api->cache",
+     "api",
+     "cache",
+     [
+      [
+       -1.15,
+       1.22,
+       0.0
+      ],
+      [
+       -1.15,
+       1.52,
+       0.0
+      ]
+     ],
+     null,
+     "warning"
+    ]
+   ],
+   "objects": [
+    [
+     "base",
+     [
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      8.0,
+      0.02,
+      5.0
+     ],
+     null,
+     ""
+    ],
+    [
+     "lb",
+     [
+      -3.0,
+      0.02,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      1.2,
+      0.4,
+      1.2
+     ],
+     null,
+     "on base, at (−3.0, 0.0)"
+    ],
+    [
+     "api",
+     [
+      -1.15,
+      0.02,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      1.9,
+      1.2,
+      0.8
+     ],
+     null,
+     "on base, right_of lb (gap 0.30)"
+    ],
+    [
+     "api1",
+     [
+      -1.7,
+      0.02,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.8,
+      1.2,
+      0.8
+     ],
+     "api",
+     "in api"
+    ],
+    [
+     "api2",
+     [
+      -0.6,
+      0.02,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.8,
+      1.2,
+      0.8
+     ],
+     "api",
+     "in api"
+    ],
+    [
+     "db",
+     [
+      1.4,
+      0.02,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      1.2,
+      1.4,
+      1.2
+     ],
+     null,
+     "on base, right_of api (gap 1.00)"
+    ],
+    [
+     "cache",
+     [
+      -1.15,
+      1.52,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.7,
+      0.7,
+      0.7
+     ],
+     null,
+     "above api (gap 0.30)"
+    ]
+   ],
+   "v": 1
+  },
+  "text": "Prod topology",
+  "type": "scene3d",
+  "updated_seq": 1,
+  "w": 640,
+  "x": 0,
+  "y": 0
+ },
+ "op": {
+  "camera": "iso",
+  "ground": true,
+  "h": 420,
+  "id": "topo",
+  "intent": "the prod topology in 3D",
+  "labels": "auto",
+  "lights": "studio",
+  "links": [
+   {
+    "from": "lb",
+    "to": "api"
+   },
+   {
+    "from": "api",
+    "label": "SQL",
+    "to": "db"
+   },
+   {
+    "from": "api",
+    "to": "cache",
+    "tone": "warning"
+   }
+  ],
+  "objects": [
+   {
+    "id": "base",
+    "shape": "plane",
+    "size": [
+     8,
+     5
+    ],
+    "tone": "neutral"
+   },
+   {
+    "at": [
+     -3,
+     0
+    ],
+    "id": "lb",
+    "label": "Load balancer",
+    "on": "base",
+    "shape": "box",
+    "size": [
+     1.2,
+     0.4,
+     1.2
+    ],
+    "tone": "info"
+   },
+   {
+    "gap": 0.3,
+    "id": "api",
+    "label": "API pool",
+    "layout": "row",
+    "on": "base",
+    "right_of": "lb",
+    "shape": "group"
+   },
+   {
+    "id": "api1",
+    "in": "api",
+    "shape": "box",
+    "size": [
+     0.8,
+     1.2,
+     0.8
+    ],
+    "tone": "accent"
+   },
+   {
+    "id": "api2",
+    "in": "api",
+    "shape": "box",
+    "size": [
+     0.8,
+     1.2,
+     0.8
+    ],
+    "tone": "accent"
+   },
+   {
+    "gap": 1,
+    "height": 1.4,
+    "id": "db",
+    "label": "Postgres",
+    "on": "base",
+    "radius": 0.6,
+    "right_of": "api",
+    "shape": "cylinder",
+    "tone": "success"
+   },
+   {
+    "above": "api",
+    "gap": 0.3,
+    "id": "cache",
+    "label": "Redis",
+    "radius": 0.35,
+    "shape": "sphere",
+    "tone": "warning"
+   }
+  ],
+  "op": "scene3d",
+  "title": "Prod topology",
+  "units": "m",
+  "w": 640
+ }
+}

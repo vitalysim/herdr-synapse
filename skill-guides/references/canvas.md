@@ -90,8 +90,8 @@ big block reads best with `--region <block>` (zoomed out, bodies are bars).
 {"op": "svg", "id": "funnel", "title": "Funnel", "svg": "<svg viewBox='0 0 100 60'><path d='M0 0H100L70 60H30Z' fill='#a5d8ff'/></svg>", "right_of": "drivers", "intent": "show the funnel shape"}
 ```
 
-3. Structure and data: blocks (above), `graph`, `mermaid` (a flowchart becomes
-   a graph block) and `chart` over a file in `artifacts/`: see `canvas-diagrams`.
+3. Structure: blocks (above), `graph`, `mermaid` (see `canvas-diagrams`). Charts: `chart {type, data or rows, x, y,
+   color}` (`--reference canvas-charts`; `canvas catalog charts`). 3D: `scene3d {objects with relations}` (`canvas-3d`).
 
 ```json
 {"op": "mermaid", "title": "Signup flow", "source": "flowchart TD\n  A[Visit] --> B{Signs up?}\n  B -- yes --> C[Active]\n  B -- no --> D[Lost]", "below": "drivers", "intent": "where users drop"}

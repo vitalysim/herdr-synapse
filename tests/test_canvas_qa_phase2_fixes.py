@@ -336,7 +336,7 @@ class F12Limits(Base):
             self.assertIn("split it", result["refused"][0]["message"])
         else:
             root = self.root("g")
-            self.assertLessEqual(max(root["w"], root["h"]), C.MAX_SIZE)
+            self.assertLessEqual(max(root["w"], root["h"]), C.MAX_BLOCK_SIZE)
 
     def test_force_on_500_nodes_is_quick(self):
         import random

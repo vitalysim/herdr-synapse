@@ -35,13 +35,15 @@ import math
 
 from typing import Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
-from herdr_team.canvas_layouts import LEdge, LNode, Layout, LayoutRequest, LayoutResult, Point
+from herdr_team.canvas_layouts import MAX_SIZE, LEdge, LNode, Layout, LayoutRequest, LayoutResult, Point
 from herdr_team.canvas_layouts import _order, _position, _rank, _util
 
 #: Its place in the registration order.
 ORDER = 10
 #: A seeded node that ends further than this from its seed counts as moved (``stats.moved``).
 MOVED = 20.0
+#: The closest ranks come when a drawing would otherwise run past ``MAX_SIZE`` along its ranks.
+MIN_RANK_GAP = 40.0
 
 
 class _Graph:
@@ -206,6 +208,14 @@ def layers(request: LayoutRequest) -> LayoutResult:
                            _order.cross_count(first, graph.down), fixed_point=True)
     best, crossings, sweeps = _order.improve(model, first, incremental=bool(seeds))
     xs, ys = place(best)
+    # A long chain of ranks (200 nodes in a chain, drawn to the right) can run past the drawing limit: the ranks close up
+    # toward ``MIN_RANK_GAP`` until it fits, or as far as they can (QA phase 2, R4).
+    extent = max(ys[k] + graph.h[k] for k in ys) - min(ys.values()) if ys else 0.0
+    if extent > MAX_SIZE and depth > 1 and rank_gap > MIN_RANK_GAP:
+        squeezed = max(MIN_RANK_GAP, rank_gap - (extent - MAX_SIZE) / float(depth - 1))
+        ys = _rank_tops(graph, best, request, squeezed, pads, chain, seeds)  # only the ranks move: along them nothing changes
+        notes.append("ranks_closed_up {:g}: ranks {:g} apart instead of {:g}, to keep the drawing within {}".format(
+            squeezed, squeezed, rank_gap, MAX_SIZE))
     return _result(request, graph, best, xs, ys, chains, label_key, flat, loops, reversed_ids, notes, sweeps, crossings)
 
 
@@ -295,7 +305,6 @@ def _place(graph: _Graph, order_layers: List[List[str]], request: LayoutRequest,
         return (spacing(u) + spacing(v)) / 2.0
 
     unify = {k: "\x01{}\x00{}".format(side, g) for k, (g, side) in graph.border_of.items()}
-    pinned = {n.id for n in request.nodes if n.pin is not None}
     if wanted is None:
         centres = _position.brandes_koepf(order_layers, graph.up, graph.down, graph.w,
                                           {k: graph.kind[k] in ("dummy", "border", "label") for k in graph.w},
@@ -308,6 +317,14 @@ def _place(graph: _Graph, order_layers: List[List[str]], request: LayoutRequest,
     xs = _position.constrain(order_layers, graph.w, want, offset, unify)
     if wanted is not None:
         _settle_soft(graph, order_layers, xs, wanted, offset)
+    return xs, _rank_tops(graph, order_layers, request, rank_gap, pads, chain, seeds)
+
+
+def _rank_tops(graph: _Graph, order_layers: List[List[str]], request: LayoutRequest, rank_gap: float,
+               pads: Mapping[str, Tuple[float, float, float, float]], chain, seeds: Mapping[str, Point]) -> Dict[str, float]:
+    """The top of every item in the ``down`` frame: its rank's top, the item centred in the rank's thickness."""
+    gap = request.gap
+    pinned = {n.id for n in request.nodes if n.pin is not None}
     # Ranks: as thick as their thickest item, rank_gap apart, plus the bands of groups that end or start between.
     thickness = [max((graph.h[k] for k in layer), default=0.0) for layer in order_layers]
     spans: Dict[str, Tuple[int, int]] = {}
@@ -335,8 +352,7 @@ def _place(graph: _Graph, order_layers: List[List[str]], request: LayoutRequest,
             found = [seeds[k][1] - (thickness[r] - graph.h[k]) / 2.0 for k in layer if k in seeds and k not in pinned]
             wanted_tops.append(_util.median(found) if found else None)
     tops = _position.rank_tops(thickness, between, wanted_tops)
-    ys = {k: tops[r] + (thickness[r] - graph.h[k]) / 2.0 for r, layer in enumerate(order_layers) for k in layer}
-    return xs, ys
+    return {k: tops[r] + (thickness[r] - graph.h[k]) / 2.0 for r, layer in enumerate(order_layers) for k in layer}
 
 
 def _settle_soft(graph: _Graph, order_layers: List[List[str]], xs: Dict[str, float], wanted: Mapping[str, float], offset) -> None:
@@ -459,6 +475,6 @@ def _world_extent(position: Mapping[str, Point], by_id: Mapping[str, LNode], req
 
 
 LAYOUTS = (
-    Layout(name="layers", run=layers, aliases=("flow", "layered"), groups=True, router="orthogonal",
+    Layout(name="layers", run=layers, aliases=("flow", "layered"), groups=True, router="orthogonal", crossings=True,
            doc="layered (Sugiyama): ranks by network simplex, fewer crossings, straight long edges, groups and pins"),
 )

@@ -1,0 +1,307 @@
+{
+ "box": {
+  "w": 616,
+  "h": 330
+ },
+ "element": {
+  "id": "E-55",
+  "type": "chart",
+  "kv": 2,
+  "alias": "heatmap",
+  "text": "Revenue by region, 2026",
+  "x": 800,
+  "y": 40,
+  "w": 640,
+  "h": 400,
+  "settings": {
+   "type": "heatmap",
+   "data": "rev.csv",
+   "x": "month",
+   "y": "revenue",
+   "color": "region"
+  },
+  "engine": "echarts",
+  "chart": {
+   "type": "heatmap",
+   "gl": false
+  },
+  "option": {
+   "animation": false,
+   "textStyle": {
+    "fontFamily": "$sans",
+    "fontSize": 12,
+    "color": "chart.ink"
+   },
+   "grid": {
+    "left": 48,
+    "top": 12,
+    "width": 420,
+    "height": 240
+   },
+   "xAxis": {
+    "type": "category",
+    "data": [
+     "09",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14"
+    ],
+    "axisLabel": {
+     "interval": 0,
+     "color": "chart.muted"
+    },
+    "axisLine": {
+     "lineStyle": {
+      "color": "chart.axis"
+     }
+    }
+   },
+   "yAxis": {
+    "type": "category",
+    "data": [
+     "Mon",
+     "Tue",
+     "Wed",
+     "Thu",
+     "Fri"
+    ],
+    "axisLabel": {
+     "interval": 0,
+     "color": "chart.muted"
+    },
+    "axisLine": {
+     "lineStyle": {
+      "color": "chart.axis"
+     }
+    }
+   },
+   "visualMap": {
+    "type": "continuous",
+    "min": 0,
+    "max": 16,
+    "show": true,
+    "orient": "vertical",
+    "left": 500,
+    "top": 12,
+    "itemHeight": 120,
+    "inRange": {
+     "color": [
+      "chart.seq.0",
+      "chart.seq.3",
+      "chart.seq.5",
+      "chart.seq.7"
+     ]
+    },
+    "textStyle": {
+     "color": "chart.muted"
+    }
+   },
+   "tooltip": {
+    "trigger": "item",
+    "renderMode": "richText",
+    "confine": true
+   },
+   "aria": {
+    "enabled": true,
+    "label": {
+     "description": "max Wed 12 16"
+    }
+   },
+   "series": [
+    {
+     "type": "heatmap",
+     "datasetIndex": 0,
+     "encode": {
+      "x": "hour",
+      "y": "day",
+      "value": "load"
+     },
+     "label": {
+      "show": true,
+      "color": "chart.ink",
+      "fontSize": 11
+     }
+    }
+   ]
+  },
+  "doc_asset": "6c00000000000000000000000000000d.json",
+  "updated_seq": 12,
+  "gist": [
+   "x=month (12) \u00b7 y=sum(revenue) \u00b7 color=region (3)"
+  ]
+ },
+ "doc": {
+  "v": 1,
+  "chart": "heatmap",
+  "source": {
+   "data": "load.csv",
+   "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+   "rows": 30
+  },
+  "datasets": [
+   {
+    "id": "d0",
+    "dimensions": [
+     "hour",
+     "day",
+     "load"
+    ],
+    "source": [
+     [
+      "09",
+      "Mon",
+      0
+     ],
+     [
+      "10",
+      "Mon",
+      3
+     ],
+     [
+      "11",
+      "Mon",
+      6
+     ],
+     [
+      "12",
+      "Mon",
+      9
+     ],
+     [
+      "13",
+      "Mon",
+      12
+     ],
+     [
+      "14",
+      "Mon",
+      15
+     ],
+     [
+      "09",
+      "Tue",
+      7
+     ],
+     [
+      "10",
+      "Tue",
+      10
+     ],
+     [
+      "11",
+      "Tue",
+      13
+     ],
+     [
+      "12",
+      "Tue",
+      16
+     ],
+     [
+      "13",
+      "Tue",
+      2
+     ],
+     [
+      "14",
+      "Tue",
+      5
+     ],
+     [
+      "09",
+      "Wed",
+      14
+     ],
+     [
+      "10",
+      "Wed",
+      0
+     ],
+     [
+      "11",
+      "Wed",
+      3
+     ],
+     [
+      "12",
+      "Wed",
+      6
+     ],
+     [
+      "13",
+      "Wed",
+      9
+     ],
+     [
+      "14",
+      "Wed",
+      12
+     ],
+     [
+      "09",
+      "Thu",
+      4
+     ],
+     [
+      "10",
+      "Thu",
+      7
+     ],
+     [
+      "11",
+      "Thu",
+      10
+     ],
+     [
+      "12",
+      "Thu",
+      13
+     ],
+     [
+      "13",
+      "Thu",
+      16
+     ],
+     [
+      "14",
+      "Thu",
+      2
+     ],
+     [
+      "09",
+      "Fri",
+      11
+     ],
+     [
+      "10",
+      "Fri",
+      14
+     ],
+     [
+      "11",
+      "Fri",
+      0
+     ],
+     [
+      "12",
+      "Fri",
+      3
+     ],
+     [
+      "13",
+      "Fri",
+      6
+     ],
+     [
+      "14",
+      "Fri",
+      9
+     ]
+    ]
+   }
+  ],
+  "refs": {}
+ }
+}

@@ -1,0 +1,466 @@
+{
+ "source": "snapshot of herdr_team.canvas_charts.compile (CHARTS-PY) on 2026-09-28; tests/fixtures/charts/options/ supersedes it",
+ "box": {
+  "w": 300,
+  "h": 260
+ },
+ "echarts": [
+  "BarChart",
+  "GridComponent",
+  "DatasetComponent",
+  "LegendComponent",
+  "TooltipComponent",
+  "MarkLineComponent",
+  "AriaComponent"
+ ],
+ "element": {
+  "id": "E-118",
+  "type": "chart",
+  "kv": 2,
+  "alias": "py-bar-stacked-narrow",
+  "text": "py-bar-stacked-narrow",
+  "w": 324,
+  "h": 330,
+  "settings": {
+   "type": "bar",
+   "x": "month",
+   "y": "revenue",
+   "color": "region",
+   "stack": true,
+   "format": {
+    "y": "compact"
+   }
+  },
+  "engine": "echarts",
+  "chart": {
+   "type": "bar",
+   "gl": false
+  },
+  "frame": {
+   "box": [
+    300.0,
+    260.0
+   ],
+   "plot": [
+    33.98974609375,
+    26.0,
+    254.01025390625,
+    181.0
+   ],
+   "axes": {
+    "x": {
+     "kind": "category",
+     "labels": [
+      {
+       "v": 0,
+       "t": "2026-01",
+       "w": 49.04771484375
+      },
+      {
+       "v": 1,
+       "t": "2026-02",
+       "w": 51.55833984375
+      },
+      {
+       "v": 2,
+       "t": "2026-03",
+       "w": 51.65490234375
+      },
+      {
+       "v": 3,
+       "t": "2026-04",
+       "w": 52.004941406250005
+      },
+      {
+       "v": 4,
+       "t": "2026-05",
+       "w": 51.35314453125
+      },
+      {
+       "v": 5,
+       "t": "2026-06",
+       "w": 51.685078125000004
+      },
+      {
+       "v": 6,
+       "t": "2026-07",
+       "w": 51.01517578125
+      },
+      {
+       "v": 7,
+       "t": "2026-08",
+       "w": 51.66697265625
+      },
+      {
+       "v": 8,
+       "t": "2026-09",
+       "w": 51.685078125000004
+      },
+      {
+       "v": 9,
+       "t": "2026-10",
+       "w": 49.04771484375
+      },
+      {
+       "v": 10,
+       "t": "2026-11",
+       "w": 46.277578125
+      },
+      {
+       "v": 11,
+       "t": "2026-12",
+       "w": 48.788203125
+      }
+     ],
+     "rotate": 0,
+     "interval": 2,
+     "width": null,
+     "extent": 15.0,
+     "hidden": 8,
+     "pos": "bottom"
+    },
+    "y": {
+     "kind": "value",
+     "min": 0.0,
+     "max": 10000000.0,
+     "step": 5000000.0,
+     "ticks": [
+      {
+       "v": 0.0,
+       "t": "0",
+       "w": 7.797421875
+      },
+      {
+       "v": 5000000.0,
+       "t": "5M",
+       "w": 18.49775390625
+      },
+      {
+       "v": 10000000.0,
+       "t": "10M",
+       "w": 23.98974609375
+      }
+     ],
+     "fmt": "compact|",
+     "title": "revenue",
+     "pos": "left"
+    }
+   },
+   "legend": {
+    "pos": "bottom",
+    "items": [
+     {
+      "name": "EMEA",
+      "color": "chart.cat.0",
+      "w": 50.55126953125
+     },
+     {
+      "name": "AMER",
+      "color": "chart.cat.1",
+      "w": 51.076328125
+     },
+     {
+      "name": "APAC",
+      "color": "chart.cat.2",
+      "w": 49.9779296875
+     }
+    ],
+    "rows": [
+     [
+      0,
+      1,
+      2
+     ]
+    ],
+    "box": [
+     33.98974609375,
+     242.0,
+     254.01025390625,
+     18.0
+    ]
+   },
+   "font": 12,
+   "notes": [
+    "every 3rd x label shown"
+   ],
+   "legible": true
+  },
+  "option": {
+   "animation": false,
+   "backgroundColor": "transparent",
+   "color": [
+    "chart.cat.0",
+    "chart.cat.1",
+    "chart.cat.2"
+   ],
+   "textStyle": {
+    "fontFamily": "$sans",
+    "fontSize": 12,
+    "color": "chart.ink"
+   },
+   "aria": {
+    "enabled": true,
+    "label": {
+     "description": "x=month (12, 2026-01…2026-12) · y=revenue · color=region (3) · inline rows 36 rows max EMEA 2026-11 2.3M · min APAC 2026-01 423K · total 50.5M EMEA ↑ +74% · AMER ↑ +122% · APAC ↑ +245% (2026-01→2026-12)"
+    }
+   },
+   "grid": {
+    "left": 33.99,
+    "top": 26.0,
+    "width": 254.01,
+    "height": 181.0,
+    "containLabel": false
+   },
+   "xAxis": {
+    "position": "bottom",
+    "axisLine": {
+     "show": true,
+     "lineStyle": {
+      "color": "chart.axis"
+     }
+    },
+    "axisTick": {
+     "show": true,
+     "alignWithLabel": true,
+     "length": 4.0,
+     "lineStyle": {
+      "color": "chart.axis"
+     }
+    },
+    "splitLine": {
+     "show": false,
+     "lineStyle": {
+      "color": "chart.gridline"
+     }
+    },
+    "type": "category",
+    "boundaryGap": true,
+    "axisLabel": {
+     "fontFamily": "$sans",
+     "fontSize": 12,
+     "color": "chart.muted",
+     "margin": 8.0,
+     "interval": 2,
+     "rotate": 0
+    }
+   },
+   "yAxis": {
+    "position": "left",
+    "axisLine": {
+     "show": false,
+     "lineStyle": {
+      "color": "chart.axis"
+     }
+    },
+    "axisTick": {
+     "show": false,
+     "alignWithLabel": true,
+     "length": 4.0,
+     "lineStyle": {
+      "color": "chart.axis"
+     }
+    },
+    "splitLine": {
+     "show": true,
+     "lineStyle": {
+      "color": "chart.gridline"
+     }
+    },
+    "type": "value",
+    "min": 0.0,
+    "max": 10000000.0,
+    "interval": 5000000.0,
+    "axisLabel": {
+     "fontFamily": "$sans",
+     "fontSize": 12,
+     "color": "chart.muted",
+     "margin": 8.0,
+     "formatter": {
+      "$fmt": "compact|"
+     }
+    }
+   },
+   "legend": {
+    "show": true,
+    "orient": "horizontal",
+    "left": 33.99,
+    "top": 242.0,
+    "width": 254.01,
+    "itemWidth": 10.0,
+    "itemHeight": 10.0,
+    "itemGap": 16.0,
+    "icon": "roundRect",
+    "textStyle": {
+     "fontFamily": "$sans",
+     "fontSize": 12,
+     "color": "chart.ink"
+    },
+    "data": [
+     "EMEA",
+     "AMER",
+     "APAC"
+    ]
+   },
+   "tooltip": {
+    "trigger": "axis",
+    "renderMode": "richText",
+    "confine": true,
+    "textStyle": {
+     "fontFamily": "$sans",
+     "fontSize": 12
+    }
+   },
+   "dataset": {
+    "$doc": "datasets"
+   },
+   "series": [
+    {
+     "type": "bar",
+     "name": "EMEA",
+     "barCategoryGap": "20%",
+     "barGap": "0%",
+     "itemStyle": {
+      "borderRadius": 2
+     },
+     "datasetIndex": 0,
+     "encode": {
+      "x": "x",
+      "y": "s0"
+     },
+     "stack": "total"
+    },
+    {
+     "type": "bar",
+     "name": "AMER",
+     "barCategoryGap": "20%",
+     "barGap": "0%",
+     "itemStyle": {
+      "borderRadius": 2
+     },
+     "datasetIndex": 0,
+     "encode": {
+      "x": "x",
+      "y": "s1"
+     },
+     "stack": "total"
+    },
+    {
+     "type": "bar",
+     "name": "APAC",
+     "barCategoryGap": "20%",
+     "barGap": "0%",
+     "itemStyle": {
+      "borderRadius": 2
+     },
+     "datasetIndex": 0,
+     "encode": {
+      "x": "x",
+      "y": "s2"
+     },
+     "stack": "total"
+    }
+   ]
+  },
+  "gist": [
+   "x=month (12, 2026-01…2026-12) · y=revenue · color=region (3) · inline rows 36 rows",
+   "max EMEA 2026-11 2.3M · min APAC 2026-01 423K · total 50.5M",
+   "EMEA ↑ +74% · AMER ↑ +122% · APAC ↑ +245% (2026-01→2026-12)"
+  ],
+  "updated_seq": 1
+ },
+ "doc": {
+  "v": 1,
+  "chart": "bar",
+  "source": {
+   "data": null,
+   "sha256": "18b2404aebb26afa4c208c049401e0f42c5f8816c893b284458a4924735db9bc",
+   "rows": 36
+  },
+  "datasets": [
+   {
+    "id": "d0",
+    "dimensions": [
+     "x",
+     "s0",
+     "s1",
+     "s2"
+    ],
+    "source": [
+     [
+      "2026-01",
+      1262380,
+      939483,
+      423006
+     ],
+     [
+      "2026-02",
+      1445360,
+      1050800,
+      457988
+     ],
+     [
+      "2026-03",
+      1522670,
+      1246420,
+      624384
+     ],
+     [
+      "2026-04",
+      1504190,
+      1209750,
+      631428
+     ],
+     [
+      "2026-05",
+      1656980,
+      1397150,
+      710264
+     ],
+     [
+      "2026-06",
+      1808310,
+      1452220,
+      937996
+     ],
+     [
+      "2026-07",
+      1864270,
+      1634310,
+      963276
+     ],
+     [
+      "2026-08",
+      1994030,
+      1533970,
+      1071810
+     ],
+     [
+      "2026-09",
+      2072270,
+      1796010,
+      1164080
+     ],
+     [
+      "2026-10",
+      2027180,
+      1726780,
+      1234870
+     ],
+     [
+      "2026-11",
+      2258750,
+      1841780,
+      1304110
+     ],
+     [
+      "2026-12",
+      2193450,
+      2088760,
+      1457530
+     ]
+    ]
+   }
+  ],
+  "refs": {}
+ }
+}

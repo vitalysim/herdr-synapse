@@ -1,0 +1,11 @@
+{
+ "about": "a chunk running past the end",
+ "source": "glb",
+ "glb": {
+  "chunk_delta": 4000
+ },
+ "expect": {
+  "code": "op_invalid",
+  "contains": "runs past the end"
+ }
+}

@@ -1,0 +1,12 @@
+{
+ "about": "POSITION without min and max (the spec requires them; bounds come from them)",
+ "source": "gltf",
+ "patch": {
+  "accessors[1].min": null,
+  "accessors[1].max": null
+ },
+ "expect": {
+  "code": "op_invalid",
+  "contains": "min and max"
+ }
+}

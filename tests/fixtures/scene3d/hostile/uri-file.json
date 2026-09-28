@@ -1,0 +1,11 @@
+{
+ "about": "a file: URL",
+ "source": "gltf",
+ "patch": {
+  "images[0].uri": "file:///etc/passwd"
+ },
+ "expect": {
+  "code": "path_refused",
+  "contains": "no scheme"
+ }
+}

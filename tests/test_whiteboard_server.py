@@ -140,8 +140,8 @@ class FakeCanvas:
         self.record("store_asset", team.name, data, kind)
         return {"asset": "0123456789abcdef0123456789abcdef.png", "mime": "image/png", "px_w": 2, "px_h": 3}
 
-    def store_still(self, team: Any, element_id: str, version: int, png: bytes) -> Path:
-        self.record("store_still", team.name, element_id, version, png)
+    def store_still(self, team: Any, element_id: str, version: int, png: bytes, **kw: Any) -> Path:
+        self.record("store_still", team.name, element_id, version, png, **kw)
         return Path("/tmp/still.png")
 
     def complete_export(self, team: Any, request_id: str, png: bytes) -> Path:
@@ -697,7 +697,12 @@ class ApiTests(ServerCase):
         still = self.authed("POST", "/api/teams/alpha/stills/E-4?v=9", self.cookie, self.csrf, png, content_type="image/png")
         self.assertEqual(still.json(), {"ok": True})
         self.assertIn(("store_still", ("alpha", "E-4", 9, png), {}), self.fake.calls)
-        for path in ("/api/teams/alpha/stills/E-4", "/api/teams/alpha/stills/K-4?v=1", "/api/teams/alpha/stills/E-4?v=-2"):
+        # A still of one view (canvas v2 phases 3 and 4, 1.3): the view travels as a query field.
+        viewed = self.authed("POST", "/api/teams/alpha/stills/E-4?v=9&view=iso", self.cookie, self.csrf, png, content_type="image/png")
+        self.assertEqual(viewed.json(), {"ok": True})
+        self.assertIn(("store_still", ("alpha", "E-4", 9, png), {"view": "iso"}), self.fake.calls)
+        for path in ("/api/teams/alpha/stills/E-4", "/api/teams/alpha/stills/K-4?v=1", "/api/teams/alpha/stills/E-4?v=-2",
+                     "/api/teams/alpha/stills/E-4?v=1&view=ISO", "/api/teams/alpha/stills/E-4?v=1&view=../x", "/api/teams/alpha/stills/E-4?v=1&view=iso1"):
             self.assertEqual(self.authed("POST", path, self.cookie, self.csrf, png, content_type="image/png").status, 400, path)
         export = self.authed("POST", "/api/teams/alpha/exports/req-1", self.cookie, self.csrf, png, content_type="image/png")
         self.assertEqual(export.json(), {"ok": True})
@@ -1059,6 +1064,11 @@ class RealCanvasTests(unittest.TestCase):
         still = self.upload("/api/teams/alpha/stills/{}?v={}".format(viz_id, seq), self.png())
         self.assertEqual(still.json(), {"ok": True})
         self.assertIsNotNone(canvas.still_path(self.ts.team, viz_id, seq))
+        shown = raw_request(self.port, "GET", "/api/teams/alpha/stills/{}-v{}.png".format(viz_id, seq), {"Cookie": self.cookie})
+        self.assertEqual((shown.status, shown.header("Content-Type"), shown.body), (200, "image/png", self.png()), "the page shows a still by its name")
+        self.assertEqual(shown.header("Content-Security-Policy"), W.ASSET_CSP)
+        for name in ("{}-v{}.png".format(viz_id, seq + 1), "../x.png", "{}-v{}-ISO.png".format(viz_id, seq)):
+            self.assertEqual(raw_request(self.port, "GET", "/api/teams/alpha/stills/" + name, {"Cookie": self.cookie}).status, 404, name)
         request_id = canvas.request_export(self.ts.team, [0, 0, 100, 100], True, False, "alpha-worker")
         stream = SSE(self.port, "/api/stream?team=alpha", {"Cookie": self.cookie})
         self.addCleanup(stream.close)

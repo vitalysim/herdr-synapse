@@ -10,6 +10,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from registry_conformance import assert_contains_in_order, assert_discovery_order, assert_registered_in_place
 from router_conformance import RouterConformance, maze, near_outline
 
 from herdr_team import canvas as C
@@ -34,8 +35,10 @@ def crosses(points, box) -> bool:
 
 class Registry(RouterConformance, unittest.TestCase):
     def test_every_router_module_is_found_and_keeps_the_contract(self):
-        self.assertEqual(R.modules(), ["straight", "curved", "orthogonal"])
-        self.assertEqual(R.names(), ["straight", "curved", "curve", "orthogonal", "elbow"])
+        # The routers the package ships; another module may register among them (QA phase 2, R6).
+        assert_contains_in_order(self, R.modules(), ["straight", "curved", "orthogonal"])
+        assert_discovery_order(self, R, R.modules())
+        assert_contains_in_order(self, R.names(), ["straight", "curved", "curve", "orthogonal", "elbow"])
         self.assertIs(R.get("elbow"), R.get("orthogonal"))
         for router in R.routers():
             self.check_router(router.name)
@@ -155,6 +158,7 @@ class DroppedInRouter(unittest.TestCase):
     NAME = "herdr_team.canvas_routers.zigzag"
 
     def setUp(self):
+        self.before = R.names()
         folder = Path(tempfile.mkdtemp(prefix="router-drop-"))
         self.addCleanup(shutil.rmtree, folder, True)
         shutil.copy(FIXTURES / "layouts" / "router_zigzag.py", folder / "zigzag.py")
@@ -170,14 +174,14 @@ class DroppedInRouter(unittest.TestCase):
         R._reload()
 
     def test_the_file_is_a_router_with_no_list_edited(self):
-        self.assertEqual(R.modules()[-1], "zigzag")
+        assert_registered_in_place(self, R, R.modules(), "zigzag")
         el = {"id": "E-1", "type": "arrow", "style": {"route": "zigzag"}, "points": [[0, 0], [1, 1]]}
         fields = arrow.reroute(el, {"id": "a", "type": "box", "x": 0, "y": 0, "w": 100, "h": 50}, {"id": "b", "type": "box", "x": 300, "y": 200, "w": 100, "h": 50}, {})
         self.assertEqual(fields["points"], [[50, 25], [350, 25], [350, 225]])
 
     def test_taking_it_out_restores_the_names(self):
         self._restore()
-        self.assertEqual(R.names(), ["straight", "curved", "curve", "orthogonal", "elbow"])
+        self.assertEqual(R.names(), self.before)
 
 
 if __name__ == "__main__":

@@ -18,7 +18,7 @@ import random
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 from herdr_team.canvas_layouts import LNode, Layout, LayoutError, LayoutRequest, LayoutResult, Point
-from herdr_team.canvas_layouts import _util
+from herdr_team.canvas_layouts import _budget, _util
 
 #: Its place in the registration order.
 ORDER = 30
@@ -81,7 +81,10 @@ def force(request: LayoutRequest) -> LayoutResult:
     # A fresh run stays inside its W x L frame (the classic bound); pins and seeds set their own frame.
     bounded = not seeded and not any(fixed)
     near_only = count > GRID_FROM
+    budget = _budget.active()
     for iteration in range(rounds):
+        if budget.over():
+            break  # out of time: the cells snap what has settled so far
         disp_x = [0.0] * count
         disp_y = [0.0] * count
         if near_only:

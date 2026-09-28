@@ -1,0 +1,267 @@
+{
+ "box": {
+  "h": 288.0,
+  "w": 456.0
+ },
+ "doc": {
+  "chart": "funnel",
+  "datasets": [],
+  "refs": {
+   "stages": [
+    {
+     "label": {
+      "formatter": "Visit 12K"
+     },
+     "name": "Visit",
+     "value": 12000
+    },
+    {
+     "label": {
+      "formatter": "Signup form 5,400"
+     },
+     "name": "Signup form",
+     "value": 5400
+    },
+    {
+     "label": {
+      "formatter": "Verified 4,300"
+     },
+     "name": "Verified",
+     "value": 4300
+    },
+    {
+     "label": {
+      "formatter": "First project 2,100"
+     },
+     "name": "First project",
+     "value": 2100
+    }
+   ]
+  },
+  "source": {
+   "data": null,
+   "rows": 4,
+   "sha256": "028e3f4869dd3a01b17f01d386d9e8210d2bc2c81ac020719282eeb68d2eaeb9"
+  },
+  "v": 1
+ },
+ "element": {
+  "alias": "signup",
+  "chart": {
+   "gl": false,
+   "type": "funnel"
+  },
+  "chart_frame": {
+   "axes": {},
+   "box": [
+    456,
+    288
+   ],
+   "extra": {
+    "band": 67.5
+   },
+   "font": 12,
+   "legend": null,
+   "legible": true,
+   "notes": [],
+   "plot": [
+    0,
+    8,
+    444,
+    276
+   ]
+  },
+  "doc_asset": "f817a8c2c63ee5e0bf0cde57733fa272.json",
+  "engine": "echarts",
+  "gist": [
+   "category=stage (4 stages) · value=n · inline rows 4 rows",
+   "Visit 12K → Signup form 5,400 → Verified 4,300 → First project 2,100",
+   "conversion: Visit→Signup form 45% · Signup form→Verified 80% · Verified→First project 49%",
+   "biggest drop Visit→Signup form (keeps 45%) · overall 18%"
+  ],
+  "h": 340.0,
+  "id": "E-1",
+  "kv": 2,
+  "model": {
+   "capped": [],
+   "how": "none",
+   "stages": [
+    [
+     "Visit",
+     12000
+    ],
+    [
+     "Signup form",
+     5400
+    ],
+    [
+     "Verified",
+     4300
+    ],
+    [
+     "First project",
+     2100
+    ]
+   ]
+  },
+  "option": {
+   "animation": false,
+   "aria": {
+    "enabled": true,
+    "label": {
+     "description": "category=stage (4 stages) · value=n · inline rows 4 rows Visit 12K → Signup form 5,400 → Verified 4,300 → First project 2,100 conversion: Visit→Signup form 45% · Signup form→Verified 80% · Verified→First project 49% biggest drop Visit→Signup form (keeps 45%) · overall 18%"
+    }
+   },
+   "backgroundColor": "transparent",
+   "color": [
+    "chart.cat.0",
+    "chart.cat.1",
+    "chart.cat.2",
+    "chart.cat.3"
+   ],
+   "legend": {
+    "show": false
+   },
+   "series": [
+    {
+     "color": [
+      "chart.cat.0",
+      "chart.cat.1",
+      "chart.cat.2",
+      "chart.cat.3"
+     ],
+     "data": {
+      "$doc": "stages"
+     },
+     "gap": 2.0,
+     "height": 276.0,
+     "itemStyle": {
+      "borderWidth": 0
+     },
+     "label": {
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "fontWeight": 600,
+      "position": "inside",
+      "show": true
+     },
+     "labelLine": {
+      "show": false
+     },
+     "left": 0.0,
+     "maxSize": "100%",
+     "minSize": "17.5%",
+     "name": "stage",
+     "orient": "vertical",
+     "sort": "none",
+     "top": 8.0,
+     "type": "funnel",
+     "width": 444.0
+    }
+   ],
+   "textStyle": {
+    "color": "chart.ink",
+    "fontFamily": "$sans",
+    "fontSize": 12
+   },
+   "tooltip": {
+    "confine": true,
+    "renderMode": "richText",
+    "textStyle": {
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "trigger": "item"
+   }
+  },
+  "resolved": {
+   "_source": "inline rows 4 rows",
+   "category": "stage",
+   "type": "funnel",
+   "value": "n"
+  },
+  "settings": {
+   "category": "stage",
+   "rows": [
+    {
+     "n": 12000,
+     "stage": "Visit"
+    },
+    {
+     "n": 5400,
+     "stage": "Signup form"
+    },
+    {
+     "n": 4300,
+     "stage": "Verified"
+    },
+    {
+     "n": 2100,
+     "stage": "First project"
+    }
+   ],
+   "type": "funnel",
+   "value": "n"
+  },
+  "source": {
+   "columns": [
+    [
+     "stage",
+     "nominal"
+    ],
+    [
+     "n",
+     "quantitative"
+    ]
+   ],
+   "data": null,
+   "kept": 4,
+   "rows": 4,
+   "sha256": "028e3f4869dd3a01b17f01d386d9e8210d2bc2c81ac020719282eeb68d2eaeb9"
+  },
+  "stats": {
+   "drop": [
+    "Visit",
+    "Signup form",
+    0.45,
+    -6600.0
+   ],
+   "overall": 0.175,
+   "stages": 4,
+   "steps": [
+    [
+     "Visit",
+     "Signup form",
+     0.45,
+     -6600.0
+    ],
+    [
+     "Signup form",
+     "Verified",
+     0.7962962962962963,
+     -1100.0
+    ],
+    [
+     "Verified",
+     "First project",
+     0.4883720930232558,
+     -2200.0
+    ]
+   ]
+  },
+  "text": "Signup funnel",
+  "type": "chart",
+  "updated_seq": 1,
+  "w": 480.0,
+  "x": 0,
+  "y": 0
+ },
+ "gl": false,
+ "slot": [
+  12.0,
+  40.0,
+  456.0,
+  288.0
+ ],
+ "type": "funnel"
+}

@@ -1,0 +1,118 @@
+{
+ "accessors": [
+  {
+   "bufferView": 0,
+   "componentType": 5123,
+   "count": 36,
+   "type": "SCALAR"
+  },
+  {
+   "bufferView": 1,
+   "componentType": 5126,
+   "count": 24,
+   "max": [
+    0.5,
+    0.5,
+    0.5
+   ],
+   "min": [
+    -0.5,
+    -0.5,
+    -0.5
+   ],
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 2,
+   "componentType": 5126,
+   "count": 24,
+   "type": "VEC2"
+  }
+ ],
+ "asset": {
+  "generator": "herdr-synapse make_fixtures",
+  "version": "2.0"
+ },
+ "bufferViews": [
+  {
+   "buffer": 0,
+   "byteLength": 72,
+   "byteOffset": 0,
+   "target": 34963
+  },
+  {
+   "buffer": 0,
+   "byteLength": 288,
+   "byteOffset": 72,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteLength": 192,
+   "byteOffset": 360,
+   "target": 34962
+  }
+ ],
+ "buffers": [
+  {
+   "byteLength": 552,
+   "uri": "crate.bin"
+  }
+ ],
+ "images": [
+  {
+   "uri": "crate.png"
+  }
+ ],
+ "materials": [
+  {
+   "name": "grey",
+   "pbrMetallicRoughness": {
+    "baseColorFactor": [
+     0.6,
+     0.6,
+     0.65,
+     1.0
+    ],
+    "baseColorTexture": {
+     "index": 0
+    },
+    "metallicFactor": 0.0
+   }
+  }
+ ],
+ "meshes": [
+  {
+   "name": "box",
+   "primitives": [
+    {
+     "attributes": {
+      "POSITION": 1,
+      "TEXCOORD_0": 2
+     },
+     "indices": 0,
+     "material": 0
+    }
+   ]
+  }
+ ],
+ "nodes": [
+  {
+   "mesh": 0,
+   "name": "box"
+  }
+ ],
+ "scene": 0,
+ "scenes": [
+  {
+   "nodes": [
+    0
+   ]
+  }
+ ],
+ "textures": [
+  {
+   "source": 0
+  }
+ ]
+}

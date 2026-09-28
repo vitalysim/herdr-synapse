@@ -1,5 +1,6 @@
 // The v2 board's CDP interaction tests (canvas-v2-phase1.md 5.3, E1 to E12, plus the Q phase 1 QA
-// regressions, and canvas-v2-phase2.md 8.3, P1 to P12 in phase2.mjs): `npm run test:e2e`.
+// regressions; canvas-v2-phase2.md 8.3, P1 to P12 in phase2.mjs; canvas-v2-phase3-4.md 8.4, the
+// charts' K1 to K7 in charts.mjs and the 3D S1 to S10 in scene3d.mjs): `npm run test:e2e`.
 //
 // Each rig is tools/canvas_rig.py (a throwaway team on loopback, never the real session) with a
 // golden scene; one headless Chrome started here drives the page with real mouse and key events
@@ -12,8 +13,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { MOD, findChrome, launchChrome, openPage, sleep } from "./cdp.mjs";
+import { CHART_SCENARIOS } from "./charts.mjs";
 import { PHASE2_SCENARIOS } from "./phase2.mjs";
 import { REPO, rigAvailable, startRig } from "./rig.mjs";
+import { SCENE3D_SCENARIOS } from "./scene3d.mjs";
 
 const args = process.argv.slice(2);
 const argOf = (name) => {
@@ -609,9 +612,10 @@ async function q6ChainedDrags(b) {
   return `two drags, if_version ${first.ops[0].if_version} then ${second.ops[0].if_version}, moved ${moved}`;
 }
 
-// Q7: a second drag released while the first POST /ops is still on its way (250 ms of network
-// latency) waits behind it, is sent with if_version rebased onto the first one's answer, and
-// is applied (QA phase 1, V-3: the op queue).
+// Q7: a second drag released while the first POST /ops is still on its way (1.2 s of network
+// latency: at 250 ms a loaded machine finished the first POST before the second drag let go,
+// QA phase34 L10) waits behind it, is sent with if_version rebased onto the first one's answer,
+// and is applied (QA phase 1, V-3: the op queue).
 async function q7DragWhileInFlight(b) {
   const sun = await b.entry(byText(SUN));
   await b.page.key("Escape");
@@ -620,7 +624,7 @@ async function q7DragWhileInFlight(b) {
   const start = hitBox(sun);
   const from = await b.toScreen(center(start));
   const mark = b.mark();
-  await b.page.send("Network.emulateNetworkConditions", { offline: false, latency: 250, downloadThroughput: -1, uploadThroughput: -1 });
+  await b.page.send("Network.emulateNetworkConditions", { offline: false, latency: 1200, downloadThroughput: -1, uploadThroughput: -1 });
   let first;
   let second;
   try {
@@ -686,6 +690,8 @@ const SCENARIOS = [
   { rig: "house", writable: true, list: [["Q2", q2SmallShapeMoves], ["Q3", q3ZoomLimitSettles], ["Q6", q6ChainedDrags], ["Q7", q7DragWhileInFlight], ["Q8", q8SelectedSmallShapeMoves]] },
   { rig: "text-notes", writable: false, list: [["Q4", q4Indent]] },
   ...PHASE2_SCENARIOS,
+  ...CHART_SCENARIOS,
+  ...SCENE3D_SCENARIOS,
 ];
 
 // A scene the Python side has not written yet: its scenarios are reported as skipped, not run.
@@ -693,6 +699,7 @@ const SCENARIOS = [
 // yet (a page change tried before its scene lands); a golden scene of the name always wins.
 const SCENE_DIR = process.env.SYNAPSE_E2E_SCENES || "";
 const sceneOf = (name) => {
+  if (path.isAbsolute(name)) return fs.existsSync(name) ? name : null; // a scene of this folder (scenes/)
   if (fs.existsSync(path.join(REPO, "tests", "fixtures", "canvas_scenes", `${name}.json`))) return name;
   const local = SCENE_DIR ? path.join(SCENE_DIR, `${name}.json`) : "";
   return local && fs.existsSync(local) ? local : null;
@@ -720,14 +727,15 @@ async function main() {
       const wanted = group.list.filter(([name]) => !ONLY || ONLY.has(name) || (name === "E1" && ONLY.has("E9")));
       if (!wanted.length) continue;
       const scene = sceneOf(group.rig);
+      const label = group.label || group.rig;
       if (!scene) {
         for (const [name] of wanted) {
-          results.push({ name, ok: true, skipped: true, detail: `scene ${group.rig} is not written yet` });
-          console.log(`SKIP ${name}  scene ${group.rig} is not written yet`);
+          results.push({ name, ok: true, skipped: true, detail: `scene ${label} is not written yet` });
+          console.log(`SKIP ${name}  scene ${label} is not written yet`);
         }
         continue;
       }
-      const rig = await startRig(scene, { writable: group.writable, out: path.join(OUT, `${group.rig}-${group.writable ? "rw" : "ro"}`) });
+      const rig = await startRig(scene, { writable: group.writable, out: path.join(OUT, `${label}-${group.writable ? "rw" : "ro"}`) });
       let board = null;
       try {
         board = await Board.open(browser.port, rig);
@@ -752,13 +760,13 @@ async function main() {
         const inPage = await board.page.eval("window.__cspViolations || []").catch(() => []);
         csp.push(...board.csp, ...inPage);
         exceptions.push(...board.exceptions);
-        fs.writeFileSync(path.join(OUT, `${group.rig}-${group.writable ? "rw" : "ro"}.log`), board.logs.join("\n"));
+        fs.writeFileSync(path.join(OUT, `${label}-${group.writable ? "rw" : "ro"}.log`), board.logs.join("\n"));
       } finally {
         if (board) await board.close();
         await rig.stop();
       }
     }
-    for (const [name, during] of [["E12", "E1-E11"], ["P12", "P1-P11"]]) {
+    for (const [name, during] of [["E12", "E1-E11"], ["P12", "P1-P11"], ["S10", "K1-K7 and S1-S9"]]) {
       if (ONLY && !ONLY.has(name)) continue;
       const ok = csp.length === 0;
       results.push({ name, ok, detail: ok ? `no CSP violation during ${during}` : csp.join("\n") });

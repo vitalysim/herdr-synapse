@@ -1,0 +1,301 @@
+{
+ "element": {
+  "alias": "rack",
+  "h": 420,
+  "id": "E-2",
+  "kv": 1,
+  "links": [],
+  "objects": [
+   {
+    "finish": "glass",
+    "id": "cab",
+    "label": "R12",
+    "shape": "box",
+    "size": [
+     1.0,
+     2.0,
+     1.0
+    ],
+    "tone": "neutral"
+   },
+   {
+    "gap": 0.05,
+    "id": "nodes",
+    "inside": "cab",
+    "layout": "stack",
+    "shape": "group"
+   },
+   {
+    "id": "n1",
+    "in": "nodes",
+    "label": "gpu-1",
+    "shape": "box",
+    "size": [
+     0.9,
+     0.2,
+     0.9
+    ],
+    "tone": "info"
+   },
+   {
+    "id": "n2",
+    "in": "nodes",
+    "label": "gpu-2",
+    "shape": "box",
+    "size": [
+     0.9,
+     0.2,
+     0.9
+    ],
+    "tone": "info"
+   },
+   {
+    "id": "n3",
+    "in": "nodes",
+    "label": "gpu-3 (degraded)",
+    "shape": "box",
+    "size": [
+     0.9,
+     0.2,
+     0.9
+    ],
+    "tone": "warning"
+   },
+   {
+    "id": "sw",
+    "in": "nodes",
+    "label": "ToR switch",
+    "shape": "box",
+    "size": [
+     0.9,
+     0.1,
+     0.9
+    ],
+    "tone": "accent"
+   }
+  ],
+  "settings": {
+   "camera": "front",
+   "ground": true,
+   "labels": "auto",
+   "lights": "studio",
+   "units": "m"
+  },
+  "solved": {
+   "bounds": [
+    -0.5,
+    0.0,
+    -0.5,
+    0.5,
+    2.0,
+    0.5
+   ],
+   "links": [],
+   "objects": [
+    [
+     "cab",
+     [
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      1.0,
+      2.0,
+      1.0
+     ],
+     null,
+     ""
+    ],
+    [
+     "nodes",
+     [
+      0.0,
+      0.02,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.9,
+      0.85,
+      0.9
+     ],
+     null,
+     "inside cab"
+    ],
+    [
+     "n1",
+     [
+      0.0,
+      0.02,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.9,
+      0.2,
+      0.9
+     ],
+     "nodes",
+     "in nodes"
+    ],
+    [
+     "n2",
+     [
+      0.0,
+      0.27,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.9,
+      0.2,
+      0.9
+     ],
+     "nodes",
+     "in nodes"
+    ],
+    [
+     "n3",
+     [
+      0.0,
+      0.52,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.9,
+      0.2,
+      0.9
+     ],
+     "nodes",
+     "in nodes"
+    ],
+    [
+     "sw",
+     [
+      0.0,
+      0.77,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.9,
+      0.1,
+      0.9
+     ],
+     "nodes",
+     "in nodes"
+    ]
+   ],
+   "v": 1
+  },
+  "text": "Rack R12",
+  "type": "scene3d",
+  "updated_seq": 2,
+  "w": 640,
+  "x": 0,
+  "y": 0
+ },
+ "op": {
+  "camera": "front",
+  "id": "rack",
+  "intent": "rack layout for the new cluster",
+  "objects": [
+   {
+    "finish": "glass",
+    "id": "cab",
+    "label": "R12",
+    "shape": "box",
+    "size": [
+     1.0,
+     2.0,
+     1.0
+    ],
+    "tone": "neutral"
+   },
+   {
+    "gap": 0.05,
+    "id": "nodes",
+    "inside": "cab",
+    "layout": "stack",
+    "shape": "group"
+   },
+   {
+    "id": "n1",
+    "in": "nodes",
+    "label": "gpu-1",
+    "shape": "box",
+    "size": [
+     0.9,
+     0.2,
+     0.9
+    ],
+    "tone": "info"
+   },
+   {
+    "id": "n2",
+    "in": "nodes",
+    "label": "gpu-2",
+    "shape": "box",
+    "size": [
+     0.9,
+     0.2,
+     0.9
+    ],
+    "tone": "info"
+   },
+   {
+    "id": "n3",
+    "in": "nodes",
+    "label": "gpu-3 (degraded)",
+    "shape": "box",
+    "size": [
+     0.9,
+     0.2,
+     0.9
+    ],
+    "tone": "warning"
+   },
+   {
+    "id": "sw",
+    "in": "nodes",
+    "label": "ToR switch",
+    "shape": "box",
+    "size": [
+     0.9,
+     0.1,
+     0.9
+    ],
+    "tone": "accent"
+   }
+  ],
+  "op": "scene3d",
+  "title": "Rack R12"
+ }
+}

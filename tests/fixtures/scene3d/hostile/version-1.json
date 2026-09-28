@@ -1,0 +1,13 @@
+{
+ "about": "glTF 1.0 is not read",
+ "source": "gltf",
+ "patch": {
+  "asset": {
+   "version": "1.0"
+  }
+ },
+ "expect": {
+  "code": "op_invalid",
+  "contains": "asset.version must be \"2.0\""
+ }
+}

@@ -158,7 +158,7 @@ class RenderSvg(CanvasRig):
         self.assertIn("<script>alert(1)</script>", texts, "text is text, never markup")
         self.assertNotIn("script", tags(root))
         self.assertIn("c0r0", texts, "grid labels")
-        self.assertIn("rendered on the page", " ".join(texts))
+        self.assertIn("drawn on the page", " ".join(texts))
         sticky = T.resolve("idea", "soft", "note")["fill"]
         self.assertTrue(any(r.get("fill") == sticky for r in root.iter("{%s}rect" % SVG)), "notes are sticky paper in their tone")
         self.assertTrue(any(r.get("stroke-dasharray") for r in root.iter("{%s}rect" % SVG)), "claims are dashed")

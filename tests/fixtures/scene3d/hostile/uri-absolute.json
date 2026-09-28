@@ -1,0 +1,11 @@
+{
+ "about": "an absolute path",
+ "source": "gltf",
+ "patch": {
+  "buffers[0].uri": "/etc/passwd"
+ },
+ "expect": {
+  "code": "path_refused",
+  "contains": "no absolute path"
+ }
+}

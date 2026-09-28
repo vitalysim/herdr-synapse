@@ -75,6 +75,24 @@ export function audit(root) {
   ];
 }
 
+// Hooks other page parts add (canvas-v2-phase3-4.md WW-5): registerQA("charts", fn) makes
+// window.__synapseV2.charts() return fn(). They survive the hook being installed again.
+const extraHooks = new Map();
+
+/** Adds window.__synapseV2[name]() (a QA reader for one page part); returns unregister(). */
+export function registerQA(name, fn) {
+  if (typeof name !== "string" || !/^[A-Za-z][\w]*$/.test(name) || typeof fn !== "function") throw new Error(`registerQA: bad hook ${String(name)}`);
+  extraHooks.set(name, fn);
+  if (typeof window !== "undefined" && window.__synapseV2 && !Object.prototype.hasOwnProperty.call(BUILTIN, name)) window.__synapseV2[name] = fn;
+  return () => {
+    if (extraHooks.get(name) !== fn) return;
+    extraHooks.delete(name);
+    if (typeof window !== "undefined" && window.__synapseV2 && window.__synapseV2[name] === fn) delete window.__synapseV2[name];
+  };
+}
+
+const BUILTIN = { ready: 1, version: 1, lines: 1, audit: 1, fit: 1, camera: 1, zoom: 1, selection: 1, dl: 1 };
+
 /** Installs window.__synapseV2; returns uninstall(). */
 export function installQAHook({ getDL, getCamera, setCamera, getRoot, getViewport, getSelection = null }) {
   if (typeof window === "undefined") return () => {};
@@ -126,6 +144,7 @@ export function installQAHook({ getDL, getCamera, setCamera, getRoot, getViewpor
       return getDL();
     },
   };
+  for (const [name, fn] of extraHooks) if (!Object.prototype.hasOwnProperty.call(BUILTIN, name)) hook[name] = fn;
   window.__synapseV2 = hook;
   return () => {
     if (window.__synapseV2 === hook) delete window.__synapseV2;

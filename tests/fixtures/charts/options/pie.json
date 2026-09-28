@@ -1,0 +1,288 @@
+{
+ "box": {
+  "h": 268.0,
+  "w": 396.0
+ },
+ "doc": {
+  "chart": "pie",
+  "datasets": [],
+  "refs": {
+   "slices": [
+    {
+     "label": {
+      "formatter": "55%"
+     },
+     "name": "EMEA",
+     "value": 43815000
+    },
+    {
+     "label": {
+      "formatter": "36%"
+     },
+     "name": "AMER",
+     "value": 28342000
+    },
+    {
+     "label": {
+      "formatter": "9.2%"
+     },
+     "name": "APAC",
+     "value": 7300000
+    }
+   ]
+  },
+  "source": {
+   "data": "rev.csv",
+   "rows": 36,
+   "sha256": "9551f115062d4c44aeb8acfdedc789471d9acd7e0b220b4f48691ed0e142512e"
+  },
+  "v": 1
+ },
+ "element": {
+  "alias": "share",
+  "chart": {
+   "gl": false,
+   "type": "pie"
+  },
+  "chart_frame": {
+   "axes": {},
+   "box": [
+    396,
+    268
+   ],
+   "extra": {
+    "cx": 192,
+    "cy": 125,
+    "r": 109.18,
+    "r0": 0
+   },
+   "font": 12,
+   "legend": {
+    "box": [
+     12,
+     250,
+     372,
+     18
+    ],
+    "items": [
+     {
+      "color": "chart.cat.0",
+      "name": "EMEA",
+      "w": 50.55
+     },
+     {
+      "color": "chart.cat.1",
+      "name": "AMER",
+      "w": 51.08
+     },
+     {
+      "color": "chart.cat.2",
+      "name": "APAC",
+      "w": 49.98
+     }
+    ],
+    "pos": "bottom",
+    "rows": [
+     [
+      0,
+      1,
+      2
+     ]
+    ]
+   },
+   "legible": true,
+   "notes": [],
+   "plot": [
+    0,
+    8,
+    384,
+    234
+   ]
+  },
+  "doc_asset": "b55c086f9cff0a2b73e7774e53977470.json",
+  "engine": "echarts",
+  "gist": [
+   "category=region (3) · value=sum(revenue) · rev.csv 36 rows",
+   "EMEA 55% · AMER 36% · APAC 9.2% · total 79.5M"
+  ],
+  "h": 320.0,
+  "id": "E-1",
+  "kv": 2,
+  "model": {
+   "capped": [],
+   "count": 3,
+   "how": "sum",
+   "slices": [
+    [
+     "EMEA",
+     43815000
+    ],
+    [
+     "AMER",
+     28342000
+    ],
+    [
+     "APAC",
+     7300000
+    ]
+   ],
+   "total": 79457000
+  },
+  "option": {
+   "animation": false,
+   "aria": {
+    "enabled": true,
+    "label": {
+     "description": "category=region (3) · value=sum(revenue) · rev.csv 36 rows EMEA 55% · AMER 36% · APAC 9.2% · total 79.5M"
+    }
+   },
+   "backgroundColor": "transparent",
+   "color": [
+    "chart.cat.0",
+    "chart.cat.1",
+    "chart.cat.2"
+   ],
+   "legend": {
+    "data": [
+     "EMEA",
+     "AMER",
+     "APAC"
+    ],
+    "icon": "roundRect",
+    "itemGap": 16.0,
+    "itemHeight": 10.0,
+    "itemWidth": 10.0,
+    "left": 12.0,
+    "orient": "horizontal",
+    "padding": 0,
+    "show": true,
+    "textStyle": {
+     "color": "chart.ink",
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "top": 254.0
+   },
+   "series": [
+    {
+     "avoidLabelOverlap": false,
+     "center": [
+      192.0,
+      125.0
+     ],
+     "clockwise": true,
+     "color": [
+      "chart.cat.0",
+      "chart.cat.1",
+      "chart.cat.2"
+     ],
+     "data": {
+      "$doc": "slices"
+     },
+     "itemStyle": {
+      "borderColor": "chart.paper",
+      "borderWidth": 1.5
+     },
+     "label": {
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "fontWeight": 600,
+      "position": "inside",
+      "show": true
+     },
+     "labelLine": {
+      "show": false
+     },
+     "minShowLabelAngle": 18.0,
+     "name": "region",
+     "radius": [
+      0.0,
+      109.18
+     ],
+     "startAngle": 90,
+     "type": "pie"
+    }
+   ],
+   "textStyle": {
+    "color": "chart.ink",
+    "fontFamily": "$sans",
+    "fontSize": 12
+   },
+   "tooltip": {
+    "confine": true,
+    "renderMode": "richText",
+    "textStyle": {
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "trigger": "item"
+   }
+  },
+  "resolved": {
+   "_source": "rev.csv 36 rows",
+   "category": "region",
+   "data": "rev.csv",
+   "top": 6,
+   "type": "pie",
+   "value": "revenue"
+  },
+  "settings": {
+   "category": "region",
+   "data": "rev.csv",
+   "type": "pie",
+   "value": "revenue"
+  },
+  "source": {
+   "columns": [
+    [
+     "month",
+     "temporal"
+    ],
+    [
+     "region",
+     "nominal"
+    ],
+    [
+     "revenue",
+     "quantitative"
+    ]
+   ],
+   "data": "rev.csv",
+   "kept": 36,
+   "rows": 36,
+   "sha256": "9551f115062d4c44aeb8acfdedc789471d9acd7e0b220b4f48691ed0e142512e"
+  },
+  "stats": {
+   "count": 3,
+   "shares": [
+    [
+     "EMEA",
+     0.5514303333878702
+    ],
+    [
+     "AMER",
+     0.35669607460639086
+    ],
+    [
+     "APAC",
+     0.09187359200573895
+    ]
+   ],
+   "total": 79457000.0
+  },
+  "text": "Revenue share by region",
+  "type": "chart",
+  "updated_seq": 1,
+  "w": 420.0,
+  "x": 0,
+  "y": 0
+ },
+ "gl": false,
+ "slot": [
+  12.0,
+  40.0,
+  396.0,
+  268.0
+ ],
+ "type": "pie"
+}

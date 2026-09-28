@@ -1,0 +1,152 @@
+{
+ "name": "charts-escape",
+ "about": "Canvas v2 phase 3: the escape hatches. A faceted Vega-Lite spec (read back as its gist), a plain Vega-Lite bar (also drawn by Python), a raw ECharts radar, and a raw gauge whose formatter carries HTML (drawn as text) and whose toolbox is stripped (chart_escape).",
+ "artifacts": "charts",
+ "ops": [
+  {
+   "op": "chart",
+   "id": "rev-vl",
+   "intent": "faceted view",
+   "title": "Revenue, one panel per region",
+   "data": "rev.csv",
+   "spec": {
+    "mark": "line",
+    "encoding": {
+     "x": {
+      "field": "month",
+      "type": "temporal"
+     },
+     "y": {
+      "field": "revenue",
+      "type": "quantitative"
+     },
+     "row": {
+      "field": "region"
+     }
+    }
+   },
+   "at": "c0r0"
+  },
+  {
+   "op": "chart",
+   "id": "vl-bar",
+   "intent": "a plain Vega-Lite bar",
+   "title": "Visits (Vega-Lite)",
+   "data": "traffic.json",
+   "spec": {
+    "mark": "bar",
+    "encoding": {
+     "x": {
+      "field": "channel",
+      "type": "nominal"
+     },
+     "y": {
+      "field": "visits",
+      "type": "quantitative"
+     }
+    }
+   },
+   "right_of": "rev-vl",
+   "gap": "l"
+  },
+  {
+   "op": "chart",
+   "id": "skills",
+   "intent": "who covers what",
+   "title": "Skill coverage",
+   "echarts": {
+    "radar": {
+     "indicator": [
+      {
+       "name": "Rust",
+       "max": 5
+      },
+      {
+       "name": "Python",
+       "max": 5
+      },
+      {
+       "name": "Web",
+       "max": 5
+      },
+      {
+       "name": "Infra",
+       "max": 5
+      }
+     ]
+    },
+    "series": [
+     {
+      "type": "radar",
+      "data": [
+       {
+        "name": "alpha",
+        "value": [
+         4,
+         3,
+         5,
+         2
+        ]
+       },
+       {
+        "name": "beta",
+        "value": [
+         2,
+         5,
+         3,
+         4
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "below": "rev-vl",
+   "gap": "l"
+  },
+  {
+   "op": "chart",
+   "id": "gauge",
+   "intent": "a raw gauge with a hostile formatter",
+   "title": "Error budget left",
+   "echarts": {
+    "series": [
+     {
+      "type": "gauge",
+      "data": [
+       {
+        "value": 72,
+        "name": "budget"
+       }
+      ],
+      "detail": {
+       "formatter": "<img src=x onerror=alert(1)> {value}%",
+       "fontSize": 11,
+       "offsetCenter": [
+        0,
+        "92%"
+       ]
+      },
+      "axisLabel": {
+       "show": false
+      },
+      "title": {
+       "offsetCenter": [
+        0,
+        "30%"
+       ]
+      },
+      "radius": "70%"
+     }
+    ],
+    "toolbox": {
+     "feature": {
+      "saveAsImage": {}
+     }
+    }
+   },
+   "right_of": "skills",
+   "gap": "l"
+  }
+ ]
+}

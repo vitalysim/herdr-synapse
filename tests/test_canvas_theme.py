@@ -93,3 +93,47 @@ class TokenFile(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ChartAndMaterialPaints(unittest.TestCase):
+    """Phases 3 and 4 (1.5): the chart paints and 3D material faces resolve in both themes and hold their contrast."""
+
+    def test_the_contrast_rules(self):
+        for theme in T.THEMES:
+            palette = T.palette(theme)
+            paper = palette["chart.paper"]
+            for index in range(10):
+                self.assertGreaterEqual(T.contrast(palette["chart.cat.{}".format(index)], paper), 3.0, (theme, index))
+            for key in ("chart.ink", "chart.muted"):
+                self.assertGreaterEqual(T.contrast(palette[key], paper), 4.5, (theme, key))
+            self.assertGreaterEqual(T.contrast(palette["chart.highlight"], paper), 3.0, theme)
+            for key in [k for k in palette if k.startswith(("chart.cat.", "chart.seq.", "chart.div.")) or k in ("chart.highlight", "chart.dim")]:
+                on = "chart.on_" + key.split(".", 1)[1]
+                self.assertGreaterEqual(T.contrast(palette[on], palette[key]), 4.5, (theme, key, "a label on it reads"))
+            for tone in T.tokens()["tones"]:
+                self.assertGreaterEqual(T.contrast(palette["mat.{}.edge".format(tone)], palette["base.surface"]), 3.0, (theme, tone))
+
+    def test_every_chart_and_material_key_resolves(self):
+        for theme in T.THEMES:
+            palette = T.palette(theme)
+            for key in ("paper", "ink", "muted", "axis", "gridline", "highlight", "dim"):
+                self.assertRegex(palette["chart." + key], r"^#[0-9a-f]{6}$")
+            self.assertEqual(len([k for k in palette if k.startswith("chart.seq.")]), 9)
+            self.assertEqual(len([k for k in palette if k.startswith("chart.div.")]), 9)
+            for tone in T.tokens()["tones"]:
+                for face in T.MAT_FACES:
+                    self.assertIn("mat.{}.{}".format(tone, face), palette)
+            top, left, right = (palette["mat.info.{}".format(f)] for f in ("top", "left", "right"))
+            self.assertGreater(T._luminance(top), T._luminance(left))
+            self.assertGreater(T._luminance(left), T._luminance(right), "the three faces shade darker away from the light")
+        # QA phase34 L8: a dark theme's neutral ground plane is a mid grey, not the near-white of its text-on-dark solid.
+        dark = T.palette("dark")
+        self.assertLess(T._luminance(dark["mat.neutral.top"]), 0.2)
+        self.assertLess(T._luminance(dark["mat.neutral.base"]), T._luminance(dark["tone.neutral.solid"]))
+        self.assertEqual(T.palette("light")["mat.neutral.base"], T.palette("light")["tone.neutral.solid"], "light is unchanged")
+
+    def test_the_token_file_carries_them(self):
+        doc = T.asset()
+        self.assertEqual(doc["chart"]["light"]["chart.cat.0"], T.palette("light")["chart.cat.0"])
+        self.assertEqual(doc["scene3d"]["cameras"]["iso"]["az"], 45)
+        self.assertIn("mat.info.edge", doc["mat"]["dark"])

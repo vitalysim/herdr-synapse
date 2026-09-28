@@ -13,6 +13,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from registry_conformance import assert_registered_in_place
 from support import PLUGIN_ROOT
 from test_canvas import CanvasRig
 
@@ -39,7 +40,12 @@ class OneModuleKind(CanvasRig):
 
     def test_the_registry_derives_every_table(self):
         self.assertIn("stamp", C.ELEMENT_TYPES)
-        self.assertEqual(C.OPS[len(R.ops()) - 1], "stamp", "kind ops by order (900, the last), then the core ops")
+        # Kind ops by their order (the stamp's 900), then the core ops; another module's ops may sit among them (R6).
+        kind_ops = [spec.name for spec in R.ops()]
+        self.assertEqual(list(C.OPS[:len(kind_ops)]), kind_ops)
+        self.assertIn("stamp", kind_ops)
+        orders = [spec.order for spec in R.ops()]
+        self.assertEqual(orders, sorted(orders))
         self.assertEqual(C._FIELDS["stamp"], C._COMMON + ("text", "tone", "id", "client_id") + C.PLACE_FIELDS)
         self.assertIn("stamp", C.TEXT_TYPES)
         self.assertIn("stamp", C.CELL_TYPES)
@@ -106,9 +112,10 @@ class DroppedInModule(unittest.TestCase):
         R._reload()
 
     def test_a_file_in_the_package_is_a_kind_with_no_list_edited(self):
-        self.assertEqual(R.modules()[-1], "stamp", "no ORDER: after the built-in modules")
+        # In the place its ORDER (none: 1000, after the built-in modules) gives it, not necessarily the last (R6).
+        assert_registered_in_place(self, R, R.modules(), "stamp")
         self.assertEqual(R.get("stamp").name, "stamp")
-        self.assertEqual(C.ELEMENT_TYPES[-1], "stamp")
+        self.assertIn("stamp", C.ELEMENT_TYPES)
         self.assertIn("stamp", C.OPS)
         self.assertIn("stamp", C.TEXT_TYPES)
         self.assertIn("stamp", K.SOLID)

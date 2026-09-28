@@ -1,0 +1,123 @@
+{
+ "box": {
+  "w": 616,
+  "h": 330
+ },
+ "element": {
+  "id": "E-56",
+  "type": "chart",
+  "kv": 2,
+  "alias": "radar",
+  "text": "Revenue by region, 2026",
+  "x": 800,
+  "y": 40,
+  "w": 640,
+  "h": 400,
+  "settings": {
+   "echarts": "(raw)"
+  },
+  "engine": "echarts-raw",
+  "chart": {
+   "type": null,
+   "gl": false
+  },
+  "option": null,
+  "doc_asset": "7d00000000000000000000000000000e.json",
+  "updated_seq": 12,
+  "gist": [
+   "x=month (12) \u00b7 y=sum(revenue) \u00b7 color=region (3)"
+  ]
+ },
+ "doc": {
+  "v": 1,
+  "option": {
+   "title": {
+    "text": "Skills"
+   },
+   "toolbox": {
+    "feature": {
+     "saveAsImage": {}
+    }
+   },
+   "backgroundColor": "#000000",
+   "radar": {
+    "indicator": [
+     {
+      "name": "Rust",
+      "max": 10
+     },
+     {
+      "name": "Python",
+      "max": 10
+     },
+     {
+      "name": "Go",
+      "max": 10
+     },
+     {
+      "name": "TS",
+      "max": 10
+     },
+     {
+      "name": "SQL",
+      "max": 10
+     }
+    ],
+    "center": [
+     300,
+     150
+    ],
+    "radius": 110,
+    "axisName": {
+     "color": "chart.muted",
+     "formatter": {
+      "fn": "alert(1)"
+     }
+    }
+   },
+   "tooltip": {
+    "trigger": "item",
+    "formatter": "<img src=x onerror=alert(1)>{b}",
+    "extraCssText": "background:url(x)"
+   },
+   "series": [
+    {
+     "type": "radar",
+     "data": [
+      {
+       "name": "<img src=x onerror=alert(1)>",
+       "value": [
+        8,
+        9,
+        5,
+        7,
+        6
+       ]
+      },
+      {
+       "name": "B",
+       "value": [
+        6,
+        7,
+        8,
+        5,
+        9
+       ]
+      }
+     ],
+     "label": {
+      "show": true,
+      "formatter": "<img src=x onerror=alert(1)>{c}",
+      "fontSize": 11
+     }
+    }
+   ],
+   "legend": {
+    "bottom": 0,
+    "textStyle": {
+     "color": "chart.ink"
+    }
+   }
+  }
+ }
+}

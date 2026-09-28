@@ -36,15 +36,17 @@ reaches the canvas only through the ``OpContext`` it is given
 from __future__ import annotations
 
 import importlib
-import pkgutil
-import sys
 import json
+import pkgutil
+import re
+import sys
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 #: The version of the ``Kind`` contract itself; bumped when a hook's signature changes (2: ops, drawing, editing;
-#: 3: blocks, stored-as kinds, arrangements, reroutes and inline parts, canvas v2 phase 2).
-API_VERSION = 3
+#: 3: blocks, stored-as kinds, arrangements, reroutes and inline parts, canvas v2 phase 2; 4: still views, gists and
+#: per-view drawings of browser-drawn kinds, canvas v2 phases 3 and 4).
+API_VERSION = 4
 
 #: The outlines layout knows how to test exactly (arrow label placement, making room). Anything
 #: else is its bounding box.
@@ -71,6 +73,8 @@ LAYERS = ("zones", "marks", "labels", "overlays")
 GESTURES = ("shape", "text", "connect", "pen", "frame", "block")
 #: The keys the page's own tools take (``v`` select, ``h`` hand); a kind's tool may not use them.
 RESERVED_TOOL_KEYS = ("v", "h")
+#: A still view's name (``Kind.still_views``): a few lower-case letters, or "" for a kind's one still.
+_VIEW_RE = re.compile(r"^[a-z]{0,12}\Z")
 
 #: Where a kind module without its own ``ORDER`` is registered: after the built-in ones, by module name. A module's
 #: ``ORDER`` (an int) sets its place in the registration order, which is the order of ``names()``, the shape op's
@@ -252,6 +256,28 @@ class Kind:
     stretch: bool = True
     #: ``element -> [{"part", "hit", "edit", "lod"?}]``: its inline parts in the display entry (6.2).
     parts: Optional[Callable[[Element], List[Dict[str, Any]]]] = None
+    #: The still views the page may post for it (``POST /stills/<E-n>?v=&view=``); the first is the primary one, drawn
+    #: in the display list. ``("",)`` keeps the one still of phase 1 (mermaid, viz); a 3D scene posts iso, front and top.
+    still_views: Tuple[str, ...] = ("",)
+    #: ``(element, full) -> [line]``: what it holds in words (a chart's extremes and trends, a scene's objects), printed
+    #: under its ``look`` line (at most ``GIST_LINES`` unless ``full``), in ``look --json`` ``gist``, under a created or
+    #: patched element in the apply text, and on the placeholder card of a slot with no drawing.
+    gist: Optional[Callable[[Element, bool], List[str]]] = None
+    #: ``gist`` takes a third argument, ``env``: ``{"stills": names}`` when the reader knows which stills the page posted
+    #: (``look``), so the gist can say which views exist (a 3D scene's ``stills iso ✓ front ✓ top ✗``).
+    gist_env: bool = False
+    #: The most gist lines ``look`` prints by default for this kind (None: ``GIST_LINES``). A 3D scene prints up to 12
+    #: object lines plus its links, notes, conflicts and stills (3.9).
+    gist_lines: Optional[int] = None
+    #: ``look`` prints the gist, not the block spec JSON; the spec only with ``look --block`` (a chart, a 3D scene).
+    gist_first: bool = False
+    #: ``(element, view) -> [primitive] or None``: the slot's faithful drawing for one of its ``still_views`` (theme
+    #: neutral: token paints); None when the kind has none for that view. ``look --image --view`` draws it when the page
+    #: posted no still of that view; the primary view's drawing is what ``emit`` puts in the slot's ``fallback``.
+    draw_view: Optional[Callable[[Element, str], Optional[List[Dict[str, Any]]]]] = None
+    #: ``(key, element -> facts)``: what ``look --json`` adds for each such element under ``key`` (a chart's type, engine,
+    #: source and frame notes under ``charts``; a scene's bounds and objects under ``scene3d``), by element id.
+    look_json: Optional[Tuple[str, Callable[[Element], Dict[str, Any]]]] = None
 
     def nouns(self) -> Tuple[str, str]:
         """``(singular, plural)`` for change summaries."""
@@ -281,6 +307,9 @@ def register(kind: Kind) -> Kind:
         raise ValueError("kind {} is registered twice".format(kind.name))
     if kind.tool is not None:
         _check_tool(kind)
+    views = tuple(kind.still_views)
+    if not views or len(set(views)) != len(views) or not all(isinstance(v, str) and _VIEW_RE.match(v) for v in views):
+        raise ValueError("kind {}: still_views {!r} must be unique names of 0 to 12 lower-case letters".format(kind.name, views))
     if kind.block is not None:
         names = {coll.name for coll in kind.block.collections}
         for coll in kind.block.collections:
@@ -409,6 +438,28 @@ def _unload(module_name: str) -> None:
         hook()
 
 
+def refresh(module_name: str) -> None:
+    """Register a loaded module's ``KINDS`` and ``OPS`` again, in their places (a kind whose op derives its fields from
+    another registry: the chart kind's from the chart types), then tell every table derived from the registry."""
+    load()
+    module = sys.modules.get(module_name) or importlib.import_module(module_name)
+    kind_order = list(_REGISTRY)
+    op_order = list(_OPS)
+    for (what, name), owner in list(_OWNER.items()):
+        if owner == module_name:
+            (_REGISTRY if what == "kind" else _OPS).pop(name, None)
+            del _OWNER[(what, name)]
+    _register_module(module, module_name)
+    for table, order in ((_REGISTRY, kind_order), (_OPS, op_order)):
+        items = dict(table)
+        table.clear()
+        for name in order + [n for n in items if n not in order]:
+            if name in items:
+                table[name] = items[name]  # type: ignore[index]
+    for hook in _CHANGED:
+        hook()
+
+
 #: Called after ``_load_extra`` and ``_unload``: modules that derive tables from the registry drop their caches.
 _CHANGED: List[Callable[[], None]] = []
 
@@ -487,6 +538,52 @@ def tools() -> List[Kind]:
 def slots() -> List[str]:
     """Every slot renderer key a kind names (the v2 page's ``SLOT_KINDS``)."""
     return [kind.slot for kind in kinds() if kind.slot]
+
+
+def slot_kinds() -> List[str]:
+    """The names of the kinds the browser draws (a ``slot``): the element kinds the page may post stills of."""
+    return [kind.name for kind in kinds() if kind.slot]
+
+
+#: How many gist lines ``look`` prints under an element by default (``--full`` prints them all).
+GIST_LINES = 6
+
+
+def gist_of(el: Element, full: bool = False, stills: Optional[Iterable[str]] = None) -> List[str]:
+    """An element's gist lines (``Kind.gist``), at most ``Kind.gist_lines`` (``GIST_LINES``) unless ``full``; [] for a kind
+    without one or an element it cannot read (never an error: a gist is a reading aid). ``stills``, the still file names
+    the page posted (when the caller knows them), reaches a kind whose gist takes ``env`` (``Kind.gist_env``)."""
+    kind = kind_of(el)
+    if kind is None or kind.gist is None:
+        return []
+    try:
+        if kind.gist_env and stills is not None:
+            got = kind.gist(dict(el), full, {"stills": set(stills)})  # type: ignore[call-arg]
+        else:
+            got = kind.gist(dict(el), full)
+        found = [str(line) for line in got or []]
+    except (TypeError, ValueError, KeyError, IndexError, AttributeError, ZeroDivisionError):
+        return []
+    return found if full else found[:kind.gist_lines or GIST_LINES]
+
+
+def upgraded(el: Element) -> Element:
+    """``el`` in its kind's current shape: an element stored by an older version of its kind (``kv`` below
+    ``Kind.version``) through ``Kind.upgrade``; anything else as it is. Never an error (a reader keeps the stored one)."""
+    kind = kind_of(el)
+    if kind is None or kind.upgrade is None or kind.version <= 1:
+        return el
+    stored = el.get("kv")
+    stored = int(stored) if isinstance(stored, int) and not isinstance(stored, bool) else 1
+    if stored >= kind.version:
+        return el
+    try:
+        found = kind.upgrade(dict(el), stored)
+    except (TypeError, ValueError, KeyError, IndexError, AttributeError):
+        return el
+    if not isinstance(found, dict):
+        return el
+    return dict(found, kv=kind.version)
 
 
 def outline(el: Element) -> str:

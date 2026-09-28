@@ -460,7 +460,7 @@ class Operations(CanvasRig):
         self.assertEqual((refusal["code"], refusal["details"]["key"]), ("chart_refused", "url"))
         self.assertEqual(self.refused({"op": "chart", "spec": {}, "data": "../../etc/passwd", "intent": "t"})["code"], "path_refused")
         (art / "notes.txt").write_text("x")
-        self.assertEqual(self.refused({"op": "chart", "spec": {}, "data": "notes.txt", "intent": "t"})["code"], "chart_refused")
+        self.assertEqual(self.refused({"op": "chart", "spec": {}, "data": "notes.txt", "intent": "t"})["code"], "path_refused")
 
     def test_viz(self):
         viz = self.el(self.ok({"op": "viz", "html": "<svg id='x'></svg><script>d3.select('#x')</script>", "libs": ["d3", "d3"],

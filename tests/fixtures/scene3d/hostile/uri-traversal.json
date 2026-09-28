@@ -1,0 +1,11 @@
+{
+ "about": "a buffer file outside the model's folder",
+ "source": "gltf",
+ "patch": {
+  "buffers[0].uri": "../secret.bin"
+ },
+ "expect": {
+  "code": "path_refused",
+  "contains": "relative file beside the model"
+ }
+}

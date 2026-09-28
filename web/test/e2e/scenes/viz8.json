@@ -1,0 +1,110 @@
+{
+ "name": "viz8",
+ "about": "Eight live visuals (viz) on one board: the page keeps at most six frames live (canvas-v2-phase3-4.md 3.12, e2e S7). A scene of the e2e runner, not a golden scene.",
+ "ops": [
+  {
+   "op": "viz",
+   "id": "v1",
+   "title": "Live visual 1",
+   "html": "<canvas id=c></canvas><script>const c=document.getElementById('c');c.width=synapse.width;c.height=synapse.height;const g=c.getContext('2d');g.fillStyle='#e8f2fe';g.fillRect(0,0,c.width,c.height);g.fillStyle='#1e66c9';g.font='600 20px sans-serif';g.fillText('live visual 1',16,36);g.beginPath();g.arc(c.width/2,c.height/2+10,40,0,7);g.fill();synapse.ready&&synapse.ready();</script>",
+   "w": 260,
+   "h": 180,
+   "at": [
+    0,
+    0
+   ],
+   "intent": "a live visual for the budget test"
+  },
+  {
+   "op": "viz",
+   "id": "v2",
+   "title": "Live visual 2",
+   "html": "<canvas id=c></canvas><script>const c=document.getElementById('c');c.width=synapse.width;c.height=synapse.height;const g=c.getContext('2d');g.fillStyle='#e8f2fe';g.fillRect(0,0,c.width,c.height);g.fillStyle='#1e66c9';g.font='600 20px sans-serif';g.fillText('live visual 2',16,36);g.beginPath();g.arc(c.width/2,c.height/2+10,40,0,7);g.fill();synapse.ready&&synapse.ready();</script>",
+   "w": 260,
+   "h": 180,
+   "at": [
+    300,
+    0
+   ],
+   "intent": "a live visual for the budget test"
+  },
+  {
+   "op": "viz",
+   "id": "v3",
+   "title": "Live visual 3",
+   "html": "<canvas id=c></canvas><script>const c=document.getElementById('c');c.width=synapse.width;c.height=synapse.height;const g=c.getContext('2d');g.fillStyle='#e8f2fe';g.fillRect(0,0,c.width,c.height);g.fillStyle='#1e66c9';g.font='600 20px sans-serif';g.fillText('live visual 3',16,36);g.beginPath();g.arc(c.width/2,c.height/2+10,40,0,7);g.fill();synapse.ready&&synapse.ready();</script>",
+   "w": 260,
+   "h": 180,
+   "at": [
+    600,
+    0
+   ],
+   "intent": "a live visual for the budget test"
+  },
+  {
+   "op": "viz",
+   "id": "v4",
+   "title": "Live visual 4",
+   "html": "<canvas id=c></canvas><script>const c=document.getElementById('c');c.width=synapse.width;c.height=synapse.height;const g=c.getContext('2d');g.fillStyle='#e8f2fe';g.fillRect(0,0,c.width,c.height);g.fillStyle='#1e66c9';g.font='600 20px sans-serif';g.fillText('live visual 4',16,36);g.beginPath();g.arc(c.width/2,c.height/2+10,40,0,7);g.fill();synapse.ready&&synapse.ready();</script>",
+   "w": 260,
+   "h": 180,
+   "at": [
+    900,
+    0
+   ],
+   "intent": "a live visual for the budget test"
+  },
+  {
+   "op": "viz",
+   "id": "v5",
+   "title": "Live visual 5",
+   "html": "<canvas id=c></canvas><script>const c=document.getElementById('c');c.width=synapse.width;c.height=synapse.height;const g=c.getContext('2d');g.fillStyle='#e8f2fe';g.fillRect(0,0,c.width,c.height);g.fillStyle='#1e66c9';g.font='600 20px sans-serif';g.fillText('live visual 5',16,36);g.beginPath();g.arc(c.width/2,c.height/2+10,40,0,7);g.fill();synapse.ready&&synapse.ready();</script>",
+   "w": 260,
+   "h": 180,
+   "at": [
+    0,
+    240
+   ],
+   "intent": "a live visual for the budget test"
+  },
+  {
+   "op": "viz",
+   "id": "v6",
+   "title": "Live visual 6",
+   "html": "<canvas id=c></canvas><script>const c=document.getElementById('c');c.width=synapse.width;c.height=synapse.height;const g=c.getContext('2d');g.fillStyle='#e8f2fe';g.fillRect(0,0,c.width,c.height);g.fillStyle='#1e66c9';g.font='600 20px sans-serif';g.fillText('live visual 6',16,36);g.beginPath();g.arc(c.width/2,c.height/2+10,40,0,7);g.fill();synapse.ready&&synapse.ready();</script>",
+   "w": 260,
+   "h": 180,
+   "at": [
+    300,
+    240
+   ],
+   "intent": "a live visual for the budget test"
+  },
+  {
+   "op": "viz",
+   "id": "v7",
+   "title": "Live visual 7",
+   "html": "<canvas id=c></canvas><script>const c=document.getElementById('c');c.width=synapse.width;c.height=synapse.height;const g=c.getContext('2d');g.fillStyle='#e8f2fe';g.fillRect(0,0,c.width,c.height);g.fillStyle='#1e66c9';g.font='600 20px sans-serif';g.fillText('live visual 7',16,36);g.beginPath();g.arc(c.width/2,c.height/2+10,40,0,7);g.fill();synapse.ready&&synapse.ready();</script>",
+   "w": 260,
+   "h": 180,
+   "at": [
+    600,
+    240
+   ],
+   "intent": "a live visual for the budget test"
+  },
+  {
+   "op": "viz",
+   "id": "v8",
+   "title": "Live visual 8",
+   "html": "<canvas id=c></canvas><script>const c=document.getElementById('c');c.width=synapse.width;c.height=synapse.height;const g=c.getContext('2d');g.fillStyle='#e8f2fe';g.fillRect(0,0,c.width,c.height);g.fillStyle='#1e66c9';g.font='600 20px sans-serif';g.fillText('live visual 8',16,36);g.beginPath();g.arc(c.width/2,c.height/2+10,40,0,7);g.fill();synapse.ready&&synapse.ready();</script>",
+   "w": 260,
+   "h": 180,
+   "at": [
+    900,
+    240
+   ],
+   "intent": "a live visual for the budget test"
+  }
+ ]
+}

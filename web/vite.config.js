@@ -66,6 +66,25 @@ function bundledPackages() {
   };
 }
 
+// The token document as the page bundles it: every block but those only the Python side reads.
+// `mat` (the 3D projection shades, canvas-v2-phase3-4.md 1.5) reaches the page already resolved in
+// the display list's palettes (mat.<tone>.<shade>); the page's own 3D materials colour from
+// tone.<t>.solid. Leaving it out keeps the first-load chunk inside its budget (9.2).
+const PYTHON_ONLY_TOKEN_BLOCKS = ["mat"];
+function pageTokens() {
+  const file = tokenFile().split(path.sep).join("/");
+  return {
+    name: "synapse-page-tokens",
+    enforce: "pre",
+    transform(code, id) {
+      if (id.split("?")[0].split(path.sep).join("/") !== file) return null;
+      const doc = JSON.parse(code);
+      for (const key of PYTHON_ONLY_TOKEN_BLOCKS) delete doc[key];
+      return { code: JSON.stringify(doc), map: null };
+    },
+  };
+}
+
 // Excalidraw appends an esm.sh URL to every font face as a fallback. The page's CSP blocks it
 // anyway (nothing loads from a CDN), but Chrome reports each blocked source; drop it so fonts
 // come only from web/dist/fonts. Fails the build if a new Excalidraw changes the pattern.
@@ -82,12 +101,49 @@ function noRemoteFontFallback() {
   };
 }
 
+// claygl (echarts-gl's WebGL engine) sizes its post-effect buffers with `new Function` in
+// createCompositor.js tryConvertExpr, reached for every GL chart. The page's CSP (script-src 'self')
+// refuses that, so the call is replaced with src/v2/scene3d/expr.js synapseExpr, an arithmetic-only
+// evaluator of the same expressions (canvas-v2-phase3-4.md D8, 3.11). The build fails when the
+// pattern is not there exactly once, or when claygl reaches the bundle unpatched; postbuild.mjs then
+// fails on any `new Function(` or `eval(` left in an emitted chunk.
+const CLAYGL_EXPR = "new Function('width', 'height', 'dpr', 'return ' + exprRes[1])";
+const EXPR_MODULE = path.resolve(import.meta.dirname, "src/v2/scene3d/expr.js").split(path.sep).join("/");
+function cspSafeClayglExpr() {
+  const patched = new Set();
+  const isCompositor = (id) => /[\\/]claygl[\\/]src[\\/]createCompositor\.js$/.test(id.split("?")[0]);
+  return {
+    name: "synapse-csp-safe-claygl-expr",
+    enforce: "pre",
+    transform(code, id) {
+      if (!isCompositor(id)) return null;
+      const count = code.split(CLAYGL_EXPR).length - 1;
+      if (count !== 1) this.error(`claygl createCompositor.js: expected the new Function size expression exactly once, found ${count}; update cspSafeClayglExpr in vite.config.js`);
+      patched.add(id);
+      const next = `import { synapseExpr as __synapseExpr } from ${JSON.stringify(EXPR_MODULE)};\n${code.replace(CLAYGL_EXPR, "__synapseExpr(exprRes[1])")}`;
+      return { code: next, map: null };
+    },
+    generateBundle(_options, bundle) {
+      for (const item of Object.values(bundle)) {
+        if (item.type !== "chunk") continue;
+        for (const id of item.moduleIds || Object.keys(item.modules || {})) {
+          if (isCompositor(id) && !patched.has(id)) this.error(`claygl ${id} reached the bundle without the CSP patch`);
+        }
+      }
+    },
+  };
+}
+
 export default defineConfig({
   base: "/",
-  plugins: [react(), bundledPackages(), noRemoteFontFallback()],
+  plugins: [react(), bundledPackages(), noRemoteFontFallback(), cspSafeClayglExpr(), pageTokens()],
   resolve: {
     alias: { "@synapse/tokens": tokenFile() },
   },
+  // echarts-gl and claygl skip the dev server's dependency pre-bundling, so the claygl CSP patch
+  // (cspSafeClayglExpr) applies in `vite` as it does in `vite build`; echarts and zrender skip it
+  // too, so echarts-gl's deep imports (echarts/lib/...) and the charts' echarts/core share one copy.
+  optimizeDeps: { exclude: ["echarts-gl", "claygl", "echarts", "zrender"] },
   // The dev server reads the fonts and tokens from outside web/.
   server: { fs: { allow: [".."] } },
   define: {
@@ -104,7 +160,8 @@ export default defineConfig({
     restoreMocks: true,
   },
   build: {
-    outDir: "dist",
+    // SYNAPSE_DIST_DIR: a build under test outside web/dist (scripts/postbuild.mjs reads it too).
+    outDir: process.env.SYNAPSE_DIST_DIR ? path.resolve(process.env.SYNAPSE_DIST_DIR) : "dist",
     emptyOutDir: true,
     assetsDir: "assets",
     sourcemap: false,

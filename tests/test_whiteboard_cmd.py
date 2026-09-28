@@ -438,9 +438,10 @@ class KeysManifestSetupTests(unittest.TestCase):
         self.assertLessEqual(len(reference.splitlines()), 120)
         for needle in ("canvas_look", "canvas_draw", "canvas look", "canvas draw", "claim", "legend", "requests, never orders", "--since last"):
             self.assertIn(needle, reference, needle)
-        # Phase 2 moved the long examples into canvas-blocks and canvas-diagrams: together they cover every layer.
+        # Phase 2 moved the long examples into canvas-blocks and canvas-diagrams, phase 3 the charts into canvas-charts: together
+        # they cover every layer.
         guides = "".join((paths.skill_guides_dir() / "references" / name).read_text(encoding="utf-8")
-                         for name in ("canvas.md", "canvas-blocks.md", "canvas-diagrams.md"))
+                         for name in ("canvas.md", "canvas-blocks.md", "canvas-diagrams.md", "canvas-charts.md"))
         examples = re.findall(r"```json\n(.*?)```", guides, re.S)
         ops = []
         for block in examples:

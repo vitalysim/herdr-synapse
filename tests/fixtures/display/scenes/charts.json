@@ -1,0 +1,5919 @@
+{
+ "authors": {
+  "qa-drawer": {
+   "agent": "claude",
+   "color": "#1971c2",
+   "index": 0,
+   "kind": "member"
+  }
+ },
+ "batches": {
+  "B-1": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "qa-drawer",
+   "first_seq": 1,
+   "last_seq": 13,
+   "undone": false
+  }
+ },
+ "claims": [],
+ "counters": {
+  "B": 1,
+  "C": 0,
+  "E": 13,
+  "G": 0,
+  "K": 0,
+  "X": 0
+ },
+ "elements": [
+  {
+   "alias": "rev",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "chart": {
+    "gl": false,
+    "type": "bar"
+   },
+   "chart_frame": {
+    "axes": {
+     "x": {
+      "extent": 15,
+      "hidden": 6,
+      "interval": 1,
+      "kind": "category",
+      "labels": [
+       {
+        "t": "2026-01",
+        "v": 0,
+        "w": 49.05
+       },
+       {
+        "t": "2026-02",
+        "v": 1,
+        "w": 51.56
+       },
+       {
+        "t": "2026-03",
+        "v": 2,
+        "w": 51.65
+       },
+       {
+        "t": "2026-04",
+        "v": 3,
+        "w": 52
+       },
+       {
+        "t": "2026-05",
+        "v": 4,
+        "w": 51.35
+       },
+       {
+        "t": "2026-06",
+        "v": 5,
+        "w": 51.69
+       },
+       {
+        "t": "2026-07",
+        "v": 6,
+        "w": 51.02
+       },
+       {
+        "t": "2026-08",
+        "v": 7,
+        "w": 51.67
+       },
+       {
+        "t": "2026-09",
+        "v": 8,
+        "w": 51.69
+       },
+       {
+        "t": "2026-10",
+        "v": 9,
+        "w": 49.05
+       },
+       {
+        "t": "2026-11",
+        "v": 10,
+        "w": 46.28
+       },
+       {
+        "t": "2026-12",
+        "v": 11,
+        "w": 48.79
+       }
+      ],
+      "pos": "bottom",
+      "rotate": 0,
+      "width": null
+     },
+     "y": {
+      "fmt": "compact|$",
+      "kind": "value",
+      "max": 5000000,
+      "min": 0,
+      "pos": "left",
+      "step": 1000000,
+      "ticks": [
+       {
+        "t": "$0",
+        "v": 0,
+        "w": 15.73
+       },
+       {
+        "t": "$1M",
+        "v": 1000000,
+        "w": 24.12
+       },
+       {
+        "t": "$2M",
+        "v": 2000000,
+        "w": 26.63
+       },
+       {
+        "t": "$3M",
+        "v": 3000000,
+        "w": 26.73
+       },
+       {
+        "t": "$4M",
+        "v": 4000000,
+        "w": 27.08
+       },
+       {
+        "t": "$5M",
+        "v": 5000000,
+        "w": 26.43
+       }
+      ],
+      "title": "revenue"
+     }
+    },
+    "box": [
+     616,
+     332
+    ],
+    "extra": {},
+    "font": 12,
+    "legend": {
+     "box": [
+      564.92,
+      8,
+      51.08,
+      54
+     ],
+     "items": [
+      {
+       "color": "chart.cat.0",
+       "name": "EMEA",
+       "w": 50.55
+      },
+      {
+       "color": "chart.cat.1",
+       "name": "AMER",
+       "w": 51.08
+      },
+      {
+       "color": "chart.cat.2",
+       "name": "APAC",
+       "w": 49.98
+      }
+     ],
+     "pos": "right",
+     "rows": [
+      [
+       0
+      ],
+      [
+       1
+      ],
+      [
+       2
+      ]
+     ]
+    },
+    "legible": true,
+    "notes": [
+     "every 2nd x label shown"
+    ],
+    "plot": [
+     37.08,
+     26,
+     499.84,
+     279
+    ]
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "data": null,
+   "data_key": "{\"color\":\"region\",\"data\":\"rev.csv\",\"format\":{\"y\":\"compact\"},\"type\":\"bar\",\"units\":{\"y\":\"$\"},\"x\":\"month\",\"y\":\"revenue\"}",
+   "doc_asset": "171669ed1131e27c23e1d9ccdfcb98ca.json",
+   "engine": "echarts",
+   "frame": null,
+   "gist": [
+    "x=month (12, 2026-01…2026-12) · y=revenue · color=region (3) · rev.csv 36 rows",
+    "max EMEA 2026-08 $4.2M · min APAC 2026-01 $300K · total $79.5M",
+    "EMEA ↑ +38% · AMER ≈ −2% · APAC ↑ +210% (2026-01→2026-12)"
+   ],
+   "group": null,
+   "h": 400,
+   "id": "E-1",
+   "intent": "compare regions by month",
+   "kv": 2,
+   "model": {
+    "capped": [],
+    "cats": [
+     "2026-01",
+     "2026-02",
+     "2026-03",
+     "2026-04",
+     "2026-05",
+     "2026-06",
+     "2026-07",
+     "2026-08",
+     "2026-09",
+     "2026-10",
+     "2026-11",
+     "2026-12"
+    ],
+    "how": "none",
+    "keys": [
+     "2026-01",
+     "2026-02",
+     "2026-03",
+     "2026-04",
+     "2026-05",
+     "2026-06",
+     "2026-07",
+     "2026-08",
+     "2026-09",
+     "2026-10",
+     "2026-11",
+     "2026-12"
+    ],
+    "order": "time",
+    "series": [
+     {
+      "name": "EMEA",
+      "values": [
+       3040000,
+       3100000,
+       3180000,
+       3300000,
+       3450000,
+       3600000,
+       3850000,
+       4200000,
+       3950000,
+       3900000,
+       4050000,
+       4195000
+      ]
+     },
+     {
+      "name": "AMER",
+      "values": [
+       2400000,
+       2380000,
+       2450000,
+       2360000,
+       2410000,
+       2300000,
+       2340000,
+       2290000,
+       2370000,
+       2330000,
+       2360000,
+       2352000
+      ]
+     },
+     {
+      "name": "APAC",
+      "values": [
+       300000,
+       340000,
+       390000,
+       450000,
+       520000,
+       580000,
+       630000,
+       700000,
+       760000,
+       820000,
+       880000,
+       930000
+      ]
+     }
+    ]
+   },
+   "option": {
+    "animation": false,
+    "aria": {
+     "enabled": true,
+     "label": {
+      "description": "x=month (12, 2026-01…2026-12) · y=revenue · color=region (3) · rev.csv 36 rows max EMEA 2026-08 $4.2M · min APAC 2026-01 $300K · total $79.5M EMEA ↑ +38% · AMER ≈ −2% · APAC ↑ +210% (2026-01→2026-12)"
+     }
+    },
+    "backgroundColor": "transparent",
+    "color": [
+     "chart.cat.0",
+     "chart.cat.1",
+     "chart.cat.2"
+    ],
+    "dataset": {
+     "$doc": "datasets"
+    },
+    "grid": {
+     "containLabel": false,
+     "height": 279.0,
+     "left": 37.08,
+     "top": 26.0,
+     "width": 499.84
+    },
+    "legend": {
+     "data": [
+      "EMEA",
+      "AMER",
+      "APAC"
+     ],
+     "icon": "roundRect",
+     "itemGap": 8.0,
+     "itemHeight": 10.0,
+     "itemWidth": 10.0,
+     "left": 564.92,
+     "orient": "vertical",
+     "padding": 0,
+     "show": true,
+     "textStyle": {
+      "color": "chart.ink",
+      "fontFamily": "$sans",
+      "fontSize": 12
+     },
+     "top": 12.0
+    },
+    "series": [
+     {
+      "barCategoryGap": "20%",
+      "barGap": "0%",
+      "datasetIndex": 0,
+      "encode": {
+       "x": "x",
+       "y": "s0"
+      },
+      "itemStyle": {
+       "borderRadius": 2
+      },
+      "name": "EMEA",
+      "type": "bar"
+     },
+     {
+      "barCategoryGap": "20%",
+      "barGap": "0%",
+      "datasetIndex": 0,
+      "encode": {
+       "x": "x",
+       "y": "s1"
+      },
+      "itemStyle": {
+       "borderRadius": 2
+      },
+      "name": "AMER",
+      "type": "bar"
+     },
+     {
+      "barCategoryGap": "20%",
+      "barGap": "0%",
+      "datasetIndex": 0,
+      "encode": {
+       "x": "x",
+       "y": "s2"
+      },
+      "itemStyle": {
+       "borderRadius": 2
+      },
+      "name": "APAC",
+      "type": "bar"
+     }
+    ],
+    "textStyle": {
+     "color": "chart.ink",
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "tooltip": {
+     "confine": true,
+     "renderMode": "richText",
+     "textStyle": {
+      "fontFamily": "$sans",
+      "fontSize": 12
+     },
+     "trigger": "axis"
+    },
+    "xAxis": {
+     "axisLabel": {
+      "color": "chart.muted",
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "interval": 1,
+      "margin": 8.0,
+      "rotate": 0
+     },
+     "axisLine": {
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": true
+     },
+     "axisTick": {
+      "alignWithLabel": true,
+      "length": 4.0,
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": true
+     },
+     "boundaryGap": true,
+     "position": "bottom",
+     "splitLine": {
+      "lineStyle": {
+       "color": "chart.gridline"
+      },
+      "show": false
+     },
+     "type": "category"
+    },
+    "yAxis": {
+     "axisLabel": {
+      "color": "chart.muted",
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "formatter": {
+       "$fmt": "compact|$"
+      },
+      "margin": 8.0
+     },
+     "axisLine": {
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": false
+     },
+     "axisTick": {
+      "alignWithLabel": true,
+      "length": 4.0,
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": false
+     },
+     "interval": 1000000.0,
+     "max": 5000000.0,
+     "min": 0.0,
+     "name": "revenue",
+     "nameGap": 4.0,
+     "nameLocation": "end",
+     "nameMoveOverlap": false,
+     "nameTextStyle": {
+      "align": "left",
+      "color": "chart.muted",
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "lineHeight": 15.0,
+      "verticalAlign": "bottom"
+     },
+     "position": "left",
+     "splitLine": {
+      "lineStyle": {
+       "color": "chart.gridline"
+      },
+      "show": true
+     },
+     "type": "value"
+    }
+   },
+   "resolved": {
+    "_source": "rev.csv 36 rows",
+    "caption": "Source: finance export, 2026-09-27",
+    "color": "region",
+    "data": "rev.csv",
+    "format": {
+     "y": "compact"
+    },
+    "stack": false,
+    "type": "bar",
+    "units": {
+     "y": "$"
+    },
+    "x": "month",
+    "y": "revenue"
+   },
+   "role": null,
+   "seq": {},
+   "settings": {
+    "caption": "Source: finance export, 2026-09-27",
+    "color": "region",
+    "data": "rev.csv",
+    "format": {
+     "y": "compact"
+    },
+    "type": "bar",
+    "units": {
+     "y": "$"
+    },
+    "x": "month",
+    "y": "revenue"
+   },
+   "source": {
+    "columns": [
+     [
+      "month",
+      "temporal"
+     ],
+     [
+      "region",
+      "nominal"
+     ],
+     [
+      "revenue",
+      "quantitative"
+     ]
+    ],
+    "data": "rev.csv",
+    "kept": 36,
+    "rows": 36,
+    "sha256": "9551f115062d4c44aeb8acfdedc789471d9acd7e0b220b4f48691ed0e142512e"
+   },
+   "spec_asset": "1f6c1764eadd9e12b0e474cfc56a8132.vl.json",
+   "stats": {
+    "max": [
+     "EMEA",
+     "2026-08",
+     4200000
+    ],
+    "min": [
+     "APAC",
+     "2026-01",
+     300000
+    ],
+    "n_cats": 12,
+    "n_series": 3,
+    "span": [
+     "2026-01",
+     "2026-12"
+    ],
+    "top": [
+     [
+      "2026-12",
+      7477000.0
+     ],
+     [
+      "2026-11",
+      7290000.0
+     ],
+     [
+      "2026-08",
+      7190000.0
+     ]
+    ],
+    "total": 79457000.0,
+    "trends": [
+     [
+      "EMEA",
+      {
+       "change": 0.37993421052631576,
+       "first": 3040000,
+       "last": 4195000,
+       "sign": "up",
+       "slope": 112045.45454545454
+      }
+     ],
+     [
+      "AMER",
+      {
+       "change": -0.02,
+       "first": 2400000,
+       "last": 2352000,
+       "sign": "flat",
+       "slope": -6356.643356643357
+      }
+     ],
+     [
+      "APAC",
+      {
+       "change": 2.1,
+       "first": 300000,
+       "last": 930000,
+       "sign": "up",
+       "slope": 59230.769230769234
+      }
+     ]
+    ]
+   },
+   "stripped": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Revenue by region, 2026",
+   "type": "chart",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "vl": null,
+   "w": 640,
+   "x": 0,
+   "y": 0,
+   "z": 1
+  },
+  {
+   "alias": "p95",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "chart": {
+    "gl": false,
+    "type": "line"
+   },
+   "chart_frame": {
+    "axes": {
+     "x": {
+      "extent": 15,
+      "fmt": "date|",
+      "kind": "value",
+      "max": 20702,
+      "min": 20697,
+      "pos": "bottom",
+      "step": null,
+      "ticks": [
+       {
+        "t": "2026-09-01",
+        "v": 20697,
+        "w": 70.19
+       },
+       {
+        "t": "2026-09-02",
+        "v": 20698,
+        "w": 72.71
+       },
+       {
+        "t": "2026-09-03",
+        "v": 20699,
+        "w": 72.8
+       },
+       {
+        "t": "2026-09-04",
+        "v": 20700,
+        "w": 73.15
+       },
+       {
+        "t": "2026-09-05",
+        "v": 20701,
+        "w": 72.5
+       },
+       {
+        "t": "2026-09-06",
+        "v": 20702,
+        "w": 72.83
+       }
+      ],
+      "time": true
+     },
+     "y": {
+      "fmt": "auto|",
+      "kind": "value",
+      "max": 450,
+      "min": 200,
+      "pos": "left",
+      "step": 50,
+      "ticks": [
+       {
+        "t": "200",
+        "v": 200,
+        "w": 23.13
+       },
+       {
+        "t": "250",
+        "v": 250,
+        "w": 22.67
+       },
+       {
+        "t": "300",
+        "v": 300,
+        "w": 23.23
+       },
+       {
+        "t": "350",
+        "v": 350,
+        "w": 22.76
+       },
+       {
+        "t": "400",
+        "v": 400,
+        "w": 23.58
+       },
+       {
+        "t": "450",
+        "v": 450,
+        "w": 23.11
+       }
+      ],
+      "title": "p95 (ms)"
+     }
+    },
+    "box": [
+     536,
+     308
+    ],
+    "extra": {},
+    "font": 12,
+    "legend": null,
+    "legible": true,
+    "notes": [],
+    "plot": [
+     33.58,
+     26,
+     490.42,
+     257
+    ]
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "data": null,
+   "data_key": "{\"rows\":[{\"day\":\"2026-09-01\",\"p95\":412},{\"day\":\"2026-09-02\",\"p95\":405},{\"day\":\"2026-09-03\",\"p95\":398},{\"day\":\"2026-09-04\",\"p95\":251},{\"day\":\"2026-09-05\",\"p95\":240},{\"day\":\"2026-09-06\",\"p95\":236}],\"type\":\"line\",\"units\":{\"y\":\"ms\"},\"x\":\"day\",\"y\":\"p95\"}",
+   "doc_asset": "a5d9408011109ed7a0bd04b11149f9aa.json",
+   "engine": "echarts",
+   "frame": null,
+   "gist": [
+    "x=day (6 points, 2026-09-01…2026-09-06) · y=p95 · inline rows 6 rows",
+    "p95 412 → 236 ms (−43%) · max 2026-09-01 412 ms · min 2026-09-06 236 ms · largest step −147 ms at 2026-09-04 (cache on)"
+   ],
+   "group": null,
+   "h": 360,
+   "id": "E-2",
+   "intent": "latency after the cache change",
+   "kv": 2,
+   "model": {
+    "capped": [],
+    "cats": [],
+    "grain": "day",
+    "how": "none",
+    "series": [
+     {
+      "name": "p95",
+      "x": [
+       20697,
+       20698,
+       20699,
+       20700,
+       20701,
+       20702
+      ],
+      "y": [
+       412,
+       405,
+       398,
+       251,
+       240,
+       236
+      ]
+     }
+    ],
+    "xkind": "time"
+   },
+   "option": {
+    "animation": false,
+    "aria": {
+     "enabled": true,
+     "label": {
+      "description": "x=day (6 points, 2026-09-01…2026-09-06) · y=p95 · inline rows 6 rows p95 412 → 236 ms (−43%) · max 2026-09-01 412 ms · min 2026-09-06 236 ms · largest step −147 ms at 2026-09-04 (cache on)"
+     }
+    },
+    "backgroundColor": "transparent",
+    "color": [
+     "chart.cat.0"
+    ],
+    "dataset": {
+     "$doc": "datasets"
+    },
+    "grid": {
+     "containLabel": false,
+     "height": 257.0,
+     "left": 33.58,
+     "top": 26.0,
+     "width": 490.42
+    },
+    "legend": {
+     "show": false
+    },
+    "series": [
+     {
+      "connectNulls": false,
+      "datasetIndex": 0,
+      "emphasis": {
+       "focus": "series"
+      },
+      "encode": {
+       "x": "x",
+       "y": "y"
+      },
+      "label": {
+       "color": "chart.ink",
+       "fontFamily": "$sans",
+       "fontSize": 12,
+       "formatter": {
+        "$fmt": "auto|ms"
+       },
+       "position": "top",
+       "show": true
+      },
+      "lineStyle": {
+       "width": 2
+      },
+      "markLine": {
+       "data": [
+        {
+         "label": {
+          "color": "chart.ink",
+          "fontFamily": "$sans",
+          "fontSize": 12,
+          "formatter": "cache on"
+         },
+         "xAxis": 20700
+        }
+       ],
+       "lineStyle": {
+        "color": "chart.ink",
+        "opacity": 0.7,
+        "type": "dashed"
+       },
+       "silent": true,
+       "symbol": "none"
+      },
+      "name": "p95",
+      "showSymbol": true,
+      "smooth": false,
+      "symbol": "circle",
+      "symbolSize": 6,
+      "type": "line"
+     }
+    ],
+    "textStyle": {
+     "color": "chart.ink",
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "tooltip": {
+     "confine": true,
+     "renderMode": "richText",
+     "textStyle": {
+      "fontFamily": "$sans",
+      "fontSize": 12
+     },
+     "trigger": "axis"
+    },
+    "xAxis": {
+     "axisLabel": {
+      "color": "chart.muted",
+      "customValues": [
+       20697.0,
+       20698.0,
+       20699.0,
+       20700.0,
+       20701.0,
+       20702.0
+      ],
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "formatter": {
+       "$fmt": "date|"
+      },
+      "margin": 8.0
+     },
+     "axisLine": {
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": true
+     },
+     "axisTick": {
+      "customValues": [
+       20697.0,
+       20698.0,
+       20699.0,
+       20700.0,
+       20701.0,
+       20702.0
+      ],
+      "length": 4.0,
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": true
+     },
+     "max": 20702.0,
+     "min": 20697.0,
+     "position": "bottom",
+     "splitLine": {
+      "show": false
+     },
+     "type": "value"
+    },
+    "yAxis": {
+     "axisLabel": {
+      "color": "chart.muted",
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "formatter": {
+       "$fmt": "auto|"
+      },
+      "margin": 8.0
+     },
+     "axisLine": {
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": false
+     },
+     "axisTick": {
+      "alignWithLabel": true,
+      "length": 4.0,
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": false
+     },
+     "interval": 50.0,
+     "max": 450.0,
+     "min": 200.0,
+     "name": "p95 (ms)",
+     "nameGap": 4.0,
+     "nameLocation": "end",
+     "nameMoveOverlap": false,
+     "nameTextStyle": {
+      "align": "left",
+      "color": "chart.muted",
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "lineHeight": 15.0,
+      "verticalAlign": "bottom"
+     },
+     "position": "left",
+     "splitLine": {
+      "lineStyle": {
+       "color": "chart.gridline"
+      },
+      "show": true
+     },
+     "type": "value"
+    }
+   },
+   "resolved": {
+    "_source": "inline rows 6 rows",
+    "annotations": [
+     {
+      "text": "cache on",
+      "x": "2026-09-04"
+     }
+    ],
+    "type": "line",
+    "units": {
+     "y": "ms"
+    },
+    "x": "day",
+    "y": "p95"
+   },
+   "role": null,
+   "seq": {},
+   "settings": {
+    "annotations": [
+     {
+      "text": "cache on",
+      "x": "2026-09-04"
+     }
+    ],
+    "rows": [
+     {
+      "day": "2026-09-01",
+      "p95": 412
+     },
+     {
+      "day": "2026-09-02",
+      "p95": 405
+     },
+     {
+      "day": "2026-09-03",
+      "p95": 398
+     },
+     {
+      "day": "2026-09-04",
+      "p95": 251
+     },
+     {
+      "day": "2026-09-05",
+      "p95": 240
+     },
+     {
+      "day": "2026-09-06",
+      "p95": 236
+     }
+    ],
+    "type": "line",
+    "units": {
+     "y": "ms"
+    },
+    "x": "day",
+    "y": "p95"
+   },
+   "source": {
+    "columns": [
+     [
+      "day",
+      "temporal"
+     ],
+     [
+      "p95",
+      "quantitative"
+     ]
+    ],
+    "data": null,
+    "kept": 6,
+    "rows": 6,
+    "sha256": "fbcc31b6131a0f80144a24f854db95fe06d95d23ec186582a62ddd6327a0f5e8"
+   },
+   "spec_asset": "746932b9536486e53e3ac4f3cf3332d1.vl.json",
+   "stats": {
+    "points": 6,
+    "series": [
+     {
+      "first": [
+       "2026-09-01",
+       412.0
+      ],
+      "last": [
+       "2026-09-06",
+       236.0
+      ],
+      "max": [
+       "2026-09-01",
+       412.0
+      ],
+      "min": [
+       "2026-09-06",
+       236.0
+      ],
+      "n": 6,
+      "name": "p95",
+      "step": [
+       "2026-09-04",
+       -147.0,
+       20700.0
+      ],
+      "trend": {
+       "change": -0.42718446601941745,
+       "first": 412.0,
+       "last": 236.0,
+       "sign": "down",
+       "slope": -43.48571428571429
+      }
+     }
+    ],
+    "span": [
+     "2026-09-01",
+     "2026-09-06"
+    ]
+   },
+   "stripped": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "p95 latency (ms)",
+   "type": "chart",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "vl": null,
+   "w": 560,
+   "x": 720,
+   "y": 0,
+   "z": 2
+  },
+  {
+   "alias": "trend",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "chart": {
+    "gl": false,
+    "type": "area"
+   },
+   "chart_frame": {
+    "axes": {
+     "x": {
+      "extent": 15,
+      "fmt": "month|",
+      "kind": "value",
+      "max": 20788,
+      "min": 20454,
+      "pos": "bottom",
+      "step": null,
+      "ticks": [
+       {
+        "t": "Jan 2026",
+        "v": 20454,
+        "w": 55.31
+       },
+       {
+        "t": "Apr 2026",
+        "v": 20544,
+        "w": 54.76
+       },
+       {
+        "t": "Jul 2026",
+        "v": 20635,
+        "w": 51.37
+       },
+       {
+        "t": "Oct 2026",
+        "v": 20727,
+        "w": 54.57
+       }
+      ],
+      "time": true
+     },
+     "y": {
+      "fmt": "compact|",
+      "kind": "value",
+      "max": 8000000,
+      "min": 0,
+      "pos": "left",
+      "step": 2000000,
+      "ticks": [
+       {
+        "t": "0",
+        "v": 0,
+        "w": 7.8
+       },
+       {
+        "t": "2M",
+        "v": 2000000,
+        "w": 18.7
+       },
+       {
+        "t": "4M",
+        "v": 4000000,
+        "w": 19.15
+       },
+       {
+        "t": "6M",
+        "v": 6000000,
+        "w": 18.83
+       },
+       {
+        "t": "8M",
+        "v": 8000000,
+        "w": 18.81
+       }
+      ],
+      "title": "revenue"
+     }
+    },
+    "box": [
+     536,
+     308
+    ],
+    "extra": {},
+    "font": 12,
+    "legend": {
+     "box": [
+      484.92,
+      8,
+      51.08,
+      54
+     ],
+     "items": [
+      {
+       "color": "chart.cat.0",
+       "name": "EMEA",
+       "w": 50.55
+      },
+      {
+       "color": "chart.cat.1",
+       "name": "AMER",
+       "w": 51.08
+      },
+      {
+       "color": "chart.cat.2",
+       "name": "APAC",
+       "w": 49.98
+      }
+     ],
+     "pos": "right",
+     "rows": [
+      [
+       0
+      ],
+      [
+       1
+      ],
+      [
+       2
+      ]
+     ]
+    },
+    "legible": true,
+    "notes": [],
+    "plot": [
+     29.15,
+     26,
+     427.77,
+     257
+    ]
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "data": null,
+   "data_key": "{\"color\":\"region\",\"data\":\"rev.csv\",\"format\":{\"y\":\"compact\"},\"stack\":true,\"type\":\"area\",\"x\":\"month\",\"y\":\"revenue\"}",
+   "doc_asset": "b6ba8a34ba5df3135c4c521e2d81581d.json",
+   "engine": "echarts",
+   "frame": null,
+   "gist": [
+    "x=month (12 points, 2026-01…2026-12) · y=revenue · color=region (3) · rev.csv 36 rows",
+    "EMEA 3M → 4.2M (+38%) · max 2026-08 4.2M · min 2026-01 3M · largest step +350K at 2026-08",
+    "AMER 2.4M → 2.4M (−2%) · max 2026-03 2.5M · min 2026-08 2.3M · largest step −110K at 2026-06",
+    "APAC 300K → 930K (+210%) · max 2026-12 930K · min 2026-01 300K · largest step +70K at 2026-05",
+    "EMEA stays above AMER",
+    "at 2026-12: EMEA 56% · AMER 31% · APAC 12%"
+   ],
+   "group": null,
+   "h": 360,
+   "id": "E-3",
+   "intent": "how the regions add up",
+   "kv": 2,
+   "model": {
+    "capped": [],
+    "cats": [],
+    "grain": "month",
+    "how": "none",
+    "series": [
+     {
+      "name": "EMEA",
+      "x": [
+       20454,
+       20485,
+       20513,
+       20544,
+       20574,
+       20605,
+       20635,
+       20666,
+       20697,
+       20727,
+       20758,
+       20788
+      ],
+      "y": [
+       3040000,
+       3100000,
+       3180000,
+       3300000,
+       3450000,
+       3600000,
+       3850000,
+       4200000,
+       3950000,
+       3900000,
+       4050000,
+       4195000
+      ]
+     },
+     {
+      "name": "AMER",
+      "x": [
+       20454,
+       20485,
+       20513,
+       20544,
+       20574,
+       20605,
+       20635,
+       20666,
+       20697,
+       20727,
+       20758,
+       20788
+      ],
+      "y": [
+       2400000,
+       2380000,
+       2450000,
+       2360000,
+       2410000,
+       2300000,
+       2340000,
+       2290000,
+       2370000,
+       2330000,
+       2360000,
+       2352000
+      ]
+     },
+     {
+      "name": "APAC",
+      "x": [
+       20454,
+       20485,
+       20513,
+       20544,
+       20574,
+       20605,
+       20635,
+       20666,
+       20697,
+       20727,
+       20758,
+       20788
+      ],
+      "y": [
+       300000,
+       340000,
+       390000,
+       450000,
+       520000,
+       580000,
+       630000,
+       700000,
+       760000,
+       820000,
+       880000,
+       930000
+      ]
+     }
+    ],
+    "xkind": "time"
+   },
+   "option": {
+    "animation": false,
+    "aria": {
+     "enabled": true,
+     "label": {
+      "description": "x=month (12 points, 2026-01…2026-12) · y=revenue · color=region (3) · rev.csv 36 rows EMEA 3M → 4.2M (+38%) · max 2026-08 4.2M · min 2026-01 3M · largest step +350K at 2026-08 AMER 2.4M → 2.4M (−2%) · max 2026-03 2.5M · min 2026-08 2.3M · largest step −110K at 2026-06 APAC 300K → 930K (+210%) · max 2026-12 930K · min 2026-01 300K · largest step +70K at 2026-05 EMEA stays above AMER at 2026-12: EMEA 56% · AMER 31% · APAC 12%"
+     }
+    },
+    "backgroundColor": "transparent",
+    "color": [
+     "chart.cat.0",
+     "chart.cat.1",
+     "chart.cat.2"
+    ],
+    "dataset": {
+     "$doc": "datasets"
+    },
+    "grid": {
+     "containLabel": false,
+     "height": 257.0,
+     "left": 29.15,
+     "top": 26.0,
+     "width": 427.77
+    },
+    "legend": {
+     "data": [
+      "EMEA",
+      "AMER",
+      "APAC"
+     ],
+     "icon": "roundRect",
+     "itemGap": 8.0,
+     "itemHeight": 10.0,
+     "itemWidth": 10.0,
+     "left": 484.92,
+     "orient": "vertical",
+     "padding": 0,
+     "show": true,
+     "textStyle": {
+      "color": "chart.ink",
+      "fontFamily": "$sans",
+      "fontSize": 12
+     },
+     "top": 12.0
+    },
+    "series": [
+     {
+      "areaStyle": {
+       "opacity": 0.55
+      },
+      "connectNulls": false,
+      "datasetIndex": 0,
+      "emphasis": {
+       "focus": "series"
+      },
+      "encode": {
+       "x": "x",
+       "y": "y"
+      },
+      "lineStyle": {
+       "width": 2
+      },
+      "name": "EMEA",
+      "showSymbol": false,
+      "smooth": false,
+      "stack": "total",
+      "symbol": "circle",
+      "symbolSize": 6,
+      "type": "line"
+     },
+     {
+      "areaStyle": {
+       "opacity": 0.55
+      },
+      "connectNulls": false,
+      "datasetIndex": 1,
+      "emphasis": {
+       "focus": "series"
+      },
+      "encode": {
+       "x": "x",
+       "y": "y"
+      },
+      "lineStyle": {
+       "width": 2
+      },
+      "name": "AMER",
+      "showSymbol": false,
+      "smooth": false,
+      "stack": "total",
+      "symbol": "circle",
+      "symbolSize": 6,
+      "type": "line"
+     },
+     {
+      "areaStyle": {
+       "opacity": 0.55
+      },
+      "connectNulls": false,
+      "datasetIndex": 2,
+      "emphasis": {
+       "focus": "series"
+      },
+      "encode": {
+       "x": "x",
+       "y": "y"
+      },
+      "lineStyle": {
+       "width": 2
+      },
+      "name": "APAC",
+      "showSymbol": false,
+      "smooth": false,
+      "stack": "total",
+      "symbol": "circle",
+      "symbolSize": 6,
+      "type": "line"
+     }
+    ],
+    "textStyle": {
+     "color": "chart.ink",
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "tooltip": {
+     "confine": true,
+     "renderMode": "richText",
+     "textStyle": {
+      "fontFamily": "$sans",
+      "fontSize": 12
+     },
+     "trigger": "axis"
+    },
+    "xAxis": {
+     "axisLabel": {
+      "color": "chart.muted",
+      "customValues": [
+       20454.0,
+       20544.0,
+       20635.0,
+       20727.0
+      ],
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "formatter": {
+       "$fmt": "month|"
+      },
+      "margin": 8.0
+     },
+     "axisLine": {
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": true
+     },
+     "axisTick": {
+      "customValues": [
+       20454.0,
+       20544.0,
+       20635.0,
+       20727.0
+      ],
+      "length": 4.0,
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": true
+     },
+     "max": 20788.0,
+     "min": 20454.0,
+     "position": "bottom",
+     "splitLine": {
+      "show": false
+     },
+     "type": "value"
+    },
+    "yAxis": {
+     "axisLabel": {
+      "color": "chart.muted",
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "formatter": {
+       "$fmt": "compact|"
+      },
+      "margin": 8.0
+     },
+     "axisLine": {
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": false
+     },
+     "axisTick": {
+      "alignWithLabel": true,
+      "length": 4.0,
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": false
+     },
+     "interval": 2000000.0,
+     "max": 8000000.0,
+     "min": 0.0,
+     "name": "revenue",
+     "nameGap": 4.0,
+     "nameLocation": "end",
+     "nameMoveOverlap": false,
+     "nameTextStyle": {
+      "align": "left",
+      "color": "chart.muted",
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "lineHeight": 15.0,
+      "verticalAlign": "bottom"
+     },
+     "position": "left",
+     "splitLine": {
+      "lineStyle": {
+       "color": "chart.gridline"
+      },
+      "show": true
+     },
+     "type": "value"
+    }
+   },
+   "resolved": {
+    "_source": "rev.csv 36 rows",
+    "color": "region",
+    "data": "rev.csv",
+    "format": {
+     "y": "compact"
+    },
+    "stack": true,
+    "type": "area",
+    "x": "month",
+    "y": "revenue"
+   },
+   "role": null,
+   "seq": {},
+   "settings": {
+    "color": "region",
+    "data": "rev.csv",
+    "format": {
+     "y": "compact"
+    },
+    "stack": true,
+    "type": "area",
+    "x": "month",
+    "y": "revenue"
+   },
+   "source": {
+    "columns": [
+     [
+      "month",
+      "temporal"
+     ],
+     [
+      "region",
+      "nominal"
+     ],
+     [
+      "revenue",
+      "quantitative"
+     ]
+    ],
+    "data": "rev.csv",
+    "kept": 36,
+    "rows": 36,
+    "sha256": "9551f115062d4c44aeb8acfdedc789471d9acd7e0b220b4f48691ed0e142512e"
+   },
+   "spec_asset": "eef68109bf3147a7e67f477fad8e8090.vl.json",
+   "stats": {
+    "crossings": [
+     "EMEA",
+     "AMER",
+     0
+    ],
+    "last_shares": [
+     "2026-12",
+     [
+      [
+       "EMEA",
+       0.5610538986224421
+      ],
+      [
+       "AMER",
+       0.31456466497258256
+      ],
+      [
+       "APAC",
+       0.12438143640497526
+      ]
+     ]
+    ],
+    "points": 12,
+    "series": [
+     {
+      "first": [
+       "2026-01",
+       3040000.0
+      ],
+      "last": [
+       "2026-12",
+       4195000.0
+      ],
+      "max": [
+       "2026-08",
+       4200000.0
+      ],
+      "min": [
+       "2026-01",
+       3040000.0
+      ],
+      "n": 12,
+      "name": "EMEA",
+      "step": [
+       "2026-08",
+       350000.0,
+       20666.0
+      ],
+      "trend": {
+       "change": 0.37993421052631576,
+       "first": 3040000.0,
+       "last": 4195000.0,
+       "sign": "up",
+       "slope": 112045.45454545454
+      }
+     },
+     {
+      "first": [
+       "2026-01",
+       2400000.0
+      ],
+      "last": [
+       "2026-12",
+       2352000.0
+      ],
+      "max": [
+       "2026-03",
+       2450000.0
+      ],
+      "min": [
+       "2026-08",
+       2290000.0
+      ],
+      "n": 12,
+      "name": "AMER",
+      "step": [
+       "2026-06",
+       -110000.0,
+       20605.0
+      ],
+      "trend": {
+       "change": -0.02,
+       "first": 2400000.0,
+       "last": 2352000.0,
+       "sign": "flat",
+       "slope": -6356.643356643357
+      }
+     },
+     {
+      "first": [
+       "2026-01",
+       300000.0
+      ],
+      "last": [
+       "2026-12",
+       930000.0
+      ],
+      "max": [
+       "2026-12",
+       930000.0
+      ],
+      "min": [
+       "2026-01",
+       300000.0
+      ],
+      "n": 12,
+      "name": "APAC",
+      "step": [
+       "2026-05",
+       70000.0,
+       20574.0
+      ],
+      "trend": {
+       "change": 2.1,
+       "first": 300000.0,
+       "last": 930000.0,
+       "sign": "up",
+       "slope": 59230.769230769234
+      }
+     }
+    ],
+    "span": [
+     "2026-01",
+     "2026-12"
+    ]
+   },
+   "stripped": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Revenue stack",
+   "type": "chart",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "vl": null,
+   "w": 560,
+   "x": 1360,
+   "y": 0,
+   "z": 3
+  },
+  {
+   "alias": "share",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "chart": {
+    "gl": false,
+    "type": "pie"
+   },
+   "chart_frame": {
+    "axes": {},
+    "box": [
+     396,
+     268
+    ],
+    "extra": {
+     "cx": 192,
+     "cy": 125,
+     "r": 109.18,
+     "r0": 0
+    },
+    "font": 12,
+    "legend": {
+     "box": [
+      12,
+      250,
+      372,
+      18
+     ],
+     "items": [
+      {
+       "color": "chart.cat.0",
+       "name": "EMEA",
+       "w": 50.55
+      },
+      {
+       "color": "chart.cat.1",
+       "name": "AMER",
+       "w": 51.08
+      },
+      {
+       "color": "chart.cat.2",
+       "name": "APAC",
+       "w": 49.98
+      }
+     ],
+     "pos": "bottom",
+     "rows": [
+      [
+       0,
+       1,
+       2
+      ]
+     ]
+    },
+    "legible": true,
+    "notes": [],
+    "plot": [
+     0,
+     8,
+     384,
+     234
+    ]
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 4,
+   "data": null,
+   "data_key": "{\"category\":\"region\",\"data\":\"rev.csv\",\"type\":\"pie\",\"value\":\"revenue\"}",
+   "doc_asset": "b55c086f9cff0a2b73e7774e53977470.json",
+   "engine": "echarts",
+   "frame": null,
+   "gist": [
+    "category=region (3) · value=sum(revenue) · rev.csv 36 rows",
+    "EMEA 55% · AMER 36% · APAC 9.2% · total 79.5M"
+   ],
+   "group": null,
+   "h": 320,
+   "id": "E-4",
+   "intent": "who sells the most",
+   "kv": 2,
+   "model": {
+    "capped": [],
+    "count": 3,
+    "how": "sum",
+    "slices": [
+     [
+      "EMEA",
+      43815000
+     ],
+     [
+      "AMER",
+      28342000
+     ],
+     [
+      "APAC",
+      7300000
+     ]
+    ],
+    "total": 79457000
+   },
+   "option": {
+    "animation": false,
+    "aria": {
+     "enabled": true,
+     "label": {
+      "description": "category=region (3) · value=sum(revenue) · rev.csv 36 rows EMEA 55% · AMER 36% · APAC 9.2% · total 79.5M"
+     }
+    },
+    "backgroundColor": "transparent",
+    "color": [
+     "chart.cat.0",
+     "chart.cat.1",
+     "chart.cat.2"
+    ],
+    "legend": {
+     "data": [
+      "EMEA",
+      "AMER",
+      "APAC"
+     ],
+     "icon": "roundRect",
+     "itemGap": 16.0,
+     "itemHeight": 10.0,
+     "itemWidth": 10.0,
+     "left": 12.0,
+     "orient": "horizontal",
+     "padding": 0,
+     "show": true,
+     "textStyle": {
+      "color": "chart.ink",
+      "fontFamily": "$sans",
+      "fontSize": 12
+     },
+     "top": 254.0
+    },
+    "series": [
+     {
+      "avoidLabelOverlap": false,
+      "center": [
+       192.0,
+       125.0
+      ],
+      "clockwise": true,
+      "color": [
+       "chart.cat.0",
+       "chart.cat.1",
+       "chart.cat.2"
+      ],
+      "data": {
+       "$doc": "slices"
+      },
+      "itemStyle": {
+       "borderColor": "chart.paper",
+       "borderWidth": 1.5
+      },
+      "label": {
+       "fontFamily": "$sans",
+       "fontSize": 12,
+       "fontWeight": 600,
+       "position": "inside",
+       "show": true
+      },
+      "labelLine": {
+       "show": false
+      },
+      "minShowLabelAngle": 18.0,
+      "name": "region",
+      "radius": [
+       0.0,
+       109.18
+      ],
+      "startAngle": 90,
+      "type": "pie"
+     }
+    ],
+    "textStyle": {
+     "color": "chart.ink",
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "tooltip": {
+     "confine": true,
+     "renderMode": "richText",
+     "textStyle": {
+      "fontFamily": "$sans",
+      "fontSize": 12
+     },
+     "trigger": "item"
+    }
+   },
+   "resolved": {
+    "_source": "rev.csv 36 rows",
+    "category": "region",
+    "data": "rev.csv",
+    "top": 6,
+    "type": "pie",
+    "value": "revenue"
+   },
+   "role": null,
+   "seq": {},
+   "settings": {
+    "category": "region",
+    "data": "rev.csv",
+    "type": "pie",
+    "value": "revenue"
+   },
+   "source": {
+    "columns": [
+     [
+      "month",
+      "temporal"
+     ],
+     [
+      "region",
+      "nominal"
+     ],
+     [
+      "revenue",
+      "quantitative"
+     ]
+    ],
+    "data": "rev.csv",
+    "kept": 36,
+    "rows": 36,
+    "sha256": "9551f115062d4c44aeb8acfdedc789471d9acd7e0b220b4f48691ed0e142512e"
+   },
+   "spec_asset": "289ce929d6120a57357d46254d175984.vl.json",
+   "stats": {
+    "count": 3,
+    "shares": [
+     [
+      "EMEA",
+      0.5514303333878702
+     ],
+     [
+      "AMER",
+      0.35669607460639086
+     ],
+     [
+      "APAC",
+      0.09187359200573895
+     ]
+    ],
+    "total": 79457000.0
+   },
+   "stripped": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Revenue share by region",
+   "type": "chart",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 4,
+   "vl": null,
+   "w": 420,
+   "x": 0,
+   "y": 480,
+   "z": 4
+  },
+  {
+   "alias": "mix",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "chart": {
+    "gl": false,
+    "type": "donut"
+   },
+   "chart_frame": {
+    "axes": {},
+    "box": [
+     396,
+     268
+    ],
+    "extra": {
+     "cx": 192,
+     "cy": 116,
+     "r": 100.48,
+     "r0": 55.27
+    },
+    "font": 12,
+    "legend": {
+     "box": [
+      12,
+      232,
+      372,
+      36
+     ],
+     "items": [
+      {
+       "color": "chart.cat.0",
+       "name": "Search",
+       "w": 57.1
+      },
+      {
+       "color": "chart.cat.1",
+       "name": "Direct",
+       "w": 50.88
+      },
+      {
+       "color": "chart.cat.2",
+       "name": "Social",
+       "w": 51.33
+      },
+      {
+       "color": "chart.cat.3",
+       "name": "Email",
+       "w": 47.18
+      },
+      {
+       "color": "chart.cat.4",
+       "name": "Referral",
+       "w": 62.18
+      },
+      {
+       "color": "chart.cat.5",
+       "name": "Other",
+       "w": 48.66
+      }
+     ],
+     "pos": "bottom",
+     "rows": [
+      [
+       0,
+       1,
+       2,
+       3,
+       4
+      ],
+      [
+       5
+      ]
+     ]
+    },
+    "legible": true,
+    "notes": [],
+    "plot": [
+     0,
+     8,
+     384,
+     216
+    ]
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 5,
+   "data": null,
+   "data_key": "{\"category\":\"channel\",\"data\":\"traffic.json\",\"top\":5,\"type\":\"donut\",\"value\":\"visits\"}",
+   "doc_asset": "25e96a584779490c0be1fd4bc12cc252.json",
+   "engine": "echarts",
+   "frame": null,
+   "gist": [
+    "category=channel (8 → 5 + Other) · value=visits · traffic.json 8 rows",
+    "Search 42% · Direct 21% · Social 14% · Other 7.7% · total 12.5K",
+    "capped: 3 of 8 channel values folded into Other"
+   ],
+   "group": null,
+   "h": 320,
+   "id": "E-5",
+   "intent": "traffic share by channel",
+   "kv": 2,
+   "model": {
+    "capped": [
+     "3 of 8 channel values folded into Other"
+    ],
+    "count": 8,
+    "how": "none",
+    "slices": [
+     [
+      "Search",
+      5200
+     ],
+     [
+      "Direct",
+      2600
+     ],
+     [
+      "Social",
+      1700
+     ],
+     [
+      "Email",
+      1200
+     ],
+     [
+      "Referral",
+      800
+     ],
+     [
+      "Other",
+      960
+     ]
+    ],
+    "total": 12460
+   },
+   "option": {
+    "animation": false,
+    "aria": {
+     "enabled": true,
+     "label": {
+      "description": "category=channel (8 → 5 + Other) · value=visits · traffic.json 8 rows Search 42% · Direct 21% · Social 14% · Other 7.7% · total 12.5K capped: 3 of 8 channel values folded into Other"
+     }
+    },
+    "backgroundColor": "transparent",
+    "color": [
+     "chart.cat.0",
+     "chart.cat.1",
+     "chart.cat.2",
+     "chart.cat.3",
+     "chart.cat.4",
+     "chart.cat.5"
+    ],
+    "legend": [
+     {
+      "data": [
+       "Search",
+       "Direct",
+       "Social",
+       "Email",
+       "Referral"
+      ],
+      "icon": "roundRect",
+      "itemGap": 16.0,
+      "itemHeight": 10.0,
+      "itemWidth": 10.0,
+      "left": 12.0,
+      "orient": "horizontal",
+      "padding": 0,
+      "show": true,
+      "textStyle": {
+       "color": "chart.ink",
+       "fontFamily": "$sans",
+       "fontSize": 12
+      },
+      "top": 236.0
+     },
+     {
+      "data": [
+       "Other"
+      ],
+      "icon": "roundRect",
+      "itemGap": 16.0,
+      "itemHeight": 10.0,
+      "itemWidth": 10.0,
+      "left": 12.0,
+      "orient": "horizontal",
+      "padding": 0,
+      "show": true,
+      "textStyle": {
+       "color": "chart.ink",
+       "fontFamily": "$sans",
+       "fontSize": 12
+      },
+      "top": 254.0
+     }
+    ],
+    "series": [
+     {
+      "avoidLabelOverlap": false,
+      "center": [
+       192.0,
+       116.0
+      ],
+      "clockwise": true,
+      "color": [
+       "chart.cat.0",
+       "chart.cat.1",
+       "chart.cat.2",
+       "chart.cat.3",
+       "chart.cat.4",
+       "chart.cat.5"
+      ],
+      "data": {
+       "$doc": "slices"
+      },
+      "itemStyle": {
+       "borderColor": "chart.paper",
+       "borderWidth": 1.5
+      },
+      "label": {
+       "fontFamily": "$sans",
+       "fontSize": 12,
+       "fontWeight": 600,
+       "position": "inside",
+       "show": true
+      },
+      "labelLine": {
+       "show": false
+      },
+      "minShowLabelAngle": 18.0,
+      "name": "channel",
+      "radius": [
+       55.27,
+       100.48
+      ],
+      "startAngle": 90,
+      "type": "pie"
+     }
+    ],
+    "textStyle": {
+     "color": "chart.ink",
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "tooltip": {
+     "confine": true,
+     "renderMode": "richText",
+     "textStyle": {
+      "fontFamily": "$sans",
+      "fontSize": 12
+     },
+     "trigger": "item"
+    }
+   },
+   "resolved": {
+    "_source": "traffic.json 8 rows",
+    "category": "channel",
+    "data": "traffic.json",
+    "top": 5,
+    "type": "donut",
+    "value": "visits"
+   },
+   "role": null,
+   "seq": {},
+   "settings": {
+    "category": "channel",
+    "data": "traffic.json",
+    "top": 5,
+    "type": "donut",
+    "value": "visits"
+   },
+   "source": {
+    "columns": [
+     [
+      "channel",
+      "nominal"
+     ],
+     [
+      "visits",
+      "quantitative"
+     ]
+    ],
+    "data": "traffic.json",
+    "kept": 8,
+    "rows": 8,
+    "sha256": "347926d014a6a51d1708166e4ac38929c64a0b8b3e3f55c099c0af938d9f24f5"
+   },
+   "spec_asset": "bb16cb6b4a6202ad8fb493dd3ca50187.vl.json",
+   "stats": {
+    "count": 8,
+    "shares": [
+     [
+      "Search",
+      0.4173354735152488
+     ],
+     [
+      "Direct",
+      0.2086677367576244
+     ],
+     [
+      "Social",
+      0.13643659711075443
+     ],
+     [
+      "Email",
+      0.09630818619582665
+     ],
+     [
+      "Referral",
+      0.06420545746388442
+     ],
+     [
+      "Other",
+      0.07704654895666131
+     ]
+    ],
+    "total": 12460.0
+   },
+   "stripped": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Visits by channel",
+   "type": "chart",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 5,
+   "vl": null,
+   "w": 420,
+   "x": 500,
+   "y": 480,
+   "z": 5
+  },
+  {
+   "alias": "spend",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "chart": {
+    "gl": false,
+    "type": "scatter"
+   },
+   "chart_frame": {
+    "axes": {
+     "x": {
+      "extent": 15,
+      "fmt": "auto|$",
+      "kind": "value",
+      "max": 10000,
+      "min": 0,
+      "pos": "bottom",
+      "step": 2000,
+      "ticks": [
+       {
+        "t": "$0",
+        "v": 0,
+        "w": 15.73
+       },
+       {
+        "t": "$2,000",
+        "v": 2000,
+        "w": 42.42
+       },
+       {
+        "t": "$4,000",
+        "v": 4000,
+        "w": 42.87
+       },
+       {
+        "t": "$6,000",
+        "v": 6000,
+        "w": 42.55
+       },
+       {
+        "t": "$8,000",
+        "v": 8000,
+        "w": 42.53
+       },
+       {
+        "t": "$10,000",
+        "v": 10000,
+        "w": 47.71
+       }
+      ],
+      "title": null
+     },
+     "y": {
+      "fmt": "auto|",
+      "kind": "value",
+      "max": 500,
+      "min": 0,
+      "pos": "left",
+      "step": 100,
+      "ticks": [
+       {
+        "t": "0",
+        "v": 0,
+        "w": 7.8
+       },
+       {
+        "t": "100",
+        "v": 100,
+        "w": 20.62
+       },
+       {
+        "t": "200",
+        "v": 200,
+        "w": 23.13
+       },
+       {
+        "t": "300",
+        "v": 300,
+        "w": 23.23
+       },
+       {
+        "t": "400",
+        "v": 400,
+        "w": 23.58
+       },
+       {
+        "t": "500",
+        "v": 500,
+        "w": 22.93
+       }
+      ],
+      "title": "signups"
+     }
+    },
+    "box": [
+     496,
+     328
+    ],
+    "extra": {},
+    "font": 12,
+    "legend": null,
+    "legible": true,
+    "notes": [],
+    "plot": [
+     33.58,
+     26,
+     450.42,
+     277
+    ]
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 6,
+   "data": null,
+   "data_key": "{\"label\":\"campaign\",\"rows\":[{\"campaign\":\"Brand\",\"signups\":410,\"spend\":9800},{\"campaign\":\"Search\",\"signups\":260,\"spend\":4200},{\"campaign\":\"Social\",\"signups\":150,\"spend\":3100},{\"campaign\":\"Video\",\"signups\":190,\"spend\":5600},{\"campaign\":\"Email\",\"signups\":120,\"spend\":800},{\"campaign\":\"Display\",\"signups\":60,\"spend\":2500}],\"trend\":\"linear\",\"type\":\"scatter\",\"units\":{\"x\":\"$\"},\"x\":\"spend\",\"y\":\"signups\"}",
+   "doc_asset": "340b29e07f230db53c765e59f7beb68d.json",
+   "engine": "echarts",
+   "frame": null,
+   "gist": [
+    "x=spend · y=signups · 6 points · inline rows 6 rows",
+    "r = 0.90 (strong positive) · slope +0.0354 signups per spend",
+    "x $800…$9,800 · y 60…410"
+   ],
+   "group": null,
+   "h": 380,
+   "id": "E-6",
+   "intent": "does ad spend bring signups",
+   "kv": 2,
+   "model": {
+    "capped": [],
+    "fit": [
+     0.0353635,
+     45.0914
+    ],
+    "groups": [],
+    "n": 6,
+    "points": [
+     [
+      800,
+      120,
+      0
+     ],
+     [
+      2500,
+      60,
+      0
+     ],
+     [
+      3100,
+      150,
+      0
+     ],
+     [
+      4200,
+      260,
+      0
+     ],
+     [
+      5600,
+      190,
+      0
+     ],
+     [
+      9800,
+      410,
+      0
+     ]
+    ],
+    "size": null,
+    "x": [
+     800,
+     9800
+    ],
+    "y": [
+     60,
+     410
+    ]
+   },
+   "option": {
+    "animation": false,
+    "aria": {
+     "enabled": true,
+     "label": {
+      "description": "x=spend · y=signups · 6 points · inline rows 6 rows r = 0.90 (strong positive) · slope +0.0354 signups per spend x $800…$9,800 · y 60…410"
+     }
+    },
+    "backgroundColor": "transparent",
+    "color": [
+     "chart.cat.0"
+    ],
+    "dataset": {
+     "$doc": "datasets"
+    },
+    "grid": {
+     "containLabel": false,
+     "height": 277.0,
+     "left": 33.58,
+     "top": 26.0,
+     "width": 450.42
+    },
+    "legend": {
+     "show": false
+    },
+    "series": [
+     {
+      "datasetIndex": 0,
+      "encode": {
+       "tooltip": [
+        "label",
+        "x",
+        "y"
+       ],
+       "x": "x",
+       "y": "y"
+      },
+      "itemStyle": {
+       "borderColor": "chart.paper",
+       "borderWidth": 0.75,
+       "opacity": 0.8
+      },
+      "markLine": {
+       "data": [
+        [
+         {
+          "coord": [
+           0,
+           45.0914
+          ]
+         },
+         {
+          "coord": [
+           10000,
+           398.726
+          ]
+         }
+        ]
+       ],
+       "lineStyle": {
+        "color": "chart.ink",
+        "opacity": 0.8,
+        "type": "dashed"
+       },
+       "silent": true,
+       "symbol": "none"
+      },
+      "name": "signups",
+      "symbolSize": 7.0,
+      "type": "scatter"
+     }
+    ],
+    "textStyle": {
+     "color": "chart.ink",
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "tooltip": {
+     "confine": true,
+     "renderMode": "richText",
+     "textStyle": {
+      "fontFamily": "$sans",
+      "fontSize": 12
+     },
+     "trigger": "item"
+    },
+    "xAxis": {
+     "axisLabel": {
+      "color": "chart.muted",
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "formatter": {
+       "$fmt": "auto|$"
+      },
+      "margin": 8.0
+     },
+     "axisLine": {
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": true
+     },
+     "axisTick": {
+      "alignWithLabel": true,
+      "length": 4.0,
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": false
+     },
+     "interval": 2000.0,
+     "max": 10000.0,
+     "min": 0.0,
+     "position": "bottom",
+     "splitLine": {
+      "lineStyle": {
+       "color": "chart.gridline"
+      },
+      "show": true
+     },
+     "type": "value"
+    },
+    "yAxis": {
+     "axisLabel": {
+      "color": "chart.muted",
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "formatter": {
+       "$fmt": "auto|"
+      },
+      "margin": 8.0
+     },
+     "axisLine": {
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": false
+     },
+     "axisTick": {
+      "alignWithLabel": true,
+      "length": 4.0,
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": false
+     },
+     "interval": 100.0,
+     "max": 500.0,
+     "min": 0.0,
+     "name": "signups",
+     "nameGap": 4.0,
+     "nameLocation": "end",
+     "nameMoveOverlap": false,
+     "nameTextStyle": {
+      "align": "left",
+      "color": "chart.muted",
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "lineHeight": 15.0,
+      "verticalAlign": "bottom"
+     },
+     "position": "left",
+     "splitLine": {
+      "lineStyle": {
+       "color": "chart.gridline"
+      },
+      "show": true
+     },
+     "type": "value"
+    }
+   },
+   "resolved": {
+    "_source": "inline rows 6 rows",
+    "label": "campaign",
+    "trend": "linear",
+    "type": "scatter",
+    "units": {
+     "x": "$"
+    },
+    "x": "spend",
+    "y": "signups"
+   },
+   "role": null,
+   "seq": {},
+   "settings": {
+    "label": "campaign",
+    "rows": [
+     {
+      "campaign": "Brand",
+      "signups": 410,
+      "spend": 9800
+     },
+     {
+      "campaign": "Search",
+      "signups": 260,
+      "spend": 4200
+     },
+     {
+      "campaign": "Social",
+      "signups": 150,
+      "spend": 3100
+     },
+     {
+      "campaign": "Video",
+      "signups": 190,
+      "spend": 5600
+     },
+     {
+      "campaign": "Email",
+      "signups": 120,
+      "spend": 800
+     },
+     {
+      "campaign": "Display",
+      "signups": 60,
+      "spend": 2500
+     }
+    ],
+    "trend": "linear",
+    "type": "scatter",
+    "units": {
+     "x": "$"
+    },
+    "x": "spend",
+    "y": "signups"
+   },
+   "source": {
+    "columns": [
+     [
+      "campaign",
+      "nominal"
+     ],
+     [
+      "spend",
+      "quantitative"
+     ],
+     [
+      "signups",
+      "quantitative"
+     ]
+    ],
+    "data": null,
+    "kept": 6,
+    "rows": 6,
+    "sha256": "f7ecdb875970470cbe413b0a5164d68538f8b68ad4e1f9c07664b5214db166f3"
+   },
+   "spec_asset": "6d145ade254c83014b27fa41dd55fe66.vl.json",
+   "stats": {
+    "groups": 0,
+    "intercept": 45.091392715864174,
+    "n": 6,
+    "outliers": [],
+    "r": 0.8951105889436957,
+    "slope": 0.035363524757877504,
+    "x": [
+     800.0,
+     9800.0
+    ],
+    "y": [
+     60.0,
+     410.0
+    ]
+   },
+   "stripped": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Spend vs signups",
+   "type": "chart",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 6,
+   "vl": null,
+   "w": 520,
+   "x": 1000,
+   "y": 480,
+   "z": 6
+  },
+  {
+   "alias": "load",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "chart": {
+    "gl": false,
+    "type": "heatmap"
+   },
+   "chart_frame": {
+    "axes": {
+     "x": {
+      "extent": 15,
+      "hidden": 12,
+      "interval": 1,
+      "kind": "category",
+      "labels": [
+       {
+        "t": "00:00",
+        "v": 0,
+        "w": 34.75
+       },
+       {
+        "t": "01:00",
+        "v": 1,
+        "w": 31.98
+       },
+       {
+        "t": "02:00",
+        "v": 2,
+        "w": 34.49
+       },
+       {
+        "t": "03:00",
+        "v": 3,
+        "w": 34.59
+       },
+       {
+        "t": "04:00",
+        "v": 4,
+        "w": 34.94
+       },
+       {
+        "t": "05:00",
+        "v": 5,
+        "w": 34.29
+       },
+       {
+        "t": "06:00",
+        "v": 6,
+        "w": 34.62
+       },
+       {
+        "t": "07:00",
+        "v": 7,
+        "w": 33.95
+       },
+       {
+        "t": "08:00",
+        "v": 8,
+        "w": 34.6
+       },
+       {
+        "t": "09:00",
+        "v": 9,
+        "w": 34.62
+       },
+       {
+        "t": "10:00",
+        "v": 10,
+        "w": 31.98
+       },
+       {
+        "t": "11:00",
+        "v": 11,
+        "w": 29.21
+       },
+       {
+        "t": "12:00",
+        "v": 12,
+        "w": 31.72
+       },
+       {
+        "t": "13:00",
+        "v": 13,
+        "w": 31.82
+       },
+       {
+        "t": "14:00",
+        "v": 14,
+        "w": 32.17
+       },
+       {
+        "t": "15:00",
+        "v": 15,
+        "w": 31.52
+       },
+       {
+        "t": "16:00",
+        "v": 16,
+        "w": 31.85
+       },
+       {
+        "t": "17:00",
+        "v": 17,
+        "w": 31.18
+       },
+       {
+        "t": "18:00",
+        "v": 18,
+        "w": 31.83
+       },
+       {
+        "t": "19:00",
+        "v": 19,
+        "w": 31.85
+       },
+       {
+        "t": "20:00",
+        "v": 20,
+        "w": 34.49
+       },
+       {
+        "t": "21:00",
+        "v": 21,
+        "w": 31.72
+       },
+       {
+        "t": "22:00",
+        "v": 22,
+        "w": 34.23
+       },
+       {
+        "t": "23:00",
+        "v": 23,
+        "w": 34.33
+       }
+      ],
+      "pos": "bottom",
+      "rotate": 0,
+      "width": null
+     },
+     "y": {
+      "extent": 26.95,
+      "hidden": 0,
+      "interval": 0,
+      "kind": "category",
+      "labels": [
+       {
+        "t": "Mon",
+        "v": 0,
+        "w": 25.88
+       },
+       {
+        "t": "Tue",
+        "v": 1,
+        "w": 22.49
+       },
+       {
+        "t": "Wed",
+        "v": 2,
+        "w": 26.95
+       },
+       {
+        "t": "Thu",
+        "v": 3,
+        "w": 22.6
+       },
+       {
+        "t": "Fri",
+        "v": 4,
+        "w": 14.94
+       },
+       {
+        "t": "Sat",
+        "v": 5,
+        "w": 18.91
+       },
+       {
+        "t": "Sun",
+        "v": 6,
+        "w": 22.54
+       }
+      ],
+      "pos": "left",
+      "rotate": 0,
+      "width": null
+     }
+    },
+    "box": [
+     576,
+     328
+    ],
+    "extra": {
+     "ramp": [
+      36.95,
+      300,
+      220,
+      10
+     ]
+    },
+    "font": 12,
+    "legend": null,
+    "legible": true,
+    "notes": [
+     "every 2nd x label shown"
+    ],
+    "plot": [
+     36.95,
+     8,
+     527.05,
+     263
+    ]
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 7,
+   "data": null,
+   "data_key": "{\"data\":\"load.csv\",\"type\":\"heatmap\",\"types\":{\"hour\":\"ordinal\",\"weekday\":\"ordinal\"},\"value\":\"requests\",\"x\":\"hour\",\"y\":\"weekday\"}",
+   "doc_asset": "3ff60c783efe745b18a9ac4b51e67c0b.json",
+   "engine": "echarts",
+   "frame": null,
+   "gist": [
+    "x=hour (24) · y=weekday (7) · value=requests · 168 cells · load.csv 168 rows",
+    "max 14:00 × Tue 1,232 · min 00:00 × Sat 90",
+    "highest mean: Tue 521.5 (row) · 14:00 946.0 (column)"
+   ],
+   "group": null,
+   "h": 380,
+   "id": "E-7",
+   "intent": "when is the API busiest",
+   "kv": 2,
+   "model": {
+    "capped": [],
+    "cells": [
+     [
+      200,
+      200,
+      200,
+      200,
+      202,
+      206,
+      216,
+      242,
+      295,
+      389,
+      531,
+      713,
+      901,
+      1045,
+      1100,
+      1045,
+      901,
+      713,
+      531,
+      389,
+      295,
+      242,
+      216,
+      206
+     ],
+     [
+      224,
+      224,
+      224,
+      225,
+      226,
+      230,
+      242,
+      271,
+      330,
+      435,
+      595,
+      798,
+      1009,
+      1171,
+      1232,
+      1171,
+      1009,
+      798,
+      595,
+      435,
+      330,
+      271,
+      242,
+      230
+     ],
+     [
+      200,
+      200,
+      200,
+      200,
+      202,
+      206,
+      216,
+      242,
+      295,
+      389,
+      531,
+      713,
+      901,
+      1045,
+      1100,
+      1045,
+      901,
+      713,
+      531,
+      389,
+      295,
+      242,
+      216,
+      206
+     ],
+     [
+      200,
+      200,
+      200,
+      200,
+      202,
+      206,
+      216,
+      242,
+      295,
+      389,
+      531,
+      713,
+      901,
+      1045,
+      1100,
+      1045,
+      901,
+      713,
+      531,
+      389,
+      295,
+      242,
+      216,
+      206
+     ],
+     [
+      200,
+      200,
+      200,
+      200,
+      202,
+      206,
+      216,
+      242,
+      295,
+      389,
+      531,
+      713,
+      901,
+      1045,
+      1100,
+      1045,
+      901,
+      713,
+      531,
+      389,
+      295,
+      242,
+      216,
+      206
+     ],
+     [
+      90,
+      90,
+      90,
+      90,
+      91,
+      93,
+      97,
+      109,
+      133,
+      175,
+      239,
+      321,
+      405,
+      470,
+      495,
+      470,
+      405,
+      321,
+      239,
+      175,
+      133,
+      109,
+      97,
+      93
+     ],
+     [
+      90,
+      90,
+      90,
+      90,
+      91,
+      93,
+      97,
+      109,
+      133,
+      175,
+      239,
+      321,
+      405,
+      470,
+      495,
+      470,
+      405,
+      321,
+      239,
+      175,
+      133,
+      109,
+      97,
+      93
+     ]
+    ],
+    "how": "none",
+    "max": 1232,
+    "min": 90,
+    "xs": [
+     "00:00",
+     "01:00",
+     "02:00",
+     "03:00",
+     "04:00",
+     "05:00",
+     "06:00",
+     "07:00",
+     "08:00",
+     "09:00",
+     "10:00",
+     "11:00",
+     "12:00",
+     "13:00",
+     "14:00",
+     "15:00",
+     "16:00",
+     "17:00",
+     "18:00",
+     "19:00",
+     "20:00",
+     "21:00",
+     "22:00",
+     "23:00"
+    ],
+    "ys": [
+     "Mon",
+     "Tue",
+     "Wed",
+     "Thu",
+     "Fri",
+     "Sat",
+     "Sun"
+    ]
+   },
+   "option": {
+    "animation": false,
+    "aria": {
+     "enabled": true,
+     "label": {
+      "description": "x=hour (24) · y=weekday (7) · value=requests · 168 cells · load.csv 168 rows max 14:00 × Tue 1,232 · min 00:00 × Sat 90 highest mean: Tue 521.5 (row) · 14:00 946.0 (column)"
+     }
+    },
+    "backgroundColor": "transparent",
+    "color": [
+     "chart.cat.0",
+     "chart.cat.1",
+     "chart.cat.2",
+     "chart.cat.3",
+     "chart.cat.4",
+     "chart.cat.5",
+     "chart.cat.6",
+     "chart.cat.7",
+     "chart.cat.8",
+     "chart.cat.9"
+    ],
+    "dataset": {
+     "$doc": "datasets"
+    },
+    "grid": {
+     "containLabel": false,
+     "height": 263.0,
+     "left": 36.95,
+     "top": 8.0,
+     "width": 527.05
+    },
+    "legend": {
+     "show": false
+    },
+    "series": [
+     {
+      "datasetIndex": 0,
+      "encode": {
+       "value": "value",
+       "x": "x",
+       "y": "y"
+      },
+      "itemStyle": {
+       "borderColor": "chart.paper",
+       "borderRadius": 1,
+       "borderWidth": 1
+      },
+      "type": "heatmap"
+     }
+    ],
+    "textStyle": {
+     "color": "chart.ink",
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "tooltip": {
+     "confine": true,
+     "renderMode": "richText",
+     "textStyle": {
+      "fontFamily": "$sans",
+      "fontSize": 12
+     },
+     "trigger": "item"
+    },
+    "visualMap": {
+     "calculable": false,
+     "dimension": 2,
+     "formatter": {
+      "$fmt": "auto|"
+     },
+     "inRange": {
+      "color": [
+       "chart.seq.0",
+       "chart.seq.1",
+       "chart.seq.2",
+       "chart.seq.3",
+       "chart.seq.4",
+       "chart.seq.5",
+       "chart.seq.6",
+       "chart.seq.7",
+       "chart.seq.8"
+      ]
+     },
+     "itemHeight": 220.0,
+     "itemWidth": 10.0,
+     "left": 36.95,
+     "max": 1232,
+     "min": 90,
+     "orient": "horizontal",
+     "show": true,
+     "textStyle": {
+      "color": "chart.muted",
+      "fontFamily": "$sans",
+      "fontSize": 12
+     },
+     "top": 300.0,
+     "type": "continuous"
+    },
+    "xAxis": {
+     "axisLabel": {
+      "color": "chart.muted",
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "interval": 1,
+      "margin": 8.0,
+      "rotate": 0
+     },
+     "axisLine": {
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": true
+     },
+     "axisTick": {
+      "alignWithLabel": true,
+      "length": 4.0,
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": true
+     },
+     "boundaryGap": true,
+     "data": [
+      "00:00",
+      "01:00",
+      "02:00",
+      "03:00",
+      "04:00",
+      "05:00",
+      "06:00",
+      "07:00",
+      "08:00",
+      "09:00",
+      "10:00",
+      "11:00",
+      "12:00",
+      "13:00",
+      "14:00",
+      "15:00",
+      "16:00",
+      "17:00",
+      "18:00",
+      "19:00",
+      "20:00",
+      "21:00",
+      "22:00",
+      "23:00"
+     ],
+     "position": "bottom",
+     "splitArea": {
+      "show": false
+     },
+     "splitLine": {
+      "lineStyle": {
+       "color": "chart.gridline"
+      },
+      "show": false
+     },
+     "type": "category"
+    },
+    "yAxis": {
+     "axisLabel": {
+      "color": "chart.muted",
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "interval": 0,
+      "margin": 8.0,
+      "rotate": 0
+     },
+     "axisLine": {
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": true
+     },
+     "axisTick": {
+      "alignWithLabel": true,
+      "length": 4.0,
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": true
+     },
+     "boundaryGap": true,
+     "data": [
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri",
+      "Sat",
+      "Sun"
+     ],
+     "inverse": true,
+     "position": "left",
+     "splitArea": {
+      "show": false
+     },
+     "splitLine": {
+      "lineStyle": {
+       "color": "chart.gridline"
+      },
+      "show": false
+     },
+     "type": "category"
+    }
+   },
+   "resolved": {
+    "_source": "load.csv 168 rows",
+    "data": "load.csv",
+    "type": "heatmap",
+    "types": {
+     "hour": "ordinal",
+     "weekday": "ordinal"
+    },
+    "value": "requests",
+    "x": "hour",
+    "y": "weekday"
+   },
+   "role": null,
+   "seq": {},
+   "settings": {
+    "data": "load.csv",
+    "type": "heatmap",
+    "types": {
+     "hour": "ordinal",
+     "weekday": "ordinal"
+    },
+    "value": "requests",
+    "x": "hour",
+    "y": "weekday"
+   },
+   "source": {
+    "columns": [
+     [
+      "hour",
+      "ordinal"
+     ],
+     [
+      "weekday",
+      "ordinal"
+     ],
+     [
+      "requests",
+      "quantitative"
+     ]
+    ],
+    "data": "load.csv",
+    "kept": 168,
+    "rows": 168,
+    "sha256": "f07108bdab93bc45eee01db20c3ce3c3d08462c39a3e21f5fde1e513a79e2f4b"
+   },
+   "spec_asset": "e457d4878864be274031b011457198fa.vl.json",
+   "stats": {
+    "cells": 168,
+    "col": [
+     "14:00",
+     946.0
+    ],
+    "max": [
+     "14:00",
+     "Tue",
+     1232
+    ],
+    "min": [
+     "00:00",
+     "Sat",
+     90
+    ],
+    "row": [
+     "Tue",
+     521.5416666666666
+    ],
+    "x": 24,
+    "y": 7
+   },
+   "stripped": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Requests by weekday and hour",
+   "type": "chart",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 7,
+   "vl": null,
+   "w": 600,
+   "x": 1600,
+   "y": 480,
+   "z": 7
+  },
+  {
+   "alias": "lat",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "chart": {
+    "gl": false,
+    "type": "histogram"
+   },
+   "chart_frame": {
+    "axes": {
+     "x": {
+      "extent": 15,
+      "fmt": "auto|",
+      "kind": "value",
+      "max": 500,
+      "min": 0,
+      "pos": "bottom",
+      "step": 100,
+      "ticks": [
+       {
+        "t": "0",
+        "v": 0,
+        "w": 7.8
+       },
+       {
+        "t": "100",
+        "v": 100,
+        "w": 20.62
+       },
+       {
+        "t": "200",
+        "v": 200,
+        "w": 23.13
+       },
+       {
+        "t": "300",
+        "v": 300,
+        "w": 23.23
+       },
+       {
+        "t": "400",
+        "v": 400,
+        "w": 23.58
+       },
+       {
+        "t": "500",
+        "v": 500,
+        "w": 22.93
+       }
+      ],
+      "title": null
+     },
+     "y": {
+      "fmt": "integer|",
+      "kind": "value",
+      "max": 100,
+      "min": 0,
+      "pos": "left",
+      "step": 50,
+      "ticks": [
+       {
+        "t": "0",
+        "v": 0,
+        "w": 7.8
+       },
+       {
+        "t": "50",
+        "v": 50,
+        "w": 15.13
+       },
+       {
+        "t": "100",
+        "v": 100,
+        "w": 20.62
+       }
+      ],
+      "title": "count"
+     }
+    },
+    "box": [
+     536,
+     288
+    ],
+    "extra": {},
+    "font": 12,
+    "legend": {
+     "box": [
+      505.49,
+      8,
+      30.51,
+      54
+     ],
+     "items": [
+      {
+       "color": "chart.cat.0",
+       "name": "eu",
+       "w": 30.51
+      },
+      {
+       "color": "chart.cat.1",
+       "name": "ap",
+       "w": 30.51
+      },
+      {
+       "color": "chart.cat.2",
+       "name": "us",
+       "w": 29.83
+      }
+     ],
+     "pos": "right",
+     "rows": [
+      [
+       0
+      ],
+      [
+       1
+      ],
+      [
+       2
+      ]
+     ]
+    },
+    "legible": true,
+    "notes": [],
+    "plot": [
+     30.62,
+     26,
+     446.86,
+     237
+    ]
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 8,
+   "data": null,
+   "data_key": "{\"color\":\"region\",\"data\":\"latency.tsv\",\"type\":\"histogram\",\"units\":{\"x\":\"ms\"},\"x\":\"ms\"}",
+   "doc_asset": "ce3e821389c51f67f58da8eaad5f7719.json",
+   "engine": "echarts",
+   "frame": null,
+   "gist": [
+    "x=ms in 20 bins of 20 ms · color=region (3) · latency.tsv 400 rows",
+    "n 400 · mean 157.06 ms · median 147 ms · sd 54.97 ms · skewed right",
+    "range 53 ms…433 ms · mode 140 ms–160 ms (83)"
+   ],
+   "group": null,
+   "h": 340,
+   "id": "E-8",
+   "intent": "how slow are requests",
+   "kv": 2,
+   "model": {
+    "capped": [],
+    "counts": [
+     [
+      1,
+      10,
+      16,
+      28,
+      40,
+      23,
+      6,
+      1,
+      0,
+      0,
+      0,
+      0,
+      1,
+      4,
+      2,
+      1,
+      1,
+      0,
+      0,
+      0
+     ],
+     [
+      0,
+      0,
+      0,
+      1,
+      8,
+      18,
+      24,
+      46,
+      25,
+      6,
+      0,
+      0,
+      0,
+      0,
+      0,
+      2,
+      0,
+      0,
+      2,
+      1
+     ],
+     [
+      1,
+      1,
+      7,
+      15,
+      34,
+      42,
+      23,
+      4,
+      1,
+      0,
+      0,
+      0,
+      0,
+      1,
+      4,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    ],
+    "edges": [
+     40,
+     60,
+     80,
+     100,
+     120,
+     140,
+     160,
+     180,
+     200,
+     220,
+     240,
+     260,
+     280,
+     300,
+     320,
+     340,
+     360,
+     380,
+     400,
+     420,
+     440
+    ],
+    "groups": [
+     "eu",
+     "ap",
+     "us"
+    ],
+    "n": 400
+   },
+   "option": {
+    "animation": false,
+    "aria": {
+     "enabled": true,
+     "label": {
+      "description": "x=ms in 20 bins of 20 ms · color=region (3) · latency.tsv 400 rows n 400 · mean 157.06 ms · median 147 ms · sd 54.97 ms · skewed right range 53 ms…433 ms · mode 140 ms–160 ms (83)"
+     }
+    },
+    "backgroundColor": "transparent",
+    "color": [
+     "chart.cat.0",
+     "chart.cat.1",
+     "chart.cat.2"
+    ],
+    "dataset": {
+     "$doc": "datasets"
+    },
+    "grid": {
+     "containLabel": false,
+     "height": 237.0,
+     "left": 30.62,
+     "top": 26.0,
+     "width": 446.86
+    },
+    "legend": {
+     "data": [
+      "eu",
+      "ap",
+      "us"
+     ],
+     "icon": "roundRect",
+     "itemGap": 8.0,
+     "itemHeight": 10.0,
+     "itemWidth": 10.0,
+     "left": 505.49,
+     "orient": "vertical",
+     "padding": 0,
+     "show": true,
+     "textStyle": {
+      "color": "chart.ink",
+      "fontFamily": "$sans",
+      "fontSize": 12
+     },
+     "top": 12.0
+    },
+    "series": [
+     {
+      "barGap": "-100%",
+      "barWidth": 16.87,
+      "datasetIndex": 0,
+      "encode": {
+       "x": "x",
+       "y": "s0"
+      },
+      "name": "eu",
+      "stack": "bins",
+      "type": "bar"
+     },
+     {
+      "barGap": "-100%",
+      "barWidth": 16.87,
+      "datasetIndex": 0,
+      "encode": {
+       "x": "x",
+       "y": "s1"
+      },
+      "name": "ap",
+      "stack": "bins",
+      "type": "bar"
+     },
+     {
+      "barGap": "-100%",
+      "barWidth": 16.87,
+      "datasetIndex": 0,
+      "encode": {
+       "x": "x",
+       "y": "s2"
+      },
+      "name": "us",
+      "stack": "bins",
+      "type": "bar"
+     }
+    ],
+    "textStyle": {
+     "color": "chart.ink",
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "tooltip": {
+     "confine": true,
+     "renderMode": "richText",
+     "textStyle": {
+      "fontFamily": "$sans",
+      "fontSize": 12
+     },
+     "trigger": "axis"
+    },
+    "xAxis": {
+     "axisLabel": {
+      "color": "chart.muted",
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "formatter": {
+       "$fmt": "auto|"
+      },
+      "margin": 8.0
+     },
+     "axisLine": {
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": true
+     },
+     "axisTick": {
+      "alignWithLabel": true,
+      "length": 4.0,
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": false
+     },
+     "interval": 100.0,
+     "max": 500.0,
+     "min": 0.0,
+     "position": "bottom",
+     "splitLine": {
+      "lineStyle": {
+       "color": "chart.gridline"
+      },
+      "show": true
+     },
+     "type": "value"
+    },
+    "yAxis": {
+     "axisLabel": {
+      "color": "chart.muted",
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "formatter": {
+       "$fmt": "integer|"
+      },
+      "margin": 8.0
+     },
+     "axisLine": {
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": false
+     },
+     "axisTick": {
+      "alignWithLabel": true,
+      "length": 4.0,
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": false
+     },
+     "interval": 50.0,
+     "max": 100.0,
+     "min": 0.0,
+     "name": "count",
+     "nameGap": 4.0,
+     "nameLocation": "end",
+     "nameMoveOverlap": false,
+     "nameTextStyle": {
+      "align": "left",
+      "color": "chart.muted",
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "lineHeight": 15.0,
+      "verticalAlign": "bottom"
+     },
+     "position": "left",
+     "splitLine": {
+      "lineStyle": {
+       "color": "chart.gridline"
+      },
+      "show": true
+     },
+     "type": "value"
+    }
+   },
+   "resolved": {
+    "_source": "latency.tsv 400 rows",
+    "color": "region",
+    "data": "latency.tsv",
+    "type": "histogram",
+    "units": {
+     "x": "ms"
+    },
+    "x": "ms"
+   },
+   "role": null,
+   "seq": {},
+   "settings": {
+    "color": "region",
+    "data": "latency.tsv",
+    "type": "histogram",
+    "units": {
+     "x": "ms"
+    },
+    "x": "ms"
+   },
+   "source": {
+    "columns": [
+     [
+      "region",
+      "nominal"
+     ],
+     [
+      "ms",
+      "quantitative"
+     ]
+    ],
+    "data": "latency.tsv",
+    "kept": 400,
+    "rows": 400,
+    "sha256": "c63fc847ae418a2536a199a06527bbb9daa33039985a0b61d9c35a04082c44ec"
+   },
+   "spec_asset": "65ba0d5d7cb1a68f1fb21c903bf577f1.vl.json",
+   "stats": {
+    "bins": 20,
+    "mode": [
+     140,
+     160,
+     83
+    ],
+    "moments": {
+     "max": 433.0,
+     "mean": 157.055,
+     "median": 147.0,
+     "min": 53.0,
+     "n": 400.0,
+     "sd": 54.965261072899764,
+     "skew": 1.0
+    },
+    "width": 20
+   },
+   "stripped": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Request latency by region",
+   "type": "chart",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 8,
+   "vl": null,
+   "w": 560,
+   "x": 0,
+   "y": 880,
+   "z": 8
+  },
+  {
+   "alias": "spread",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "chart": {
+    "gl": false,
+    "type": "box"
+   },
+   "chart_frame": {
+    "axes": {
+     "x": {
+      "extent": 15,
+      "hidden": 0,
+      "interval": 0,
+      "kind": "category",
+      "labels": [
+       {
+        "t": "eu",
+        "v": 0,
+        "w": 14.51
+       },
+       {
+        "t": "ap",
+        "v": 1,
+        "w": 14.51
+       },
+       {
+        "t": "us",
+        "v": 2,
+        "w": 13.83
+       }
+      ],
+      "pos": "bottom",
+      "rotate": 0,
+      "width": null
+     },
+     "y": {
+      "fmt": "auto|",
+      "kind": "value",
+      "max": 500,
+      "min": 0,
+      "pos": "left",
+      "step": 100,
+      "ticks": [
+       {
+        "t": "0",
+        "v": 0,
+        "w": 7.8
+       },
+       {
+        "t": "100",
+        "v": 100,
+        "w": 20.62
+       },
+       {
+        "t": "200",
+        "v": 200,
+        "w": 23.13
+       },
+       {
+        "t": "300",
+        "v": 300,
+        "w": 23.23
+       },
+       {
+        "t": "400",
+        "v": 400,
+        "w": 23.58
+       },
+       {
+        "t": "500",
+        "v": 500,
+        "w": 22.93
+       }
+      ],
+      "title": "ms"
+     }
+    },
+    "box": [
+     536,
+     308
+    ],
+    "extra": {},
+    "font": 12,
+    "legend": null,
+    "legible": true,
+    "notes": [],
+    "plot": [
+     33.58,
+     26,
+     490.42,
+     255
+    ]
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 9,
+   "data": null,
+   "data_key": "{\"data\":\"latency.tsv\",\"type\":\"box\",\"units\":{\"y\":\"ms\"},\"x\":\"region\",\"y\":\"ms\"}",
+   "doc_asset": "574c72a75992d310434b57e16b56d6af.json",
+   "engine": "echarts",
+   "frame": null,
+   "gist": [
+    "y=ms · x=region (3 groups) · whiskers 1.5iqr · latency.tsv 400 rows",
+    "highest median ap 187 ms · lowest eu 127 ms",
+    "eu: median 127 ms · IQR 34.5 ms · 9 outliers of 134",
+    "ap: median 187 ms · IQR 37 ms · 5 outliers of 133",
+    "us: median 143 ms · IQR 33 ms · 6 outliers of 133"
+   ],
+   "group": null,
+   "h": 360,
+   "id": "E-9",
+   "intent": "which region is slowest",
+   "kv": 2,
+   "model": {
+    "boxes": [
+     {
+      "n": 134,
+      "name": "eu",
+      "out": [
+       293,
+       302,
+       310,
+       311,
+       311,
+       331,
+       339,
+       340,
+       378
+      ],
+      "outs": 9,
+      "q": [
+       55,
+       106.5,
+       127,
+       141,
+       185
+      ]
+     },
+     {
+      "n": 133,
+      "name": "ap",
+      "out": [
+       352,
+       358,
+       405,
+       409,
+       433
+      ],
+      "outs": 5,
+      "q": [
+       111,
+       166,
+       187,
+       203,
+       238
+      ]
+     },
+     {
+      "n": 133,
+      "name": "us",
+      "out": [
+       53,
+       314,
+       323,
+       326,
+       335,
+       339
+      ],
+      "outs": 6,
+      "q": [
+       77,
+       126,
+       143,
+       159,
+       200
+      ]
+     }
+    ],
+    "capped": []
+   },
+   "option": {
+    "animation": false,
+    "aria": {
+     "enabled": true,
+     "label": {
+      "description": "y=ms · x=region (3 groups) · whiskers 1.5iqr · latency.tsv 400 rows highest median ap 187 ms · lowest eu 127 ms eu: median 127 ms · IQR 34.5 ms · 9 outliers of 134 ap: median 187 ms · IQR 37 ms · 5 outliers of 133 us: median 143 ms · IQR 33 ms · 6 outliers of 133"
+     }
+    },
+    "backgroundColor": "transparent",
+    "color": [
+     "chart.cat.0",
+     "chart.cat.1",
+     "chart.cat.2",
+     "chart.cat.3",
+     "chart.cat.4",
+     "chart.cat.5",
+     "chart.cat.6",
+     "chart.cat.7",
+     "chart.cat.8",
+     "chart.cat.9"
+    ],
+    "grid": {
+     "containLabel": false,
+     "height": 255.0,
+     "left": 33.58,
+     "top": 26.0,
+     "width": 490.42
+    },
+    "legend": {
+     "show": false
+    },
+    "series": [
+     {
+      "boxWidth": [
+       60.0,
+       60.0
+      ],
+      "data": {
+       "$doc": "boxes"
+      },
+      "itemStyle": {
+       "borderColor": "chart.ink",
+       "borderWidth": 1,
+       "color": "chart.cat.0",
+       "opacity": 0.85
+      },
+      "name": "ms",
+      "type": "boxplot"
+     },
+     {
+      "data": {
+       "$doc": "outliers"
+      },
+      "encode": {
+       "x": 0,
+       "y": 1
+      },
+      "itemStyle": {
+       "borderColor": "chart.ink",
+       "borderWidth": 1,
+       "color": "chart.paper"
+      },
+      "name": "outliers",
+      "symbolSize": 5,
+      "type": "scatter"
+     }
+    ],
+    "textStyle": {
+     "color": "chart.ink",
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "tooltip": {
+     "confine": true,
+     "renderMode": "richText",
+     "textStyle": {
+      "fontFamily": "$sans",
+      "fontSize": 12
+     },
+     "trigger": "item"
+    },
+    "xAxis": {
+     "axisLabel": {
+      "color": "chart.muted",
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "interval": 0,
+      "margin": 8.0,
+      "rotate": 0
+     },
+     "axisLine": {
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": true
+     },
+     "axisTick": {
+      "alignWithLabel": true,
+      "length": 4.0,
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": true
+     },
+     "boundaryGap": true,
+     "data": [
+      "eu",
+      "ap",
+      "us"
+     ],
+     "position": "bottom",
+     "splitLine": {
+      "lineStyle": {
+       "color": "chart.gridline"
+      },
+      "show": false
+     },
+     "type": "category"
+    },
+    "yAxis": {
+     "axisLabel": {
+      "color": "chart.muted",
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "formatter": {
+       "$fmt": "auto|"
+      },
+      "margin": 8.0
+     },
+     "axisLine": {
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": false
+     },
+     "axisTick": {
+      "alignWithLabel": true,
+      "length": 4.0,
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": false
+     },
+     "interval": 100.0,
+     "max": 500.0,
+     "min": 0.0,
+     "name": "ms",
+     "nameGap": 4.0,
+     "nameLocation": "end",
+     "nameMoveOverlap": false,
+     "nameTextStyle": {
+      "align": "left",
+      "color": "chart.muted",
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "lineHeight": 15.0,
+      "verticalAlign": "bottom"
+     },
+     "position": "left",
+     "splitLine": {
+      "lineStyle": {
+       "color": "chart.gridline"
+      },
+      "show": true
+     },
+     "type": "value"
+    }
+   },
+   "resolved": {
+    "_source": "latency.tsv 400 rows",
+    "data": "latency.tsv",
+    "type": "box",
+    "units": {
+     "y": "ms"
+    },
+    "x": "region",
+    "y": "ms"
+   },
+   "role": null,
+   "seq": {},
+   "settings": {
+    "data": "latency.tsv",
+    "type": "box",
+    "units": {
+     "y": "ms"
+    },
+    "x": "region",
+    "y": "ms"
+   },
+   "source": {
+    "columns": [
+     [
+      "region",
+      "nominal"
+     ],
+     [
+      "ms",
+      "quantitative"
+     ]
+    ],
+    "data": "latency.tsv",
+    "kept": 400,
+    "rows": 400,
+    "sha256": "c63fc847ae418a2536a199a06527bbb9daa33039985a0b61d9c35a04082c44ec"
+   },
+   "spec_asset": "f912ed41ce210366388f6b72b93f3b4f.vl.json",
+   "stats": {
+    "groups": [
+     [
+      "eu",
+      127.0,
+      34.5,
+      9,
+      134
+     ],
+     [
+      "ap",
+      187.0,
+      37.0,
+      5,
+      133
+     ],
+     [
+      "us",
+      143.0,
+      33.0,
+      6,
+      133
+     ]
+    ],
+    "high": [
+     "ap",
+     187.0
+    ],
+    "low": [
+     "eu",
+     127.0
+    ]
+   },
+   "stripped": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Latency spread by region",
+   "type": "chart",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 9,
+   "vl": null,
+   "w": 560,
+   "x": 640,
+   "y": 880,
+   "z": 9
+  },
+  {
+   "alias": "signup",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "chart": {
+    "gl": false,
+    "type": "funnel"
+   },
+   "chart_frame": {
+    "axes": {},
+    "box": [
+     456,
+     288
+    ],
+    "extra": {
+     "band": 67.5
+    },
+    "font": 12,
+    "legend": null,
+    "legible": true,
+    "notes": [],
+    "plot": [
+     0,
+     8,
+     444,
+     276
+    ]
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 10,
+   "data": null,
+   "data_key": "{\"category\":\"stage\",\"rows\":[{\"n\":12000,\"stage\":\"Visit\"},{\"n\":5400,\"stage\":\"Signup form\"},{\"n\":4300,\"stage\":\"Verified\"},{\"n\":2100,\"stage\":\"First project\"}],\"type\":\"funnel\",\"value\":\"n\"}",
+   "doc_asset": "f817a8c2c63ee5e0bf0cde57733fa272.json",
+   "engine": "echarts",
+   "frame": null,
+   "gist": [
+    "category=stage (4 stages) · value=n · inline rows 4 rows",
+    "Visit 12K → Signup form 5,400 → Verified 4,300 → First project 2,100",
+    "conversion: Visit→Signup form 45% · Signup form→Verified 80% · Verified→First project 49%",
+    "biggest drop Visit→Signup form (keeps 45%) · overall 18%"
+   ],
+   "group": null,
+   "h": 340,
+   "id": "E-10",
+   "intent": "where people drop out of signup",
+   "kv": 2,
+   "model": {
+    "capped": [],
+    "how": "none",
+    "stages": [
+     [
+      "Visit",
+      12000
+     ],
+     [
+      "Signup form",
+      5400
+     ],
+     [
+      "Verified",
+      4300
+     ],
+     [
+      "First project",
+      2100
+     ]
+    ]
+   },
+   "option": {
+    "animation": false,
+    "aria": {
+     "enabled": true,
+     "label": {
+      "description": "category=stage (4 stages) · value=n · inline rows 4 rows Visit 12K → Signup form 5,400 → Verified 4,300 → First project 2,100 conversion: Visit→Signup form 45% · Signup form→Verified 80% · Verified→First project 49% biggest drop Visit→Signup form (keeps 45%) · overall 18%"
+     }
+    },
+    "backgroundColor": "transparent",
+    "color": [
+     "chart.cat.0",
+     "chart.cat.1",
+     "chart.cat.2",
+     "chart.cat.3"
+    ],
+    "legend": {
+     "show": false
+    },
+    "series": [
+     {
+      "color": [
+       "chart.cat.0",
+       "chart.cat.1",
+       "chart.cat.2",
+       "chart.cat.3"
+      ],
+      "data": {
+       "$doc": "stages"
+      },
+      "gap": 2.0,
+      "height": 276.0,
+      "itemStyle": {
+       "borderWidth": 0
+      },
+      "label": {
+       "fontFamily": "$sans",
+       "fontSize": 12,
+       "fontWeight": 600,
+       "position": "inside",
+       "show": true
+      },
+      "labelLine": {
+       "show": false
+      },
+      "left": 0.0,
+      "maxSize": "100%",
+      "minSize": "17.5%",
+      "name": "stage",
+      "orient": "vertical",
+      "sort": "none",
+      "top": 8.0,
+      "type": "funnel",
+      "width": 444.0
+     }
+    ],
+    "textStyle": {
+     "color": "chart.ink",
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "tooltip": {
+     "confine": true,
+     "renderMode": "richText",
+     "textStyle": {
+      "fontFamily": "$sans",
+      "fontSize": 12
+     },
+     "trigger": "item"
+    }
+   },
+   "resolved": {
+    "_source": "inline rows 4 rows",
+    "category": "stage",
+    "type": "funnel",
+    "value": "n"
+   },
+   "role": null,
+   "seq": {},
+   "settings": {
+    "category": "stage",
+    "rows": [
+     {
+      "n": 12000,
+      "stage": "Visit"
+     },
+     {
+      "n": 5400,
+      "stage": "Signup form"
+     },
+     {
+      "n": 4300,
+      "stage": "Verified"
+     },
+     {
+      "n": 2100,
+      "stage": "First project"
+     }
+    ],
+    "type": "funnel",
+    "value": "n"
+   },
+   "source": {
+    "columns": [
+     [
+      "stage",
+      "nominal"
+     ],
+     [
+      "n",
+      "quantitative"
+     ]
+    ],
+    "data": null,
+    "kept": 4,
+    "rows": 4,
+    "sha256": "028e3f4869dd3a01b17f01d386d9e8210d2bc2c81ac020719282eeb68d2eaeb9"
+   },
+   "spec_asset": "77139279bae2173bd8df9ba6c6de7b02.vl.json",
+   "stats": {
+    "drop": [
+     "Visit",
+     "Signup form",
+     0.45,
+     -6600.0
+    ],
+    "overall": 0.175,
+    "stages": 4,
+    "steps": [
+     [
+      "Visit",
+      "Signup form",
+      0.45,
+      -6600.0
+     ],
+     [
+      "Signup form",
+      "Verified",
+      0.7962962962962963,
+      -1100.0
+     ],
+     [
+      "Verified",
+      "First project",
+      0.4883720930232558,
+      -2200.0
+     ]
+    ]
+   },
+   "stripped": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Signup funnel",
+   "type": "chart",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "vl": null,
+   "w": 480,
+   "x": 1280,
+   "y": 880,
+   "z": 10
+  },
+  {
+   "alias": "cloud",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "chart": {
+    "gl": false,
+    "type": "treemap"
+   },
+   "chart_frame": {
+    "axes": {},
+    "box": [
+     536,
+     328
+    ],
+    "extra": {},
+    "font": 12,
+    "legend": null,
+    "legible": true,
+    "notes": [],
+    "plot": [
+     0,
+     8,
+     524,
+     316
+    ]
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 11,
+   "data": null,
+   "data_key": "{\"path\":[\"team\",\"service\"],\"rows\":[{\"service\":\"Warehouse\",\"team\":\"Data\",\"usd\":4200},{\"service\":\"Pipelines\",\"team\":\"Data\",\"usd\":1800},{\"service\":\"CDN\",\"team\":\"Web\",\"usd\":1300},{\"service\":\"Compute\",\"team\":\"Web\",\"usd\":2600},{\"service\":\"GPUs\",\"team\":\"ML\",\"usd\":5100},{\"service\":\"Storage\",\"team\":\"ML\",\"usd\":700}],\"type\":\"treemap\",\"units\":{\"value\":\"$\"},\"value\":\"usd\"}",
+   "doc_asset": "95aee11530b9f83fff930230b8605209.json",
+   "engine": "echarts",
+   "frame": null,
+   "gist": [
+    "path=team / service · value=usd · 6 leaves · inline rows 6 rows",
+    "largest: ML / GPUs $5,100 (32%) · Data / Warehouse $4,200 (27%) · Web / Compute $2,600 (17%)",
+    "team: Data 38% · ML 37% · Web 25%",
+    "total $15.7K"
+   ],
+   "group": null,
+   "h": 380,
+   "id": "E-11",
+   "intent": "where the cloud bill goes",
+   "kv": 2,
+   "model": {
+    "capped": [],
+    "leaves": 6,
+    "tree": [
+     {
+      "children": [
+       {
+        "name": "Warehouse",
+        "value": 4200
+       },
+       {
+        "name": "Pipelines",
+        "value": 1800
+       }
+      ],
+      "name": "Data",
+      "value": 6000
+     },
+     {
+      "children": [
+       {
+        "name": "GPUs",
+        "value": 5100
+       },
+       {
+        "name": "Storage",
+        "value": 700
+       }
+      ],
+      "name": "ML",
+      "value": 5800
+     },
+     {
+      "children": [
+       {
+        "name": "Compute",
+        "value": 2600
+       },
+       {
+        "name": "CDN",
+        "value": 1300
+       }
+      ],
+      "name": "Web",
+      "value": 3900
+     }
+    ]
+   },
+   "option": {
+    "animation": false,
+    "aria": {
+     "enabled": true,
+     "label": {
+      "description": "path=team / service · value=usd · 6 leaves · inline rows 6 rows largest: ML / GPUs $5,100 (32%) · Data / Warehouse $4,200 (27%) · Web / Compute $2,600 (17%) team: Data 38% · ML 37% · Web 25% total $15.7K"
+     }
+    },
+    "backgroundColor": "transparent",
+    "color": [
+     "chart.cat.0",
+     "chart.cat.1",
+     "chart.cat.2",
+     "chart.cat.3",
+     "chart.cat.4",
+     "chart.cat.5",
+     "chart.cat.6",
+     "chart.cat.7",
+     "chart.cat.8",
+     "chart.cat.9"
+    ],
+    "legend": {
+     "show": false
+    },
+    "series": [
+     {
+      "breadcrumb": {
+       "show": false
+      },
+      "data": {
+       "$doc": "tree"
+      },
+      "height": 316.0,
+      "label": {
+       "fontFamily": "$sans",
+       "fontSize": 12,
+       "fontWeight": 600,
+       "position": "insideTopLeft",
+       "show": true
+      },
+      "left": 0.0,
+      "levels": [
+       {
+        "color": [
+         "chart.cat.0",
+         "chart.cat.1",
+         "chart.cat.2"
+        ],
+        "colorMappingBy": "index",
+        "itemStyle": {
+         "borderColor": "chart.paper",
+         "borderWidth": 1,
+         "gapWidth": 2.0
+        }
+       },
+       {
+        "itemStyle": {
+         "borderColor": "chart.paper",
+         "borderWidth": 1,
+         "gapWidth": 1
+        },
+        "upperLabel": {
+         "color": "chart.ink",
+         "height": 18.0,
+         "show": true
+        }
+       },
+       {
+        "itemStyle": {
+         "borderColor": "chart.paper",
+         "borderWidth": 1,
+         "gapWidth": 1
+        }
+       }
+      ],
+      "name": "team / service",
+      "nodeClick": false,
+      "roam": false,
+      "squareRatio": 1.618034,
+      "top": 8.0,
+      "type": "treemap",
+      "upperLabel": {
+       "color": "chart.ink",
+       "fontFamily": "$sans",
+       "height": 18.0,
+       "show": true
+      },
+      "width": 524.0
+     }
+    ],
+    "textStyle": {
+     "color": "chart.ink",
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "tooltip": {
+     "confine": true,
+     "renderMode": "richText",
+     "textStyle": {
+      "fontFamily": "$sans",
+      "fontSize": 12
+     },
+     "trigger": "item"
+    }
+   },
+   "resolved": {
+    "_source": "inline rows 6 rows",
+    "path": [
+     "team",
+     "service"
+    ],
+    "type": "treemap",
+    "units": {
+     "value": "$"
+    },
+    "value": "usd"
+   },
+   "role": null,
+   "seq": {},
+   "settings": {
+    "path": [
+     "team",
+     "service"
+    ],
+    "rows": [
+     {
+      "service": "Warehouse",
+      "team": "Data",
+      "usd": 4200
+     },
+     {
+      "service": "Pipelines",
+      "team": "Data",
+      "usd": 1800
+     },
+     {
+      "service": "CDN",
+      "team": "Web",
+      "usd": 1300
+     },
+     {
+      "service": "Compute",
+      "team": "Web",
+      "usd": 2600
+     },
+     {
+      "service": "GPUs",
+      "team": "ML",
+      "usd": 5100
+     },
+     {
+      "service": "Storage",
+      "team": "ML",
+      "usd": 700
+     }
+    ],
+    "type": "treemap",
+    "units": {
+     "value": "$"
+    },
+    "value": "usd"
+   },
+   "source": {
+    "columns": [
+     [
+      "team",
+      "nominal"
+     ],
+     [
+      "service",
+      "nominal"
+     ],
+     [
+      "usd",
+      "quantitative"
+     ]
+    ],
+    "data": null,
+    "kept": 6,
+    "rows": 6,
+    "sha256": "efb6c97a355e4fa0bec9c46d72ddf05682c855367ac004075b60fa5ad2dcb2b6"
+   },
+   "spec_asset": "85e483021acf7ed55145bd2eb1408853.vl.json",
+   "stats": {
+    "groups": 3,
+    "shares": [
+     [
+      "Data",
+      0.3821656050955414
+     ],
+     [
+      "ML",
+      0.36942675159235666
+     ],
+     [
+      "Web",
+      0.2484076433121019
+     ]
+    ],
+    "top": [
+     [
+      "ML / GPUs",
+      5100.0,
+      0.3248407643312102
+     ],
+     [
+      "Data / Warehouse",
+      4200.0,
+      0.267515923566879
+     ],
+     [
+      "Web / Compute",
+      2600.0,
+      0.16560509554140126
+     ]
+    ],
+    "total": 15700.0
+   },
+   "stripped": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Cloud spend by team and service",
+   "type": "chart",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 11,
+   "vl": null,
+   "w": 560,
+   "x": 1840,
+   "y": 880,
+   "z": 11
+  },
+  {
+   "alias": "flows",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "chart": {
+    "gl": false,
+    "type": "sankey"
+   },
+   "chart_frame": {
+    "axes": {},
+    "box": [
+     576,
+     308
+    ],
+    "extra": {},
+    "font": 12,
+    "legend": null,
+    "legible": true,
+    "notes": [],
+    "plot": [
+     0,
+     8,
+     564,
+     296
+    ]
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 12,
+   "data": null,
+   "data_key": "{\"rows\":[{\"from\":\"Search\",\"n\":5400,\"to\":\"Signup\"},{\"from\":\"Ads\",\"n\":2100,\"to\":\"Signup\"},{\"from\":\"Signup\",\"n\":4300,\"to\":\"Active\"},{\"from\":\"Signup\",\"n\":3200,\"to\":\"Churned\"}],\"source\":\"from\",\"target\":\"to\",\"type\":\"sankey\",\"value\":\"n\"}",
+   "doc_asset": "bceb6442029f86c5d8ee0fcb6f3033bf.json",
+   "engine": "echarts",
+   "frame": null,
+   "gist": [
+    "from → to · value=n · 5 nodes in 3 columns, 4 flows · inline rows 4 rows",
+    "largest: Search → Signup 5,400 · Signup → Active 4,300 · Signup → Churned 3,200",
+    "out of: Signup 7,500 · Search 5,400 · Ads 2,100",
+    "ends: Active 4,300 · Churned 3,200"
+   ],
+   "group": null,
+   "h": 360,
+   "id": "E-12",
+   "intent": "where signups come from and go",
+   "kv": 2,
+   "model": {
+    "capped": [],
+    "links": [
+     [
+      "Search",
+      "Signup",
+      5400
+     ],
+     [
+      "Signup",
+      "Active",
+      4300
+     ],
+     [
+      "Signup",
+      "Churned",
+      3200
+     ],
+     [
+      "Ads",
+      "Signup",
+      2100
+     ]
+    ],
+    "nodes": [
+     {
+      "depth": 0,
+      "name": "Search",
+      "value": 5400
+     },
+     {
+      "depth": 0,
+      "name": "Ads",
+      "value": 2100
+     },
+     {
+      "depth": 1,
+      "name": "Signup",
+      "value": 7500
+     },
+     {
+      "depth": 2,
+      "name": "Active",
+      "value": 4300
+     },
+     {
+      "depth": 2,
+      "name": "Churned",
+      "value": 3200
+     }
+    ]
+   },
+   "option": {
+    "animation": false,
+    "aria": {
+     "enabled": true,
+     "label": {
+      "description": "from → to · value=n · 5 nodes in 3 columns, 4 flows · inline rows 4 rows largest: Search → Signup 5,400 · Signup → Active 4,300 · Signup → Churned 3,200 out of: Signup 7,500 · Search 5,400 · Ads 2,100 ends: Active 4,300 · Churned 3,200"
+     }
+    },
+    "backgroundColor": "transparent",
+    "color": [
+     "chart.cat.0",
+     "chart.cat.1",
+     "chart.cat.2",
+     "chart.cat.3",
+     "chart.cat.4",
+     "chart.cat.5",
+     "chart.cat.6",
+     "chart.cat.7",
+     "chart.cat.8",
+     "chart.cat.9"
+    ],
+    "legend": {
+     "show": false
+    },
+    "series": [
+     {
+      "data": [
+       {
+        "depth": 0,
+        "itemStyle": {
+         "color": "chart.cat.0"
+        },
+        "name": "Search"
+       },
+       {
+        "depth": 0,
+        "itemStyle": {
+         "color": "chart.cat.1"
+        },
+        "name": "Ads"
+       },
+       {
+        "depth": 1,
+        "itemStyle": {
+         "color": "chart.cat.2"
+        },
+        "name": "Signup"
+       },
+       {
+        "depth": 2,
+        "itemStyle": {
+         "color": "chart.cat.3"
+        },
+        "name": "Active"
+       },
+       {
+        "depth": 2,
+        "itemStyle": {
+         "color": "chart.cat.4"
+        },
+        "name": "Churned"
+       }
+      ],
+      "draggable": false,
+      "height": 296.0,
+      "label": {
+       "color": "chart.ink",
+       "fontFamily": "$sans",
+       "fontSize": 12,
+       "position": "right",
+       "show": true
+      },
+      "layoutIterations": 0,
+      "left": 0.0,
+      "lineStyle": {
+       "color": "source",
+       "curveness": 0.5,
+       "opacity": 0.35
+      },
+      "links": {
+       "$doc": "links"
+      },
+      "nodeAlign": "justify",
+      "nodeGap": 10.0,
+      "nodeWidth": 12.0,
+      "orient": "horizontal",
+      "top": 8.0,
+      "type": "sankey",
+      "width": 454.0
+     }
+    ],
+    "textStyle": {
+     "color": "chart.ink",
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "tooltip": {
+     "confine": true,
+     "renderMode": "richText",
+     "textStyle": {
+      "fontFamily": "$sans",
+      "fontSize": 12
+     },
+     "trigger": "item"
+    }
+   },
+   "resolved": {
+    "_source": "inline rows 4 rows",
+    "source": "from",
+    "target": "to",
+    "type": "sankey",
+    "value": "n"
+   },
+   "role": null,
+   "seq": {},
+   "settings": {
+    "rows": [
+     {
+      "from": "Search",
+      "n": 5400,
+      "to": "Signup"
+     },
+     {
+      "from": "Ads",
+      "n": 2100,
+      "to": "Signup"
+     },
+     {
+      "from": "Signup",
+      "n": 4300,
+      "to": "Active"
+     },
+     {
+      "from": "Signup",
+      "n": 3200,
+      "to": "Churned"
+     }
+    ],
+    "source": "from",
+    "target": "to",
+    "type": "sankey",
+    "value": "n"
+   },
+   "source": {
+    "columns": [
+     [
+      "from",
+      "nominal"
+     ],
+     [
+      "to",
+      "nominal"
+     ],
+     [
+      "n",
+      "quantitative"
+     ]
+    ],
+    "data": null,
+    "kept": 4,
+    "rows": 4,
+    "sha256": "6e2fdbcdfc774448a25cca991f7f1dabf4bae4d6a1f87346451509c898b3117b"
+   },
+   "spec_asset": "a634e16c810d97f2100067de27ea03be.vl.json",
+   "stats": {
+    "columns": 3,
+    "flows": [
+     [
+      "Search",
+      "Signup",
+      5400
+     ],
+     [
+      "Signup",
+      "Active",
+      4300
+     ],
+     [
+      "Signup",
+      "Churned",
+      3200
+     ]
+    ],
+    "links": 4,
+    "nodes": 5,
+    "sinks": [
+     [
+      "Active",
+      4300.0
+     ],
+     [
+      "Churned",
+      3200.0
+     ]
+    ],
+    "sources": [
+     [
+      "Signup",
+      7500.0
+     ],
+     [
+      "Search",
+      5400.0
+     ],
+     [
+      "Ads",
+      2100.0
+     ]
+    ]
+   },
+   "stripped": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Signup flows",
+   "type": "chart",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 12,
+   "vl": null,
+   "w": 600,
+   "x": 0,
+   "y": 1300,
+   "z": 12
+  },
+  {
+   "alias": "top",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "chart": {
+    "gl": false,
+    "type": "bar"
+   },
+   "chart_frame": {
+    "axes": {
+     "x": {
+      "extent": 35.08,
+      "hidden": 0,
+      "interval": 0,
+      "kind": "category",
+      "labels": [
+       {
+        "t": "EMEA",
+        "v": 0,
+        "w": 34.55
+       },
+       {
+        "t": "AMER",
+        "v": 1,
+        "w": 35.08
+       },
+       {
+        "t": "APAC",
+        "v": 2,
+        "w": 33.98
+       }
+      ],
+      "pos": "left",
+      "rotate": 0,
+      "title": "sum(revenue)",
+      "width": null
+     },
+     "y": {
+      "extent": 15,
+      "fmt": "compact|$",
+      "kind": "value",
+      "max": 50000000,
+      "min": 0,
+      "pos": "bottom",
+      "step": 10000000,
+      "ticks": [
+       {
+        "t": "$0",
+        "v": 0,
+        "w": 15.73
+       },
+       {
+        "t": "$10M",
+        "v": 10000000,
+        "w": 31.92
+       },
+       {
+        "t": "$20M",
+        "v": 20000000,
+        "w": 34.43
+       },
+       {
+        "t": "$30M",
+        "v": 30000000,
+        "w": 34.53
+       },
+       {
+        "t": "$40M",
+        "v": 40000000,
+        "w": 34.88
+       },
+       {
+        "t": "$50M",
+        "v": 50000000,
+        "w": 34.23
+       }
+      ],
+      "title": null
+     }
+    },
+    "box": [
+     616,
+     348
+    ],
+    "extra": {},
+    "font": 12,
+    "legend": null,
+    "legible": true,
+    "notes": [],
+    "plot": [
+     45.08,
+     26,
+     558.92,
+     297
+    ]
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 13,
+   "data": null,
+   "data_key": "{\"data\":\"rev.csv\",\"format\":{\"y\":\"compact\"},\"type\":\"bar\",\"units\":{\"y\":\"$\"},\"x\":\"region\",\"y\":\"revenue\"}",
+   "doc_asset": "a54b8c33b0eb58ed69617c6975d64cb4.json",
+   "engine": "echarts",
+   "frame": null,
+   "gist": [
+    "x=region (3) · y=sum(revenue) · rev.csv 36 rows",
+    "max EMEA $43.8M · min APAC $7.3M · total $79.5M",
+    "top: EMEA $43.8M · AMER $28.3M · APAC $7.3M"
+   ],
+   "group": null,
+   "h": 400,
+   "id": "E-13",
+   "intent": "the biggest regions only",
+   "kv": 2,
+   "model": {
+    "capped": [],
+    "cats": [
+     "EMEA",
+     "AMER",
+     "APAC"
+    ],
+    "how": "sum",
+    "keys": [
+     "EMEA",
+     "AMER",
+     "APAC"
+    ],
+    "order": "sort",
+    "series": [
+     {
+      "name": "revenue",
+      "values": [
+       43815000,
+       28342000,
+       7300000
+      ]
+     }
+    ]
+   },
+   "option": {
+    "animation": false,
+    "aria": {
+     "enabled": true,
+     "label": {
+      "description": "x=region (3) · y=sum(revenue) · rev.csv 36 rows max EMEA $43.8M · min APAC $7.3M · total $79.5M top: EMEA $43.8M · AMER $28.3M · APAC $7.3M"
+     }
+    },
+    "backgroundColor": "transparent",
+    "color": [
+     "chart.cat.0"
+    ],
+    "dataset": {
+     "$doc": "datasets"
+    },
+    "grid": {
+     "containLabel": false,
+     "height": 297.0,
+     "left": 45.08,
+     "top": 26.0,
+     "width": 558.92
+    },
+    "legend": {
+     "show": false
+    },
+    "series": [
+     {
+      "barCategoryGap": "20%",
+      "barGap": "0%",
+      "color": [
+       "chart.highlight",
+       "chart.dim",
+       "chart.dim"
+      ],
+      "colorBy": "data",
+      "datasetIndex": 0,
+      "encode": {
+       "x": "s0",
+       "y": "x"
+      },
+      "itemStyle": {
+       "borderRadius": 2
+      },
+      "label": {
+       "color": "chart.ink",
+       "fontFamily": "$sans",
+       "fontSize": 12,
+       "formatter": {
+        "$fmt": "compact|$"
+       },
+       "position": "right",
+       "show": true
+      },
+      "name": "revenue",
+      "type": "bar"
+     }
+    ],
+    "textStyle": {
+     "color": "chart.ink",
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "tooltip": {
+     "confine": true,
+     "renderMode": "richText",
+     "textStyle": {
+      "fontFamily": "$sans",
+      "fontSize": 12
+     },
+     "trigger": "axis"
+    },
+    "xAxis": {
+     "axisLabel": {
+      "color": "chart.muted",
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "formatter": {
+       "$fmt": "compact|$"
+      },
+      "margin": 8.0
+     },
+     "axisLine": {
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": true
+     },
+     "axisTick": {
+      "alignWithLabel": true,
+      "length": 4.0,
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": false
+     },
+     "interval": 10000000.0,
+     "max": 50000000.0,
+     "min": 0.0,
+     "position": "bottom",
+     "splitLine": {
+      "lineStyle": {
+       "color": "chart.gridline"
+      },
+      "show": true
+     },
+     "type": "value"
+    },
+    "yAxis": {
+     "axisLabel": {
+      "color": "chart.muted",
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "interval": 0,
+      "margin": 8.0,
+      "rotate": 0
+     },
+     "axisLine": {
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": true
+     },
+     "axisTick": {
+      "alignWithLabel": true,
+      "length": 4.0,
+      "lineStyle": {
+       "color": "chart.axis"
+      },
+      "show": true
+     },
+     "boundaryGap": true,
+     "inverse": true,
+     "name": "sum(revenue)",
+     "nameGap": 4.0,
+     "nameLocation": "start",
+     "nameMoveOverlap": false,
+     "nameTextStyle": {
+      "align": "left",
+      "color": "chart.muted",
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "lineHeight": 15.0,
+      "verticalAlign": "bottom"
+     },
+     "position": "left",
+     "splitLine": {
+      "lineStyle": {
+       "color": "chart.gridline"
+      },
+      "show": false
+     },
+     "type": "category"
+    }
+   },
+   "resolved": {
+    "_source": "rev.csv 36 rows",
+    "data": "rev.csv",
+    "format": {
+     "y": "compact"
+    },
+    "highlight": [
+     "EMEA"
+    ],
+    "horizontal": true,
+    "stack": false,
+    "type": "bar",
+    "units": {
+     "y": "$"
+    },
+    "x": "region",
+    "y": "revenue"
+   },
+   "role": null,
+   "seq": {},
+   "settings": {
+    "data": "rev.csv",
+    "format": {
+     "y": "compact"
+    },
+    "highlight": [
+     "EMEA"
+    ],
+    "horizontal": true,
+    "type": "bar",
+    "units": {
+     "y": "$"
+    },
+    "x": "region",
+    "y": "revenue"
+   },
+   "source": {
+    "columns": [
+     [
+      "month",
+      "temporal"
+     ],
+     [
+      "region",
+      "nominal"
+     ],
+     [
+      "revenue",
+      "quantitative"
+     ]
+    ],
+    "data": "rev.csv",
+    "kept": 36,
+    "rows": 36,
+    "sha256": "9551f115062d4c44aeb8acfdedc789471d9acd7e0b220b4f48691ed0e142512e"
+   },
+   "spec_asset": "f2aab0f1b991cf161d4dc3cec8c17c5f.vl.json",
+   "stats": {
+    "max": [
+     "revenue",
+     "EMEA",
+     43815000
+    ],
+    "min": [
+     "revenue",
+     "APAC",
+     7300000
+    ],
+    "n_cats": 3,
+    "n_series": 1,
+    "top": [
+     [
+      "EMEA",
+      43815000.0
+     ],
+     [
+      "AMER",
+      28342000.0
+     ],
+     [
+      "APAC",
+      7300000.0
+     ]
+    ],
+    "total": 79457000.0
+   },
+   "stripped": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Revenue, EMEA highlighted",
+   "type": "chart",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 13,
+   "vl": null,
+   "w": 640,
+   "x": 680,
+   "y": 1300,
+   "z": 13
+  }
+ ],
+ "homes": {
+  "qa-drawer": [
+   0,
+   -1000,
+   800,
+   -400
+  ]
+ },
+ "legend": [],
+ "locks": [],
+ "team": "qa",
+ "updated_at": "2026-01-01T00:00:00.000Z",
+ "v": 1,
+ "version": 13
+}

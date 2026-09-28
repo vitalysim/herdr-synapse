@@ -1,0 +1,11 @@
+{
+ "about": "an SVG passed off as a texture",
+ "source": "gltf",
+ "texture": {
+  "bytes": "<svg xmlns='http://www.w3.org/2000/svg'/>"
+ },
+ "expect": {
+  "code": "op_invalid",
+  "contains": "is not PNG, JPEG or WebP"
+ }
+}

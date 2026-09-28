@@ -64,7 +64,12 @@ Primitive = Dict[str, Any]
 Env = Dict[str, Any]
 
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}\Z")
-_REF = re.compile(r"^(base\.[a-z_]+|tone\.[a-z]+\.[a-z_]+|chip\.([0-9]+|human)\.(bg|fg))\Z")
+#: A paint reference (1.4): ``base.*``, ``tone.*``, ``chip.*``, and since phases 3 and 4 a chart's (``chart.paper``,
+#: ``chart.cat.3``) and a 3D material's (``mat.info.top``).
+_REF = re.compile(r"^(base\.[a-z_]+|tone\.[a-z]+\.[a-z_]+|chip\.([0-9]+|human)\.(bg|fg)|chart\.[a-z_]+(\.[0-9]+)?|mat\.[a-z]+\.[a-z_]+)\Z")
+#: A slot's ``ref.doc``: an asset the page fetches (a chart's datasets, a glTF model).
+_DOC_ASSET = re.compile(r"^[0-9a-f]{32}\.(json|glb)\Z")
+_STILL = re.compile(r"^E-[1-9][0-9]*-v[0-9]+(-[a-z]{1,12})?\.png\Z")
 _PATH_D = re.compile(r"^[MLCQZ0-9eE.,+\- ]*\Z")
 _ID_NUMBER = re.compile(r"^[A-Z]-([0-9]+)\Z")
 
@@ -880,9 +885,35 @@ def _check_prim(prim: Any, where: str, palettes: Mapping[str, Mapping[str, str]]
         src = prim.get("src")
         if not isinstance(src, dict) or not (isinstance(src.get("asset"), str) or isinstance(src.get("still"), str)):
             out.append("{}: image src is {{asset}} or {{still}}".format(where))
+    if kind == "slot":
+        _check_slot(prim, where, out)
     for key in ("items", "fallback"):
         for index, child in enumerate(prim.get(key) or []):
             _check_prim(child, "{}.{}[{}]".format(where, key, index), palettes, out)
+
+
+def _check_slot(prim: Mapping[str, Any], where: str, out: List[str]) -> None:
+    """A slot's phases 3 and 4 fields (1.4), each optional: ``ref.doc``, ``views``, ``drawn`` and ``gl``."""
+    ref = prim.get("ref")
+    if not isinstance(ref, dict) or not isinstance(ref.get("id"), str) or not isinstance(ref.get("v"), int) or isinstance(ref.get("v"), bool):
+        out.append("{}: a slot ref is {{id, v}}".format(where))
+    elif "doc" in ref and not (isinstance(ref["doc"], str) and _DOC_ASSET.match(ref["doc"])):
+        out.append("{}: ref.doc is an asset name (<32 hex>.json or .glb)".format(where))
+    still = prim.get("still")
+    if still is not None and not (isinstance(still, str) and _STILL.match(still)):
+        out.append("{}: still is a still name or null".format(where))
+    if "views" in prim:
+        views = prim["views"]
+        if not isinstance(views, dict) or not views or any(not isinstance(k, str) or not re.match(r"^[a-z]{0,12}\Z", k) for k in views) or \
+                any(v is not None and not (isinstance(v, str) and _STILL.match(v)) for v in views.values()):
+            out.append("{}: views maps each view to a still name or null".format(where))
+        elif still is not None and still not in views.values():
+            out.append("{}: still is the primary view's still".format(where))
+    for flag in ("drawn", "gl"):
+        if flag in prim and prim[flag] is not True:
+            out.append("{}: {} is true when present".format(where, flag))
+    if prim.get("drawn") is True and not prim.get("fallback"):
+        out.append("{}: a drawn slot has its drawing in fallback".format(where))
 
 
 def _lod_ok(value: Any) -> bool:

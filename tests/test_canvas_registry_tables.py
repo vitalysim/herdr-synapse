@@ -105,9 +105,10 @@ class DerivedTables(unittest.TestCase):
         # Phase 0's ops take exactly the fields they took.
         for name, fields in PHASE0_FIELDS.items():
             with self.subTest(phase0=name):
-                # Every field it took; phase 2 may add fields to the graph (groups, same_rank, order, route).
+                # Every field it took; phase 2 may add fields to the graph (groups, same_rank, order, route), phase 3 the
+                # chart types' fields to the chart (its spec, data, title, w and h stay).
                 self.assertLessEqual(set(fields), set(C._FIELDS[name]), name)
-                if name != "graph":
+                if name not in ("graph", "chart"):
                     self.assertEqual(C._FIELDS[name], fields)
         self.assertEqual(C._FIELDS["refit"], _COMMON + ("id", "ids"))
         self.assertEqual(C._FIELDS["patch"], _COMMON + ("id", "add", "update", "remove", "set", "relayout"))
@@ -161,7 +162,7 @@ class DerivedTables(unittest.TestCase):
         self.assertLessEqual(owners, set(found))
 
     def test_the_page_tables(self):
-        self.assertEqual(R.API_VERSION, 3)
+        self.assertEqual(R.API_VERSION, 4)
         self.assertEqual(R.names(page_only=True), list(PHASE0_ELEMENT_TYPES), "the 15 kinds the v1 page draws (D8): frozen")
         self.assertLessEqual({"chart", "mermaid", "viz"}, set(R.slots()))
         for slot in R.slots():

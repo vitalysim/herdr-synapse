@@ -320,7 +320,8 @@ def comparable(spec: Mapping[str, Any]) -> Dict[str, Any]:
 class BlockCtx:
     """``canvas_kinds.sdk.BlockContext`` over one batch: builds or reconciles a block's root and members."""
 
-    def __init__(self, ctx: Any, kind: _kinds.Kind, op: Mapping[str, Any], root: Optional[Element], prepared: Any = None) -> None:
+    def __init__(self, ctx: Any, kind: _kinds.Kind, op: Mapping[str, Any], root: Optional[Element], prepared: Any = None,
+                 loaded: Any = None) -> None:
         self._c = ctx
         self.ctx = C._KindCtx(ctx)
         self.op = op
@@ -328,17 +329,39 @@ class BlockCtx:
         self._kind = kind
         self.root = root
         self.prepared = prepared
+        self._loaded = loaded
         self.alias: Optional[str] = root.get("alias") if root is not None else None
         self._before = by_part(members_of(ctx, root["id"]), root["id"]) if root is not None else {}
         self._seq: Dict[str, int] = dict(root.get("seq") or {}) if root is not None else {}
         self.kept: Set[str] = set()
         self.created: List[str] = []
+        #: The members this build made, by part: an edge finds its new ends here instead of scanning the canvas.
+        self._made: Dict[str, Element] = {}
         self.provisional: Optional[Tuple[float, float]] = None
+
+    # loading (phases 3 and 4, 1.2) ----------------------------------------
+    @property
+    def loaded(self) -> Any:
+        """``Block.load``'s result for this op, or None; a refusal it raised is raised here."""
+        found = self._loaded
+        if isinstance(found, LoadFailure):
+            raise found.error
+        return found
+
+    def store_asset(self, data: bytes, kind: str) -> str:
+        return C._stage_asset(self._c, data, kind)
+
+    def fetch(self, op: Mapping[str, Any]) -> Any:
+        load_hook = self._kind.block.load
+        if load_hook is None:
+            return None
+        ctx = self._c
+        return load_hook(op, C._FetchIO(ctx.layout, ctx.team, ctx.doc))
 
     # the root ------------------------------------------------------------
     def root_fields(self, *, x: Optional[float] = None, y: Optional[float] = None, w: Optional[float] = None, h: Optional[float] = None,
                     text: Optional[str] = None, style: Optional[Dict[str, Any]] = None, settings: Optional[Dict[str, Any]] = None,
-                    **fields: Any) -> Element:
+                    replace_settings: bool = False, **fields: Any) -> Element:
         ctx = self._c
         if self.root is None:
             kind = self._kind
@@ -364,7 +387,7 @@ class BlockCtx:
         if style is not None:
             update["style"] = style
         if settings is not None:
-            update["settings"] = dict(settings_of(self.root), **settings)
+            update["settings"] = dict(settings) if replace_settings else dict(settings_of(self.root), **settings)
         update["seq"] = dict(self._seq)
         self.root = ctx.update(ctx.el(self.root["id"]) or self.root, **update)
         return self.root
@@ -432,6 +455,7 @@ class BlockCtx:
             el["fit"] = {"policy": "hug", "min": [C._round(minimum[0]), C._round(minimum[1])]}
         ctx.put(el)
         self.created.append(el["id"])
+        self._made[part] = el
         return el
 
     def edge(self, part: str, a: str, b: str, *, label: str = "", style: Optional[Dict[str, Any]] = None, head: str = "arrow",
@@ -461,6 +485,11 @@ class BlockCtx:
     def _current(self, part: str) -> Optional[Element]:
         if self.root is None:
             return None
+        made = self._made.get(part)
+        if made is not None:
+            found = self._c.el(made["id"])
+            if found is not None and found.get("group") == self.root["id"] and found.get("part") == part:
+                return found
         return by_part(members_of(self._c, self.root["id"]), self.root["id"]).get(part)
 
     def drop(self, part: str) -> None:
@@ -575,7 +604,8 @@ def run(ctx: Any, kind_name: str, op: Mapping[str, Any]) -> Element:
 def build(ctx: Any, kind: _kinds.Kind, spec: Dict[str, Any], op: Mapping[str, Any], root: Optional[Element], upsert: bool = False,
           mode: str = "incremental") -> Element:
     """Build (or reconcile) a block from a normalized spec, arrange it, and record the result entry."""
-    bctx = BlockCtx(ctx, kind, op, root, (getattr(ctx, "prepared", None) or {}).get(ctx.index))
+    bctx = BlockCtx(ctx, kind, op, root, (getattr(ctx, "prepared", None) or {}).get(ctx.index),
+                    (getattr(ctx, "loaded", None) or {}).get(ctx.index))
     if root is None:
         bctx.alias = C._alias(ctx, dict(op)) if op.get("id") is not None else None
     before_box = box_of(root) if root is not None else None
@@ -614,6 +644,64 @@ def prepare(ops: Sequence[Any]) -> Dict[int, Any]:
         except (C.HerdrTeamError,) + C._OP_FAULTS:
             continue
     return out
+
+
+class LoadFailure:
+    """A refusal ``Block.load`` raised before the lock: ``bctx.loaded`` raises it again, so the op is refused with it."""
+
+    def __init__(self, error: Exception) -> None:
+        self.error = error
+
+
+def load(ops: Sequence[Any], io: Any, find: Optional[Any] = None) -> Dict[int, Any]:
+    """Each op's ``Block.load`` (files read and computed), before ``canvas.lock`` is taken (phases 3 and 4, 1.2), by op
+    index: a block kind's own op, and a ``patch`` of one of its blocks. ``find(ref)`` names the author's element a ref
+    means, read without the lock (None when there is none): an upsert's and a patch's load see the block as it stood
+    (``_root``, and ``_spec`` for a patch). A refusal is kept as a ``LoadFailure`` for the op to report; a fault in an op
+    that is not well formed is left for the op itself to report."""
+    out: Dict[int, Any] = {}
+    for index, op in enumerate(ops):
+        if not isinstance(op, dict):
+            continue
+        name = op.get("op")
+        target: Optional[Element] = None
+        kind: Optional[_kinds.Kind] = None
+        if name == "patch" and find is not None and op.get("id") is not None:
+            target = _found(find, op.get("id"))
+            kind = kind_of(target)
+            if kind is None or kind.block is None or kind.block.load is None:
+                continue
+        else:
+            spec = _kinds.op(name)
+            kind = _kinds.get(name) if spec is not None else None
+            if kind is None or kind.block is None or kind.block.load is None:
+                continue
+            if find is not None and op.get("id") is not None:
+                found = _found(find, op.get("id"))
+                target = found if kind_of(found) is kind else None
+        view: Dict[str, Any] = dict(op)
+        if target is not None:
+            view["_root"] = target
+            if name == "patch":
+                try:
+                    view["_spec"] = kind.block.spec(target, [], True)
+                except (TypeError, ValueError, KeyError, IndexError, AttributeError):
+                    continue
+        try:
+            out[index] = kind.block.load(view, io)
+        except C.HerdrTeamError as err:
+            out[index] = LoadFailure(err)
+        except C._OP_FAULTS:
+            continue
+    return out
+
+
+def _found(find: Any, ref: Any) -> Optional[Element]:
+    try:
+        found = find(ref)
+    except (C.HerdrTeamError,) + C._OP_FAULTS:
+        return None
+    return found if isinstance(found, dict) else None
 
 
 # --------------------------------------------------------------------------
@@ -1061,10 +1149,11 @@ def arrange(ctx: Any, root: Element, reason: str) -> None:
         if root.get("count") != count:
             counted["count"] = count
     extra = {k: v for k, v in dict(result.fields).items() if root.get(k) != v}
-    if max(float(target["w"]), float(target["h"])) > C.MAX_SIZE and reason != "hug":
-        # A layout that comes out bigger than the canvas allows (a dense graph at its limits; QA phase 2, F12).
-        raise C._too_big("id", "MAX_SIZE", C.MAX_SIZE, "{} would be {} x {} units laid out; the limit is {}: split it into smaller blocks, "
-                         "or try another layout or direction".format(root.get("alias") or rid, target["w"], target["h"], C.MAX_SIZE))
+    if max(float(target["w"]), float(target["h"])) > C.MAX_BLOCK_SIZE and reason != "hug":
+        # A layout that comes out bigger than a block may be (QA phase 2, F12 and R4: the limit is higher than one
+        # element's, so a 200-node chain drawn to the right lays out).
+        raise C._too_big("id", "MAX_BLOCK_SIZE", C.MAX_BLOCK_SIZE, "{} would be {} x {} units laid out; the limit is {}: split it into smaller "
+                         "blocks, or try another layout or direction".format(root.get("alias") or rid, target["w"], target["h"], C.MAX_BLOCK_SIZE))
     if any(root.get(k) != v for k, v in target.items()) or counted or extra:
         ctx.update(root, **target, **counted, **extra)
     if moved:
@@ -1289,10 +1378,16 @@ def leave(ctx: Any, el: Element, old_root: Element) -> None:
     the same two elements, so the block never names an item it no longer has (1.7)."""
     rid = old_root["id"]
     going = [el["id"]] + [d for d in C._descendants(ctx, [el["id"]]) if (ctx.el(d) or {}).get("group") == rid]
+    # A part's alias (``g.C``) names the block's item: it goes with the item, so the block can take the name again
+    # (a later ``patch add`` of the same id; QA phase 2, R5). The element keeps its id.
+    prefix = "{}.".format(old_root["alias"]) if old_root.get("alias") else None
     for eid in going:
         current = ctx.el(eid)
         if current is not None and (current.get("group") == rid or current.get("part") is not None):
-            ctx.update(current, group=None, part=None)
+            fields: Dict[str, Any] = {"group": None, "part": None}
+            if prefix is not None and str(current.get("alias") or "").startswith(prefix):
+                fields["alias"] = None
+            ctx.update(current, **fields)
     gone = set(going)
     for other in list(ctx.live()):
         if other.get("type") == "arrow" and other.get("group") == rid and (other.get("from") in gone or other.get("to") in gone):
@@ -1969,9 +2064,20 @@ def header(root: Element, spec: Mapping[str, Any]) -> str:
         " " + tail if tail else "")
 
 
-def block_lines(state: Any, root: Element, reader: Optional[str], full: bool, limit: Optional[int] = LOOK_SPEC_LINES) -> List[str]:
+def block_lines(state: Any, root: Element, reader: Optional[str], full: bool, limit: Optional[int] = LOOK_SPEC_LINES,
+                stills: Optional[Iterable[str]] = None) -> List[str]:
     """A block as ``look`` prints it: its header (with author and intent), its spec in compact JSON lines, its pins, and in
-    ``--full`` the ids of its parts."""
+    ``--full`` the ids of its parts. A kind that reads back as its gist (``Kind.gist_first``: a chart, a 3D scene) prints
+    its readback line and gist lines instead of the spec (``look --block`` prints the spec)."""
+    kind = kind_of(root)
+    if kind is not None and kind.gist_first:
+        who = " by {}".format(C._who(root.get("author"), reader))
+        head = (kind.readback(dict(root), full) if kind.readback is not None else header(root, spec_of(state, root, full))) + who
+        if full and root.get("intent") and root.get("intent") != C.HUMAN_INTENT:
+            head += " — {}".format(root["intent"])
+        if limit == 0:
+            return [head]
+        return [head] + ["  " + line for line in _kinds.gist_of(root, full, stills=stills)]
     spec = spec_of(state, root, full)
     head = header(root, spec) + " by {}".format(C._who(root.get("author"), reader))
     if full and root.get("intent") and root.get("intent") != C.HUMAN_INTENT:

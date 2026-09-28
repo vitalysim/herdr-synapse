@@ -90,6 +90,46 @@ function htmlSlots(entry) {
   return out;
 }
 
+// An HTML-layer slot is drawn when its renderer does not wait for the team's live visuals (viz), or
+// when they are on.
+function htmlSlotOn(renderer, vizOn) {
+  return !!renderer && renderer.mode === "html" && (renderer.underlay || vizOn);
+}
+
+// The first slot of an entry whose renderer has a live mode (Live), for the entered entry.
+const liveSlotCache = new WeakMap();
+function liveSlotOf(entry) {
+  if (liveSlotCache.has(entry)) return liveSlotCache.get(entry);
+  let found = null;
+  const walk = (items) => {
+    for (const p of Array.isArray(items) ? items : []) {
+      if (found || !p) continue;
+      if (p.k === "slot" && slotRenderer(p.slot)?.Live) found = p;
+      else if (p.k === "group" && !p.t && !p.screen) walk(p.items);
+    }
+  };
+  walk(entry.items);
+  liveSlotCache.set(entry, found);
+  return found;
+}
+
+// A preview's move or resize of an entry as a CSS transform for its HTML-layer slots (the SVG
+// entries get the same one as an SVG transform: entryTransform).
+function cssTransform(entry, preview) {
+  if (!preview) return undefined;
+  const parts = [];
+  if (preview.move && Array.isArray(preview.move.ids) && preview.move.ids.includes(entry.id)) {
+    const [dx, dy] = preview.move.by || [0, 0];
+    parts.push(`translate(${Number(dx) || 0}px, ${Number(dy) || 0}px)`);
+  }
+  const box = preview.boxes && preview.boxes[entry.id];
+  if (Array.isArray(box) && box.length === 4) {
+    const [x, y, w, h] = boxOf(entry);
+    parts.push(`translate(${box[0]}px, ${box[1]}px) scale(${w ? box[2] / w : 1}, ${h ? box[3] / h : 1}) translate(${-x}px, ${-y}px)`);
+  }
+  return parts.length ? parts.join(" ") : undefined;
+}
+
 // Every def a list refers to, registered up front so <defs> holds them wherever the camera is.
 function collectDefs(dl, palette, defs) {
   const walk = (items) => {
@@ -319,6 +359,9 @@ export function Surface({
   onPointer,
   onStill,
   onRendered,
+  entered = null,
+  onEnter,
+  onOps,
   children,
 }) {
   const wrapRef = useRef(null);
@@ -353,6 +396,16 @@ export function Surface({
     return () => clearTimeout(timer);
   }, [lazy, view.x, view.y, view.scale]);
   const [viewport, setViewport] = useState({ w: 0, h: 0 });
+
+  // Every camera change, whatever moved it (a gesture, the keyboard, fit, a QA hook), is announced
+  // on the GL host as a "sv2-camera" event after the placeholders have moved, so the shared 3D
+  // renderer (scene3d/renderer.js) redraws its scenes at their new rectangles instead of leaving
+  // the last frame painted where they were.
+  const glHostRef = useRef(null);
+  useLayoutEffect(() => {
+    const host = glHostRef.current;
+    if (host && typeof Event === "function") host.dispatchEvent(new Event("sv2-camera"));
+  }, [view.x, view.y, view.scale]);
 
   // Latest props for event handlers attached once.
   const live = useRef({});
@@ -450,29 +503,46 @@ export function Surface({
   const stillSeen = useRef(new Set());
   const onStillRef = useRef(onStill);
   onStillRef.current = onStill;
-  const stillOnce = useCallback((id, v, blob) => {
-    const key = `${id}@${v}`;
+  // One still per (id, v, view); `view` is one of the kind's still views ("" for a single still).
+  const stillOnce = useCallback((id, v, blob, view = "") => {
+    const key = `${id}@${v}@${view || ""}`;
     if (stillSeen.current.has(key) || !onStillRef.current) return;
     stillSeen.current.add(key);
-    onStillRef.current(id, v, blob);
+    onStillRef.current(id, v, blob, view || "");
   }, []);
+  const onEnterRef = useRef(onEnter);
+  onEnterRef.current = onEnter;
+  const exitEntered = useCallback(() => {
+    if (onEnterRef.current) onEnterRef.current(null);
+  }, []);
+  const onOpsRef = useRef(onOps);
+  onOpsRef.current = onOps;
+  const sendOps = useCallback((ops) => (onOpsRef.current ? onOpsRef.current(ops) : null), []);
   const elementOfRef = useRef(elementOf);
   elementOfRef.current = elementOf;
   const selectionKey = idsKey(selection);
   const selectedSet = useMemo(() => new Set(selectionKey.split("\n").filter(Boolean)), [selectionKey]);
 
+  const lightPalette = useMemo(() => paletteOf(dl, "light"), [dl]);
+  const palettes = useMemo(() => ({ light: lightPalette, dark: paletteOf(dl, "dark") }), [dl, lightPalette]);
   const env = useMemo(() => {
-    const paper = paletteOf(dl, "light")["base.surface"] || "#ffffff";
+    const paper = lightPalette["base.surface"] || "#ffffff";
     const edge = palette["base.grid"] || "#e3e5e9";
     return {
-      slotKey: `${vizOn}|${team}|${theme}`,
+      slotKey: `${vizOn}|${team}|${theme}|${entered || ""}|${writable}`,
       slot(p, key) {
         const entry = this.entry;
-        const fallback = toReact(slotNode(p, ctx), key, this);
         const renderer = slotRenderer(p.slot);
+        // An underlay (a scene beneath the shared GL canvas) shows only where the canvas cannot draw
+        // (too small, too many scenes, the context lost): its faithful drawing when it has one, as
+        // it is exact at every size, else its still.
+        const underlay = renderer && renderer.mode === "html" && renderer.underlay;
+        const fallback = toReact(slotNode(p, ctx, underlay && p.drawn === true ? { still: false } : undefined), key, this);
         const element = elementOfRef.current ? elementOfRef.current(entry.id) : null;
         if (!renderer || !element) return fallback;
-        if (renderer.mode === "html") return vizOn ? <g key={key} data-slot={p.slot} /> : fallback;
+        // An HTML-layer slot draws above the SVG: an `underlay` one (scene3d) keeps its still or
+        // drawing beneath, shown wherever the HTML layer does not paint.
+        if (renderer.mode === "html") return underlay ? fallback : vizOn ? <g key={key} data-slot={p.slot} /> : fallback;
         const { Component } = renderer;
         return (
           <Component
@@ -482,15 +552,21 @@ export function Surface({
             version={entry.v}
             element={element}
             team={team}
+            theme={theme}
+            palette={palette}
+            palettes={palettes}
+            writable={writable}
             paper={paper}
             edge={edge}
             fallback={fallback}
             onStill={stillOnce}
+            entered={entered === entry.id}
+            onExit={exitEntered}
           />
         );
       },
     };
-  }, [dl, palette, vizOn, team, theme, ctx, stillOnce]);
+  }, [dl, palette, lightPalette, palettes, vizOn, team, theme, ctx, stillOnce, entered, exitEntered, writable]);
 
   // -- rendered -----------------------------------------------------------------------------------
   const onRenderedRef = useRef(onRendered);
@@ -711,28 +787,63 @@ export function Surface({
     </g>
   );
 
-  const htmlSlotNodes = vizOn
-    ? visible.flatMap((entry) =>
-        htmlSlots(entry).map((p, i) => {
-          const element = elementOf ? elementOf(entry.id) : null;
-          const renderer = slotRenderer(p.slot);
-          if (!element || !renderer) return null;
-          const { Component } = renderer;
-          return (
-            <Component
-              key={`${entry.id}:${i}`}
-              prim={p}
-              entryId={entry.id}
-              version={entry.v}
-              element={element}
-              team={team}
-              selected={selectedSet.has(entry.id)}
-              onStill={stillOnce}
-            />
-          );
-        }),
-      )
-    : [];
+  const htmlSlotNodes = visible.flatMap((entry) =>
+    htmlSlots(entry).map((p, i) => {
+      const element = elementOf ? elementOf(entry.id) : null;
+      const renderer = slotRenderer(p.slot);
+      if (!element || !htmlSlotOn(renderer, vizOn)) return null;
+      const { Component } = renderer;
+      const node = (
+        <Component
+          key={`${entry.id}:${i}`}
+          prim={p}
+          entryId={entry.id}
+          version={entry.v}
+          element={element}
+          team={team}
+          theme={theme}
+          palette={palette}
+          stillPalette={lightPalette}
+          urls={urls}
+          writable={writable}
+          selected={selectedSet.has(entry.id)}
+          onStill={stillOnce}
+          entered={entered === entry.id}
+          onExit={exitEntered}
+          onOps={writable ? sendOps : null}
+        />
+      );
+      const transform = cssTransform(entry, preview);
+      return transform ? (
+        <div key={`${entry.id}:${i}`} className="sv2-html-preview" style={{ transform, transformOrigin: "0 0" }}>
+          {node}
+        </div>
+      ) : (
+        node
+      );
+    }),
+  ).filter(Boolean);
+  // The entered entry's live view, for an SVG slot with a Live mode (a chart). Live places itself at
+  // the slot box in the HTML layer's world units and keeps the board's gestures off itself.
+  const enteredEntry = entered ? index.byId.get(entered) : null;
+  const liveSlot = enteredEntry ? liveSlotOf(enteredEntry) : null;
+  const liveElement = liveSlot && elementOf ? elementOf(enteredEntry.id) : null;
+  if (liveSlot && liveElement) {
+    const LiveView = slotRenderer(liveSlot.slot).Live;
+    htmlSlotNodes.push(
+      <LiveView
+        key={`live:${enteredEntry.id}`}
+        prim={liveSlot}
+        entryId={enteredEntry.id}
+        version={enteredEntry.v}
+        element={liveElement}
+        team={team}
+        theme={theme}
+        palette={palette}
+        onExit={exitEntered}
+      />,
+    );
+  }
 
   const gridOn = scale >= GRID_MIN_SCALE;
   const matrix = cameraMath.matrix(drawn);
@@ -773,6 +884,7 @@ export function Surface({
         </g>
       </svg>
       </div>
+      <div ref={glHostRef} className="sv2-gl-host" data-gl-host="" />
       {htmlSlotNodes.length ? (
         <div className="sv2-html" style={{ transform: `matrix(${view.scale}, 0, 0, ${view.scale}, ${-view.x * view.scale}, ${-view.y * view.scale})` }}>
           {htmlSlotNodes}

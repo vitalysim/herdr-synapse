@@ -1,0 +1,11 @@
+{
+ "about": "a bufferView reaching past its buffer",
+ "source": "gltf",
+ "patch": {
+  "bufferViews[1].byteLength": 100000
+ },
+ "expect": {
+  "code": "op_invalid",
+  "contains": "reaches past its buffer"
+ }
+}

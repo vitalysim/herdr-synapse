@@ -181,8 +181,10 @@ def _num(value: Any) -> float:
 
 class _Ctx:
     def __init__(self, palette: Mapping[str, str], scale: float, families: Mapping[str, str], urls: Mapping[str, Callable[[str], str]],
-                 defs: Defs, embed: Optional[Embed], resvg_text: bool) -> None:
+                 defs: Defs, embed: Optional[Embed], resvg_text: bool, theme: str = "light") -> None:
         self.palette = palette
+        #: The theme drawn: a slot's light-themed still is drawn only in light, or when its fallback is no drawing (1.4).
+        self.theme = theme
         self.scale = scale
         self.families = families
         self.urls = urls
@@ -469,11 +471,12 @@ def primitive_node(p: Any, ctx: _Ctx) -> Optional[Node]:
 
 
 def slot_node(p: Mapping[str, Any], ctx: _Ctx) -> Node:
-    """A slot drawn without the browser: its still when it has one, else its fallback primitives."""
+    """A slot drawn without the browser: its still when it has one and either the theme is light or its fallback is no
+    faithful drawing (``drawn``: stills are light-themed, so a dark picture draws the drawing), else its fallback."""
     inner: List[Node] = []
     still = p.get("still")
     has_box = _finite(p.get("x"), p.get("y"), p.get("w"), p.get("h"))
-    if isinstance(still, str) and still and has_box:
+    if isinstance(still, str) and still and has_box and (ctx.theme == "light" or p.get("drawn") is not True):
         if ctx.embed is not None:
             embedded = _embedded({"still": still}, p, ctx)
             if embedded is not None:
@@ -537,7 +540,7 @@ def write(dl: Mapping[str, Any], *, theme: str = "light", box: Optional[Sequence
     shadows_all = dl.get("shadows") if isinstance(dl.get("shadows"), dict) else {}
     shadows = shadows_all.get(theme) if isinstance(shadows_all.get(theme), dict) else {}
     defs = Defs(shadows)
-    ctx = _Ctx(palette, 1 / u, families or CANONICAL_FAMILIES, urls or CANONICAL_URLS, defs, embed, resvg_text)
+    ctx = _Ctx(palette, 1 / u, families or CANONICAL_FAMILIES, urls or CANONICAL_URLS, defs, embed, resvg_text, theme)
     listed = [e for e in (dl.get("entries") or []) if isinstance(e, dict) and _meets(e, area)]
     body: List[str] = []
     for layer in LAYER_NAMES:

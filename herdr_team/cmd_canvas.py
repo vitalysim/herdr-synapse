@@ -92,8 +92,19 @@ def _look(args: argparse.Namespace) -> int:
     layout, _api, _author, team, doc, author = _open(args, write=False)
     result = C.look(layout, team, _reader(author), region=_json_arg(args.region), around=args.around, since=args.since,
                     image=bool(args.image or args.exact), grid=bool(args.grid), exact=bool(args.exact),
-                    advance=_may_advance(author), doc=doc, theme=args.theme or "light", block=args.block, full=bool(args.full))
+                    advance=_may_advance(author), doc=doc, theme=args.theme or "light", block=args.block, full=bool(args.full),
+                    view=args.view)
     return emit(args, result, result["text"])
+
+
+def _catalog(args: argparse.Namespace) -> int:
+    """``canvas catalog charts|scene3d [--type NAME]``: the chart types, or the 3D primitives, relations and layouts, with
+    their channels or parameters, options and one example op each (phases 3 and 4, 1.6); generated from the registries,
+    so it needs no team."""
+    from herdr_team import canvas_catalog
+
+    doc = canvas_catalog.catalog(args.what, args.type)
+    return emit(args, doc, canvas_catalog.text(doc))
 
 
 def _icons(args: argparse.Namespace) -> int:
@@ -338,7 +349,7 @@ def _mcp(args: argparse.Namespace) -> int:
 _ACTIONS = {
     "look": _look, "check": _check, "draw": _draw, "comment": _comment, "claim": _claim, "release": _release, "legend": _legend,
     "portrait": _portrait, "changes": _changes, "resolve": _resolve, "undo": _undo, "refit": _refit, "lock": _lock, "unlock": _unlock,
-    "send": _send, "export": _export, "helper": _helper, "mcp": _mcp, "icons": _icons,
+    "send": _send, "export": _export, "helper": _helper, "mcp": _mcp, "icons": _icons, "catalog": _catalog,
 }
 
 _SPECS = (
@@ -361,6 +372,7 @@ _SPECS = (
     ("helper", "the path (or --print the source) of sketch.py, a helper that builds batches in Python"),
     ("mcp", "run the stdio MCP server that gives a harness the canvas tools (started by the harness at launch)"),
     ("icons", "the icon names cards, icons and shapes take (Lucide), or --search WORD"),
+    ("catalog", "the chart types (charts) or the 3D primitives, relations and layouts (scene3d), each with an example op"),
 )
 
 
@@ -382,6 +394,7 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
     p.add_argument("--theme", choices=("light", "dark"), help="the image's theme (default light)")
     p.add_argument("--block", metavar="REF", help="one block's whole spec (a kanban, a table ...), one item per line")
     p.add_argument("--full", action="store_true", help="also each block's part ids, top-level neighbours and details")
+    p.add_argument("--view", metavar="VIEW", help="draw the image's 3D scenes from this view: iso, front or top")
     p = parsers["check"]
     where = p.add_mutually_exclusive_group()
     where.add_argument("--region", metavar="R", help='"c10r4:c40r22", "x0,y0,x1,y1", [x0,y0,x1,y1] or an element id')
@@ -441,6 +454,9 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
     p.add_argument("--grid", action="store_true", help="svg/png: cell dots and names")
     parsers["helper"].add_argument("--print", action="store_true", help="print the source instead of the path")
     parsers["icons"].add_argument("--search", metavar="WORD", help="only the icons whose name holds WORD")
+    p = parsers["catalog"]
+    p.add_argument("what", choices=("charts", "scene3d"), help="charts: the chart types; scene3d: the 3D primitives, relations and layouts")
+    p.add_argument("--type", metavar="NAME", help="only this chart type or primitive (with its whole entry)")
 
 
 def _run(args: argparse.Namespace) -> int:

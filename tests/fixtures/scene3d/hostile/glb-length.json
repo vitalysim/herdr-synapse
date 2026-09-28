@@ -1,0 +1,11 @@
+{
+ "about": "a header that lies about the length",
+ "source": "glb",
+ "glb": {
+  "length_delta": 8
+ },
+ "expect": {
+  "code": "op_invalid",
+  "contains": "the GLB header says"
+ }
+}

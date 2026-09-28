@@ -81,6 +81,8 @@ class RouteRequest:
     slot_b: Tuple[int, int] = (0, 1)
     #: The least room between two ports on one side.
     port_spacing: float = 12
+    #: Settle for a good route rather than the best, for far less work (a graph's detour around a node, on a budget).
+    quick: bool = False
 
 
 @dataclass(frozen=True)

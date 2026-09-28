@@ -16,6 +16,13 @@ items it holds, the settings it keeps, and how it is built (``build``, through
 a ``BlockContext``) and read back (``spec``). ``canvas_blocks`` runs the one
 pipeline every block op, patch, upsert and part edit goes through.
 
+Since canvas v2 phases 3 and 4 (``.local/prd/canvas-v2-phase3-4.md`` 1.2) a
+block may read files: ``Block.load`` runs before the canvas lock is taken, reads
+the team's artifacts through a ``FetchIO`` (never anything else), computes what
+it can (a chart's table and compile, a 3D scene's solve), and ``build`` finds the
+result as ``bctx.loaded``. What it keeps goes into the content-addressed asset
+store through ``bctx.store_asset``, written only when the op applies.
+
 Pure: protocols and dataclasses, nothing else.
 """
 from __future__ import annotations
@@ -30,6 +37,32 @@ except ImportError:  # pragma: no cover
 
 Element = Dict[str, Any]
 Op = Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class Fetched:
+    """A file ``Block.load`` read from the team's artifacts."""
+
+    #: Its path relative to ``artifacts/`` (``models/robot.glb``), normalised.
+    rel: str
+    data: bytes
+    #: The hex sha256 of ``data``.
+    sha256: str
+    #: Its suffix in lower case (``.csv``).
+    suffix: str
+
+
+class FetchIO(Protocol):
+    """What ``Block.load`` may read: the team's artifacts, never anything else (``canvas`` implements it).
+
+    Every refusal is a ``HerdrTeamError``: ``artifacts_unset`` (the team has no project folder), ``path_refused`` (not a
+    relative path to a regular file under ``artifacts/``, symlinks resolved, or a suffix not in ``suffixes``) and
+    ``too_big`` (with ``limit`` and ``max``) past ``max_bytes``. ``field`` names the op field in the refusal."""
+
+    def read_artifact(self, rel: Any, suffixes: Sequence[str], max_bytes: int, *, field: str = "data") -> Fetched: ...
+    #: A file next to an earlier one (a ``.gltf``'s buffers and textures): relative to ``fetched``'s folder, no ``..``,
+    #: no scheme, no absolute path, inside the same artifacts tree.
+    def sibling(self, fetched: Fetched, rel: str, suffixes: Sequence[str], max_bytes: int) -> Fetched: ...
 
 
 class OpContext(Protocol):
@@ -196,6 +229,11 @@ class Block:
     part_edit: Optional[Callable[[Element, str, str], Dict[str, Any]]] = None
     #: ``(raw op) -> data`` computed outside the canvas lock (a big layout).
     prepare: Optional[Callable[[Dict[str, Any]], Any]] = None
+    #: ``(op, io) -> data`` read and computed before the canvas lock is taken (artifact files, a solve): its result is
+    #: ``bctx.loaded``, and a ``HerdrTeamError`` it raises refuses the op with that error when ``build`` reads it. For a
+    #: ``patch`` of one of its blocks it gets the patch op with ``_spec`` (the block's spec, read without the lock) and
+    #: ``_root`` (its root element); for an upsert, its own op with ``_root``.
+    load: Optional[Callable[[Mapping[str, Any], FetchIO], Any]] = None
     max_members: int = 400
     #: Fields the op takes that are neither settings nor collections nor common (``title``).
     fields: Tuple[str, ...] = ("title",)
@@ -210,11 +248,22 @@ class BlockContext(Protocol):
     #: The root as it stands (None while creating).
     root: Optional[Element]
     prepared: Any
+    #: ``Block.load``'s result for this op (None when it had none, or could not run before the lock: the block was made
+    #: earlier in the same batch); reading it re-raises the refusal ``load`` raised.
+    loaded: Any
 
-    #: Creates the root on first call (placed from the op), else updates it; ``settings`` are merged.
+    #: Store bytes in the content-addressed asset store (``doc``: a JSON document for the page, <= 2 MB; ``glb``: a
+    #: binary glTF, <= 16 MB; ``json``: a Vega-Lite spec; ``svg``, ``png``, ``html``): the asset name, written only once
+    #: the op applies.
+    def store_asset(self, data: bytes, kind: str) -> str: ...
+    #: ``Block.load`` run now, under the lock: only for what could not be loaded before it (see ``loaded``).
+    def fetch(self, op: Mapping[str, Any]) -> Any: ...
+
+    #: Creates the root on first call (placed from the op), else updates it; ``settings`` are merged, or replace the
+    #: stored ones with ``replace_settings`` (a setting the spec no longer has goes: ``patch set {"color": null}``).
     def root_fields(self, *, x: Optional[float] = None, y: Optional[float] = None, w: Optional[float] = None, h: Optional[float] = None,
                     text: Optional[str] = None, style: Optional[Dict[str, Any]] = None, settings: Optional[Dict[str, Any]] = None,
-                    **fields: Any) -> Element: ...
+                    replace_settings: bool = False, **fields: Any) -> Element: ...
     #: ``part -> element`` as the block stood before this build.
     def members(self) -> Dict[str, Element]: ...
     #: Create (fitted by its kind, alias ``<root alias>.<part>``) or update in place (keeps id, author, pin and z).

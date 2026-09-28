@@ -1,0 +1,13 @@
+{
+ "about": "meshopt compression is refused like Draco",
+ "source": "gltf",
+ "patch": {
+  "extensionsUsed": [
+   "EXT_meshopt_compression"
+  ]
+ },
+ "expect": {
+  "code": "op_invalid",
+  "contains": "meshopt"
+ }
+}

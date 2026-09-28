@@ -1,0 +1,8 @@
+{
+ "about": "a model outside artifacts/",
+ "source": "op",
+ "src": "../outside.glb",
+ "expect": {
+  "code": "path_refused"
+ }
+}

@@ -1,0 +1,346 @@
+{
+ "name": "charts",
+ "about": "Canvas v2 phase 3: every built-in chart type (bar, line, area, pie, donut, scatter, heatmap, histogram, box, funnel, treemap, sankey) over artifacts/ files and inline rows, with a caption, an annotation, a stack, a highlight and horizontal bars; the gists, Python drawings and ECharts options are what the page and the agent read.",
+ "artifacts": "charts",
+ "gates": {
+  "strict": true
+ },
+ "ops": [
+  {
+   "op": "chart",
+   "id": "rev",
+   "intent": "compare regions by month",
+   "title": "Revenue by region, 2026",
+   "type": "bar",
+   "data": "rev.csv",
+   "x": "month",
+   "y": "revenue",
+   "color": "region",
+   "format": {
+    "y": "compact"
+   },
+   "units": {
+    "y": "$"
+   },
+   "caption": "Source: finance export, 2026-09-27",
+   "at": "c0r0"
+  },
+  {
+   "op": "chart",
+   "id": "p95",
+   "intent": "latency after the cache change",
+   "title": "p95 latency (ms)",
+   "type": "line",
+   "rows": [
+    {
+     "day": "2026-09-01",
+     "p95": 412
+    },
+    {
+     "day": "2026-09-02",
+     "p95": 405
+    },
+    {
+     "day": "2026-09-03",
+     "p95": 398
+    },
+    {
+     "day": "2026-09-04",
+     "p95": 251
+    },
+    {
+     "day": "2026-09-05",
+     "p95": 240
+    },
+    {
+     "day": "2026-09-06",
+     "p95": 236
+    }
+   ],
+   "x": "day",
+   "y": "p95",
+   "units": {
+    "y": "ms"
+   },
+   "annotations": [
+    {
+     "x": "2026-09-04",
+     "text": "cache on"
+    }
+   ],
+   "right_of": "rev",
+   "gap": "l"
+  },
+  {
+   "op": "chart",
+   "id": "trend",
+   "intent": "how the regions add up",
+   "title": "Revenue stack",
+   "type": "area",
+   "data": "rev.csv",
+   "x": "month",
+   "y": "revenue",
+   "color": "region",
+   "stack": true,
+   "format": {
+    "y": "compact"
+   },
+   "right_of": "p95",
+   "gap": "l"
+  },
+  {
+   "op": "chart",
+   "id": "share",
+   "intent": "who sells the most",
+   "title": "Revenue share by region",
+   "type": "pie",
+   "data": "rev.csv",
+   "category": "region",
+   "value": "revenue",
+   "below": "rev",
+   "gap": "l"
+  },
+  {
+   "op": "chart",
+   "id": "mix",
+   "intent": "traffic share by channel",
+   "title": "Visits by channel",
+   "type": "donut",
+   "data": "traffic.json",
+   "category": "channel",
+   "value": "visits",
+   "top": 5,
+   "right_of": "share",
+   "gap": "l"
+  },
+  {
+   "op": "chart",
+   "id": "spend",
+   "intent": "does ad spend bring signups",
+   "title": "Spend vs signups",
+   "type": "scatter",
+   "rows": [
+    {
+     "campaign": "Brand",
+     "spend": 9800,
+     "signups": 410
+    },
+    {
+     "campaign": "Search",
+     "spend": 4200,
+     "signups": 260
+    },
+    {
+     "campaign": "Social",
+     "spend": 3100,
+     "signups": 150
+    },
+    {
+     "campaign": "Video",
+     "spend": 5600,
+     "signups": 190
+    },
+    {
+     "campaign": "Email",
+     "spend": 800,
+     "signups": 120
+    },
+    {
+     "campaign": "Display",
+     "spend": 2500,
+     "signups": 60
+    }
+   ],
+   "x": "spend",
+   "y": "signups",
+   "label": "campaign",
+   "trend": "linear",
+   "units": {
+    "x": "$"
+   },
+   "right_of": "mix",
+   "gap": "l"
+  },
+  {
+   "op": "chart",
+   "id": "load",
+   "intent": "when is the API busiest",
+   "title": "Requests by weekday and hour",
+   "type": "heatmap",
+   "data": "load.csv",
+   "x": "hour",
+   "y": "weekday",
+   "value": "requests",
+   "types": {
+    "hour": "ordinal",
+    "weekday": "ordinal"
+   },
+   "right_of": "spend",
+   "gap": "l"
+  },
+  {
+   "op": "chart",
+   "id": "lat",
+   "intent": "how slow are requests",
+   "title": "Request latency by region",
+   "type": "histogram",
+   "data": "latency.tsv",
+   "x": "ms",
+   "color": "region",
+   "units": {
+    "x": "ms"
+   },
+   "below": "share",
+   "gap": "l"
+  },
+  {
+   "op": "chart",
+   "id": "spread",
+   "intent": "which region is slowest",
+   "title": "Latency spread by region",
+   "type": "box",
+   "data": "latency.tsv",
+   "x": "region",
+   "y": "ms",
+   "units": {
+    "y": "ms"
+   },
+   "right_of": "lat",
+   "gap": "l"
+  },
+  {
+   "op": "chart",
+   "id": "signup",
+   "intent": "where people drop out of signup",
+   "title": "Signup funnel",
+   "type": "funnel",
+   "rows": [
+    {
+     "stage": "Visit",
+     "n": 12000
+    },
+    {
+     "stage": "Signup form",
+     "n": 5400
+    },
+    {
+     "stage": "Verified",
+     "n": 4300
+    },
+    {
+     "stage": "First project",
+     "n": 2100
+    }
+   ],
+   "category": "stage",
+   "value": "n",
+   "right_of": "spread",
+   "gap": "l"
+  },
+  {
+   "op": "chart",
+   "id": "cloud",
+   "intent": "where the cloud bill goes",
+   "title": "Cloud spend by team and service",
+   "type": "treemap",
+   "rows": [
+    {
+     "team": "Data",
+     "service": "Warehouse",
+     "usd": 4200
+    },
+    {
+     "team": "Data",
+     "service": "Pipelines",
+     "usd": 1800
+    },
+    {
+     "team": "Web",
+     "service": "CDN",
+     "usd": 1300
+    },
+    {
+     "team": "Web",
+     "service": "Compute",
+     "usd": 2600
+    },
+    {
+     "team": "ML",
+     "service": "GPUs",
+     "usd": 5100
+    },
+    {
+     "team": "ML",
+     "service": "Storage",
+     "usd": 700
+    }
+   ],
+   "path": [
+    "team",
+    "service"
+   ],
+   "value": "usd",
+   "units": {
+    "value": "$"
+   },
+   "right_of": "signup",
+   "gap": "l"
+  },
+  {
+   "op": "chart",
+   "id": "flows",
+   "intent": "where signups come from and go",
+   "title": "Signup flows",
+   "type": "sankey",
+   "rows": [
+    {
+     "from": "Search",
+     "to": "Signup",
+     "n": 5400
+    },
+    {
+     "from": "Ads",
+     "to": "Signup",
+     "n": 2100
+    },
+    {
+     "from": "Signup",
+     "to": "Active",
+     "n": 4300
+    },
+    {
+     "from": "Signup",
+     "to": "Churned",
+     "n": 3200
+    }
+   ],
+   "source": "from",
+   "target": "to",
+   "value": "n",
+   "below": "lat",
+   "gap": "l"
+  },
+  {
+   "op": "chart",
+   "id": "top",
+   "intent": "the biggest regions only",
+   "title": "Revenue, EMEA highlighted",
+   "type": "bar",
+   "data": "rev.csv",
+   "x": "region",
+   "y": "revenue",
+   "highlight": [
+    "EMEA"
+   ],
+   "horizontal": true,
+   "format": {
+    "y": "compact"
+   },
+   "units": {
+    "y": "$"
+   },
+   "right_of": "flows",
+   "gap": "l"
+  }
+ ]
+}

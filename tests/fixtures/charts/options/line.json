@@ -1,0 +1,510 @@
+{
+ "box": {
+  "h": 308.0,
+  "w": 536.0
+ },
+ "doc": {
+  "chart": "line",
+  "datasets": [
+   {
+    "dimensions": [
+     "x",
+     "y"
+    ],
+    "id": "d0",
+    "source": [
+     [
+      20697,
+      412
+     ],
+     [
+      20698,
+      405
+     ],
+     [
+      20699,
+      398
+     ],
+     [
+      20700,
+      251
+     ],
+     [
+      20701,
+      240
+     ],
+     [
+      20702,
+      236
+     ]
+    ]
+   }
+  ],
+  "refs": {},
+  "source": {
+   "data": null,
+   "rows": 6,
+   "sha256": "fbcc31b6131a0f80144a24f854db95fe06d95d23ec186582a62ddd6327a0f5e8"
+  },
+  "v": 1
+ },
+ "element": {
+  "alias": "p95",
+  "chart": {
+   "gl": false,
+   "type": "line"
+  },
+  "chart_frame": {
+   "axes": {
+    "x": {
+     "extent": 15,
+     "fmt": "date|",
+     "kind": "value",
+     "max": 20702,
+     "min": 20697,
+     "pos": "bottom",
+     "step": null,
+     "ticks": [
+      {
+       "t": "2026-09-01",
+       "v": 20697,
+       "w": 70.19
+      },
+      {
+       "t": "2026-09-02",
+       "v": 20698,
+       "w": 72.71
+      },
+      {
+       "t": "2026-09-03",
+       "v": 20699,
+       "w": 72.8
+      },
+      {
+       "t": "2026-09-04",
+       "v": 20700,
+       "w": 73.15
+      },
+      {
+       "t": "2026-09-05",
+       "v": 20701,
+       "w": 72.5
+      },
+      {
+       "t": "2026-09-06",
+       "v": 20702,
+       "w": 72.83
+      }
+     ],
+     "time": true
+    },
+    "y": {
+     "fmt": "auto|",
+     "kind": "value",
+     "max": 450,
+     "min": 200,
+     "pos": "left",
+     "step": 50,
+     "ticks": [
+      {
+       "t": "200",
+       "v": 200,
+       "w": 23.13
+      },
+      {
+       "t": "250",
+       "v": 250,
+       "w": 22.67
+      },
+      {
+       "t": "300",
+       "v": 300,
+       "w": 23.23
+      },
+      {
+       "t": "350",
+       "v": 350,
+       "w": 22.76
+      },
+      {
+       "t": "400",
+       "v": 400,
+       "w": 23.58
+      },
+      {
+       "t": "450",
+       "v": 450,
+       "w": 23.11
+      }
+     ],
+     "title": "p95 (ms)"
+    }
+   },
+   "box": [
+    536,
+    308
+   ],
+   "extra": {},
+   "font": 12,
+   "legend": null,
+   "legible": true,
+   "notes": [],
+   "plot": [
+    33.58,
+    26,
+    490.42,
+    257
+   ]
+  },
+  "doc_asset": "a5d9408011109ed7a0bd04b11149f9aa.json",
+  "engine": "echarts",
+  "gist": [
+   "x=day (6 points, 2026-09-01…2026-09-06) · y=p95 · inline rows 6 rows",
+   "p95 412 → 236 ms (−43%) · max 2026-09-01 412 ms · min 2026-09-06 236 ms · largest step −147 ms at 2026-09-04 (cache on)"
+  ],
+  "h": 360.0,
+  "id": "E-1",
+  "kv": 2,
+  "model": {
+   "capped": [],
+   "cats": [],
+   "grain": "day",
+   "how": "none",
+   "series": [
+    {
+     "name": "p95",
+     "x": [
+      20697,
+      20698,
+      20699,
+      20700,
+      20701,
+      20702
+     ],
+     "y": [
+      412,
+      405,
+      398,
+      251,
+      240,
+      236
+     ]
+    }
+   ],
+   "xkind": "time"
+  },
+  "option": {
+   "animation": false,
+   "aria": {
+    "enabled": true,
+    "label": {
+     "description": "x=day (6 points, 2026-09-01…2026-09-06) · y=p95 · inline rows 6 rows p95 412 → 236 ms (−43%) · max 2026-09-01 412 ms · min 2026-09-06 236 ms · largest step −147 ms at 2026-09-04 (cache on)"
+    }
+   },
+   "backgroundColor": "transparent",
+   "color": [
+    "chart.cat.0"
+   ],
+   "dataset": {
+    "$doc": "datasets"
+   },
+   "grid": {
+    "containLabel": false,
+    "height": 257.0,
+    "left": 33.58,
+    "top": 26.0,
+    "width": 490.42
+   },
+   "legend": {
+    "show": false
+   },
+   "series": [
+    {
+     "connectNulls": false,
+     "datasetIndex": 0,
+     "emphasis": {
+      "focus": "series"
+     },
+     "encode": {
+      "x": "x",
+      "y": "y"
+     },
+     "label": {
+      "color": "chart.ink",
+      "fontFamily": "$sans",
+      "fontSize": 12,
+      "formatter": {
+       "$fmt": "auto|ms"
+      },
+      "position": "top",
+      "show": true
+     },
+     "lineStyle": {
+      "width": 2
+     },
+     "markLine": {
+      "data": [
+       {
+        "label": {
+         "color": "chart.ink",
+         "fontFamily": "$sans",
+         "fontSize": 12,
+         "formatter": "cache on"
+        },
+        "xAxis": 20700
+       }
+      ],
+      "lineStyle": {
+       "color": "chart.ink",
+       "opacity": 0.7,
+       "type": "dashed"
+      },
+      "silent": true,
+      "symbol": "none"
+     },
+     "name": "p95",
+     "showSymbol": true,
+     "smooth": false,
+     "symbol": "circle",
+     "symbolSize": 6,
+     "type": "line"
+    }
+   ],
+   "textStyle": {
+    "color": "chart.ink",
+    "fontFamily": "$sans",
+    "fontSize": 12
+   },
+   "tooltip": {
+    "confine": true,
+    "renderMode": "richText",
+    "textStyle": {
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "trigger": "axis"
+   },
+   "xAxis": {
+    "axisLabel": {
+     "color": "chart.muted",
+     "customValues": [
+      20697.0,
+      20698.0,
+      20699.0,
+      20700.0,
+      20701.0,
+      20702.0
+     ],
+     "fontFamily": "$sans",
+     "fontSize": 12,
+     "formatter": {
+      "$fmt": "date|"
+     },
+     "margin": 8.0
+    },
+    "axisLine": {
+     "lineStyle": {
+      "color": "chart.axis"
+     },
+     "show": true
+    },
+    "axisTick": {
+     "customValues": [
+      20697.0,
+      20698.0,
+      20699.0,
+      20700.0,
+      20701.0,
+      20702.0
+     ],
+     "length": 4.0,
+     "lineStyle": {
+      "color": "chart.axis"
+     },
+     "show": true
+    },
+    "max": 20702.0,
+    "min": 20697.0,
+    "position": "bottom",
+    "splitLine": {
+     "show": false
+    },
+    "type": "value"
+   },
+   "yAxis": {
+    "axisLabel": {
+     "color": "chart.muted",
+     "fontFamily": "$sans",
+     "fontSize": 12,
+     "formatter": {
+      "$fmt": "auto|"
+     },
+     "margin": 8.0
+    },
+    "axisLine": {
+     "lineStyle": {
+      "color": "chart.axis"
+     },
+     "show": false
+    },
+    "axisTick": {
+     "alignWithLabel": true,
+     "length": 4.0,
+     "lineStyle": {
+      "color": "chart.axis"
+     },
+     "show": false
+    },
+    "interval": 50.0,
+    "max": 450.0,
+    "min": 200.0,
+    "name": "p95 (ms)",
+    "nameGap": 4.0,
+    "nameLocation": "end",
+    "nameMoveOverlap": false,
+    "nameTextStyle": {
+     "align": "left",
+     "color": "chart.muted",
+     "fontFamily": "$sans",
+     "fontSize": 12,
+     "lineHeight": 15.0,
+     "verticalAlign": "bottom"
+    },
+    "position": "left",
+    "splitLine": {
+     "lineStyle": {
+      "color": "chart.gridline"
+     },
+     "show": true
+    },
+    "type": "value"
+   }
+  },
+  "resolved": {
+   "_source": "inline rows 6 rows",
+   "annotations": [
+    {
+     "text": "cache on",
+     "x": "2026-09-04"
+    }
+   ],
+   "type": "line",
+   "units": {
+    "y": "ms"
+   },
+   "x": "day",
+   "y": "p95"
+  },
+  "settings": {
+   "annotations": [
+    {
+     "text": "cache on",
+     "x": "2026-09-04"
+    }
+   ],
+   "rows": [
+    {
+     "day": "2026-09-01",
+     "p95": 412
+    },
+    {
+     "day": "2026-09-02",
+     "p95": 405
+    },
+    {
+     "day": "2026-09-03",
+     "p95": 398
+    },
+    {
+     "day": "2026-09-04",
+     "p95": 251
+    },
+    {
+     "day": "2026-09-05",
+     "p95": 240
+    },
+    {
+     "day": "2026-09-06",
+     "p95": 236
+    }
+   ],
+   "type": "line",
+   "units": {
+    "y": "ms"
+   },
+   "x": "day",
+   "y": "p95"
+  },
+  "source": {
+   "columns": [
+    [
+     "day",
+     "temporal"
+    ],
+    [
+     "p95",
+     "quantitative"
+    ]
+   ],
+   "data": null,
+   "kept": 6,
+   "rows": 6,
+   "sha256": "fbcc31b6131a0f80144a24f854db95fe06d95d23ec186582a62ddd6327a0f5e8"
+  },
+  "stats": {
+   "points": 6,
+   "series": [
+    {
+     "first": [
+      "2026-09-01",
+      412.0
+     ],
+     "last": [
+      "2026-09-06",
+      236.0
+     ],
+     "max": [
+      "2026-09-01",
+      412.0
+     ],
+     "min": [
+      "2026-09-06",
+      236.0
+     ],
+     "n": 6,
+     "name": "p95",
+     "step": [
+      "2026-09-04",
+      -147.0,
+      20700.0
+     ],
+     "trend": {
+      "change": -0.42718446601941745,
+      "first": 412.0,
+      "last": 236.0,
+      "sign": "down",
+      "slope": -43.48571428571429
+     }
+    }
+   ],
+   "span": [
+    "2026-09-01",
+    "2026-09-06"
+   ]
+  },
+  "text": "p95 latency (ms)",
+  "type": "chart",
+  "updated_seq": 1,
+  "w": 560.0,
+  "x": 0,
+  "y": 0
+ },
+ "gl": false,
+ "slot": [
+  12.0,
+  40.0,
+  536.0,
+  308.0
+ ],
+ "type": "line"
+}

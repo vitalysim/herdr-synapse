@@ -35,6 +35,7 @@ from herdr_team.canvas_kinds import Arrangement, Kind, OpSpec, get, kind_of, kin
 from herdr_team.canvas_kinds import _zone, diagram
 from herdr_team.canvas_kinds._common import DASHES, HEADS, Element, bounds, quote
 from herdr_team.canvas_kinds.sdk import Block, Collection
+from herdr_team.canvas_layouts import _budget
 from herdr_team.canvas_layouts import _util as _layout_util
 
 #: Its place in the registration order (``canvas_kinds.DEFAULT_ORDER``).
@@ -579,7 +580,10 @@ def arrange(root: Element, members: List[Element], env: Dict[str, Any]) -> Arran
             group_world[part] = (x0, y0, x1, y1)
     routes, blocked = route_edges(root, nodes, groups, edges, loose, world, group_world, result, settings, (ox, oy))
     notes = tuple(n for n in result.notes if not n.startswith("pin_ignored"))
-    notes += tuple("route_blocked {}: no clear route, drawn straight".format(part) for part in blocked)
+    if ROUTE_BUDGET_NOTE in blocked:
+        notes += ("route_budget: routing ran out of its budget; the edges it did not reach are drawn straight (check names any that "
+                  "cross a node)",)
+    notes += tuple("route_blocked {}: no clear route, drawn straight".format(part) for part in blocked if part != ROUTE_BUDGET_NOTE)
     stats = dict(result.stats)
     return Arrangement(boxes=boxes, routes=routes, frames=frames, notes=notes, stats=stats)
 
@@ -688,22 +692,38 @@ def route_edges(root: Element, nodes: Mapping[str, Element], groups: Mapping[str
     for route_name, request in requests:
         by_router.setdefault(route_name, []).append(request)
     found_all: Dict[str, Any] = {}
-    for route_name, batch in by_router.items():
-        found_all.update(canvas_routers.route_many(route_name, batch))
-    # A graph-wide straight route that runs through a node is routed around it instead, that edge alone (a
-    # force or grid layout draws some edges across nodes; QA phase 2, F9). An edge that names its own route keeps it.
-    detour = []
-    for route_name, request in requests:
-        found = found_all.get(request.id)
-        if found is None or route_name != "straight" or request.a.id == request.b.id or \
-                (edges[request.id].get("style") or {}).get("route") not in (None, name):
-            continue
-        if any(_through(found.points, box) for _id, box, _outline in request.obstacles if _id in node_ids):
-            detour.append(replace(request, label=_label_size(edges[request.id]), via=()))
-    if detour:
-        for part, found in canvas_routers.route_many("orthogonal", detour).items():
-            if not found.blocked:
+    # Every route and detour of the graph shares one budget, so a big graph never holds the canvas lock for long
+    # (QA phase 2, R2): past it, what is left is drawn straight and noted, the same way on every machine.
+    budget = _budget.Budget(work=ROUTE_WORK + ROUTE_WORK_PER_EDGE * len(requests), seconds=ROUTE_SECONDS)
+    with _budget.running(budget):
+        for route_name, batch in by_router.items():
+            found_all.update(canvas_routers.route_many(route_name, batch))
+        # A graph-wide straight or curved route that is drawn through a node is routed around it instead, that edge
+        # alone (a force, grid or radial layout draws some edges across nodes, and a tree its cross links; QA phase 2,
+        # F9 and R3). An edge that names its own route keeps it. A curved edge keeps its curve: its detour's corners
+        # are rounded into it (``curve_friendly``).
+        detour = []
+        for route_name, request in requests:
+            found = found_all.get(request.id)
+            if found is None or route_name not in DETOURED or request.a.id == request.b.id or \
+                    (edges[request.id].get("style") or {}).get("route") not in (None, name):
+                continue
+            drawn = drawn_points(found.points, route_name == "curved")
+            dx0, dy0 = min(p[0] for p in drawn), min(p[1] for p in drawn)
+            dx1, dy1 = max(p[0] for p in drawn), max(p[1] for p in drawn)
+            if any(_through(drawn, box) for _id, box, _outline in request.obstacles
+                   if box[0] < dx1 and dx0 < box[2] and box[1] < dy1 and dy0 < box[3] and _id in node_ids):
+                detour.append(replace(request, label=_label_size(edges[request.id]), via=(), quick=True))
+        if detour:
+            curved = {request.id for route_name, request in requests if route_name == "curved"}
+            for part, found in canvas_routers.route_many("orthogonal", detour).items():
+                if found.blocked:
+                    continue
+                if part in curved:
+                    found = replace(found, points=curve_friendly(found.points, float(tokens.get("elbow_radius", 8))), label_at=None)
                 found_all[part] = found
+    if budget.exhausted is not None:
+        blocked.append(ROUTE_BUDGET_NOTE)
     for part, found in found_all.items():
         if found.blocked:
             blocked.append(part)
@@ -712,6 +732,56 @@ def route_edges(root: Element, nodes: Mapping[str, Element], groups: Mapping[str
             entry["label_at"] = [found.label_at[0], found.label_at[1]]
         out[ids[part]] = entry
     return out, blocked
+
+
+#: The routers whose graph-wide routes detour around a node they would be drawn through (``route_edges``).
+DETOURED = ("straight", "curved")
+#: One graph's routing budget (QA phase 2, R2), in the router's work units (an A* state, a leg's set-up; about 10 us
+#: each on the dev Mac), plus per edge, and a wall-clock ceiling. 50 nodes and 80 edges on any layout, and 200 and 400
+#: on the default layered one, fit inside it; bigger work (200 nodes on a tree, a grid or rings, whose edges detour)
+#: takes what it can and draws the rest straight, noted, instead of holding the canvas lock for seconds.
+ROUTE_WORK = 6_000
+ROUTE_WORK_PER_EDGE = 100
+ROUTE_SECONDS = 0.45
+#: The entry ``route_edges`` adds to its blocked list when the budget ran out (``arrange`` notes it once).
+ROUTE_BUDGET_NOTE = "*budget"
+
+
+def drawn_points(points: Sequence[Sequence[float]], curved: bool, per_piece: int = 8) -> List[Tuple[float, float]]:
+    """The line a route is drawn along: its points, or for a curved one its curve pieces sampled."""
+    pts = [(float(p[0]), float(p[1])) for p in points]
+    if not curved or len(pts) < 2:
+        return pts
+    from herdr_team import canvas_geometry
+
+    out = [pts[0]]
+    for (ax, ay), (cx, cy), (bx, by) in canvas_geometry.curve_pieces(pts):
+        for step in range(1, per_piece + 1):
+            t = step / float(per_piece)
+            out.append(((1 - t) ** 2 * ax + 2 * (1 - t) * t * cx + t * t * bx, (1 - t) ** 2 * ay + 2 * (1 - t) * t * cy + t * t * by))
+    return out
+
+
+def curve_friendly(points: Sequence[Sequence[float]], radius: float) -> List[Tuple[float, float]]:
+    """An orthogonal route's points for an arrow drawn as a curve: every corner gets a point ``radius`` before and after
+    it, so the curve (``canvas_geometry.curve_pieces``) runs straight along the pieces and turns in a small arc at each
+    corner instead of cutting across it (a curved graph's detour; QA phase 2, R3)."""
+    pts = [(float(p[0]), float(p[1])) for p in points]
+    if len(pts) < 3:
+        return pts
+    out = [pts[0]]
+    for index in range(1, len(pts) - 1):
+        (ax, ay), (bx, by), (cx, cy) = pts[index - 1], pts[index], pts[index + 1]
+        before, after = abs(bx - ax) + abs(by - ay), abs(cx - bx) + abs(cy - by)
+        r = min(radius, before / 2.0, after / 2.0)
+        if r <= 0:
+            out.append((bx, by))
+            continue
+        out.append((round(bx - (bx - ax) / before * r, 2), round(by - (by - ay) / before * r, 2)))
+        out.append((bx, by))
+        out.append((round(bx + (cx - bx) / after * r, 2), round(by + (cy - by) / after * r, 2)))
+    out.append(pts[-1])
+    return out
 
 
 def _through(points: Sequence[Sequence[float]], box: Sequence[float], inset: float = 2.0) -> bool:
@@ -868,7 +938,7 @@ def prepare(op: Dict[str, Any]) -> Any:
         direction=direction, gap=_gap(spec, float(tokens.get("gap", 40))), rank_gap=float(tokens.get("rank_gap", 80)),
         same_rank=tuple(tuple(x) for x in spec.get("same_rank") or ()) if layout.name == "layers" else (),
         order=tuple(tuple(x) for x in spec.get("order") or ()) if layout.name == "layers" else (), incremental=False)
-    result = canvas_layouts.run(layout.name, request)
+    result = canvas_layouts.run(layout.name, request, seconds=canvas_layouts.PREPARE_SECONDS)
     if len(_PREPARED) >= _PREPARED_MAX:
         _PREPARED.pop(next(iter(_PREPARED)))
     _PREPARED[_cache_key(layout.name, request)] = result
@@ -998,6 +1068,8 @@ def pin_overlap(el: Element, env: Dict[str, Any]) -> List[Dict[str, Any]]:
 CROSSINGS_FLOOR = 3
 #: Past this many nodes the check does not try a full relayout to compare (it would cost more than it says).
 CROSSINGS_MAX_NODES = 80
+#: A fresh relayout's crossing count by request: a check run again over an unchanged graph does not lay it out again.
+_FRESH_CROSSINGS: Dict[Any, float] = {}
 
 
 def _pieces(points: Sequence[Sequence[float]]) -> List[Tuple[Tuple[float, float], Tuple[float, float]]]:
@@ -1050,7 +1122,7 @@ def crossings_high(el: Element, env: Dict[str, Any]) -> List[Dict[str, Any]]:
         return []
     settings = _zone.settings_of(el)
     layout = canvas_layouts.get(settings.get("layout") or "layers")
-    if layout is None or not layout.edges:
+    if layout is None or not layout.edges or not layout.crossings:
         return []
     part_of = {m["id"]: part for part, m in nodes.items()}
     request = canvas_layouts.LayoutRequest(
@@ -1060,12 +1132,18 @@ def crossings_high(el: Element, env: Dict[str, Any]) -> List[Dict[str, Any]]:
                     for part, e in edges.items() if str(e.get("from")) in part_of and str(e.get("to")) in part_of),
         direction=(settings.get("direction") or "down") if (settings.get("direction") or "down") in layout.directions else layout.directions[0],
         incremental=False)
-    fresh = canvas_layouts.run(layout.name, request)
-    if fresh.stats.get("crossings", found) >= found:
+    key = _cache_key(layout.name, request)
+    fresh_crossings = _FRESH_CROSSINGS.get(key)
+    if fresh_crossings is None:
+        fresh_crossings = float(canvas_layouts.run(layout.name, request).stats.get("crossings", found))
+        if len(_FRESH_CROSSINGS) >= _PREPARED_MAX:
+            _FRESH_CROSSINGS.pop(next(iter(_FRESH_CROSSINGS)))
+        _FRESH_CROSSINGS[key] = fresh_crossings
+    if fresh_crossings >= found:
         return []
     alias = el.get("alias") or el.get("id")
     return [{"code": "crossings_high", "ids": [str(el.get("id"))],
-             "message": "{} has {} edge crossings; a full relayout draws about {}".format(alias, found, int(fresh.stats.get("crossings", 0))),
+             "message": "{} has {} edge crossings; a full relayout draws about {}".format(alias, found, int(fresh_crossings)),
              "fix": {"op": "patch", "id": alias, "relayout": "full", "intent": "lay {} out again from scratch".format(alias)}}]
 
 

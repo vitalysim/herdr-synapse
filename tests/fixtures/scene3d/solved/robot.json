@@ -1,0 +1,190 @@
+{
+ "element": {
+  "alias": "robot",
+  "h": 420,
+  "id": "E-3",
+  "kv": 1,
+  "links": [],
+  "objects": [
+   {
+    "id": "bench",
+    "shape": "box",
+    "size": [
+     2.0,
+     0.9,
+     1.0
+    ],
+    "tone": "neutral"
+   },
+   {
+    "height": 0.8,
+    "id": "arm",
+    "label": "Arm v3",
+    "on": "bench",
+    "shape": "gltf",
+    "src": "models/arm-v3.glb"
+   },
+   {
+    "above": "arm",
+    "gap": 0.1,
+    "height": 0.08,
+    "id": "tag",
+    "shape": "text3d",
+    "text": "payload 1.2 kg"
+   }
+  ],
+  "settings": {
+   "camera": "orbit",
+   "ground": true,
+   "labels": "auto",
+   "lights": "soft",
+   "units": "m"
+  },
+  "solved": {
+   "bounds": [
+    -1.0,
+    0.0,
+    -0.5,
+    1.0,
+    1.88,
+    0.5
+   ],
+   "links": [],
+   "models": {
+    "arm": {
+     "asset": "451f0e00acc8280a883c984fd8494b5e.glb",
+     "facts": {
+      "images": 0,
+      "materials": 1,
+      "meshes": 1,
+      "node_count": 1,
+      "nodes": [
+       "arm-v3"
+      ],
+      "packed": false,
+      "textures": 0
+     },
+     "native": [
+      0.4,
+      0.8,
+      0.3
+     ],
+     "offset": [
+      0.0,
+      0.4,
+      0.0
+     ],
+     "scale": 1.0,
+     "sha256": "451f0e00acc8280a883c984fd8494b5ec3940c6fa740cbb9a04eef00c3d80c8a",
+     "src": "models/arm-v3.glb",
+     "tris": 12
+    }
+   },
+   "objects": [
+    [
+     "bench",
+     [
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      2.0,
+      0.9,
+      1.0
+     ],
+     null,
+     ""
+    ],
+    [
+     "arm",
+     [
+      0.0,
+      0.9,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.4,
+      0.8,
+      0.3
+     ],
+     null,
+     "on bench"
+    ],
+    [
+     "tag",
+     [
+      0.0,
+      1.8,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.5644,
+      0.08,
+      0.02
+     ],
+     null,
+     "above arm (gap 0.10)"
+    ]
+   ],
+   "v": 1
+  },
+  "text": "Arm v3 on bench",
+  "type": "scene3d",
+  "updated_seq": 3,
+  "w": 640,
+  "x": 0,
+  "y": 0
+ },
+ "op": {
+  "camera": "orbit",
+  "id": "robot",
+  "intent": "the arm prototype on its bench",
+  "lights": "soft",
+  "objects": [
+   {
+    "id": "bench",
+    "shape": "box",
+    "size": [
+     2.0,
+     0.9,
+     1.0
+    ],
+    "tone": "neutral"
+   },
+   {
+    "height": 0.8,
+    "id": "arm",
+    "label": "Arm v3",
+    "on": "bench",
+    "shape": "gltf",
+    "src": "models/arm-v3.glb"
+   },
+   {
+    "above": "arm",
+    "gap": 0.1,
+    "height": 0.08,
+    "id": "tag",
+    "shape": "text3d",
+    "text": "payload 1.2 kg"
+   }
+  ],
+  "op": "scene3d",
+  "title": "Arm v3 on bench"
+ }
+}

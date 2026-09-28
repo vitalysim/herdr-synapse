@@ -8,6 +8,8 @@ and gate logic are checked, without resvg.
 from __future__ import annotations
 
 import importlib.util
+import os
+import shutil
 import struct
 import tempfile
 import unittest
@@ -17,6 +19,7 @@ from pathlib import Path
 from support import PLUGIN_ROOT, TempState, whiteboard_on
 
 from herdr_team import canvas as C
+from herdr_team import store, workdir
 
 SCENES = PLUGIN_ROOT / "tests" / "fixtures" / "canvas_scenes"
 WORKER = C.CanvasAuthor("alpha-worker", "member", "cli", True, agent="claude")
@@ -73,6 +76,16 @@ class GoldenScenes(unittest.TestCase):
             with self.subTest(scene=path.stem), TempState() as ts:
                 whiteboard_on(ts.session, ts.team)
                 scene = QA.load_scene_file(path)
+                if scene["artifacts"]:
+                    # A scene that reads data files (charts, 3D models) gets its folder as the team's artifacts/.
+                    project = ts.tmp / "project"
+                    project.mkdir(exist_ok=True)
+                    doc = store.read_json(ts.team.team_json)
+                    doc.setdefault("config", {})["project_dir"] = os.fspath(project)
+                    store.write_json(ts.team.team_json, doc)
+                    art = workdir.paths_for(os.fspath(project), ts.team.name)["artifacts"]
+                    for folder in scene["artifacts"]:
+                        shutil.copytree(os.fspath(QA.ARTIFACTS_DIR / folder), os.fspath(art), dirs_exist_ok=True)
                 for batch in scene["batches"]:
                     result = C.apply_ops(ts.layout, ts.team, batch, WORKER)
                     self.assertEqual(result["refused"], [], path.name)
@@ -80,6 +93,32 @@ class GoldenScenes(unittest.TestCase):
                 self.assertTrue(elements)
                 for eid in scene["page_line_exempt"]:
                     self.assertTrue((elements.get(eid) or {}).get("text"), "{} exempts {}, which has no text".format(path.name, eid))
+
+
+class ChartHookTexts(unittest.TestCase):
+    """QA phase34 L9: the page-line gate compares a chart's hidden Python text with itself, so canvas_qa also compares
+    the labels the page's ECharts picture drew with the ones the frame fixed."""
+
+    FRAME = {"axes": {"x": {"kind": "category", "interval": 1, "labels": [{"v": 0, "t": "Jan"}, {"v": 1, "t": "Feb"}, {"v": 2, "t": "Mar"}],
+                            "pos": "bottom"},
+                      "y": {"kind": "value", "ticks": [{"v": 0, "t": "0"}, {"v": 50, "t": "50"}], "title": "p95 (ms)", "pos": "left"}},
+             "legend": {"items": [{"name": "a very long series na…"}]}}
+
+    def test_the_expected_texts_skip_thinned_labels(self):
+        found = QA.chart_frame_texts([{"id": "E-1", "engine": "echarts", "chart_frame": self.FRAME},
+                                      {"id": "E-2", "engine": "vega-lite", "chart_frame": self.FRAME}])
+        self.assertEqual(found, {"E-1": ["Jan", "Mar", "0", "50", "p95 (ms)", "a very long series na…"]})
+
+    def test_a_missing_axis_title_on_the_page_fails_the_hooks(self):
+        want = QA.chart_frame_texts([{"id": "E-1", "engine": "echarts", "chart_frame": self.FRAME}])
+        drawn = ["Jan", "Mar", "0", "50", "a very long series name"]
+        hooks = {"light": {"charts": [{"id": "E-1", "rendered": True, "labelOverlaps": 0, "texts": drawn}], "scene3d": None}}
+        found = QA.hook_findings(hooks, want)
+        self.assertEqual(found["chart_texts_compared"], 1)
+        self.assertEqual(len(found["problems"]), 1)
+        self.assertIn("'p95 (ms)'", found["problems"][0])
+        hooks["light"]["charts"][0]["texts"] = drawn + ["p95 (ms)"]
+        self.assertEqual(QA.hook_findings(hooks, want)["problems"], [], "a truncated legend name matches by its stem")
 
 
 class ToolPieces(unittest.TestCase):

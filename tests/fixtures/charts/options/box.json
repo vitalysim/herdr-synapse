@@ -1,0 +1,504 @@
+{
+ "box": {
+  "h": 308.0,
+  "w": 536.0
+ },
+ "doc": {
+  "chart": "box",
+  "datasets": [],
+  "refs": {
+   "boxes": [
+    {
+     "name": "linux",
+     "value": [
+      6.1,
+      6.5,
+      6.8,
+      7.2,
+      7.2
+     ]
+    },
+    {
+     "name": "mac",
+     "value": [
+      8.8,
+      9.25,
+      9.65,
+      9.95,
+      10.1
+     ]
+    },
+    {
+     "name": "win",
+     "value": [
+      10.7,
+      11.075,
+      11.55,
+      12.025,
+      12.4
+     ]
+    }
+   ],
+   "outliers": [
+    [
+     0,
+     12.9
+    ]
+   ]
+  },
+  "source": {
+   "data": null,
+   "rows": 13,
+   "sha256": "fc8acc9117217ee9c518bf17f34d96504fc9d8c6fe1f15e974962c4afab129a8"
+  },
+  "v": 1
+ },
+ "element": {
+  "alias": "build",
+  "chart": {
+   "gl": false,
+   "type": "box"
+  },
+  "chart_frame": {
+   "axes": {
+    "x": {
+     "extent": 15,
+     "hidden": 0,
+     "interval": 0,
+     "kind": "category",
+     "labels": [
+      {
+       "t": "linux",
+       "v": 0,
+       "w": 27.35
+      },
+      {
+       "t": "mac",
+       "v": 1,
+       "w": 24.83
+      },
+      {
+       "t": "win",
+       "v": 2,
+       "w": 20.41
+      }
+     ],
+     "pos": "bottom",
+     "rotate": 0,
+     "width": null
+    },
+    "y": {
+     "fmt": "auto|",
+     "kind": "value",
+     "max": 14,
+     "min": 6,
+     "pos": "left",
+     "step": 2,
+     "ticks": [
+      {
+       "t": "6",
+       "v": 6,
+       "w": 7.66
+      },
+      {
+       "t": "8",
+       "v": 8,
+       "w": 7.65
+      },
+      {
+       "t": "10",
+       "v": 10,
+       "w": 12.82
+      },
+      {
+       "t": "12",
+       "v": 12,
+       "w": 12.57
+      },
+      {
+       "t": "14",
+       "v": 14,
+       "w": 13.01
+      }
+     ],
+     "title": "minutes (min)"
+    }
+   },
+   "box": [
+    536,
+    308
+   ],
+   "extra": {},
+   "font": 12,
+   "legend": null,
+   "legible": true,
+   "notes": [],
+   "plot": [
+    23.01,
+    26,
+    500.99,
+    255
+   ]
+  },
+  "doc_asset": "835e115f1ebdcab1d5f654972b199843.json",
+  "engine": "echarts",
+  "gist": [
+   "y=minutes · x=runner (3 groups) · whiskers 1.5iqr · inline rows 13 rows",
+   "highest median win 11.55 min · lowest linux 6.8 min",
+   "linux: median 6.8 min · IQR 0.7 min · 1 outlier of 5",
+   "mac: median 9.65 min · IQR 0.7 min · 0 outliers of 4",
+   "win: median 11.55 min · IQR 0.95 min · 0 outliers of 4"
+  ],
+  "h": 360.0,
+  "id": "E-1",
+  "kv": 2,
+  "model": {
+   "boxes": [
+    {
+     "n": 5,
+     "name": "linux",
+     "out": [
+      12.9
+     ],
+     "outs": 1,
+     "q": [
+      6.1,
+      6.5,
+      6.8,
+      7.2,
+      7.2
+     ]
+    },
+    {
+     "n": 4,
+     "name": "mac",
+     "out": [],
+     "outs": 0,
+     "q": [
+      8.8,
+      9.25,
+      9.65,
+      9.95,
+      10.1
+     ]
+    },
+    {
+     "n": 4,
+     "name": "win",
+     "out": [],
+     "outs": 0,
+     "q": [
+      10.7,
+      11.075,
+      11.55,
+      12.025,
+      12.4
+     ]
+    }
+   ],
+   "capped": []
+  },
+  "option": {
+   "animation": false,
+   "aria": {
+    "enabled": true,
+    "label": {
+     "description": "y=minutes · x=runner (3 groups) · whiskers 1.5iqr · inline rows 13 rows highest median win 11.55 min · lowest linux 6.8 min linux: median 6.8 min · IQR 0.7 min · 1 outlier of 5 mac: median 9.65 min · IQR 0.7 min · 0 outliers of 4 win: median 11.55 min · IQR 0.95 min · 0 outliers of 4"
+    }
+   },
+   "backgroundColor": "transparent",
+   "color": [
+    "chart.cat.0",
+    "chart.cat.1",
+    "chart.cat.2",
+    "chart.cat.3",
+    "chart.cat.4",
+    "chart.cat.5",
+    "chart.cat.6",
+    "chart.cat.7",
+    "chart.cat.8",
+    "chart.cat.9"
+   ],
+   "grid": {
+    "containLabel": false,
+    "height": 255.0,
+    "left": 23.01,
+    "top": 26.0,
+    "width": 500.99
+   },
+   "legend": {
+    "show": false
+   },
+   "series": [
+    {
+     "boxWidth": [
+      60.0,
+      60.0
+     ],
+     "data": {
+      "$doc": "boxes"
+     },
+     "itemStyle": {
+      "borderColor": "chart.ink",
+      "borderWidth": 1,
+      "color": "chart.cat.0",
+      "opacity": 0.85
+     },
+     "name": "minutes",
+     "type": "boxplot"
+    },
+    {
+     "data": {
+      "$doc": "outliers"
+     },
+     "encode": {
+      "x": 0,
+      "y": 1
+     },
+     "itemStyle": {
+      "borderColor": "chart.ink",
+      "borderWidth": 1,
+      "color": "chart.paper"
+     },
+     "name": "outliers",
+     "symbolSize": 5,
+     "type": "scatter"
+    }
+   ],
+   "textStyle": {
+    "color": "chart.ink",
+    "fontFamily": "$sans",
+    "fontSize": 12
+   },
+   "tooltip": {
+    "confine": true,
+    "renderMode": "richText",
+    "textStyle": {
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "trigger": "item"
+   },
+   "xAxis": {
+    "axisLabel": {
+     "color": "chart.muted",
+     "fontFamily": "$sans",
+     "fontSize": 12,
+     "interval": 0,
+     "margin": 8.0,
+     "rotate": 0
+    },
+    "axisLine": {
+     "lineStyle": {
+      "color": "chart.axis"
+     },
+     "show": true
+    },
+    "axisTick": {
+     "alignWithLabel": true,
+     "length": 4.0,
+     "lineStyle": {
+      "color": "chart.axis"
+     },
+     "show": true
+    },
+    "boundaryGap": true,
+    "data": [
+     "linux",
+     "mac",
+     "win"
+    ],
+    "position": "bottom",
+    "splitLine": {
+     "lineStyle": {
+      "color": "chart.gridline"
+     },
+     "show": false
+    },
+    "type": "category"
+   },
+   "yAxis": {
+    "axisLabel": {
+     "color": "chart.muted",
+     "fontFamily": "$sans",
+     "fontSize": 12,
+     "formatter": {
+      "$fmt": "auto|"
+     },
+     "margin": 8.0
+    },
+    "axisLine": {
+     "lineStyle": {
+      "color": "chart.axis"
+     },
+     "show": false
+    },
+    "axisTick": {
+     "alignWithLabel": true,
+     "length": 4.0,
+     "lineStyle": {
+      "color": "chart.axis"
+     },
+     "show": false
+    },
+    "interval": 2.0,
+    "max": 14.0,
+    "min": 6.0,
+    "name": "minutes (min)",
+    "nameGap": 4.0,
+    "nameLocation": "end",
+    "nameMoveOverlap": false,
+    "nameTextStyle": {
+     "align": "left",
+     "color": "chart.muted",
+     "fontFamily": "$sans",
+     "fontSize": 12,
+     "lineHeight": 15.0,
+     "verticalAlign": "bottom"
+    },
+    "position": "left",
+    "splitLine": {
+     "lineStyle": {
+      "color": "chart.gridline"
+     },
+     "show": true
+    },
+    "type": "value"
+   }
+  },
+  "resolved": {
+   "_source": "inline rows 13 rows",
+   "type": "box",
+   "units": {
+    "y": "min"
+   },
+   "x": "runner",
+   "y": "minutes"
+  },
+  "settings": {
+   "rows": [
+    {
+     "minutes": 6.1,
+     "runner": "linux"
+    },
+    {
+     "minutes": 6.8,
+     "runner": "linux"
+    },
+    {
+     "minutes": 7.2,
+     "runner": "linux"
+    },
+    {
+     "minutes": 6.5,
+     "runner": "linux"
+    },
+    {
+     "minutes": 12.9,
+     "runner": "linux"
+    },
+    {
+     "minutes": 9.4,
+     "runner": "mac"
+    },
+    {
+     "minutes": 10.1,
+     "runner": "mac"
+    },
+    {
+     "minutes": 8.8,
+     "runner": "mac"
+    },
+    {
+     "minutes": 9.9,
+     "runner": "mac"
+    },
+    {
+     "minutes": 11.2,
+     "runner": "win"
+    },
+    {
+     "minutes": 12.4,
+     "runner": "win"
+    },
+    {
+     "minutes": 10.7,
+     "runner": "win"
+    },
+    {
+     "minutes": 11.9,
+     "runner": "win"
+    }
+   ],
+   "type": "box",
+   "units": {
+    "y": "min"
+   },
+   "x": "runner",
+   "y": "minutes"
+  },
+  "source": {
+   "columns": [
+    [
+     "runner",
+     "nominal"
+    ],
+    [
+     "minutes",
+     "quantitative"
+    ]
+   ],
+   "data": null,
+   "kept": 13,
+   "rows": 13,
+   "sha256": "fc8acc9117217ee9c518bf17f34d96504fc9d8c6fe1f15e974962c4afab129a8"
+  },
+  "stats": {
+   "groups": [
+    [
+     "linux",
+     6.8,
+     0.7000000000000002,
+     1,
+     5
+    ],
+    [
+     "mac",
+     9.65,
+     0.6999999999999993,
+     0,
+     4
+    ],
+    [
+     "win",
+     11.55,
+     0.9500000000000011,
+     0,
+     4
+    ]
+   ],
+   "high": [
+    "win",
+    11.55
+   ],
+   "low": [
+    "linux",
+    6.8
+   ]
+  },
+  "text": "Build time by runner",
+  "type": "chart",
+  "updated_seq": 1,
+  "w": 560.0,
+  "x": 0,
+  "y": 0
+ },
+ "gl": false,
+ "slot": [
+  12.0,
+  40.0,
+  536.0,
+  308.0
+ ],
+ "type": "box"
+}

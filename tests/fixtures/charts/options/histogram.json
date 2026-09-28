@@ -1,0 +1,422 @@
+{
+ "box": {
+  "h": 288.0,
+  "w": 536.0
+ },
+ "doc": {
+  "chart": "histogram",
+  "datasets": [
+   {
+    "dimensions": [
+     "x",
+     "s0"
+    ],
+    "id": "d0",
+    "source": [
+     [
+      110,
+      3
+     ],
+     [
+      130,
+      8
+     ],
+     [
+      150,
+      3
+     ],
+     [
+      170,
+      1
+     ],
+     [
+      190,
+      0
+     ],
+     [
+      210,
+      0
+     ],
+     [
+      230,
+      1
+     ]
+    ]
+   }
+  ],
+  "refs": {},
+  "source": {
+   "data": null,
+   "rows": 16,
+   "sha256": "f871120d36ec8d6b1f947627926f1cb1f79e3f14e1b8ca521f958263c966071f"
+  },
+  "v": 1
+ },
+ "element": {
+  "alias": "lat",
+  "chart": {
+   "gl": false,
+   "type": "histogram"
+  },
+  "chart_frame": {
+   "axes": {
+    "x": {
+     "extent": 15,
+     "fmt": "auto|",
+     "kind": "value",
+     "max": 250,
+     "min": 100,
+     "pos": "bottom",
+     "step": 50,
+     "ticks": [
+      {
+       "t": "100",
+       "v": 100,
+       "w": 20.62
+      },
+      {
+       "t": "150",
+       "v": 150,
+       "w": 20.16
+      },
+      {
+       "t": "200",
+       "v": 200,
+       "w": 23.13
+      },
+      {
+       "t": "250",
+       "v": 250,
+       "w": 22.67
+      }
+     ],
+     "title": null
+    },
+    "y": {
+     "fmt": "integer|",
+     "kind": "value",
+     "max": 10,
+     "min": 0,
+     "pos": "left",
+     "step": 5,
+     "ticks": [
+      {
+       "t": "0",
+       "v": 0,
+       "w": 7.8
+      },
+      {
+       "t": "5",
+       "v": 5,
+       "w": 7.33
+      },
+      {
+       "t": "10",
+       "v": 10,
+       "w": 12.82
+      }
+     ],
+     "title": "count"
+    }
+   },
+   "box": [
+    536,
+    288
+   ],
+   "extra": {},
+   "font": 12,
+   "legend": null,
+   "legible": true,
+   "notes": [],
+   "plot": [
+    22.82,
+    26,
+    501.18,
+    237
+   ]
+  },
+  "doc_asset": "9f8dc908ba761adac30553634cf87a61.json",
+  "engine": "echarts",
+  "gist": [
+   "x=ms in 7 bins of 20 ms · inline rows 16 rows",
+   "n 16 · mean 140.44 ms · median 132 ms · sd 31.1 ms · skewed right",
+   "range 110 ms…240 ms · mode 120 ms–140 ms (8)"
+  ],
+  "h": 340.0,
+  "id": "E-1",
+  "kv": 2,
+  "model": {
+   "capped": [],
+   "counts": [
+    [
+     3,
+     8,
+     3,
+     1,
+     0,
+     0,
+     1
+    ]
+   ],
+   "edges": [
+    100,
+    120,
+    140,
+    160,
+    180,
+    200,
+    220,
+    240
+   ],
+   "groups": [],
+   "n": 16
+  },
+  "option": {
+   "animation": false,
+   "aria": {
+    "enabled": true,
+    "label": {
+     "description": "x=ms in 7 bins of 20 ms · inline rows 16 rows n 16 · mean 140.44 ms · median 132 ms · sd 31.1 ms · skewed right range 110 ms…240 ms · mode 120 ms–140 ms (8)"
+    }
+   },
+   "backgroundColor": "transparent",
+   "color": [
+    "chart.cat.0"
+   ],
+   "dataset": {
+    "$doc": "datasets"
+   },
+   "grid": {
+    "containLabel": false,
+    "height": 237.0,
+    "left": 22.82,
+    "top": 26.0,
+    "width": 501.18
+   },
+   "legend": {
+    "show": false
+   },
+   "series": [
+    {
+     "barGap": "-100%",
+     "barWidth": 65.82,
+     "datasetIndex": 0,
+     "encode": {
+      "x": "x",
+      "y": "s0"
+     },
+     "name": "count",
+     "stack": "bins",
+     "type": "bar"
+    }
+   ],
+   "textStyle": {
+    "color": "chart.ink",
+    "fontFamily": "$sans",
+    "fontSize": 12
+   },
+   "tooltip": {
+    "confine": true,
+    "renderMode": "richText",
+    "textStyle": {
+     "fontFamily": "$sans",
+     "fontSize": 12
+    },
+    "trigger": "axis"
+   },
+   "xAxis": {
+    "axisLabel": {
+     "color": "chart.muted",
+     "fontFamily": "$sans",
+     "fontSize": 12,
+     "formatter": {
+      "$fmt": "auto|"
+     },
+     "margin": 8.0
+    },
+    "axisLine": {
+     "lineStyle": {
+      "color": "chart.axis"
+     },
+     "show": true
+    },
+    "axisTick": {
+     "alignWithLabel": true,
+     "length": 4.0,
+     "lineStyle": {
+      "color": "chart.axis"
+     },
+     "show": false
+    },
+    "interval": 50.0,
+    "max": 250.0,
+    "min": 100.0,
+    "position": "bottom",
+    "splitLine": {
+     "lineStyle": {
+      "color": "chart.gridline"
+     },
+     "show": true
+    },
+    "type": "value"
+   },
+   "yAxis": {
+    "axisLabel": {
+     "color": "chart.muted",
+     "fontFamily": "$sans",
+     "fontSize": 12,
+     "formatter": {
+      "$fmt": "integer|"
+     },
+     "margin": 8.0
+    },
+    "axisLine": {
+     "lineStyle": {
+      "color": "chart.axis"
+     },
+     "show": false
+    },
+    "axisTick": {
+     "alignWithLabel": true,
+     "length": 4.0,
+     "lineStyle": {
+      "color": "chart.axis"
+     },
+     "show": false
+    },
+    "interval": 5.0,
+    "max": 10.0,
+    "min": 0.0,
+    "name": "count",
+    "nameGap": 4.0,
+    "nameLocation": "end",
+    "nameMoveOverlap": false,
+    "nameTextStyle": {
+     "align": "left",
+     "color": "chart.muted",
+     "fontFamily": "$sans",
+     "fontSize": 12,
+     "lineHeight": 15.0,
+     "verticalAlign": "bottom"
+    },
+    "position": "left",
+    "splitLine": {
+     "lineStyle": {
+      "color": "chart.gridline"
+     },
+     "show": true
+    },
+    "type": "value"
+   }
+  },
+  "resolved": {
+   "_source": "inline rows 16 rows",
+   "type": "histogram",
+   "units": {
+    "x": "ms"
+   },
+   "x": "ms"
+  },
+  "settings": {
+   "rows": [
+    {
+     "ms": 110
+    },
+    {
+     "ms": 124
+    },
+    {
+     "ms": 131
+    },
+    {
+     "ms": 118
+    },
+    {
+     "ms": 142
+    },
+    {
+     "ms": 155
+    },
+    {
+     "ms": 128
+    },
+    {
+     "ms": 138
+    },
+    {
+     "ms": 121
+    },
+    {
+     "ms": 176
+    },
+    {
+     "ms": 133
+    },
+    {
+     "ms": 149
+    },
+    {
+     "ms": 240
+    },
+    {
+     "ms": 127
+    },
+    {
+     "ms": 119
+    },
+    {
+     "ms": 136
+    }
+   ],
+   "type": "histogram",
+   "units": {
+    "x": "ms"
+   },
+   "x": "ms"
+  },
+  "source": {
+   "columns": [
+    [
+     "ms",
+     "quantitative"
+    ]
+   ],
+   "data": null,
+   "kept": 16,
+   "rows": 16,
+   "sha256": "f871120d36ec8d6b1f947627926f1cb1f79e3f14e1b8ca521f958263c966071f"
+  },
+  "stats": {
+   "bins": 7,
+   "mode": [
+    120,
+    140,
+    8
+   ],
+   "moments": {
+    "max": 240.0,
+    "mean": 140.4375,
+    "median": 132.0,
+    "min": 110.0,
+    "n": 16.0,
+    "sd": 31.09977223925174,
+    "skew": 1.0
+   },
+   "width": 20
+  },
+  "text": "Request latency",
+  "type": "chart",
+  "updated_seq": 1,
+  "w": 560.0,
+  "x": 0,
+  "y": 0
+ },
+ "gl": false,
+ "slot": [
+  12.0,
+  40.0,
+  536.0,
+  288.0
+ ],
+ "type": "histogram"
+}

@@ -1,0 +1,18 @@
+{
+ "about": "a node that is its own child",
+ "source": "gltf",
+ "patch": {
+  "nodes": [
+   {
+    "children": [
+     0
+    ],
+    "mesh": 0
+   }
+  ]
+ },
+ "expect": {
+  "code": "op_invalid",
+  "contains": "its own child"
+ }
+}
