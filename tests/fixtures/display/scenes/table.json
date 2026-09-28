@@ -1,0 +1,142 @@
+{
+ "authors": {
+  "qa-drawer": {
+   "agent": "claude",
+   "color": "#1971c2",
+   "index": 0,
+   "kind": "member"
+  }
+ },
+ "batches": {
+  "B-1": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "qa-drawer",
+   "first_seq": 1,
+   "last_seq": 1,
+   "undone": false
+  }
+ },
+ "claims": [],
+ "counters": {
+  "B": 1,
+  "C": 0,
+  "E": 1,
+  "G": 0,
+  "K": 0,
+  "X": 0
+ },
+ "elements": [
+  {
+   "alias": "risks",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "columns": [
+    {
+     "id": "c1",
+     "title": "Risk"
+    },
+    {
+     "id": "owner",
+     "title": "Owner"
+    },
+    {
+     "align": "center",
+     "id": "level",
+     "title": "Level",
+     "width": "s"
+    }
+   ],
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "min": [
+     560,
+     216
+    ],
+    "parts": [],
+    "policy": "clamp",
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 216,
+   "id": "E-1",
+   "intent": "track launch risks",
+   "role": null,
+   "rows": [
+    {
+     "cells": {
+      "c1": "Docs not ready",
+      "level": "High",
+      "owner": "writer"
+     },
+     "id": "r1"
+    },
+    {
+     "cells": {
+      "c1": "Pricing unclear for teams above fifty seats",
+      "level": "Medium",
+      "owner": "pm"
+     },
+     "id": "price",
+     "tone": "warning"
+    },
+    {
+     "cells": {
+      "c1": "Support rota",
+      "level": "Low",
+      "owner": "ops"
+     },
+     "id": "r2"
+    }
+   ],
+   "seq": {
+    "c": 1,
+    "r": 2
+   },
+   "settings": {
+    "header": true,
+    "max_lines": 2,
+    "size": "m",
+    "zebra": true
+   },
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Launch risks",
+   "type": "table",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 560,
+   "x": 0,
+   "y": 0,
+   "z": 1
+  }
+ ],
+ "homes": {
+  "qa-drawer": [
+   0,
+   -1000,
+   800,
+   -400
+  ]
+ },
+ "legend": [],
+ "locks": [],
+ "team": "qa",
+ "updated_at": "2026-01-01T00:00:00.000Z",
+ "v": 1,
+ "version": 1
+}

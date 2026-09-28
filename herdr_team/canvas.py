@@ -129,7 +129,8 @@ RATE_WINDOW_S = 60.0
 
 #: The ops that act on any element rather than create one kind: ``canvas`` handles these itself. Every other op comes from
 #: the kind registry (``canvas_kinds``: each module's ``OPS``); ``OPS`` is theirs by ``order``, then these (phase 1, 2.4).
-CORE_OPS = ("claim", "release", "legend", "move", "restyle", "edit", "delete", "portrait", "resolve", "lock", "unlock", "undo", "refit")
+CORE_OPS = ("claim", "release", "legend", "move", "restyle", "edit", "delete", "portrait", "resolve", "lock", "unlock", "undo", "refit",
+            "patch", "place", "pin", "unpin")
 ID_PATTERN = r"^(E|C|K|X|G|B)-([1-9][0-9]{0,6})\Z"
 ALIAS_PATTERN = r"^[A-Za-z][A-Za-z0-9_.-]{0,63}\Z"
 CELL_PATTERN = r"^c(-?[0-9]{1,5})r(-?[0-9]{1,5})\Z"
@@ -194,6 +195,13 @@ _log.addHandler(logging.NullHandler())
 
 # --------------------------------------------------------------------------
 # small helpers
+
+
+def _blocks() -> Any:
+    """``canvas_blocks`` (it imports this module, so it is imported late)."""
+    from herdr_team import canvas_blocks
+
+    return canvas_blocks
 
 
 def _iso(ts: float) -> str:
@@ -829,7 +837,10 @@ def _fill_color(value: Any) -> Optional[str]:
     raise _invalid("fill", "fill must be one of {}, none, or #rrggbb".format(", ".join(FILLS)))
 
 
-STYLE_FIELDS = ("color", "fill", "width", "dash", "opacity", "font", "size", "rough", "tone", "variant")
+STYLE_FIELDS = ("color", "fill", "width", "dash", "opacity", "font", "size", "rough", "tone", "variant", "route")
+#: How a connector is routed (``style.route``, phase 2 3.4): ``elbow`` and ``curve`` are aliases.
+ROUTES = ("straight", "orthogonal", "curved")
+ROUTE_ALIASES = {"elbow": "orthogonal", "curve": "curved"}
 
 
 def _default_style(kind: str) -> Dict[str, Any]:
@@ -899,6 +910,12 @@ def _style(op: Dict[str, Any], base: Dict[str, Any], kind: str = "box") -> Dict[
         if not _is_number(rough) or int(rough) not in (0, 1, 2) or float(rough) != int(rough):
             raise _invalid("rough", "rough must be 0, 1 or 2")
         style["rough"] = int(rough)
+    if op.get("route") is not None:
+        found = _kinds.get(kind)
+        if found is None or found.role != "connector":
+            raise _invalid("route", "route applies to arrows")
+        raw = op["route"].strip().lower() if isinstance(op["route"], str) else op["route"]
+        style["route"] = _choice(ROUTE_ALIASES.get(raw, raw) if isinstance(raw, str) else raw, "route", ROUTES, "straight")
     return style
 
 
@@ -925,7 +942,7 @@ def _minimum(el: Dict[str, Any], w: Any = None, h: Any = None) -> Tuple[float, f
     style = el.get("style") if isinstance(el.get("style"), dict) else {}
     fit = el.get("fit") if isinstance(el.get("fit"), dict) else {}
     stored = fit.get("min") if isinstance(fit.get("min"), list) and len(fit["min"]) == 2 and all(_is_number(v) for v in fit["min"]) else None
-    if _free_text(_kinds.get(el.get("type"))):
+    if _free_text(_kinds.kind_of(el)):
         if w is not None:
             return float(w), 1.0
         if el.get("wrap"):
@@ -942,7 +959,7 @@ def _minimum(el: Dict[str, Any], w: Any = None, h: Any = None) -> Tuple[float, f
 
 def _fitted(el: Dict[str, Any], minimum: Sequence[float]) -> Dict[str, Any]:
     """``w``, ``h`` and ``fit`` of an element sized from its label by its kind (0.22), or ``{}`` for a kind without text."""
-    kind = _kinds.get(el.get("type"))
+    kind = _kinds.kind_of(el)
     if kind is None or kind.measure is None:
         return {}
     result = kind.measure(el, (float(minimum[0]), float(minimum[1])))
@@ -995,11 +1012,15 @@ def _is_point_form(value: Any) -> bool:
     return isinstance(value, str) and bool(_CELL_RE.match(value.strip()) or _XY_RE.match(value))
 
 
-def _point(value: Any, field: str, lookup: Optional[Lookup] = None, pressure: bool = False) -> List[float]:
+def _point(value: Any, field: str, lookup: Optional[Lookup] = None, pressure: bool = False,
+           local: Optional[Tuple[float, float, float, float]] = None) -> List[float]:
+    """A point from a cell, ``"x,y"``, ``[x, y]`` or (with ``lookup``) an element's centre. ``local`` is a free section's
+    grid ``(x, y, cell_w, cell_h)`` (an op with ``in``, phase 2 4.3): cells are its cell corners and numbers its offsets."""
+    ox, oy, cw, ch = local if local is not None else (0.0, 0.0, float(GRID), float(GRID))
     if isinstance(value, (list, tuple)):
         if len(value) not in ((2, 3) if pressure else (2,)):
             raise _invalid(field, "a point is [x, y]{}".format(" or [x, y, pressure]" if pressure else ""))
-        point = [_r2(_coord(value[0], field)), _r2(_coord(value[1], field))]
+        point = [_r2(_coord(value[0], field) + ox), _r2(_coord(value[1], field) + oy)]
         if len(value) == 3:
             point.append(_r2(_num(value[2], field, 0, 1)))
         return point
@@ -1007,10 +1028,12 @@ def _point(value: Any, field: str, lookup: Optional[Lookup] = None, pressure: bo
         text = value.strip()
         match = _CELL_RE.match(text)
         if match:
+            if local is not None:
+                return [_r2(ox + int(match.group(1)) * cw), _r2(oy + int(match.group(2)) * ch)]
             return [int(match.group(1)) * GRID, int(match.group(2)) * GRID]
         match = _XY_RE.match(text)
         if match:
-            return [_r2(_coord(match.group(1), field)), _r2(_coord(match.group(2), field))]
+            return [_r2(_coord(match.group(1), field) + ox), _r2(_coord(match.group(2), field) + oy)]
         if lookup is not None:
             cx, cy = _center(lookup(text, field))
             return [_r2(cx), _r2(cy)]
@@ -1068,10 +1091,10 @@ class _Ctx:
         self.now = now
         self.ts = _iso(now)
         self.batch_id = batch_id
-        #: Graph layouts ``apply_ops`` computed before taking ``canvas.lock`` (``_layout_key`` -> positions).
-        self.layouts: Dict[Tuple[Any, ...], Dict[str, Tuple[float, float]]] = {}
         #: Where every element stood when the batch began (QA R-1: a mark already there hosts what is put on it).
         self.start: Dict[str, Tuple[float, float, float, float]] = {eid: bounds(el) for eid, el in state.elements.items()}
+        #: What a block kind's ``prepare`` computed before ``canvas.lock`` was taken, by op index (phase 2, 1.3).
+        self.prepared: Dict[int, Any] = {}
         self.begin(0, "")
 
     def begin(self, index: int, op_name: str) -> None:
@@ -1096,6 +1119,20 @@ class _Ctx:
         #: How far ``_place`` moved the next element it creates from the point asked for (it followed a
         #: mark the engine had moved, QA R-1); ``element`` records it as that element's ``nudged``.
         self.placed_shift: Optional[Tuple[float, float]] = None
+        # Blocks (canvas v2 phase 2, ``canvas_blocks``): the containers to arrange after this op and why, what the op's
+        # ``block`` result says, what the arrangements moved and measured, and where a new block was placed.
+        self.dirty: Dict[str, str] = {}
+        self.detected = False
+        self.block_info: Optional[Dict[str, Any]] = None
+        self.block_stats: Dict[str, Dict[str, Any]] = {}
+        self.block_moved: Dict[str, List[str]] = {}
+        self.block_placed: Optional[Dict[str, Any]] = None
+        #: A block growing pushes its neighbours and says what it could not move (``blocked_by_pin``, ``not_yours``).
+        self.push_warn = False
+        #: The local grid an op with ``in: <free section>`` resolves its cells and points in: ``(x, y, cell_w, cell_h)``.
+        self.local: Optional[Tuple[float, float, float, float]] = None
+        #: ``(container id, index)``: the element this op creates joins that container's layout (``in``).
+        self.join: Optional[Tuple[str, Optional[int]]] = None
 
     # ids, z, lookups ----------------------------------------------------
 
@@ -1280,10 +1317,18 @@ def _client_id(op: Dict[str, Any]) -> Optional[str]:
     return raw
 
 
+#: Field names agents reach for that mean an accepted one (QA phase 2, F20): the refusal names it.
+_FIELD_MEANS = {"alias": "id", "name": "id", "label": "text", "title": "text", "kind": "type", "inside": "in", "into": "in",
+                "parent": "in", "route_style": "route"}
+
+
 def _check_fields(op: Dict[str, Any], allowed: Sequence[str]) -> None:
     for key in op:
         if key not in allowed:
-            raise _invalid(str(key), "{} does not take {!r}; it takes: {}".format(op.get("op"), key, ", ".join(k for k in allowed if k != "op")))
+            meant = _FIELD_MEANS.get(str(key))
+            hint = " (did you mean {!r}?)".format(meant) if meant in allowed else ""
+            raise _invalid(str(key), "{} does not take {!r}{}; it takes: {}".format(op.get("op"), key, hint,
+                                                                            ", ".join(k for k in allowed if k != "op")))
 
 
 def _lock_by(lock: Dict[str, Any]) -> str:
@@ -1343,10 +1388,13 @@ def _warn_frame_edge(ctx: _Ctx, el: Dict[str, Any]) -> None:
 
 
 def _after_create(ctx: _Ctx, el: Dict[str, Any]) -> Dict[str, Any]:
-    """Locks, then record, then the claim and legibility warnings."""
+    """Locks, then record, then the claim and legibility warnings (not for what joins a container that arranges it:
+    it is laid out after the op, and the batch's check says what is still wrong)."""
     _check_locks(ctx, [bounds(el)])
     ctx.put(el)
     _warn_claims(ctx, [el["id"]], bounds(el))
+    if isinstance(el.get("frame"), str) and _blocks().arranged(ctx.el(el["frame"])):
+        return el
     _warn_overlap(ctx, el)
     _warn_frame_edge(ctx, el)
     return el
@@ -1441,6 +1489,8 @@ def _enclosing_frame(ctx: _Ctx, box: Sequence[float], exclude: Optional[str] = N
     for el in ctx.live():
         if el.get("type") != "frame" or el["id"] == exclude or el.get("role") == PORTRAIT_ROLE:
             continue
+        if el.get("block") and _blocks().joined_only(el):
+            continue  # a stack or a positional block takes members only on purpose (in, a drop), never by where they land
         frame_box = bounds(el)
         if _contains(frame_box, box):
             area = (frame_box[2] - frame_box[0]) * (frame_box[3] - frame_box[1])
@@ -1616,7 +1666,17 @@ def _shift_group(ctx: _Ctx, el: Dict[str, Any], dx: float, dy: float) -> bool:
     not the author's to move, a lock is in the way, or it would leave the canvas."""
     ids = [el["id"]] + [r for r in _riders(ctx, el) if r != el["id"]]
     members = [m for m in (ctx.el(i) for i in ids) if m is not None]
+    # A pin is never moved by growth push-out (canvas v2 phase 2, D6).
+    pinned = next((m for m in members if isinstance(m.get("pin"), dict)), None)
+    if pinned is not None:
+        if ctx.push_warn and (dx or dy):
+            ctx.warn("blocked_by_pin", "{} is pinned, so it stays where it is; it may now be covered".format(pinned["id"]), [pinned["id"]])
+        return False
     if not (dx or dy) or ctx.pushes >= MAX_PUSHES or any(not _may_edit(ctx.author, m) for m in members):
+        blocked = next((m for m in members if not _may_edit(ctx.author, m)), None)
+        if ctx.push_warn and blocked is not None and (dx or dy):
+            ctx.warn("not_yours", "{} is {}'s, so it was not moved out of the way; it may now be covered".format(
+                blocked["id"], _who(blocked.get("author"), None)), [blocked["id"]])
         return False
     ctx.pushes += 1
     try:
@@ -1670,10 +1730,17 @@ def _push_from(ctx: _Ctx, grower: Dict[str, Any], old: Sequence[float], depth: i
     mine = _author_box(ctx, grower)
     neighbours = sorted((o for o in ctx.live() if o.get("type") in _check.solid_kinds() and o["id"] not in carried),
                         key=lambda o: (int(o.get("created_seq") or 0), _id_number(o["id"])))
+    ancestors = _ancestors(ctx, grower)
+    seen: Set[str] = set()
     for neighbour in neighbours:
         other = ctx.el(neighbour["id"])
         if other is None:
             continue
+        # A member of a block moves with its block: the outermost block container around it is what makes way (phase 2).
+        other = _block_container(ctx, other, ancestors) if isinstance(other.get("frame"), str) else other
+        if other is None or other["id"] in carried or other["id"] in seen:
+            continue
+        seen.add(other["id"])
         box = bounds(other)
         if not _check._intersects(new, box, _check.TOUCH) or _check._intersects(old, box, _check.TOUCH) or _contains(box, new):
             continue
@@ -1687,6 +1754,36 @@ def _push_from(ctx: _Ctx, grower: Dict[str, Any], old: Sequence[float], depth: i
         moved = ctx.el(other["id"]) or other
         _hold_on_host(ctx, moved, depth + 1)
         _push_from(ctx, moved, box, depth + 1)
+
+
+def _ancestors(ctx: _Ctx, el: Dict[str, Any]) -> Set[str]:
+    """The frames around ``el``, up its chain."""
+    found: Set[str] = set()
+    cursor = el
+    while isinstance(cursor.get("frame"), str) and cursor["frame"] not in found:
+        found.add(cursor["frame"])
+        parent = ctx.el(cursor["frame"])
+        if parent is None:
+            break
+        cursor = parent
+    return found
+
+
+def _block_container(ctx: _Ctx, el: Dict[str, Any], ancestors: Set[str]) -> Optional[Dict[str, Any]]:
+    """``el`` itself, or the outermost block container it sits in that is not around the grower (None: it sits in the
+    grower's own chain, so it is not pushed)."""
+    current = el
+    seen: Set[str] = set()
+    while isinstance(current.get("frame"), str) and current["frame"] not in seen:
+        seen.add(current["frame"])
+        parent = ctx.el(current["frame"])
+        if parent is None or not parent.get("block"):
+            break
+        if parent["id"] in ancestors:
+            # A sibling in the grower's own container: a stack arranges it, anything else is pushed as itself.
+            return None if _blocks().stack_of(parent) is not None else current
+        current = parent
+    return current
 
 
 def _way_text(dx: float, dy: float) -> str:
@@ -1732,7 +1829,10 @@ def _make_way(ctx: _Ctx, el: Dict[str, Any]) -> None:
     x, y = float(el["x"]), float(el["y"])
     mine = _author_box(ctx, el)
     chain = set(_host_chain(ctx, el))
-    solid = [other for other in ctx.live() if other.get("type") in _check.solid_kinds() and other["id"] != el["id"] and other["id"] not in chain]
+    around = _ancestors(ctx, el)
+    # A block's zone (a kanban, a timeline) takes room like a solid mark does (phase 2): a new mark makes way for it.
+    solid = [other for other in ctx.live() if (other.get("type") in _check.solid_kinds() or (other.get("block") and other.get("frame") is None
+             and _blocks().joined_only(other))) and other["id"] != el["id"] and other["id"] not in chain and other["id"] not in around]
     hit = next((other for other in solid if _check._intersects(box, bounds(other), _check.TOUCH)
                 and not _check._intersects(mine, _author_box(ctx, other), _check.TOUCH)), None)
     if hit is None:
@@ -1787,8 +1887,57 @@ def _portrait_corner(ctx: _Ctx, home: Sequence[float]) -> Tuple[float, float, fl
     return float(home[0]), float(home[1]), float(home[0] + PORTRAIT_W), float(home[1] + height)
 
 
-PLACE_KEYS = ("at", "right_of", "left_of", "below", "above", "inside")
-PLACE_FIELDS = PLACE_KEYS + ("gap",)
+PLACE_KEYS = ("at", "right_of", "left_of", "below", "above", "inside", "in")
+#: ``in`` joins a container's layout (a section, a kanban column), at ``index`` when given (canvas v2 phase 2, 4.1).
+PLACE_FIELDS = PLACE_KEYS + ("gap", "index")
+#: Gap tokens (``s``, ``m``, ``l``); a number is units.
+GAPS = ("s", "m", "l")
+
+
+def _gap(value: Any) -> float:
+    """A placement gap: ``s`` 20, ``m`` 40, ``l`` 80, a number of units, or ``DEFAULT_GAP``."""
+    if value is None:
+        return float(DEFAULT_GAP)
+    if isinstance(value, str) and value.strip().lower() in GAPS:
+        return _theme.gap(value.strip().lower())
+    return _num(value, "gap", 0, 5000)
+
+
+def _local_grid(ctx: "_Ctx", container: Dict[str, Any]) -> Optional[Tuple[float, float, float, float]]:
+    """A free section's local grid (4.3): its content corner and cell size; None for anything else."""
+    kind = _kinds.kind_of(container)
+    if kind is None or kind.name != "section" or _blocks().stack_of(container) is not None:
+        return None
+    from herdr_team.canvas_kinds import _zone
+
+    x0, y0, _x1, _y1 = _zone.content_box(container)
+    cell = (container.get("settings") or {}).get("cell") if isinstance(container.get("settings"), dict) else None
+    if isinstance(cell, list) and len(cell) == 2 and all(_is_number(v) for v in cell):
+        return float(x0), float(y0), float(cell[0]), float(cell[1])
+    return float(x0), float(y0), float(GRID), float(GRID)
+
+
+def _place_in(ctx: _Ctx, op: Dict[str, Any], w: float, h: float) -> Tuple[float, float, Optional[str]]:
+    """``in: <container>`` (phase 2, 4.1): the element joins the container's layout once it is created (``ctx.join``); a
+    stack re-stacks it, a free section keeps it at ``at`` in its local grid or at a free spot, a plain frame takes it as
+    ``inside`` would."""
+    container = ctx.lookup(op["in"], "in")
+    if container.get("type") != "frame":
+        raise _invalid("in", "in names a container (a section, a kanban column, a frame); {} is a {}".format(container["id"], container.get("type")))
+    blocks = _blocks()
+    if not container.get("block"):
+        x, y, frame = _place(ctx, dict({k: v for k, v in op.items() if k not in ("in", "index", "at")}, inside=op["in"]), w, h)
+        return x, y, frame
+    if op.get("at") is not None:
+        local = _local_grid(ctx, container)
+        if local is None:
+            raise _invalid("at", "at goes with in only for a free section (layout free); a stack places what joins it")
+        x, y = _point(op["at"], "at", None, False, local)[:2]
+    else:
+        x, y = blocks._entry_point(ctx, container, w, h)
+    index = int(_num(op["index"], "index", 0, 10 ** 6)) if op.get("index") is not None else None
+    ctx.join = (container["id"], index)
+    return x, y, container["id"]
 
 
 def _place(ctx: _Ctx, op: Dict[str, Any], w: float, h: float,
@@ -1800,9 +1949,15 @@ def _place(ctx: _Ctx, op: Dict[str, Any], w: float, h: float,
     that frame, and the frame grows to hold it where its author may.
     """
     keys = [key for key in PLACE_KEYS if op.get(key) is not None]
+    if keys == ["at", "in"]:
+        keys = ["in"]  # at in a free section's local grid (4.3)
     if len(keys) > 1:
-        raise _invalid(keys[1], "use at most one of at, right_of, left_of, below, above, inside")
-    gap = _num(op["gap"], "gap", 0, 5000) if op.get("gap") is not None else float(DEFAULT_GAP)
+        raise _invalid(keys[1], "use at most one of at, right_of, left_of, below, above, inside, in")
+    if op.get("index") is not None and keys != ["in"]:
+        raise _invalid("index", "index goes with in")
+    gap = _gap(op.get("gap"))
+    if keys == ["in"]:
+        return _place_in(ctx, op, w, h)
     if not keys:
         home = ctx.home()
         if home is None:
@@ -1904,13 +2059,56 @@ def _end(ctx: _Ctx, value: Any, field: str) -> End:
     return "element", ctx.lookup(value, field)
 
 
+def _reroute_env(ctx: _Ctx, arrow: Dict[str, Any], start_el: Optional[Dict[str, Any]], end_el: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """What a connector's ``reroute`` routes around (phase 2, 3.4): for a block member, its block's solid members; else the
+    solid elements near both ends. Never the ends, nor the containers of the ends."""
+    ends = [e["id"] for e in (start_el, end_el) if e is not None]
+    exclude = set(ends)
+    for end in (start_el, end_el):
+        if end is not None:
+            exclude |= _ancestors(ctx, end)
+    root = ctx.el(arrow["group"]) if isinstance(arrow.get("group"), str) else None
+    if root is not None and root.get("block"):
+        obstacles = [(o["id"], bounds(o), _kinds.outline(o)) for o in ctx.live()
+                     if o.get("group") == root["id"] and o["id"] not in exclude and o.get("type") in _check.solid_kinds()]
+    else:
+        boxes = [bounds(e) for e in (start_el, end_el) if e is not None] or [bounds(arrow)]
+        area = (min(b[0] for b in boxes) - 200, min(b[1] for b in boxes) - 200, max(b[2] for b in boxes) + 200, max(b[3] for b in boxes) + 200)
+        obstacles = _obstacles(ctx, area, list(exclude))
+    others = [[tuple(p[:2]) for p in (o.get("points") or [])] for o in ctx.live()
+              if o.get("type") == "arrow" and o["id"] != arrow["id"] and o.get("group") and o.get("group") == arrow.get("group")]
+    return {"obstacles": obstacles, "others": others, "tokens": _theme.tokens()}
+
+
+def _obstacles(ctx: _Ctx, box: Sequence[float], exclude: Sequence[str]) -> List[Tuple[str, Tuple[float, float, float, float], str]]:
+    """Solid elements meeting ``box``, leaving out ``exclude`` and the frames around those (``OpContext.obstacles``)."""
+    skip = set(exclude)
+    for eid in exclude:
+        el = ctx.el(eid)
+        if el is not None:
+            skip |= _ancestors(ctx, el)
+    return [(o["id"], bounds(o), _kinds.outline(o)) for o in ctx.live()
+            if o["id"] not in skip and o.get("type") in _check.solid_kinds() and _intersects(bounds(o), box)]
+
+
 def _reroute(ctx: _Ctx, arrow: Dict[str, Any]) -> None:
-    """Re-run a bound arrow's ends after the elements it binds moved or changed."""
+    """Re-run a bound arrow's ends after the elements it binds moved or changed (its kind's ``reroute`` when it has one:
+    the route style's router, phase 2 3.4)."""
     points = arrow.get("points") or []
     if len(points) < 2:
         return
     start_el = ctx.el(arrow["from"]) if arrow.get("from") else None
     end_el = ctx.el(arrow["to"]) if arrow.get("to") else None
+    kind = _kinds.kind_of(arrow)
+    if kind is not None and kind.reroute is not None:
+        fields = dict(kind.reroute(dict(arrow), start_el, end_el, _reroute_env(ctx, arrow, start_el, end_el)) or {})
+        if start_el is None and arrow.get("from"):
+            fields["from"] = None
+        if end_el is None and arrow.get("to"):
+            fields["to"] = None
+        if fields and any(arrow.get(k) != v for k, v in fields.items()):
+            ctx.update(arrow, **fields)
+        return
     start: End = ("element", start_el) if start_el is not None else ("point", points[0])
     end: End = ("element", end_el) if end_el is not None else ("point", points[-1])
     new_points = _route(start, end, points[1:-1])
@@ -2115,6 +2313,10 @@ CORE_OP_DOCS = {
     "resolve": "resolve a comment", "lock": "the operator locks a region against agents", "unlock": "the operator lifts a lock",
     "undo": "undo a batch (yours; the manager any agent's; the operator anything)",
     "refit": "size labels again from their minimum, under the fonts and the page's measurements (none named: all you may edit)",
+    "patch": "add, update, remove or re-set items inside a block (a kanban's cards, a table's rows); it re-lays out",
+    "place": "move elements as one group beside another, to a point, or into a container at an index",
+    "pin": "hold elements where they are: no layout, growth or other author moves them",
+    "unpin": "let go of pins (an agent cannot lift the operator's); the block re-lays out",
 }
 #: The fields of the core ops; a kind module's op takes ``_COMMON`` + its ``OpSpec.fields`` (+ placement, + style).
 CORE_FIELDS: Dict[str, Tuple[str, ...]] = {
@@ -2124,7 +2326,7 @@ CORE_FIELDS: Dict[str, Tuple[str, ...]] = {
     "move": _COMMON + ("id", "ids", "to", "by", "w", "h", "points", "from", "to_element", "frame",
                        "right_of", "left_of", "below", "above", "inside", "gap"),
     "restyle": _COMMON + ("id", "ids") + _STYLE,
-    "edit": _COMMON + ("id", "text"),
+    "edit": _COMMON + ("id", "text", "part"),
     "delete": _COMMON + ("id", "ids", "with_children"),
     "portrait": _COMMON + ("steps", "current", "title"),
     "resolve": _COMMON + ("id",),
@@ -2132,17 +2334,22 @@ CORE_FIELDS: Dict[str, Tuple[str, ...]] = {
     "unlock": _COMMON + ("id",),
     "undo": _COMMON + ("batch",),
     "refit": _COMMON + ("id", "ids"),
+    "patch": _COMMON + ("id", "add", "update", "remove", "set", "relayout"),
+    "place": _COMMON + ("id", "ids", "right_of", "left_of", "below", "above", "in", "at", "gap", "align", "index"),
+    "pin": _COMMON + ("id", "ids"),
+    "unpin": _COMMON + ("id", "ids", "relayout"),
 }
 
 
-def _point_list(value: Any, field: str, maximum: int, limit_name: str, pressure: bool = False, minimum: int = 2) -> List[List[float]]:
+def _point_list(value: Any, field: str, maximum: int, limit_name: str, pressure: bool = False, minimum: int = 2,
+                local: Optional[Tuple[float, float, float, float]] = None) -> List[List[float]]:
     if not isinstance(value, (list, tuple)):
         raise _invalid(field, "{} must be a list of points".format(field))
     if len(value) > maximum:
         raise _too_big(field, limit_name, maximum, "{} has {} points; the limit is {}".format(field, len(value), maximum))
     if len(value) < minimum:
         raise _invalid(field, "{} needs at least {} points".format(field, minimum))
-    return [_point(p, field, None, pressure) for p in value]
+    return [_point(p, field, None, pressure, local) for p in value]
 
 
 def _under_labels(ctx: _Ctx, el: Dict[str, Any]) -> None:
@@ -2150,7 +2357,7 @@ def _under_labels(ctx: _Ctx, el: Dict[str, Any]) -> None:
     it covers, its fill hid that shape's label (QA F-2, the walls over the roof's second line). It goes
     just under the lowest labelled shape it covers, never under its own frame; one it sits wholly inside
     (a panel it is drawn on) keeps it on top."""
-    kind = _kinds.get(el.get("type"))
+    kind = _kinds.kind_of(el)
     if kind is None or not kind.hosts or kind.tone_group != "shape" or str(el.get("text") or "").strip():
         return  # only a shape drawn as a background (box, ellipse, diamond): a note is paper, not a wall
     box = bounds(el)
@@ -2162,184 +2369,6 @@ def _under_labels(ctx: _Ctx, el: Dict[str, Any]) -> None:
     frame = ctx.el(el["frame"]) if el.get("frame") else None
     floor = int(frame.get("z") or 0) if frame is not None else -(10 ** 9)
     el["z"] = max(min(covered) - 1, floor)
-
-
-def _node_alias(ctx: _Ctx, alias: Optional[str], node_id: str) -> Optional[str]:
-    if alias is None:
-        return None
-    name = "{}.{}".format(alias, node_id)
-    if not _ALIAS_RE.match(name):
-        raise _invalid("id", "{} is too long to name its nodes ({}.<node id> must stay within 64 characters)".format(alias, alias))
-    return _alias(ctx, {}, value=name)
-
-
-def _depth(subgraphs: Sequence[Dict[str, Any]]) -> Dict[str, int]:
-    parents = {sg["id"]: sg.get("parent") for sg in subgraphs}
-    out: Dict[str, int] = {}
-    for sid in parents:
-        depth, cursor, seen = 0, parents.get(sid), {sid}
-        while cursor and cursor not in seen:
-            seen.add(cursor)
-            depth += 1
-            cursor = parents.get(cursor)
-        out[sid] = depth
-    return out
-
-
-def _layout_key(nodes: Sequence[str], pairs: Sequence[Tuple[str, str]], algorithm: str, direction: str,
-                sizes: Optional[Dict[str, Tuple[float, float]]] = None) -> Tuple[Any, ...]:
-    return (tuple(nodes), tuple((a, b) for a, b in pairs), algorithm, direction,
-            tuple((n, tuple(sizes[n])) for n in nodes if n in sizes) if sizes else ())
-
-
-def _node_style(op: Dict[str, Any], node: Dict[str, Any]) -> Dict[str, Any]:
-    """A graph node's style: its kind's default, then the op's style fields, then the node's own ``tone``, ``color`` and ``fill``."""
-    kind = node["kind"]
-    style = _style(op, _default_style(kind), kind)
-    own = {key: node[key] for key in ("tone", "color") if node.get(key) is not None}
-    if node.get("fill_set"):
-        own["fill"] = node.get("fill")
-    return _style(own, style, kind) if own else style
-
-
-#: Graph node kinds that keep their shape's own minimum (design tokens): a note is paper and a diamond needs
-#: room around its inscribed label; at ``NODE_W`` x ``NODE_H`` they came out small and uneven (QA F-12).
-GRAPH_SHAPE_MINIMUM = ("note", "diamond")
-
-
-def _node_sizes(op: Dict[str, Any], nodes: Sequence[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
-    """Every node sized from its label before layout (0.22): node id -> ``{"w", "h", "fit"}``, never under ``NODE_W`` x ``NODE_H``
-    (a note or a diamond never under its shape minimum)."""
-    out: Dict[str, Dict[str, Any]] = {}
-    for node in nodes:
-        probe = {"type": node["kind"], "text": node["text"], "style": _node_style(op, node), "group": "graph"}
-        minimum = (NODE_W, NODE_H)
-        if node["kind"] in GRAPH_SHAPE_MINIMUM:
-            minimum = (max(NODE_W, SHAPE_SIZES[node["kind"]][0]), max(NODE_H, SHAPE_SIZES[node["kind"]][1]))
-        out[node["id"]] = _fitted(probe, minimum)
-    return out
-
-
-#: Layouts slow enough to matter under ``canvas.lock`` (O(n^2) per iteration); the others take milliseconds.
-_PRELAID = ("force",)
-
-
-def _prelayout(ops: Sequence[Dict[str, Any]]) -> Dict[Tuple[Any, ...], Dict[str, Tuple[float, float]]]:
-    """Force layouts for the batch's ``graph`` ops, computed before ``canvas.lock`` is taken.
-
-    A 200-node force layout takes seconds, and a page write waiting on the
-    lock gives up after ``LOCK_TIMEOUT_S``. Only well-formed inputs are laid
-    out here; ``_op_graph`` still validates everything and lays out itself
-    whatever this skipped.
-    """
-    out: Dict[Tuple[Any, ...], Dict[str, Tuple[float, float]]] = {}
-    for op in ops:
-        if op.get("op") != "graph" or op.get("layout") not in _PRELAID:
-            continue
-        nodes_raw, edges_raw = op.get("nodes"), op.get("edges") if op.get("edges") is not None else []
-        if not isinstance(nodes_raw, list) or not isinstance(edges_raw, list) or len(nodes_raw) > MAX_GRAPH_NODES or len(edges_raw) > MAX_GRAPH_EDGES:
-            continue
-        nodes = [n if isinstance(n, str) else n.get("id") if isinstance(n, dict) else None for n in nodes_raw]
-        pairs = []
-        for edge in edges_raw:
-            if isinstance(edge, (list, tuple)) and len(edge) in (2, 3):
-                pairs.append((edge[0], edge[1]))
-            elif isinstance(edge, dict):
-                pairs.append((edge.get("from"), edge.get("to")))
-            else:
-                pairs = []
-                break
-        direction = op.get("direction") if op.get("direction") is not None else "down"
-        if not all(isinstance(n, str) for n in nodes) or not all(isinstance(a, str) and isinstance(b, str) for a, b in pairs) or not isinstance(direction, str):
-            continue
-        if len(set(nodes)) != len(nodes) or len(pairs) != len(edges_raw):
-            continue
-        try:
-            fitted = _node_sizes(op, _graph_nodes(nodes_raw))
-        except (HerdrTeamError,) + _OP_FAULTS:
-            continue  # the op itself reports what is wrong with it
-        sizes = {nid: (float(f["w"]), float(f["h"])) for nid, f in fitted.items()}
-        key = _layout_key(nodes, pairs, str(op["layout"]), direction, sizes)
-        if key not in out:
-            try:
-                out[key] = _layout.layout(key[0], key[1], key[2], direction, sizes=sizes)
-            except _OP_FAULTS:
-                continue
-    return out
-
-
-def _expand_graph(ctx: _Ctx, op: Dict[str, Any], title: str, nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]],
-                  algorithm: str, direction: str, subgraphs: Sequence[Dict[str, Any]] = ()) -> None:
-    """A frame (the group) holding native shapes and bound arrows, laid out in Python; Mermaid subgraphs become nested frames.
-
-    Every node is sized from its label first, and the layout places the sized
-    boxes (0.22), so a long label never runs into its neighbour.
-    """
-    edge_base = _style(op, _default_style("arrow"), "arrow")
-    alias = _alias(ctx, op)
-    fitted = _node_sizes(op, nodes)
-    sizes = {nid: (float(f["w"]), float(f["h"])) for nid, f in fitted.items()}
-    key = _layout_key([n["id"] for n in nodes], [(e["from"], e["to"]) for e in edges], algorithm, direction, sizes)
-    positions = ctx.layouts.get(key)
-    bends: Dict[int, List[Tuple[float, float]]] = {}
-    if positions is None:
-        # A long edge bends through the slots the layered layout kept for it, clear of the boxes between (QA F-6).
-        positions, bends = _layout.plan(key[0], key[1], algorithm, direction, sizes=sizes)
-    node_box = {nid: (px, py, px + sizes[nid][0], py + sizes[nid][1]) for nid, (px, py) in positions.items()}
-    depth = _depth(subgraphs)
-    sub_box: Dict[str, Tuple[float, float, float, float]] = {}
-    for sg in sorted(subgraphs, key=lambda s: -depth[s["id"]]):
-        boxes = [node_box[n["id"]] for n in nodes if n.get("subgraph") == sg["id"]]
-        boxes += [sub_box[s["id"]] for s in subgraphs if s.get("parent") == sg["id"] and s["id"] in sub_box]
-        if boxes:
-            sub_box[sg["id"]] = (min(b[0] for b in boxes) - FRAME_PAD, min(b[1] for b in boxes) - FRAME_TOP,
-                                 max(b[2] for b in boxes) + FRAME_PAD, max(b[3] for b in boxes) + FRAME_PAD)
-    everything = list(node_box.values()) + list(sub_box.values()) + [(bx, by, bx, by) for points in bends.values() for bx, by in points]
-    min_x, min_y = min(b[0] for b in everything), min(b[1] for b in everything)
-    max_x, max_y = max(b[2] for b in everything), max(b[3] for b in everything)
-    frame_w, frame_h = (max_x - min_x) + 2 * FRAME_PAD, (max_y - min_y) + FRAME_TOP + FRAME_PAD
-    if frame_w > MAX_SIZE or frame_h > MAX_SIZE:
-        raise _invalid("nodes", "the laid-out graph is {:g} x {:g}; split it (the limit is {} per side)".format(frame_w, frame_h, MAX_SIZE))
-    x, y, parent = _place(ctx, op, frame_w, frame_h)
-    ox, oy = x + FRAME_PAD - min_x, y + FRAME_TOP - min_y
-    frame_style = _default_style("frame")
-    frame = ctx.element("frame", x, y, frame_w, frame_h, text=title, style=frame_style, alias=alias, frame=parent)
-    _check_locks(ctx, [bounds(frame)])
-    ctx.put(frame)
-    ctx.alias = alias
-    group = frame["id"]
-    sub_ids: Dict[str, str] = {}
-    for sg in sorted(subgraphs, key=lambda s: depth[s["id"]]):
-        box = sub_box.get(sg["id"])
-        if box is None:
-            continue
-        sub = ctx.element("frame", box[0] + ox, box[1] + oy, box[2] - box[0], box[3] - box[1], text=sg.get("title") or sg["id"],
-                          style=frame_style, alias=_node_alias(ctx, alias, sg["id"]), frame=sub_ids.get(sg.get("parent") or "", group), group=group)
-        ctx.put(sub)
-        sub_ids[sg["id"]] = sub["id"]
-    shapes: Dict[str, Dict[str, Any]] = {}
-    for node in nodes:
-        px, py = positions[node["id"]]
-        size = fitted[node["id"]]
-        el = ctx.element(node["kind"], px + ox, py + oy, size["w"], size["h"], text=node["text"], style=_node_style(op, node),
-                         alias=_node_alias(ctx, alias, node["id"]), frame=sub_ids.get(node.get("subgraph") or "", group), group=group,
-                         fit=size["fit"])
-        shapes[node["id"]] = ctx.put(el)
-    for number, edge in enumerate(edges):
-        a, b = shapes[edge["from"]], shapes[edge["to"]]
-        middle: List[List[float]] = [[bx + ox, by + oy] for bx, by in bends.get(number, [])]
-        if a["id"] == b["id"]:
-            ax0, ay0, ax1, ay1 = bounds(a)
-            cx, cy = _center(a)
-            middle = [[ax1 + 40, cy], [ax1 + 40, ay0 - 20], [cx, ay0 - 20]]
-        points = _route(("element", a), ("element", b), middle)
-        style = dict(edge_base, fill=None, dash=edge.get("dash") or "solid")
-        if edge.get("thick"):
-            style["width"] = 4
-        geo = _geometry(points)
-        ctx.put(ctx.element("arrow", geo["x"], geo["y"], geo["w"], geo["h"], text=edge.get("label") or "", style=style, frame=group, group=group,
-                            **{"from": a["id"], "to": b["id"], "points": points, "head": edge.get("head") or "arrow", "tail": "none", "curve": False}))
-    _warn_claims(ctx, [group], bounds(frame))
 
 
 def _graph_nodes(nodes_raw: List[Any]) -> List[Dict[str, Any]]:
@@ -2604,7 +2633,7 @@ def _translated(el: Dict[str, Any], dx: float, dy: float, unbind: bool) -> Dict[
     """The fields a move by ``(dx, dy)`` changes: its corner, and whatever its kind moves with it (``Kind.translate``: an
     arrow's points and label spot, a comment's pin). ``unbind``: a connector moved on purpose lets go of its ends."""
     fields: Dict[str, Any] = {"x": _round(float(el.get("x") or 0) + dx), "y": _round(float(el.get("y") or 0) + dy)}
-    kind = _kinds.get(el.get("type"))
+    kind = _kinds.kind_of(el)
     if kind is not None and kind.translate is not None:
         fields.update(kind.translate(el, dx, dy))
     elif isinstance(el.get("points"), list):
@@ -2618,7 +2647,7 @@ def _translated(el: Dict[str, Any], dx: float, dy: float, unbind: bool) -> Dict[
 def _resized(ctx: _Ctx, el: Dict[str, Any], w: Any, h: Any) -> Dict[str, Any]:
     """The fields a resize to ``w`` x ``h`` changes: its kind's (``Kind.resize``), else its size, or for a kind sized from
     its label the size that label needs over the new minimum (0.22)."""
-    kind = _kinds.get(el.get("type"))
+    kind = _kinds.kind_of(el)
     if kind is not None and kind.resize is not None:
         return _on_canvas(el, kind.resize(el, w, h, _KindCtx(ctx)), "w")
     old_w, old_h = max(1.0, float(el.get("w") or 1)), max(1.0, float(el.get("h") or 1))
@@ -2633,6 +2662,8 @@ def _resized(ctx: _Ctx, el: Dict[str, Any], w: Any, h: Any) -> Dict[str, Any]:
 
 def _op_move(ctx: _Ctx, op: Dict[str, Any]) -> None:
     targets = _targets(ctx, op)
+    _blocks()._check_pins(ctx, targets)
+    before = {t["id"]: dict(t) for t in targets}
     modes = [key for key in ("to", "by", "right_of", "left_of", "below", "above", "inside") if op.get(key) is not None]
     if len(modes) > 1:
         raise _invalid(modes[1], "use one of to, by, right_of, left_of, below, above, inside")
@@ -2745,11 +2776,15 @@ def _op_move(ctx: _Ctx, op: Dict[str, Any]) -> None:
                 ctx.update(el, frame=adopt)
     _check_locks(ctx, boxes)
     _reroute_bound(ctx, changed, skip=set(changed) | set(repointed))
+    # Blocks (phase 2, 1.5): a moved member of a positional block is pinned, one in a stack reordered.
+    _blocks().after_move(ctx, explicit, before)
     for eid in explicit:
         el = ctx.el(eid)
         if el is not None:
             _warn_claims(ctx, [eid], bounds(el))
-            _warn_frame_edge(ctx, el)
+            # A block's member is framed by the block (its groups hug it once the op settles).
+            if not (isinstance(el.get("frame"), str) and _blocks().arranged(ctx.el(el["frame"]))) and _blocks().root_of(ctx, el) is None:
+                _warn_frame_edge(ctx, el)
 
 
 def _op_restyle(ctx: _Ctx, op: Dict[str, Any]) -> None:
@@ -2758,20 +2793,28 @@ def _op_restyle(ctx: _Ctx, op: Dict[str, Any]) -> None:
         raise _invalid("color", "restyle needs at least one of: {}".format(", ".join(STYLE_FIELDS)))
     boxes = []
     resized: List[str] = []
+    rerouted: List[str] = []
     for target in targets:
         el = ctx.el(target["id"]) or target
         kind = str(el.get("type"))
         style = _style(op, el.get("style") if isinstance(el.get("style"), dict) else _default_style(kind), kind)
+        if op.get("route") is not None:
+            rerouted.append(el["id"])
         if el.get("type") == "pen" and style.get("fill") and not el.get("closed"):
             raise _invalid("fill", "{} is an open stroke; only closed strokes take a fill".format(el["id"]))
         boxes.append(bounds(el))
         fields: Dict[str, Any] = {"style": style}
-        if _free_text(_kinds.get(kind)):
+        if op.get("route") is not None and kind == "arrow" and el.get("curve") and style.get("route") != "curved":
+            fields["curve"] = False  # a curve is a route style too: the new one replaces it (QA phase 2, F11)
+        if _free_text(_kinds.kind_of(el)):
             fields.update(_text_fields(el, str(el.get("text") or ""), style))
         elif kind in TEXT_TYPES:
             # A new font or size refits the label (0.22).
             restyled_el = dict(el, style=style)
             fields.update(_fitted(restyled_el, _minimum(restyled_el)))
+        if isinstance(el.get("pin"), dict) and el["pin"].get("by") == HUMAN and not ctx.author.is_human and \
+                (fields.get("w", el.get("w")), fields.get("h", el.get("h"))) != (el.get("w"), el.get("h")):
+            raise _error("pin_held", "{} was placed by the operator; restyling it would resize it. Ask them".format(el["id"]), id=el["id"])
         restyled = ctx.update(el, **fields)
         boxes.append(bounds(restyled))
         if kind in TEXT_TYPES and bounds(restyled) != bounds(el):
@@ -2781,13 +2824,20 @@ def _op_restyle(ctx: _Ctx, op: Dict[str, Any]) -> None:
             _warn_frame_edge(ctx, ctx.el(el["id"]) or restyled)
     _check_locks(ctx, boxes)
     _reroute_bound(ctx, resized)
+    for eid in rerouted:
+        arrow = ctx.el(eid)
+        if arrow is not None and len(arrow.get("points") or []) >= 2:
+            _reroute(ctx, arrow)
 
 
 def _op_edit(ctx: _Ctx, op: Dict[str, Any]) -> None:
     el = _targets(ctx, op, single=True)[0]
-    kind = _kinds.get(el.get("type"))
+    kind = _kinds.kind_of(el)
     if "text" not in op:
         raise _invalid("text", "edit needs text")
+    if op.get("part") is not None:
+        _blocks().edit_part(ctx, el, op["part"], op["text"])  # an inline part, or a card's title or body (phase 2, 5.1)
+        return
     if kind is None or kind.edit_field is None:
         raise _invalid("text", "a {} has no text".format(el.get("type")))
     maximum, limit_name = _KindCtx.LIMITS.get(kind.edit_limit, _KindCtx.LIMITS["label"])
@@ -2799,6 +2849,9 @@ def _op_edit(ctx: _Ctx, op: Dict[str, Any]) -> None:
         # The label is refitted from the element's minimum (0.22), so a shorter text shrinks the box back.
         fields.update(_fitted(dict(el, text=text), _minimum(el)))
     _check_locks(ctx, [bounds(el)])
+    if isinstance(el.get("pin"), dict) and el["pin"].get("by") == HUMAN and not ctx.author.is_human and \
+            (fields.get("w", el.get("w")), fields.get("h", el.get("h"))) != (el.get("w"), el.get("h")):
+        raise _error("pin_held", "{} was placed by the operator; this edit would resize it. Ask them".format(el["id"]), id=el["id"])
     edited = ctx.update(el, **fields)
     _check_locks(ctx, [bounds(edited)])
     if bounds(edited) != bounds(el):
@@ -2812,14 +2865,28 @@ def _op_edit(ctx: _Ctx, op: Dict[str, Any]) -> None:
 def _op_delete(ctx: _Ctx, op: Dict[str, Any]) -> None:
     targets = _targets(ctx, op)
     with_children = _bool(op.get("with_children"), "with_children", False)
+    if not ctx.author.is_human:
+        held = next((t for t in targets if isinstance(t.get("pin"), dict) and t["pin"].get("by") == HUMAN), None)
+        if held is not None:
+            raise _error("pin_held", "{} was placed by the operator; ask them before deleting it".format(held["id"]), id=held["id"])
     doomed = [t["id"] for t in targets]
+    # A block member's removal takes the block's arrows bound only to it (phase 2, 1.7).
+    members = {t["id"] for t in targets if isinstance(t.get("group"), str) and isinstance(t.get("part"), str)}
+    for other in list(ctx.live()):
+        if other.get("type") == "arrow" and other["id"] not in doomed and isinstance(other.get("group"), str) and \
+                (other.get("from") in members or other.get("to") in members) and _may_edit(ctx.author, other):
+            doomed.append(other["id"])
     if with_children:
         for eid in _descendants(ctx, doomed):
             el = ctx.el(eid)
+            if el is not None and not ctx.author.is_human and isinstance(el.get("pin"), dict) and el["pin"].get("by") == HUMAN:
+                raise _error("pin_held", "deleting with children would delete {}, which the operator placed; ask them".format(eid), id=eid)
             if el is not None and not _may_edit(ctx.author, el):
                 raise _error("element_not_yours", "deleting with children would delete {} ({}'s)".format(eid, _who(el.get("author"), None)),
                              id=eid, author=el.get("author"))
             doomed.append(eid)
+    else:
+        _blocks().rehome(ctx, doomed)
     _check_locks(ctx, [bounds(ctx.el(eid) or {}) for eid in doomed])
     for eid in doomed:
         ctx.drop(eid)
@@ -2840,6 +2907,8 @@ def _unbind(ctx: _Ctx, elements: Iterable[Dict[str, Any]], gone: Optional[Set[st
 
     for el in list(elements):
         fields: Dict[str, Any] = {key: None for key in ("frame", "group") if dead(el.get(key))}
+        if "group" in fields and el.get("part") is not None:
+            fields["part"] = None  # a member of a deleted block is a loose element now (phase 2, 1.7)
         if el.get("type") == "arrow":
             fields.update({key: None for key in ("from", "to") if dead(el.get(key))})
         if el.get("type") == "comment" and dead(el.get("on")):
@@ -3041,7 +3110,7 @@ MAX_REFIT = 500
 
 
 def _refittable(el: Dict[str, Any]) -> bool:
-    kind = _kinds.get(el.get("type"))
+    kind = _kinds.kind_of(el)
     return (kind is not None and kind.measure is not None and bool(str(el.get("text") or "").strip())) or \
         (el.get("type") == "arrow" and bool(el.get("text")))
 
@@ -3061,6 +3130,9 @@ def _op_refit(ctx: _Ctx, op: Dict[str, Any]) -> None:
         targets = targets[:MAX_REFIT]
     for target in targets:
         el = ctx.el(target["id"]) or target
+        if explicit and _blocks()._is_root(el):
+            _blocks().refit_root(ctx, el)  # a block rebuilds from its own spec (phase 2, 1.8)
+            continue
         if not _refittable(el):
             continue
         old = bounds(el)
@@ -3100,10 +3172,27 @@ def _op_refit(ctx: _Ctx, op: Dict[str, Any]) -> None:
             _after_growth(ctx, ctx.el(el["id"]) or refitted, old)
 
 
+def _op_patch(ctx: _Ctx, op: Dict[str, Any]) -> None:
+    _blocks().op_patch(ctx, op)
+
+
+def _op_place(ctx: _Ctx, op: Dict[str, Any]) -> None:
+    _blocks().op_place(ctx, op)
+
+
+def _op_pin(ctx: _Ctx, op: Dict[str, Any]) -> None:
+    _blocks().op_pin(ctx, op)
+
+
+def _op_unpin(ctx: _Ctx, op: Dict[str, Any]) -> None:
+    _blocks().op_unpin(ctx, op)
+
+
 CORE_HANDLERS: Dict[str, Callable[[_Ctx, Dict[str, Any]], None]] = {
     "claim": _op_claim, "release": _op_release, "legend": _op_legend, "move": _op_move,
     "restyle": _op_restyle, "edit": _op_edit, "delete": _op_delete, "portrait": _op_portrait, "resolve": _op_resolve,
     "lock": _op_lock, "unlock": _op_unlock, "undo": _op_undo, "refit": _op_refit,
+    "patch": _op_patch, "place": _op_place, "pin": _op_pin, "unpin": _op_unpin,
 }
 
 
@@ -3172,10 +3261,10 @@ class _KindCtx:
         return _bool(op.get(field), field, default)
 
     def points(self, op: Dict[str, Any], field: str, maximum: int, *, pressure: bool = False, minimum: int = 2, limit_name: str = "") -> List[List[float]]:
-        return _point_list(op.get(field), field, maximum, limit_name or "MAX_POINTS", pressure, minimum)
+        return _point_list(op.get(field), field, maximum, limit_name or "MAX_POINTS", pressure, minimum, self._ctx.local)
 
     def point(self, value: Any, field: str) -> List[float]:
-        return _point(value, field)
+        return _point(value, field, None, False, self._ctx.local)
 
     def is_point(self, value: Any) -> bool:
         return _is_point_form(value)
@@ -3266,13 +3355,16 @@ class _KindCtx:
             return el
         # A kind sized from its label makes room for its neighbours and sits on its host (QA R-1).
         sized = registered is not None and registered.measure is not None
-        if sized and op.get("inside") is None:
+        if sized and op.get("inside") is None and op.get("in") is None:
             _make_way(ctx, el)
         if sized:
             _under_labels(ctx, el)
         _after_create(ctx, el)
         if sized:
             _hold_on_host(ctx, el)
+        if role == "connector" and registered is not None and registered.reroute is not None and \
+                (style or {}).get("route") not in (None, "straight") and len(el.get("points") or []) >= 2:
+            _reroute(ctx, ctx.el(el["id"]) or el)  # a route style routes it now (phase 2, 3.4)
         return ctx.el(el["id"]) or el
 
     def route(self, op: Dict[str, Any], *, label: str, style: Dict[str, Any], curve: bool) -> Tuple[List[List[float]], Optional[str], Optional[str]]:
@@ -3321,7 +3413,17 @@ class _KindCtx:
 
     def expand_graph(self, op: Dict[str, Any], title: str, nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]], algorithm: str,
                      direction: str, subgraphs: Sequence[Dict[str, Any]] = ()) -> None:
-        _expand_graph(self._ctx, op, title, nodes, edges, algorithm, direction, subgraphs)
+        """Phase 1's graph expansion, kept for one release as a thin wrapper over the ``graph`` block (phase 2, I-15)."""
+        spec: Dict[str, Any] = {key: op[key] for key in PLACE_FIELDS + ("id", "client_id") if op.get(key) is not None}
+        spec.update(op="graph", title=title, layout=algorithm, direction=direction,
+                    nodes=[{key: node[key] for key in ("id", "text", "kind", "tone") if node.get(key) is not None}
+                           | ({"in": node["subgraph"]} if node.get("subgraph") else {}) for node in nodes],
+                    edges=[{"from": edge["from"], "to": edge["to"], "label": edge.get("label") or None,
+                            "style": edge.get("dash") or "solid"} for edge in edges],
+                    groups=[{"id": sg["id"], "title": sg.get("title") or sg["id"], "parent": sg.get("parent")} for sg in subgraphs])
+        spec["edges"] = [{k: v for k, v in edge.items() if v is not None} for edge in spec["edges"]]
+        spec["groups"] = [{k: v for k, v in group.items() if v is not None} for group in spec["groups"]]
+        _blocks().run(self._ctx, "graph", spec)
 
     def graph_nodes(self, raw: List[Any]) -> List[Dict[str, Any]]:
         return _graph_nodes(raw)
@@ -3338,10 +3440,28 @@ class _KindCtx:
     def mention(self, comment: Dict[str, Any]) -> None:
         self._ctx.mention = comment
 
+    def block(self, kind: str, spec: Dict[str, Any]) -> Dict[str, Any]:
+        return _blocks().run(self._ctx, kind, spec)
+
+    def obstacles(self, box: Sequence[float], exclude: Sequence[str]) -> List[Tuple[str, Tuple[float, float, float, float], str]]:
+        return _obstacles(self._ctx, box, exclude)
+
 
 def _kind_handler(spec: _kinds.OpSpec) -> Callable[[_Ctx, Dict[str, Any]], None]:
     def handler(ctx: _Ctx, op: Dict[str, Any]) -> None:
+        if op.get("in") is not None:
+            if "in" not in _FIELDS.get(spec.name, ()):
+                raise _invalid("in", "{} does not take in".format(spec.name))
+            container = ctx.lookup(op["in"], "in")
+            ctx.local = _local_grid(ctx, container) if op.get("at") is not None or op.get("points") is not None else None
+            if ctx.local is None and (op.get("points") is not None and op.get("at") is None) and container.get("block"):
+                raise _invalid("points", "points go with in only for a free section (layout free)")
         spec.create(_KindCtx(ctx), op)
+        if op.get("in") is not None and ctx.join is None and ctx.created:
+            # A kind that places itself (a pen from its points) still joins the container it was put in.
+            first = ctx.el(ctx.created[0])
+            if first is not None and first.get("frame") != container["id"] and not isinstance(first.get("group"), str):
+                ctx.update(first, frame=container["id"])
     handler.__name__ = "_op_" + spec.name
     return handler
 
@@ -3365,7 +3485,7 @@ def _derive() -> None:
     kinds with text and with a cell, the ops with their fields and handlers, and the nouns change summaries use."""
     global ELEMENT_TYPES, SHAPE_KINDS, TEXT_TYPES, CELL_TYPES, SHAPE_SIZES, OPS, _FIELDS, _NOUNS, _COUNT_ORDER
     kinds = _kinds.kinds()
-    ELEMENT_TYPES = tuple(kind.name for kind in kinds)
+    ELEMENT_TYPES = tuple(_kinds.element_types())  # a section is a kind, stored as a frame (phase 2, D2)
     SHAPE_KINDS = tuple(kind.name for kind in _kinds.subkinds("shape"))
     TEXT_TYPES = frozenset(kind.name for kind in kinds if kind.measure is not None)
     CELL_TYPES = frozenset(kind.name for kind in kinds if kind.cell)
@@ -3376,7 +3496,9 @@ def _derive() -> None:
     if clash:
         raise ValueError("kind ops {} clash with the core ops".format(", ".join(clash)))
     OPS = tuple(spec.name for spec in specs) + CORE_OPS
-    fields = {spec.name: _COMMON + spec.fields + (PLACE_FIELDS if spec.place else ()) + (STYLE_FIELDS if spec.style else ()) for spec in specs}
+    # A field an op names itself and also takes as placement or style (a section's gap, a graph's route) is listed once.
+    fields = {spec.name: tuple(dict.fromkeys(_COMMON + spec.fields + (PLACE_FIELDS if spec.place else ()) + (STYLE_FIELDS if spec.style else ())))
+              for spec in specs}
     fields.update(CORE_FIELDS)
     _FIELDS = fields
     _HANDLERS.clear()  # the same dict object: tests patch it in place
@@ -3509,7 +3631,7 @@ def _apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: 
     if not ops:
         result["version"] = current_version(team)
         return result
-    layouts = _prelayout(ops)  # seconds for a big force graph: never under canvas.lock
+    prepared = _blocks().prepare(ops)  # a block kind's own precomputation (a big layout, phase 2 1.3): never under canvas.lock
     lock = _canvas_lock(team)
     lock.acquire()
     notice: Optional[Dict[str, Any]] = None
@@ -3520,7 +3642,8 @@ def _apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: 
         state.drop_expired(moment)
         batch_id = "B-{}".format(state.counters.get("B", 0) + 1)
         ctx = _Ctx(layout, team, author, doc, state, moment, batch_id)
-        ctx.layouts = layouts
+        ctx.prepared = prepared
+        touched: List[str] = []
         events: List[Dict[str, Any]] = []
         lines: List[bytes] = []
         for index, op in enumerate(ops):
@@ -3534,6 +3657,8 @@ def _apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: 
                 ctx.intent = _intent(op, author)
                 ctx.author_color()  # an author's first applied op registers its colour and home
                 handler(ctx, op)
+                _blocks().settle(ctx)  # containers whose members changed are arranged again (phase 2, 1.5)
+                _blocks().refresh_note(ctx)
                 _settle_labels(ctx)
                 if ctx.live_delta() > 0 and len(state.elements) + ctx.live_delta() > MAX_ELEMENTS:
                     raise _too_big("ops", "MAX_ELEMENTS", MAX_ELEMENTS, "the canvas holds {} elements; the limit is {}".format(len(state.elements), MAX_ELEMENTS))
@@ -3550,7 +3675,8 @@ def _apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: 
             except _OP_FAULTS as err:
                 _log.warning("canvas op %s (%s) failed: %s", index, name, err, exc_info=True)
                 result["refused"].append({"index": index, "op": name if isinstance(name, str) else None, "code": "op_invalid",
-                                          "message": "{} could not be applied: {}".format(name, type(err).__name__),
+                                          "message": "{} could not be applied: an internal error ({}), not a fault in the op; the rest of the "
+                                                     "batch went ahead".format(name, type(err).__name__),
                                           "details": {"field": "op", "error": type(err).__name__}})
                 continue
             geometry = _sized(ctx)
@@ -3564,6 +3690,9 @@ def _apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: 
                 entry["geometry"] = geometry[:MAX_GEOMETRY]
                 if len(geometry) > MAX_GEOMETRY:
                     entry["geometry_omitted"] = len(geometry) - MAX_GEOMETRY
+            if ctx.block_info is not None:
+                entry["block"] = ctx.block_info
+            touched.extend(i for i in event["ids"] if i not in touched)
             result["applied"].append(entry)
             result["warnings"].extend(ctx.warnings)
             result["aliases"].update(ctx.aliases)
@@ -3571,6 +3700,13 @@ def _apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: 
                 mentions.append(ctx.mention)
         result["version"] = state.version
         result["batch"] = batch_id if events else None
+        if events:
+            # The batch's final geometry and its layout check (phase 2, 5.2): what an agent reads instead of guessing.
+            found, omitted = _blocks().batch_geometry(state, touched, MAX_GEOMETRY)
+            result["geometry"] = found
+            if omitted:
+                result["geometry_omitted"] = omitted
+            result["check"] = _blocks().batch_check(state, touched, author.name if not author.is_human else HUMAN)
         if atomic and result["refused"]:
             first = result["refused"][0]
             raise _error("canvas_refused", "atomic batch refused at op {} ({}: {}); nothing was applied".format(first["index"], first["code"], first["message"]),
@@ -3637,9 +3773,9 @@ def check_applied(result: Dict[str, Any]) -> Dict[str, Any]:
 _OTHER_NOUNS = {"comments": ("comment", "comments"), "claims": ("claim", "claims"), "legend": ("legend entry", "legend entries"),
                 "locks": ("lock", "locks")}
 _VERB_COUNTS = {"move": "moved", "restyle": "restyled", "edit": "edited", "release": "released", "resolve": "resolved",
-                "undo": "undone", "unlock": "unlocked"}
+                "undo": "undone", "unlock": "unlocked", "patch": "patched", "place": "moved", "pin": "pinned", "unpin": "unpinned"}
 _COUNT_TAIL = ("comments", "claims", "legend", "locks", "portrait", "moved", "restyled", "edited", "deleted", "released", "resolved", "undone",
-               "unlocked")
+               "unlocked", "patched", "pinned", "unpinned")
 
 
 def _event_counts(event: Dict[str, Any]) -> Dict[str, int]:
@@ -3673,7 +3809,8 @@ def _event_counts(event: Dict[str, Any]) -> Dict[str, int]:
         for change in changes:
             value = change.get("value")
             if change.get("target") == "element" and change.get("action") == "add" and isinstance(value, dict):
-                bump(str(value.get("type")))
+                kind = _kinds.kind_of(value)  # a kanban is a kanban, not a frame (phase 2)
+                bump(kind.name if kind is not None else str(value.get("type")))
     return counts
 
 
@@ -3929,7 +4066,7 @@ def describe(el: Dict[str, Any], reader: Optional[str] = None, full: bool = True
     who = _who(el.get("author"), reader)
     text = str(el.get("text") or "")
     limit = 0 if full else 80
-    registered = _kinds.get(kind)
+    registered = _kinds.kind_of(el)
     if registered is not None and registered.line is not None:
         return registered.line(el, reader, full)
     if registered is not None and registered.readback is not None:
@@ -3945,8 +4082,15 @@ def describe(el: Dict[str, Any], reader: Optional[str] = None, full: bool = True
     return line
 
 
-def _tree_lines(elements: Sequence[Dict[str, Any]], reader: Optional[str], base: int = 1) -> List[str]:
-    """Full lines with children indented under their frame (comments last)."""
+def _tree_lines(elements: Sequence[Dict[str, Any]], reader: Optional[str], base: int = 1, scene: Optional[Sequence[Dict[str, Any]]] = None,
+                verbose: bool = False) -> List[str]:
+    """Full lines with children indented under their frame (comments last). A block reads back as its spec, its members
+    folded into it (phase 2, 5.3); an element in a container says where (`` in arch#1/2 (row)``, `` part c2 of work``);
+    ``verbose`` (``look --full``) adds a block's part ids and a top-level element's neighbours."""
+    blocks = _blocks()
+    everything = list(scene) if scene is not None else list(elements)
+    scene_by_id = {el["id"]: el for el in everything}
+    folded = blocks.member_ids(everything)
     ids = {el["id"] for el in elements}
     ordered = sorted(elements, key=lambda e: (e.get("type") == "comment", int(e.get("z") or 0), _id_number(e.get("id"))))
     children: Dict[str, List[Dict[str, Any]]] = {}
@@ -3966,12 +4110,32 @@ def _tree_lines(elements: Sequence[Dict[str, Any]], reader: Optional[str], base:
         if el["id"] in seen:
             return
         seen.add(el["id"])
+        if el["id"] in folded:
+            return
+        if blocks._is_root(el) and blocks.kind_of(el).name != "section":
+            block = blocks.block_lines(everything, el, reader, verbose)
+            lines.extend("  " * depth + line for line in block)
+            for child in children.get(el["id"], []):
+                walk(child, depth + 1)
+            return
         line = describe(el, reader, full=True)
         parent = by_id.get(el.get("frame")) if isinstance(el.get("frame"), str) else None
         intent = el.get("intent")
+        tail = ""
         if parent is not None and intent and intent == parent.get("intent") and line.endswith(" — {}".format(intent)):
             line = line[: -len(" — {}".format(intent))]  # a graph's nodes repeat the graph's intent: say it once
-        lines.append("  " * depth + line)
+        if " — " in line and not line.startswith(el["id"] + " comment"):
+            line, _dash, tail = line.partition(" — ")
+            tail = " — " + tail
+        line += blocks.relation(everything, el, scene_by_id)
+        if blocks.kind_of(el) is not None and blocks.kind_of(el).name == "section":
+            kids = [scene_by_id[i] for i in blocks.stack_order(el, [o for o in everything if o.get("frame") == el["id"]])] \
+                if blocks.stack_of(el) else [o for o in everything if o.get("frame") == el["id"] and o.get("type") != "comment"]
+            if kids:
+                line += ": " + " ".join(str(k.get("alias") or k["id"]) for k in kids[:20]) + (" …" if len(kids) > 20 else "")
+        if verbose and el.get("frame") is None and el.get("type") != "comment":
+            line += blocks.neighbours(el, everything)
+        lines.append("  " * depth + line + tail)
         for child in children.get(el["id"], []):
             walk(child, depth + 1)
 
@@ -3985,8 +4149,9 @@ def _tree_lines(elements: Sequence[Dict[str, Any]], reader: Optional[str], base:
 def text_form(scene: Dict[str, Any], ids: Sequence[str], reader: Optional[str] = None) -> str:
     """The text-form lines of the given elements, as ``look`` prints them."""
     wanted = set(ids)
-    chosen = [el for el in scene.get("elements") or [] if isinstance(el, dict) and el.get("id") in wanted]
-    return "\n".join(_tree_lines(chosen, reader, base=0))
+    everything = [el for el in scene.get("elements") or [] if isinstance(el, dict)]
+    chosen = [el for el in everything if el.get("id") in wanted]
+    return "\n".join(_tree_lines(chosen, reader, base=0, scene=everything))
 
 
 def _ids_text(ids: Sequence[str], limit: int = 5) -> str:
@@ -4026,11 +4191,13 @@ def summarize(event: Dict[str, Any], state: Optional[_State] = None) -> str:
     added = [c["value"] for c in changes if c.get("target") == "element" and c.get("action") == "add" and isinstance(c.get("value"), dict)]
     if op == "clear":
         return "cleared the canvas"
-    if op in ("graph", "mermaid") and len(added) > 1:
+    if len(added) > 1 and (op in ("graph", "mermaid") or _blocks()._is_root(added[0])):
         frame = added[0]
         name = frame.get("alias") or frame.get("text") or op
-        return "added {} {} {} ({} elements)".format(_ids_text([a["id"] for a in added]), op, _q(name, 60), len(added))
-    first = _kinds.get(added[0].get("type")) if added else None
+        kind = _kinds.kind_of(frame)
+        return "added {} {} {} ({} elements)".format(_ids_text([a["id"] for a in added]), op if op in ("graph", "mermaid") or kind is None else kind.name,
+                                                     _q(name, 60), len(added))
+    first = _kinds.kind_of(added[0]) if added else None
     if op not in CORE_OPS and first is not None and first.role != "overlay":
         el = added[0]
         kind = el.get("type")
@@ -4083,7 +4250,7 @@ def summarize(event: Dict[str, Any], state: Optional[_State] = None) -> str:
     if op == "undo":
         return "undid {}".format(event.get("undoes") or "a batch")
     verbs = {"release": "released", "move": "moved", "restyle": "restyled", "edit": "edited", "delete": "deleted",
-             "resolve": "resolved", "unlock": "unlocked"}
+             "resolve": "resolved", "unlock": "unlocked", "patch": "patched", "place": "placed", "pin": "pinned", "unpin": "unpinned"}
     return "{} {}".format(verbs.get(str(op), str(op)), _ids_text(ids)).strip()
 
 
@@ -4175,12 +4342,16 @@ def look_text(result: Dict[str, Any]) -> str:
     full = result.get("elements") or []
     region = result.get("region")
     printed = {el.get("id") for el in full}
-    if region:
+    scene_elements = result.get("_scene") or full
+    verbose = bool(result.get("full"))
+    if result.get("block_text"):
+        lines.append(result["block_text"])
+    elif region:
         lines.append("region {}:".format(result.get("region_cells") or region_cells(region)))
-        lines += _tree_lines(full, reader) or ["  (nothing here)"]
+        lines += _tree_lines(full, reader, scene=scene_elements, verbose=verbose) or ["  (nothing here)"]
     elif result.get("level") == "full":
         lines.append("elements:")
-        lines += _tree_lines(full, reader) or ["  (the canvas is empty)"]
+        lines += _tree_lines(full, reader, scene=scene_elements, verbose=verbose) or ["  (the canvas is empty)"]
     elsewhere = result.get("elsewhere") or []
     if elsewhere:
         lines.append("elsewhere:" if region else "elements (one line each):")
@@ -4268,15 +4439,17 @@ def _check_canvas(layout: Any, team: TeamPaths, reader: str, region: Any, around
 
 def look(layout: Any, team: TeamPaths, reader: str, region: Any = None, around: Optional[str] = None, since: Any = None,
          image: bool = False, grid: bool = False, exact: bool = False, advance: bool = True,
-         doc: Optional[Dict[str, Any]] = None, theme: str = "light") -> Dict[str, Any]:
+         doc: Optional[Dict[str, Any]] = None, theme: str = "light", block: Optional[str] = None, full: bool = False) -> Dict[str, Any]:
     """What ``reader`` sees (contract 8.1 and 8.2): the three-level listing, changes, claims, legend, and an optional image
-    (drawn in ``theme``, ``light`` or ``dark``)."""
+    (drawn in ``theme``, ``light`` or ``dark``). ``block`` prints one block's whole spec, one item per line; ``full`` adds
+    part ids, neighbours and details (phase 2, 5.3)."""
     with _corrected(team):
-        return _look(layout, team, reader, region, around, since, image, grid, exact, advance, doc, theme)
+        return _look(layout, team, reader, region, around, since, image, grid, exact, advance, doc, theme, block, full)
 
 
 def _look(layout: Any, team: TeamPaths, reader: str, region: Any, around: Optional[str], since: Any, image: bool, grid: bool,
-          exact: bool, advance: bool, doc: Optional[Dict[str, Any]], theme: str) -> Dict[str, Any]:
+          exact: bool, advance: bool, doc: Optional[Dict[str, Any]], theme: str, block: Optional[str] = None,
+          full_detail: bool = False) -> Dict[str, Any]:
     doc = doc if isinstance(doc, dict) else store.RosterStore(team).load()
     switch = _features.require_on(layout.session, team, doc)
     _cursor_path(team, reader)  # validates the reader name before anything is written under it
@@ -4313,9 +4486,13 @@ def _look(layout: Any, team: TeamPaths, reader: str, region: Any, around: Option
     one_line, remainder = rest[:LOOK_LINE_MAX], rest[LOOK_LINE_MAX:]
     clusters = _clusters(remainder, origin)
     omitted = sum(c["count"] for c in clusters[MAX_CLUSTERS:])
+    blocks = _blocks()
+    folded = blocks.member_ids(elements)
+    one_line = [el for el in one_line if el["id"] not in folded]
     elsewhere = [{"id": el["id"], "type": el.get("type"), "bounds": [el.get("x"), el.get("y"), el.get("w"), el.get("h")],
                   "cell": cell_name(el.get("x") or 0, el.get("y") or 0), "text": el.get("text") or "", "author": el.get("author"),
-                  "line": describe(el, reader, full=False)} for el in one_line]
+                  "line": blocks.block_lines(elements, el, reader, False, 0)[0] if blocks._is_root(el) and blocks.kind_of(el).name != "section"
+                  else describe(el, reader, full=False)} for el in one_line]
     since_version: Optional[int] = None
     changes: List[Dict[str, Any]] = []
     complete, reset = True, False
@@ -4333,7 +4510,16 @@ def _look(layout: Any, team: TeamPaths, reader: str, region: Any, around: Option
         "comments_for_you": [el for el in elements if el.get("type") == "comment" and not el.get("resolved") and reader in (el.get("mentions") or [])],
         "image": None, "svg": None, "image_error": None, "exact": False,
         "problems": _check.problems(elements, reader, box),
+        "blocks": {el["id"]: blocks.spec_of(elements, el) for el in full if blocks._is_root(el)},
+        "full": bool(full_detail), "_scene": elements,
     }
+    if block is not None:
+        target = lookup(block, "block")
+        root = target if blocks._is_root(target) else (blocks.root_of(state_ctx(state), target) or target)
+        if not blocks._is_root(root):
+            raise _invalid("block", "{} is a {}, not a block".format(target["id"], target.get("type")))
+        result["block"] = blocks.spec_of(elements, root, True)
+        result["block_text"] = blocks.pretty(elements, root)
     if image:
         if exact:
             png = _exact_export(layout, team, view, grid, reader)
@@ -4349,9 +4535,21 @@ def _look(layout: Any, team: TeamPaths, reader: str, region: Any, around: Option
             result["svg"] = rendered["svg"]
             result["image_error"] = result["image_error"] or rendered["image_error"]
     result["text"] = look_text(result)
+    result.pop("_scene", None)
     if advance:
         advance_cursor(team, reader, state.version)
     return result
+
+
+class state_ctx:  # noqa: N801 - a small read-only view with the ``el`` and ``live`` a block helper asks for
+    def __init__(self, state: "_State") -> None:
+        self._state = state
+
+    def el(self, eid: Any) -> Optional[Dict[str, Any]]:
+        return self._state.elements.get(eid) if isinstance(eid, str) else None
+
+    def live(self) -> Iterable[Dict[str, Any]]:
+        return self._state.elements.values()
 
 
 def read_changes(layout: Any, team: TeamPaths, reader: str, since: Any = "last", advance: bool = True,
@@ -4400,12 +4598,38 @@ def apply_text(result: Dict[str, Any]) -> str:
         alias = " ({})".format(entry["alias"]) if entry.get("alias") else ""
         lines.append("#{} {} {}{}{}".format(entry.get("index"), entry.get("op"), _ids_text(entry.get("ids") or []) or "-", alias,
                                           _geometry_text(entry)))
+        block = entry.get("block") if isinstance(entry.get("block"), dict) else None
+        if block and block.get("kind"):
+            # The block's result (phase 2, 5.2): what it is now, what moved, the pins nobody may move.
+            box = block.get("box") or [0, 0, 0, 0]
+            parts = ["{} {} {}x{} at {}".format(block["id"], block["kind"] + ("/" + str(block["layout"]) if block.get("layout") else "") +
+                                               ("/" + str(block["direction"]) if block.get("direction") else ""), box[2], box[3],
+                                               cell_name(box[0], box[1])), "v{}".format(block.get("version"))]
+            if block.get("upsert"):
+                parts.append("updated in place")
+            if block.get("moved"):
+                parts.append("moved {}".format(len(block["moved"])))
+            if "crossings" in block:
+                parts.append("crossings {}".format(block["crossings"]))
+            if block.get("pins"):
+                names = block.get("pin_parts") or {}
+                parts.append("pins " + ", ".join("{}({})".format(names.get(k, k), v) for k, v in sorted(block["pins"].items())))
+            lines.append("   " + " · ".join(parts))
     if result.get("refused"):
         lines.append("refused:")
         lines += ["  #{} {} {}: {}".format(r.get("index"), r.get("op"), r.get("code"), r.get("message")) for r in result["refused"]]
     if result.get("warnings"):
         lines.append("warnings:")
         lines += ["  #{} {}: {}".format(w.get("index"), w.get("code"), w.get("message")) for w in result["warnings"]]
+    check = result.get("check") if isinstance(result.get("check"), dict) else None
+    if check is not None:
+        counts = check.get("counts") or {}
+        listed = " · ".join("{} {}".format(code, n) for code, n in counts.items())
+        lines.append("check: {}".format(listed if any(counts.values()) else "clean"))
+        for problem in (check.get("problems") or [])[:5]:
+            lines.append("  - {}: {}".format(problem.get("code"), problem.get("message")))
+            if problem.get("fix"):
+                lines.append("    fix: {}".format(json.dumps(problem["fix"], separators=(",", ":"), ensure_ascii=False)))
     notices = result.get("notices") or {}
     if notices.get("canvas_sent"):
         lines.append("sent: board #{}".format(", #".join(str(s) for s in notices["canvas_sent"])))

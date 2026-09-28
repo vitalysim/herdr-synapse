@@ -1,0 +1,29 @@
+{
+  "name": "routing",
+  "about": "Route styles (phase 2, 3): the same three pairs of boxes with a wall between them, joined straight (through the wall), orthogonally (around it, with a label) and curved; an orthogonal arrow between two boxes side by side; and an arrow that was straight and is restyled to go around.",
+  "stresses": ["orthogonal around obstacles", "rounded elbows", "labels on the longest piece", "restyle route", "straight stays byte for byte"],
+  "gates": {"strict": true},
+  "batches": [
+    [
+      {"op": "shape", "id": "a1", "text": "Client", "at": [0, 0], "intent": "left end"},
+      {"op": "shape", "id": "w1", "text": "Firewall", "at": [260, 0], "w": 160, "h": 200, "tone": "danger", "intent": "the wall"},
+      {"op": "shape", "id": "b1", "text": "Server", "at": [520, 0], "intent": "right end"},
+      {"op": "shape", "id": "a2", "text": "Producer", "at": [0, 320], "intent": "left end"},
+      {"op": "shape", "id": "w2", "text": "Queue", "at": [260, 300], "w": 160, "h": 120, "kind": "ellipse", "intent": "in the way"},
+      {"op": "shape", "id": "b2", "text": "Consumer", "at": [520, 380], "intent": "right end"},
+      {"op": "shape", "id": "a3", "text": "Draft", "at": [0, 560], "intent": "left end"},
+      {"op": "shape", "id": "b3", "text": "Review", "at": [520, 660], "intent": "right end"},
+      {"op": "shape", "id": "p1", "text": "Build", "at": [0, 860], "intent": "a step"},
+      {"op": "shape", "id": "p2", "text": "Test", "at": [320, 860], "intent": "the next step"}
+    ],
+    [
+      {"op": "arrow", "from": "a2", "to": "b2", "route": "orthogonal", "label": "events", "intent": "around the queue"},
+      {"op": "arrow", "from": "a3", "to": "b3", "route": "curved", "intent": "a curved route"},
+      {"op": "arrow", "from": "p1", "to": "p2", "route": "orthogonal", "label": "then", "intent": "side by side"},
+      {"op": "arrow", "id": "via", "from": "a1", "to": "b1", "intent": "straight through the wall, for now"}
+    ],
+    [
+      {"op": "restyle", "ids": ["via"], "route": "orthogonal", "intent": "route around the firewall"}
+    ]
+  ]
+}

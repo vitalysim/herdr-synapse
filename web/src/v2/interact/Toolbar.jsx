@@ -1,18 +1,10 @@
-// The board's tool bar (writable pages) and view controls (every page).
+// The board's tool bar (writable pages) and view controls (every page). Its buttons are the
+// page's select and hand tools, then each kind's tool from the registry (toolset.js).
 import React from "react";
+import { TOOLSET } from "./toolset.js";
 
-export const TOOL_BUTTONS = [
-  ["select", "Select", "V", "↖"],
-  ["hand", "Hand", "H", "✋"],
-  ["box", "Rectangle", "R", "▭"],
-  ["ellipse", "Ellipse", "O", "◯"],
-  ["diamond", "Diamond", "D", "◇"],
-  ["note", "Sticky note", "N", "🗒"],
-  ["text", "Text", "T", "T"],
-  ["arrow", "Arrow", "A", "→"],
-  ["pen", "Pen", "P", "✎"],
-  ["frame", "Frame", "F", "⬚"],
-];
+// [id, title, key, glyph] per button, in tool bar order.
+export const TOOL_BUTTONS = TOOLSET.all.map((t) => [t.id, t.title, t.key.toUpperCase(), t.glyph]);
 
 export default function Toolbar({ tool, onTool, writable }) {
   if (!writable) return null;

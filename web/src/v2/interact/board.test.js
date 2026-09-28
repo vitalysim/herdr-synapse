@@ -249,7 +249,7 @@ describe("Board", () => {
       [pointer("dblclick", 50, 40, { hit: "E-1" })],
       [pointer("dblclick", 700, 400)],
     ];
-    for (const tool of ["r", "o", "d", "n", "t", "a", "p", "f", "v"]) {
+    for (const tool of ["r", "o", "d", "n", "c", "t", "a", "p", "f", "s", "v"]) {
       await key(tool);
       for (const events of sequences) for (const ev of events) await send(ev);
     }
@@ -257,5 +257,136 @@ describe("Board", () => {
     expect(container.querySelector("textarea.v2-text-editor")).toBeNull();
     expect(calls.post).toEqual([]);
     expect(calls.bytes).toEqual([]);
+  });
+});
+
+// Canvas v2 phase 2 on the board (canvas-v2-phase2.md 6.3): inline parts through the overlay,
+// select parent, and the style bar's pin and route choices.
+describe("Board, phase 2", () => {
+  const cellEdit = (value, box, part) => ({ field: "text", value, box, font: "sans", weight: 400, size: 16, lh: 20, align: "start", wrap: "box", fill: "base.ink", part });
+  const cellText = (t, x, y) => ({ k: "text", x, anchor: "start", font: "sans", weight: 400, size: 16, lh: 20, fill: "base.ink", box: [x, y, 176, 20], lines: [{ y: y + 15, t, w: 60 }] });
+  const phase2 = [
+    { id: "E-20", kind: "table", layer: "marks", z: 1, v: 7, bbox: [0, 200, 400, 280], hit: { shape: "rect", box: [0, 200, 400, 80] }, handles: "box", connect: false, frame: null, locked: false, author: "human", edit: null,
+      parts: [
+        { part: "r1.c1", hit: { shape: "rect", box: [0, 200, 200, 40] }, edit: cellEdit("Docs", [12, 208, 176, 24], "r1.c1") },
+        { part: "r1.owner", hit: { shape: "rect", box: [200, 200, 200, 40] }, edit: cellEdit("writer", [212, 208, 176, 24], "r1.owner"), lod: [0.35, null] },
+      ],
+      items: [{ k: "rect", x: 0, y: 200, w: 400, h: 80, r: 8, fill: "base.surface", stroke: "base.grid", sw: 1 }, cellText("Docs", 12, 208), cellText("writer", 212, 208)] },
+    { id: "E-30", kind: "kanban", layer: "zones", z: 2, v: 9, bbox: [500, 0, 800, 300], hit: { shape: "frame", box: [500, 0, 300, 300], band: 60 }, handles: "box", connect: false, frame: null, locked: false, author: "human", edit: null, container: { layout: "row", gap: 20, order: ["E-31"] }, items: [] },
+    { id: "E-31", kind: "card", layer: "marks", z: 3, v: 8, bbox: [520, 80, 760, 160], hit: { shape: "rect", box: [520, 80, 240, 80] }, handles: "box", connect: true, frame: "E-30", block: "E-30", part: "c1", pin: "human", locked: false, author: "human", edit: null, items: [] },
+    { id: "E-32", kind: "arrow", layer: "marks", z: 4, v: 6, bbox: [0, 0, 300, 10], hit: { shape: "line", points: [[0, 5], [300, 5]] }, handles: "ends", connect: false, frame: null, locked: false, author: "human", edit: null, items: [] },
+  ];
+  const scene = [
+    { id: "E-20", type: "table", updated_seq: 7, author: "human" },
+    { id: "E-30", type: "frame", block: "kanban", updated_seq: 9, author: "human" },
+    { id: "E-31", type: "card", frame: "E-30", group: "E-30", updated_seq: 8, author: "human", pin: { by: "human", who: "human" } },
+    { id: "E-32", type: "arrow", updated_seq: 6, author: "human", style: { route: "straight" } },
+  ];
+
+  async function mountPhase2({ writable }) {
+    displayDoc = { ...displayDoc, version: 9, entries: phase2 };
+    const store = createSceneStore();
+    store.replace({ version: 9, elements: scene });
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root.render(React.createElement(Board, { team: "t", teamRow: { name: "t", viz: false, members: [] }, writable, store, bus: createBus(), visible: true, toast: vi.fn(), theme: "light", onFallback: vi.fn() }));
+    });
+    await act(async () => surface.props.onViewport({ w: 800, h: 600 }));
+    return { store };
+  }
+  const part = (id, name) => phase2.find((e) => e.id === id).parts.find((p) => p.part === name);
+  const click = async (selector) => act(async () => container.querySelector(selector).dispatchEvent(new MouseEvent("click", { bubbles: true })));
+  const type = async (area, text) =>
+    act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(area, text);
+      area.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+  it("a double-click on a cell edits just that cell and sends edit {part} (P1)", async () => {
+    await mountPhase2({ writable: true });
+    await send(pointer("dblclick", 300, 220, { hit: "E-20", part: part("E-20", "r1.owner") }));
+    const area = container.querySelector("textarea.v2-text-editor");
+    expect(area.value).toBe("writer");
+    // Only the cell's text leaves the drawing while it is typed over.
+    expect(surface.props.preview.hide).toEqual(["E-20"]);
+    const texts = surface.props.preview.ghost.filter((p) => p.k === "text").map((p) => p.lines[0].t);
+    expect(texts).toEqual(["Docs"]);
+    await type(area, "docs team");
+    await act(async () => area.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true })));
+    expect(calls.post[0][1].ops).toEqual([{ op: "edit", id: "E-20", part: "r1.owner", text: "docs team", if_version: 7 }]);
+  });
+
+  it("hovering a part with an editor hands Surface the part to outline", async () => {
+    await mountPhase2({ writable: true });
+    await send(pointer("hover", 100, 220, { hit: "E-20", part: part("E-20", "r1.c1") }));
+    expect(surface.props.hoverPart).toEqual({ id: "E-20", part: "r1.c1" });
+    await send(pointer("hover", 900, 500));
+    expect(surface.props.hoverPart).toBeNull();
+  });
+
+  it("Esc on a selected card selects its kanban; the next Esc clears (P10)", async () => {
+    await mountPhase2({ writable: true });
+    await send(pointer("down", 600, 100, { hit: "E-31" }));
+    await send(pointer("up", 600, 100, { hit: "E-31" }));
+    expect(surface.props.selection).toEqual(["E-31"]);
+    await key("Escape");
+    expect(surface.props.selection).toEqual(["E-30"]);
+    await key("Escape");
+    expect(surface.props.selection).toEqual([]);
+  });
+
+  it("the style bar pins and unpins (P4), and restyles an arrow's route (P7)", async () => {
+    await mountPhase2({ writable: true });
+    await send(pointer("down", 600, 100, { hit: "E-31" }));
+    await send(pointer("up", 600, 100, { hit: "E-31" }));
+    expect(container.querySelector('[data-style="pin"]')).toBeNull(); // already the operator's pin
+    await click('[data-style="unpin"]');
+    expect(calls.post.at(-1)[1].ops).toEqual([{ op: "unpin", ids: ["E-31"], if_version: 8 }]);
+    expect(container.querySelector('[data-style^="route:"]')).toBeNull(); // no arrow selected
+    await send(pointer("down", 100, 5, { hit: "E-32" }));
+    await send(pointer("up", 100, 5, { hit: "E-32" }));
+    expect(container.querySelector('[data-style="route:straight"]').className).toBe("on");
+    await click('[data-style="route:orthogonal"]');
+    expect(calls.post.at(-1)[1].ops).toEqual([{ op: "restyle", ids: ["E-32"], route: "orthogonal", if_version: 6 }]);
+    await click('[data-style="pin"]');
+    expect(calls.post.at(-1)[1].ops).toEqual([{ op: "pin", ids: ["E-32"], if_version: 6 }]);
+  });
+
+  it("opens the editor on a new element's first part when it has no text of its own", async () => {
+    const { store } = await mountPhase2({ writable: true });
+    await key("r");
+    await send(pointer("down", 1000, 400));
+    await send(pointer("up", 1000, 400));
+    expect(calls.post[0][1].ops[0]).toMatchObject({ op: "shape", kind: "box", at: [1000, 400] });
+    const made = { id: "E-9", kind: "card", layer: "marks", z: 9, v: 10, bbox: [1000, 400, 1240, 480], hit: { shape: "rect", box: [1000, 400, 240, 80] }, handles: "box", connect: true, frame: null, locked: false, author: "human", edit: null,
+      parts: [{ part: "title", hit: { shape: "rect", box: [1016, 412, 208, 25] }, edit: cellEdit("", [1016, 412, 208, 25], "title") }], items: [] };
+    displayDoc = { dl: 1, version: 10, since: 9, full: false, bbox: [0, 0, 1240, 480], upserts: [made], removes: [] };
+    await act(async () => store.applyEvents([{ seq: 10, op: "shape", ids: ["E-9"], changes: [] }]));
+    // From here on the server answers with the whole list at v10 (this stub serves one document).
+    displayDoc = { dl: 1, version: 10, bbox: [0, 0, 1240, 480], layers: ["zones", "marks", "labels", "overlays"], palettes: { light: {}, dark: {} }, entries: [...phase2, made] };
+    const area = container.querySelector("textarea.v2-text-editor");
+    expect(area).not.toBeNull();
+    await type(area, "Ship it");
+    await act(async () => area.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true })));
+    expect(calls.post.at(-1)[1].ops).toEqual([{ op: "edit", id: "E-9", part: "title", text: "Ship it", if_version: 10 }]);
+  });
+
+  it("read-only (P11): no style bar, no part editor, and nothing is ever POSTed", async () => {
+    await mountPhase2({ writable: false });
+    await send(pointer("down", 600, 100, { hit: "E-31" }));
+    await send(pointer("up", 600, 100, { hit: "E-31" }));
+    expect(surface.props.selection).toEqual(["E-31"]);
+    expect(container.querySelector(".v2-stylebar")).toBeNull();
+    await send(pointer("hover", 300, 220, { hit: "E-20", part: part("E-20", "r1.owner") }));
+    expect(surface.props.hoverPart).toBeNull();
+    await send(pointer("dblclick", 300, 220, { hit: "E-20", part: part("E-20", "r1.owner") }));
+    expect(container.querySelector("textarea.v2-text-editor")).toBeNull();
+    for (const k of ["c", "s", "n", "Enter", "Escape", "Escape"]) await key(k);
+    await send(pointer("down", 600, 100, { hit: "E-31" }));
+    await send(pointer("move", 900, 100));
+    await send(pointer("up", 900, 100));
+    expect(calls.post).toEqual([]);
   });
 });

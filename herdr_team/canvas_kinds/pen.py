@@ -5,8 +5,11 @@ from typing import Any, Dict, List
 
 from herdr_team import canvas_display as D
 from herdr_team import canvas_geometry as G
-from herdr_team.canvas_kinds import Kind, OpSpec
+from herdr_team.canvas_kinds import Kind, OpSpec, Tool
 from herdr_team.canvas_kinds._common import MAX_SIZE, Element, bounds_text, color_name, round_int, scaled_points, shifted_points, style_of
+
+#: Its place in the registration order (``canvas_kinds.DEFAULT_ORDER``).
+ORDER = 50
 
 HIT_TOLERANCE_PX = 6
 #: The most points one stroke takes.
@@ -76,11 +79,14 @@ def resize(el: Element, w: Any, h: Any, ctx: Any) -> Dict[str, Any]:
 
 
 OPS = (
-    OpSpec(name="pen", fields=("points", "closed", "style", "width", "color", "fill", "opacity", "dash", "id", "client_id"), create=create,
-           order=40, doc="a freehand stroke through points, smooth or straight", mcp='pen {points [cells, "x,y" or [x,y]], closed, style smooth|straight, color}'),
+    # ``in`` (phase 2): a stroke drawn in a free section, its points in the section's local grid.
+    OpSpec(name="pen", fields=("points", "closed", "style", "width", "color", "fill", "opacity", "dash", "id", "client_id", "in"), create=create,
+           order=40, doc="a freehand stroke through points, smooth or straight",
+           mcp='pen {points [cells, "x,y" or [x,y]], closed, style smooth|straight, color, in (a free section: its local grid)}'),
 )
 
 KINDS = (
     Kind(name="pen", role="leaf", ops=("pen",), page=True, noun=("pen stroke", "pen strokes"), tone_group="ink", edit_field=None,
-         emit=emit, hit=hit, readback=readback, translate=translate, resize=resize, doc="a freehand stroke"),
+         emit=emit, hit=hit, readback=readback, translate=translate, resize=resize, doc="a freehand stroke",
+         tool=Tool(key="p", title="Pen", glyph="\u270e", gesture="pen", order=70, one_shot=False)),
 )

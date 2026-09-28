@@ -32,7 +32,10 @@ purpose, ``canvas_render.render_text``, excused by rule), reads the page's own f
 (``page_overflow``: a label wider or taller than the room its container gives it), and saves light and
 dark screenshots of the page. ``--engine v2`` opens the display-list page (``?engine=v2``, canvas v2 phase 1)
 instead and reads the same things through its QA hook ``window.__synapseV2`` (lines, the fit audit, fit to view),
-and also gates any CSS ``filter`` on the page (AC-4.2: nothing inverts colours in the dark theme).
+and also gates any CSS ``filter`` on the page (AC-4.2: nothing inverts colours in the dark theme). The v2 page is read
+at full detail (scale 1, above every level-of-detail band), one screen-sized tile at a time, so a board bigger than
+the screen is compared line for line and never against its zoomed-out skeletons. Every entry that draws text is probed
+and compared, a table's cells and a sequence's names and messages included.
 
 It prints one line per scene (``--json`` for everything) and exits 0 when every gated count is zero,
 1 when any is not, 2 when a scene is invalid (an op refused, a bad file), and 3 when resvg is missing.
@@ -70,6 +73,7 @@ if str(REPO) not in sys.path:
 
 from herdr_team import canvas as C  # noqa: E402
 from herdr_team import canvas_check as K  # noqa: E402
+from herdr_team import canvas_kinds  # noqa: E402
 from herdr_team import canvas_render as R  # noqa: E402
 from herdr_team import features, paths, store  # noqa: E402
 
@@ -78,8 +82,10 @@ OUT_DIR = REPO / ".local" / "qa" / "canvas"
 TEAM = "qa"
 MEMBER = "qa-drawer"
 
-#: Kinds whose ``text`` is drawn inside their outline; arrows carry a label pill at their midpoint.
-LABELLED = ("box", "ellipse", "diamond", "note", "text")
+#: Kinds whose ``text`` is drawn inside their outline: every kind whose label its own ``measure`` fits, from the
+#: registry, so a new labelled kind is probed with no edit here (QA phase 1, V-2). Arrows carry a label pill at their
+#: midpoint and are probed separately.
+LABELLED = tuple(kind.name for kind in canvas_kinds.kinds() if kind.measure is not None and kind.role != "connector")
 #: Pixels per canvas unit in the probes, and the longest probe side before the scale drops.
 PROBE_SCALE = 2.0
 PROBE_MAX_PX = 2400
@@ -97,7 +103,7 @@ LARGE_TEXT = 24.0
 
 #: Counts that fail the Phase 0 gate; ``--strict`` adds the tracked ones (routing lands in Phase 2).
 GATED_CHECKS = ("overlap", "text_on_label", "label_overflow", "frame_edge")
-TRACKED_CHECKS = ("arrow_through", "stray")
+TRACKED_CHECKS = ("arrow_through", "stray", "route_loop", "label_astray")
 
 SVG_NS = "http://www.w3.org/2000/svg"
 TEXT_TAGS = ("text",)
@@ -308,8 +314,11 @@ def load_scene_file(path: Path) -> Dict[str, Any]:
     exempt = doc.get("page_line_exempt") or {}
     if not isinstance(exempt, dict):
         raise ValueError("{}: page_line_exempt maps element ids to the reason their page lines may differ".format(path))
+    gates = doc.get("gates") or {}
+    if not isinstance(gates, dict) or any(key not in ("strict",) for key in gates):
+        raise ValueError("{}: gates is {{\"strict\": true}} (a Phase 2 scene also gates arrow_through, stray and arrow-label collisions)".format(path))
     return {"name": str(doc.get("name") or Path(path).stem), "about": str(doc.get("about") or ""), "batches": batches,
-            "file": os.fspath(path), "page_line_exempt": {str(k): str(v) for k, v in exempt.items()}}
+            "file": os.fspath(path), "page_line_exempt": {str(k): str(v) for k, v in exempt.items()}, "gates": dict(gates)}
 
 
 def scene_files(targets: Sequence[str]) -> List[Path]:
@@ -518,7 +527,7 @@ def _probe_png(svg: str, path: Path, width_px: int) -> Tuple[int, int, List[byte
 def _inside(el: Dict[str, Any], x: float, y: float, slack: float) -> bool:
     """Whether a canvas point lies in the element's outline grown by ``slack`` (shrunk when negative)."""
     x0, y0, x1, y1 = K.box_of(el)
-    kind = el.get("type")
+    kind = canvas_kinds.outline(el)  # the kind's drawn outline (rect, ellipse or diamond), from the registry
     if kind == "ellipse":
         rx, ry = (x1 - x0) / 2.0 + slack, (y1 - y0) / 2.0 + slack
         if rx <= 0 or ry <= 0:
@@ -652,7 +661,9 @@ def evaluate(scene_doc: Dict[str, Any], out: Path, scale: float = PROBE_SCALE, t
     """Apply, check, render and probe one scene; its report (``gate.ok`` says whether it passes)."""
     name = scene_doc["name"]
     themes = list(themes or themes_supported())
-    report: Dict[str, Any] = {"scene": name, "file": scene_doc["file"], "themes": themes}
+    # A scene may gate more than the run does (phase 2: its own ``gates``, strict for every scene built on blocks and routes).
+    strict = bool(strict or (scene_doc.get("gates") or {}).get("strict"))
+    report: Dict[str, Any] = {"scene": name, "file": scene_doc["file"], "themes": themes, "strict": strict}
     with QaTeam() as qa:
         report.update(apply_scene(qa, scene_doc))
         scene = C.load_scene(qa.team)
@@ -668,7 +679,11 @@ def evaluate(scene_doc: Dict[str, Any], out: Path, scale: float = PROBE_SCALE, t
         # Arrow labels also keep clear of each other's pills (QA R-3: they must never run into other text).
         pills = [dict(id=e["id"] + "~label", type="label", of=e["id"], x=b[0][0], y=b[0][1], w=b[0][2], h=b[0][3])
                  for e in live if e.get("type") == "arrow" for b in [R.arrow_label_pill(e)] if b is not None]
-        texts = [e for e in live if (e.get("type") in LABELLED or e.get("type") == "arrow") and str(e.get("text") or "").strip()]
+        # Every element that draws text: labelled kinds and arrows by their text, and any other entry whose display list
+        # holds text (a table's cells, a sequence's names and messages: QA phase 2, F14).
+        drawn_text = _entries_with_text(scene)
+        texts = [e for e in live if ((e.get("type") in LABELLED or e.get("type") == "arrow") and str(e.get("text") or "").strip())
+                 or (e["id"] in drawn_text and e.get("type") not in LABELLED and e.get("type") != "arrow" and e.get("type") != "frame")]
         work = Path(tempfile.mkdtemp(prefix="probe-", dir=os.fspath(qa.tmp)))
         report["renders"] = {}
         report["pixel"] = {}
@@ -695,7 +710,13 @@ def evaluate(scene_doc: Dict[str, Any], out: Path, scale: float = PROBE_SCALE, t
             }
             if theme == themes[0]:
                 report["lines"] = {p["id"]: p["lines"] for p in probes}
-        if browser is not None:
+        # The v1 (Excalidraw) page draws only the element types it has builders for (phase 1 D8; a block stored as a frame
+        # is a frame there, D2): a scene with any other type is checked on the v2 page only.
+        foreign = sorted({str(e.get("type")) for e in live
+                          if canvas_kinds.get(e.get("type")) is None or not canvas_kinds.get(e.get("type")).page})
+        if browser is not None and engine == "v1" and foreign:
+            report["page_skipped"] = "the v1 page does not draw {}".format(", ".join(foreign))
+        elif browser is not None:
             shot = out / (name + ("-page-v2.png" if engine == "v2" else "-page.png"))
             report["page_png"] = os.fspath(shot)
             report["engine"] = engine
@@ -716,6 +737,16 @@ def evaluate(scene_doc: Dict[str, Any], out: Path, scale: float = PROBE_SCALE, t
     report["png"] = report["renders"][themes[0]]["png"]
     report["gate"] = gate(report, strict)
     return report
+
+
+def _entries_with_text(scene: Dict[str, Any]) -> set:
+    """The ids of the display list's entries that draw any text line."""
+    from herdr_team import canvas_display
+
+    def has_text(items: Any) -> bool:
+        return any(isinstance(p, dict) and ((p.get("k") == "text" and p.get("lines")) or has_text(p.get("items"))) for p in items or [])
+
+    return {e["id"] for e in canvas_display.display_list(scene).get("entries") or [] if has_text(e.get("items"))}
 
 
 def compare_lines(server: Dict[str, List[str]], page: Dict[str, List[str]], exempt: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
@@ -839,9 +870,25 @@ PAGE_V2_LINES_JS = r"""(() => {
   return qa.lines();
 })()"""
 PAGE_V2_AUDIT_JS = r"""(() => (window.__synapseV2 ? window.__synapseV2.audit() : []))()"""
+#: The v2 page's lines are read at full detail (``PAGE_V2_SCALE``, at or above every level-of-detail band, where the page
+#: draws what the probe renders), tile by tile over the board so no entry is culled (QA phase 2, F14): a board bigger
+#: than the screen at 0.35 shows skeletons at fit, not text.
+PAGE_V2_SCALE = 1.0
+PAGE_V2_MAX_TILES = 400
+PAGE_V2_TILES_JS = r"""(() => {
+  const qa = window.__synapseV2;
+  if (!qa || !qa.ready()) return null;
+  const dl = qa.dl();
+  const cam = qa.camera();
+  return {bbox: dl.bbox, w: window.innerWidth, h: window.innerHeight, scale: cam ? cam.scale : null};
+})()"""
 PAGE_V2_FIT_JS = r"""(() => (window.__synapseV2 ? (window.__synapseV2.fit(), true) : false))()"""
-#: AC-4.2: nothing on the page inverts colours (Phase 0's dark mode was an ``invert`` filter over the canvas).
-PAGE_FILTERS_JS = r"""(() => [...document.querySelectorAll('*')].filter((el) => getComputedStyle(el).filter !== 'none')
+#: AC-4.2: nothing on the page inverts colours (Phase 0's dark mode was an ``invert`` filter over the canvas). The display
+#: list's own elevation shadows (``elev``: ``filter="url(#synapse-elev-N)"`` on a card or a sticky, phase 2) change no colour.
+PAGE_FILTERS_JS = r"""(() => [...document.querySelectorAll('*')].filter((el) => {
+    const found = getComputedStyle(el).filter;
+    return found !== 'none' && !/^url\("?#synapse-elev-\d+"?\)$/.test(found);
+  })
   .map((el) => el.tagName.toLowerCase() + (el.className && typeof el.className === 'string' ? '.' + el.className.split(' ')[0] : '')).slice(0, 5))()"""
 ENGINES = ("v1", "v2")
 CHROME_PATHS = ("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "google-chrome", "chromium", "chromium-browser")
@@ -981,6 +1028,8 @@ class Browser:
             if isinstance(value, dict) and value and value == last:
                 audit = self.cdp.evaluate(PAGE_V2_AUDIT_JS if v2 else PAGE_AUDIT_JS)
                 self.audit = audit if isinstance(audit, list) else []
+                if v2:
+                    value, self.audit = self._tiled_v2(value, self.audit)
                 if shot is not None:
                     self.cdp.evaluate(PAGE_V2_FIT_JS if v2 else PAGE_FIT_JS)
                     time.sleep(0.5)
@@ -994,6 +1043,36 @@ class Browser:
                 return value
             last = value
         raise RuntimeError("the page never settled: {}".format(last if isinstance(last, str) else "lines kept changing"))
+
+    def _tiled_v2(self, first: Dict[str, List[str]], first_audit: List[Dict[str, Any]]) -> Tuple[Dict[str, List[str]], List[Dict[str, Any]]]:
+        """The v2 page's lines and audit read at ``PAGE_V2_SCALE``, one screen-sized tile at a time over the board."""
+        info = self.cdp.evaluate(PAGE_V2_TILES_JS)
+        if not isinstance(info, dict) or not isinstance(info.get("bbox"), list) or len(info["bbox"]) != 4:
+            return first, first_audit
+        x0, y0, x1, y1 = (float(v) for v in info["bbox"])
+        scale = PAGE_V2_SCALE
+        tile_w, tile_h = float(info.get("w") or 1400) / scale, float(info.get("h") or 900) / scale
+        cols, rows = max(1, int(math.ceil((x1 - x0) / tile_w))), max(1, int(math.ceil((y1 - y0) / tile_h)))
+        if cols * rows > PAGE_V2_MAX_TILES:
+            return first, first_audit
+        lines: Dict[str, List[str]] = {}
+        audit: Dict[Tuple[str, bool], Dict[str, Any]] = {}
+        for row in range(rows):
+            for col in range(cols):
+                cx, cy = x0 + (col + 0.5) * tile_w, y0 + (row + 0.5) * tile_h
+                self.cdp.evaluate("window.__synapseV2.zoom({}, [{}, {}]), true".format(scale, cx, cy))
+                deadline = time.monotonic() + 10
+                while time.monotonic() < deadline and not self.cdp.evaluate("window.__synapseV2.ready()"):
+                    time.sleep(0.05)
+                got = self.cdp.evaluate(PAGE_V2_LINES_JS)
+                if isinstance(got, dict):
+                    lines.update(got)
+                found = self.cdp.evaluate(PAGE_V2_AUDIT_JS)
+                for item in found if isinstance(found, list) else []:
+                    key = (str(item.get("id")), bool(item.get("vertical") or item.get("collapsed")))
+                    if key not in audit or (item.get("overflowPx") or 0) > (audit[key].get("overflowPx") or 0):
+                        audit[key] = item
+        return lines, list(audit.values())
 
     def screenshot(self, path: Path) -> None:
         import base64
@@ -1052,6 +1131,8 @@ def summary_line(report: Dict[str, Any]) -> str:
         page_text += "  page overflow {}".format(len(report["page_overflow"]))
     if report.get("engine") == "v2":
         page_text += "  (v2 page, css filters {})".format(len(report.get("page_filters") or []))
+    if report.get("page_skipped"):
+        page_text += "  page skipped: {}".format(report["page_skipped"])
     render = report["renders"][report["themes"][0]]
     return ("{:<16} {}  ops {}/{}  check: {}  label_overflow {}  pixel overflow {} collisions {} arrow-label {}  "
             "min contrast {}  tofu {} cut off {}{}\n    png {}").format(

@@ -56,3 +56,16 @@ describe("dependsOnScale", () => {
     expect(dependsOnScale({ items: [{ k: "slot", fallback: [{ k: "text", zoom: {} }] }] })).toBe(true);
   });
 });
+
+describe("elevation on the page (QA phase 2, F13)", () => {
+  test("a shadow is dropped below ELEV_MIN_SCALE on the page, kept above it and in written pictures", async () => {
+    const { ELEV_MIN_SCALE, paintAttrs } = await import("./svgAttrs.js");
+    const defs = { elevation: (n) => `synapse-elev-${n}` };
+    const card = { k: "rect", fill: "base.surface", elev: 1 };
+    const filterOf = (ctx) => (paintAttrs(card, { theme: "light", palette: {}, defs, ...ctx }).find(([name]) => name === "filter") || [])[1];
+    expect(filterOf({ page: true, scale: ELEV_MIN_SCALE / 2 })).toBeUndefined();
+    expect(filterOf({ page: true, scale: 1 })).toBe("url(#synapse-elev-1)");
+    expect(filterOf({ scale: 0.05 })).toBe("url(#synapse-elev-1)");
+    expect(dependsOnScale({ items: [card] })).toBe(true);
+  });
+});

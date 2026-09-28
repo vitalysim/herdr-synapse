@@ -952,7 +952,7 @@ class Cli(CanvasRig):
         with mock.patch.object(sys, "stdin", io.StringIO(json.dumps([{"op": "shape", "text": "C", "at": "c0r10", "intent": "t"}]))):
             code, out, err = run_cli(["canvas", "draw", "--file", "-"], env_no_daemon(self.ts, HERDR_PANE_ID="w2:p2"), self.api)
         self.assertEqual(code, 0, err)
-        self.assertEqual(out, "v3 · B-2 · applied 1, refused 0\n#0 shape E-3 → 160x80 (hug, 1 line)\n")
+        self.assertEqual(out, "v3 · B-2 · applied 1, refused 0\n#0 shape E-3 → 160x80 (hug, 1 line)\ncheck: clean\n")
         code, _payload, err = self.worker("canvas", "draw", "--op", '{"op": "shape", "text": "no intent"}')
         self.assertEqual((code, err["code"]), (1, "canvas_refused"))
         self.assertEqual(err["refused"][0]["details"]["field"], "intent")

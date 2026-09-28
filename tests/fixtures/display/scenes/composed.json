@@ -1,0 +1,372 @@
+{
+ "authors": {
+  "qa-drawer": {
+   "agent": "claude",
+   "color": "#1971c2",
+   "index": 0,
+   "kind": "member"
+  }
+ },
+ "batches": {
+  "B-1": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "qa-drawer",
+   "first_seq": 1,
+   "last_seq": 6,
+   "undone": false
+  }
+ },
+ "claims": [],
+ "counters": {
+  "B": 1,
+  "C": 0,
+  "E": 6,
+  "G": 0,
+  "K": 0,
+  "X": 0
+ },
+ "elements": [
+  {
+   "alias": "board",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Auth redesign board"
+    ],
+    "min": [
+     1,
+     1
+    ],
+    "policy": "hug",
+    "size": 48,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 60,
+   "id": "E-1",
+   "intent": "the board title",
+   "level": 1,
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#1c2024",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Auth redesign board",
+   "type": "heading",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 495,
+   "x": 0,
+   "y": 0,
+   "z": 1
+  },
+  {
+   "alias": "arch",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "block": "section",
+   "client_id": null,
+   "count": 2,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "min": [
+     320,
+     200
+    ],
+    "policy": "hug"
+   },
+   "frame": null,
+   "group": null,
+   "h": 280,
+   "id": "E-2",
+   "intent": "auth redesign overview",
+   "order": [
+    "E-3",
+    "E-4"
+   ],
+   "role": null,
+   "seq": {},
+   "settings": {
+    "align": "start",
+    "gap": "m",
+    "layout": "row",
+    "padding": "m"
+   },
+   "style": {
+    "dash": "solid",
+    "fill": "#f1f7fe",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#bcd8f7",
+    "text": "#0b3a6e",
+    "tone": "info",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Auth redesign",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 5,
+   "w": 720,
+   "x": 0,
+   "y": 100,
+   "z": 2
+  },
+  {
+   "alias": "gw",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "badges": [
+    {
+     "text": "P0"
+    }
+   ],
+   "batch": "B-1",
+   "body": "Terminates TLS and forwards the JWT",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "API gateway"
+    ],
+    "min": [
+     240,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-2",
+   "group": null,
+   "h": 140,
+   "icon": "network",
+   "id": "E-3",
+   "intent": "gateway",
+   "role": null,
+   "size": "m",
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "API gateway",
+   "type": "card",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 320,
+   "x": 32,
+   "y": 192,
+   "z": 3
+  },
+  {
+   "alias": "auth",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "body": "Issues and rotates tokens",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 4,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Auth service"
+    ],
+    "min": [
+     240,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-2",
+   "group": null,
+   "h": 100,
+   "icon": "shield-check",
+   "id": "E-4",
+   "intent": "auth service",
+   "role": null,
+   "size": "m",
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "accent",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Auth service",
+   "type": "card",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 5,
+   "w": 240,
+   "x": 437,
+   "y": 192,
+   "z": 4
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 5,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "verify"
+    ],
+    "size": 16
+   },
+   "frame": null,
+   "from": "E-3",
+   "group": null,
+   "h": 1,
+   "head": "arrow",
+   "id": "E-5",
+   "intent": "call path",
+   "label_at": [
+    394.5,
+    262
+   ],
+   "points": [
+    [
+     356,
+     262
+    ],
+    [
+     433,
+     262
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "orthogonal",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "verify",
+   "to": "E-4",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 5,
+   "w": 77,
+   "x": 356,
+   "y": 262,
+   "z": 5
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "body": "Keep sessions or go stateless?",
+   "callout": "decision",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 6,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Open question"
+    ],
+    "min": [
+     240,
+     64
+    ],
+    "policy": "hug",
+    "size": 16,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 80,
+   "id": "E-6",
+   "intent": "open question",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#e3f6f3",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#0d7a6c",
+    "text": "#0f433c",
+    "tone": "decision",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Open question",
+   "type": "callout",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 6,
+   "w": 320,
+   "x": 760,
+   "y": 100,
+   "z": 6
+  }
+ ],
+ "homes": {
+  "qa-drawer": [
+   0,
+   -1000,
+   800,
+   -400
+  ]
+ },
+ "legend": [],
+ "locks": [],
+ "team": "qa",
+ "updated_at": "2026-01-01T00:00:00.000Z",
+ "v": 1,
+ "version": 6
+}

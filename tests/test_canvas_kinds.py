@@ -51,16 +51,22 @@ class Registry(unittest.TestCase):
 
 class PhaseZeroKinds(unittest.TestCase):
     def test_every_element_type_is_a_registered_kind(self):
-        self.assertEqual(set(C.ELEMENT_TYPES), set(R.names()))
-        self.assertEqual(R.names(), list(C.ELEMENT_TYPES), "registration order follows the element types")
+        # A kind stored as another kind's type (a section is a frame, phase 2 D2) is a kind but not an element type.
+        self.assertEqual(set(C.ELEMENT_TYPES), {k.name for k in R.kinds() if k.stored_as is None})
+        self.assertEqual(R.element_types(), list(C.ELEMENT_TYPES), "registration order follows the element types")
         self.assertEqual([k.name for k in R.by_op("shape")], list(C.SHAPE_KINDS))
 
     def test_the_labelled_kinds_fit_and_read_back(self):
         for name, policy in (("box", "hug"), ("note", "shrink"), ("ellipse", "scale_shape"), ("diamond", "scale_shape"), ("text", "hug")):
             kind = R.get(name)
             self.assertEqual((kind.fit, kind.measure is not None, kind.readback is not None), (policy, True, True), name)
-        self.assertEqual({k.name: k.role for k in R.kinds() if k.role != "leaf"},
-                         {"arrow": "connector", "frame": "container", "comment": "overlay"})
+        phase0 = {"arrow": "connector", "frame": "container", "comment": "overlay"}
+        found = {k.name: k.role for k in R.kinds() if k.role != "leaf"}
+        self.assertEqual({name: role for name, role in found.items() if name in phase0}, phase0)
+        for name, role in found.items():
+            if name not in phase0:
+                self.assertIsNotNone(R.get(name).stored_as or R.get(name).block or R.get(name).arrange or R.get(name).role == "connector",
+                                     "{} is a {}: a block or container of phase 2".format(name, role))
 
     def test_insets_match_the_check_and_the_page(self):
         for name, room in (("ellipse", 2 ** -0.5), ("diamond", 0.5)):
@@ -81,6 +87,43 @@ class PhaseZeroKinds(unittest.TestCase):
         small = R.drawn(dict(box, w=40, h=40))
         self.assertGreater(small.w, 40, "too small: what it would grow to")
         self.assertIsNone(R.drawn({"type": "arrow"}))
+
+
+class StoredAs(unittest.TestCase):
+    """Kinds stored as another kind's element type (phase 2, 1.2): a section is ``{"type": "frame", "block": "section"}``."""
+
+    def setUp(self):
+        R.load()
+        self.saved = dict(R._REGISTRY)
+
+    def tearDown(self):
+        R._REGISTRY.clear()
+        R._REGISTRY.update(self.saved)
+
+    def test_kind_of_reads_the_block_of_a_stored_as_kind(self):
+        self.assertIs(R.kind_of({"type": "frame", "block": "section"}), R.get("section"))
+        self.assertIs(R.kind_of({"type": "frame"}), R.get("frame"))
+        self.assertIs(R.kind_of({"type": "frame", "block": "no-such-block"}), R.get("frame"), "an unknown block is a plain frame")
+        self.assertIs(R.kind_of({"type": "card", "block": "section"}), R.get("card"), "block only counts on the stored type")
+        self.assertIsNone(R.kind_of({"type": "no-such-kind"}))
+        self.assertNotIn("section", R.element_types())
+        self.assertIn("section", [k.name for k in R.blocks()])
+
+    def test_a_stored_as_kind_needs_a_kind_stored_as_itself(self):
+        with self.assertRaises(ValueError):
+            R.register(R.Kind(name="test-nowhere", stored_as="no-such-kind"))
+        with self.assertRaises(ValueError):
+            R.register(R.Kind(name="test-chained", stored_as="section"))
+        R.register(R.Kind(name="test-stored", stored_as="frame"))
+        self.assertNotIn("test-stored", R.element_types())
+
+    def test_a_tool_template_must_be_an_op(self):
+        with self.assertRaises(ValueError):
+            R.register(R.Kind(name="test-template", tool=R.Tool(key="q", title="Q", glyph="Q", gesture="block", template='["op"]')))
+        with self.assertRaises(ValueError):
+            R.register(R.Kind(name="test-template2", tool=R.Tool(key="q", title="Q", glyph="Q", gesture="block", template="{not json")))
+        kind = R.register(R.Kind(name="test-template3", tool=R.Tool(key="q", title="Q", glyph="Q", gesture="block", template='{"op": "card"}')))
+        self.assertEqual(kind.tool.template_op(), {"op": "card"})
 
 
 class Conformance(unittest.TestCase):

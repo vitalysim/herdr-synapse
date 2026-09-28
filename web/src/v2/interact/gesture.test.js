@@ -96,10 +96,13 @@ describe("drawing tools", () => {
   it("creates a shape by drag or click and asks for the editor", () => {
     const drag = run("box", [pointer("down", 100, 100), pointer("move", 200, 180), pointer("up", 260, 180)]);
     expect(drag.outcome).toMatchObject({ ops: [{ op: "shape", kind: "box", at: [100, 100], w: 160, h: 80, text: "" }], editCreated: true });
-    for (const tool of ["ellipse", "diamond", "note"]) {
+    for (const tool of ["ellipse", "diamond"]) {
       const click = run(tool, [pointer("down", 10, 20), pointer("up", 10, 20)]);
       expect(click.outcome.ops).toEqual([{ op: "shape", kind: tool, at: [10, 20], text: "" }]);
     }
+    // The sticky and card tools send their templates (canvas-v2-phase2.md 6.4).
+    expect(run("sticky", [pointer("down", 10, 20), pointer("up", 10, 20)]).outcome).toMatchObject({ ops: [{ op: "sticky", text: "", at: [10, 20] }], editCreated: true });
+    expect(run("card", [pointer("down", 10, 20), pointer("up", 10, 20)]).outcome).toMatchObject({ ops: [{ op: "card", title: "", at: [10, 20] }], editCreated: true });
   });
   it("draws an arrow with the arrow tool", () => {
     const r = run("arrow", [pointer("down", 50, 70, { hit: "E-2" }), pointer("move", 300, 90), pointer("up", 620, 80, { hit: "E-3" })]);

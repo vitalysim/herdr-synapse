@@ -69,6 +69,9 @@ function strokeTail(p, ctx) {
   return out;
 }
 
+/** Below this many screen px per unit the page draws no elevation shadows. */
+export const ELEV_MIN_SCALE = 0.35;
+
 /** fill stroke stroke-width [stroke-dasharray] [caps when stroke] [opacity] [filter] (1.8). */
 export function paintAttrs(p, ctx, { fill = true } = {}) {
   const attrs = [["fill", fill ? paintString(paint(p.fill, ctx), ctx) : "none"]];
@@ -78,7 +81,9 @@ export function paintAttrs(p, ctx, { fill = true } = {}) {
   if (strokeHex) attrs.push(...strokeTail(p, ctx));
   const op = opacity(p);
   if (op !== null) attrs.push(["opacity", op]);
-  if (p.elev) {
+  // A resting shadow is a few units wide: on the page it is dropped where it is under a pixel wide, since
+  // every filtered element is repainted on its own on each pan frame (QA phase 2, F13).
+  if (p.elev && !(ctx.page && finite(ctx.scale) && ctx.scale < ELEV_MIN_SCALE)) {
     const id = ctx.defs.elevation(p.elev);
     if (id) attrs.push(["filter", `url(#${id})`]);
   }
@@ -100,8 +105,12 @@ function textNode(p, ctx) {
   ];
   const op = opacity(p);
   if (op !== null) attrs.push(["opacity", op]);
-  // Page only (never in a written picture): the fitted box width, for the QA audit (qa.js).
+  // Page only (never in a written picture): the fitted box width, and its height against the height the drawn lines
+  // take, for the QA audit (qa.js; a label that wraps to more lines than its box holds spills out below it).
   if (ctx.page && !lay.zoomed && Array.isArray(p.box) && finite(p.box[2])) attrs.push(["data-box-w", fmt(p.box[2])]);
+  if (ctx.page && !lay.zoomed && Array.isArray(p.box) && finite(p.box[3]) && finite(lay.lh)) {
+    attrs.push(["data-box-h", fmt(p.box[3])], ["data-lines-h", fmt(p.lines.length * lay.lh)]);
+  }
   const lines = [];
   p.lines.forEach((line, i) => {
     const y = lay.ys[i];

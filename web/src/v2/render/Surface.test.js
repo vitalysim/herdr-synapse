@@ -8,7 +8,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeAll, describe, expect, test, vi } from "vitest";
 import { Surface, isMouseWheel, wheelKind } from "./Surface.jsx";
-import { installQAHook } from "./qa.js";
+import { audit, installQAHook } from "./qa.js";
 import { entryLayers } from "./svgAttrs.js";
 
 const load = (name) => JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, "__fixtures__", name), "utf8"));
@@ -289,6 +289,28 @@ describe("zoom settling", () => {
 });
 
 describe("QA hook", () => {
+  test("audit reports a label whose lines take more height than its box (QA phase 2, F3)", () => {
+    const NS = "http://www.w3.org/2000/svg";
+    const make = (tag, attrs = {}) => {
+      const node = document.createElementNS(NS, tag);
+      for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+      return node;
+    };
+    const root = make("svg");
+    const layer = make("g", { "data-layer": "marks" });
+    const entry = make("g", { "data-id": "E-9" });
+    const block = make("g", { "data-box-w": "160", "data-box-h": "140", "data-lines-h": "160" });
+    const text = make("text");
+    text.textContent = "a line";
+    block.appendChild(text);
+    entry.appendChild(block);
+    layer.appendChild(entry);
+    root.appendChild(layer);
+    expect(audit(root)).toEqual([{ id: "E-9", overflowPx: 20, vertical: true }]);
+    block.setAttribute("data-lines-h", "140");
+    expect(audit(root)).toEqual([]);
+  });
+
   test("lines, audit, fit and ready over a drawn Surface", () => {
     let cam = CAM;
     const { node } = mount({});

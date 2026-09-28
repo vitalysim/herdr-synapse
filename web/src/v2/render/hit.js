@@ -9,6 +9,11 @@ const CONNECTOR_PX = 8;
 // that way: below it the reach circles cover the box's middle, and a press meant to select or move
 // a small (or zoomed-out) shape would start an arrow instead (QA phase 1, finding 2).
 export const CONNECTOR_MIN_SIDE_PX = 3 * CONNECTOR_PX;
+// The same rule for resize handles (QA phase 1, V-1): a handle that resizes along a side is offered
+// only when the box is at least this many screen pixels across that way (a corner needs both), so a
+// drag from the middle of a small selected shape moves it instead of resizing it. An arrow offers
+// its end handles only when its ends are this far apart on screen.
+export const HANDLE_MIN_SIDE_PX = 3 * HANDLE_PX;
 
 const isBox = (b) => Array.isArray(b) && b.length === 4 && b.every(Number.isFinite);
 const isPoints = (pts) => Array.isArray(pts) && pts.length >= 1 && pts.every((p) => Array.isArray(p) && p.length >= 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]));
@@ -148,6 +153,38 @@ export function hitTest(index, pt, scale, { tolerancePx = 4, skip = [] } = {}) {
 }
 
 /**
+ * The inline parts of an entry (canvas-v2-phase2.md 6.2): [{part, hit, edit, lod?}] that are
+ * well formed, in list order (the last is on top). Malformed items are skipped, never thrown on.
+ */
+export function partsOf(entry) {
+  const parts = entry && Array.isArray(entry.parts) ? entry.parts : [];
+  return parts.filter((p) => p && typeof p === "object" && typeof p.part === "string" && p.part && p.hit && typeof p.hit === "object");
+}
+
+/**
+ * The part of entry `id` under world point `pt` at `scale`, or null: the last in the list on top,
+ * and only parts drawn at this scale (a part's `lod` band, as for primitives). Parts are hit-tested
+ * before the entry's own hit, so a caller that found the entry asks here next.
+ */
+export function partAt(index, id, pt, scale, { tolerancePx = 0 } = {}) {
+  if (!index || !id) return null;
+  const entry = index.byId.get(id);
+  const parts = partsOf(entry);
+  for (let i = parts.length - 1; i >= 0; i -= 1) {
+    const p = parts[i];
+    if (!lodVisible(p, scale)) continue;
+    if (hitShape(p.hit, pt, scale, tolerancePx, entry)) return p;
+  }
+  return null;
+}
+
+/** The part of entry `id` named `part`, or null. */
+export function partOf(index, id, part) {
+  if (!index || !id || !part) return null;
+  return partsOf(index.byId.get(id)).find((p) => p.part === part) || null;
+}
+
+/**
  * The ids of the marks and zones inside (mode "contain") or touching (mode "intersect") world
  * `rect` [x0, y0, x1, y1], in render order. Overlays and entries without a hit never count.
  */
@@ -168,38 +205,50 @@ export function queryRect(index, rect, { mode = "contain" } = {}) {
   return out;
 }
 
-/** The resize handles an entry offers, as [{handle, point}] (none for a locked entry). */
-export function handlePoints(entry) {
+/**
+ * The resize handles an entry offers, as [{handle, point}] (none for a locked entry). With a
+ * `scale`, handles are left out on a side too small on screen (HANDLE_MIN_SIDE_PX): the body wins.
+ */
+export function handlePoints(entry, scale = null) {
   if (!entry || entry.locked) return [];
+  const s = Number.isFinite(scale) && scale > 0 ? scale : null;
   const kind = entry.handles;
   if (kind === "ends") {
     const pts = entry.hit?.points;
     if (!isPoints(pts) || pts.length < 2) return [];
+    const first = pts[0];
+    const last = pts[pts.length - 1];
+    if (s !== null && Math.hypot(last[0] - first[0], last[1] - first[1]) * s < HANDLE_MIN_SIDE_PX) return [];
     return [
-      { handle: "start", point: pts[0] },
-      { handle: "end", point: pts[pts.length - 1] },
+      { handle: "start", point: first },
+      { handle: "end", point: last },
     ];
   }
   const [x, y, w, h] = boxOf(entry);
   const cx = x + w / 2;
   const cy = y + h / 2;
+  const tall = s === null || h * s >= HANDLE_MIN_SIDE_PX;
+  const wide = s === null || w * s >= HANDLE_MIN_SIDE_PX;
   if (kind === "width") {
-    return [
-      { handle: "w", point: [x, cy] },
-      { handle: "e", point: [x + w, cy] },
-    ];
+    return wide
+      ? [
+          { handle: "w", point: [x, cy] },
+          { handle: "e", point: [x + w, cy] },
+        ]
+      : [];
   }
   if (kind !== "box") return [];
+  const both = tall && wide;
   return [
-    { handle: "nw", point: [x, y] },
-    { handle: "n", point: [cx, y] },
-    { handle: "ne", point: [x + w, y] },
-    { handle: "e", point: [x + w, cy] },
-    { handle: "se", point: [x + w, y + h] },
-    { handle: "s", point: [cx, y + h] },
-    { handle: "sw", point: [x, y + h] },
-    { handle: "w", point: [x, cy] },
-  ];
+    both && { handle: "nw", point: [x, y] },
+    tall && { handle: "n", point: [cx, y] },
+    both && { handle: "ne", point: [x + w, y] },
+    wide && { handle: "e", point: [x + w, cy] },
+    both && { handle: "se", point: [x + w, y + h] },
+    tall && { handle: "s", point: [cx, y + h] },
+    both && { handle: "sw", point: [x, y + h] },
+    wide && { handle: "w", point: [x, cy] },
+  ].filter(Boolean);
 }
 
 /** The handle under `pt` of the single selected entry, or null (handles show for one entry only). */
@@ -207,7 +256,7 @@ export function handleAt(index, selection, pt, scale) {
   if (!index || !Array.isArray(selection) || selection.length !== 1) return null;
   const entry = index.byId.get(selection[0]);
   const reach = HANDLE_PX / scale;
-  for (const { handle, point } of handlePoints(entry)) {
+  for (const { handle, point } of handlePoints(entry, scale)) {
     if (Math.abs(pt[0] - point[0]) <= reach && Math.abs(pt[1] - point[1]) <= reach) return { id: entry.id, handle };
   }
   return null;

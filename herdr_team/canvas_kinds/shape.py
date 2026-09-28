@@ -10,12 +10,16 @@ minimum instead.
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 from typing import Any, Dict, List, Tuple
 
 from herdr_team import canvas_display as D
-from herdr_team import canvas_text, canvas_theme
-from herdr_team.canvas_kinds import Kind, OpSpec, get, subkinds
+from herdr_team import canvas_icons, canvas_text, canvas_theme
+from herdr_team.canvas_kinds import Kind, OpSpec, Tool, get, subkinds
 from herdr_team.canvas_kinds._common import Element, number, policy_of, readback, style_of, truncated_label
+
+#: Its place in the registration order (``canvas_kinds.DEFAULT_ORDER``).
+ORDER = 10
 
 #: The widest a shape grows before its label wraps; a single word wider than this still widens it.
 HUG_MAX_W = {"box": 320, "note": 280, "ellipse": 320, "diamond": 320}
@@ -64,11 +68,24 @@ def request(el: Element, minimum: Tuple[float, float], size: Any = None) -> canv
 GRAPH_POLICY = {"note": "hug"}
 
 
+#: An icon before the label (phase 2, 4.2): drawn at ``ICON`` units, and the label's room shrinks by ``ICON_ROOM`` on the left.
+ICON = 20.0
+ICON_ROOM = 28.0
+
+
 def measure(el: Element, minimum: Tuple[float, float]) -> canvas_text.FitResult:
-    """The element's size and lines from its label, never smaller than ``minimum``."""
+    """The element's size and lines from its label, never smaller than ``minimum``; an ``icon`` takes ``ICON_ROOM`` on the
+    label's left."""
     kind = str(el.get("type"))
     default = GRAPH_POLICY.get(kind) if el.get("group") else None
-    return canvas_text.fit(policy_of(el, default or DEFAULT_POLICY.get(kind, "hug")), request(el, minimum))
+    wanted = request(el, minimum)
+    if not el.get("icon"):
+        return canvas_text.fit(policy_of(el, default or DEFAULT_POLICY.get(kind, "hug")), wanted)
+    # Half the icon's room on each side widens the box by all of it; then the label's room moves right by the other half.
+    wanted = replace(wanted, pad_x=wanted.pad_x + ICON_ROOM / 2.0)
+    result = canvas_text.fit(policy_of(el, default or DEFAULT_POLICY.get(kind, "hug")), wanted)
+    ix, iy, iw, ih = result.inner
+    return replace(result, inner=(ix + ICON_ROOM / 2.0, iy, iw, ih))
 
 
 def radius(name: str) -> float:
@@ -97,22 +114,47 @@ def emit(el: Element, env: Dict[str, Any]) -> List[Dict[str, Any]]:
     # A note stored before 0.22 has no label colour: it was drawn in ink on its paper.
     colour = D.INK if name == "note" and paints["text"] is None else D.text_paint(el, paints)
     text = D.label(el, colour)
+    if el.get("icon"):
+        found = _kinds_drawn(el)
+        if found is not None:
+            ix, iy, _iw, ih = found.inner
+            icon = canvas_icons.emit(str(el["icon"]), x0 + ix - ICON_ROOM, y0 + iy + (ih - ICON) / 2.0, ICON, colour)
+            if icon is not None:
+                items.append(icon)
     if text is not None:
+        # A shape's label is a title-level text (phase 2, 6.1): it stays down to the overview band (QA phase 2, F10).
+        text["lod"] = list(D.LOD_LABEL)
         items.append(text)
     return items
+
+
+def _kinds_drawn(el: Element) -> Any:
+    from herdr_team.canvas_kinds import drawn
+
+    return drawn(el)
 
 
 def hit(el: Element) -> Dict[str, Any]:
     return {"shape": OUTLINE.get(str(el.get("type")), "rect"), "box": D.xywh(D.box_of(el))}
 
 
+#: The shapes an ``icon`` may sit on, before the label.
+ICON_KINDS = ("box", "ellipse", "diamond", "note")
+#: Each shape's button in the page's tool bar.
+TOOLS = {
+    "box": Tool(key="r", title="Rectangle", glyph="\u25ad", gesture="shape", order=10),
+    "ellipse": Tool(key="o", title="Ellipse", glyph="\u25ef", gesture="shape", order=20),
+    "diamond": Tool(key="d", title="Diamond", glyph="\u25c7", gesture="shape", order=30),
+}
+
+
 def _kind(name: str, doc: str) -> Kind:
     return Kind(name=name, role="leaf", ops=("shape", "graph", "mermaid"),
-                fields=("text", "w", "h", "tone", "variant", "color", "fill", "font", "size"),
+                fields=("text", "w", "h", "tone", "variant", "color", "fill", "font", "size", "icon"), node=True,
                 fit=DEFAULT_POLICY[name], page=True, outline=OUTLINE.get(name, "rect"), hosts=True, subkind_of="shape", solid=True,
                 labelled=True, cell=True, tone_group="note" if name == "note" else "shape", connectable=True, edit_limit="text",
                 inset=INSETS.get(name), measure=measure, readback=readback, checks=(truncated_label,), emit=emit, hit=hit, doc=doc,
-                noun=("box", "boxes") if name == "box" else ("", ""))
+                noun=("box", "boxes") if name == "box" else ("", ""), tool=TOOLS.get(name))
 
 
 def create(ctx: Any, op: Dict[str, Any]) -> None:
@@ -120,21 +162,33 @@ def create(ctx: Any, op: Dict[str, Any]) -> None:
     the minimum), then placed; the sized shape makes room for its neighbours (``OpContext.create``)."""
     name = ctx.choice(op, "kind", [kind.name for kind in subkinds("shape")], "box")
     kind = get(name)
+    icon = None
+    if op.get("icon") is not None:
+        if name not in ICON_KINDS:
+            raise ctx.invalid("icon", "icon goes on a box, ellipse, diamond or note")
+        from herdr_team.canvas_kinds.card import icon_name
+
+        icon = icon_name(ctx, op["icon"], "icon")
     # A kind whose whole content is its text (a free text) needs one; a shape may be blank.
     text = ctx.text(op, "text", limit="text", required=kind is not None and kind.measure is not None and not kind.labelled)
     style = ctx.style(op, name)
     if kind is not None and kind.initial is not None:
         fields, asked = kind.initial(ctx, op, text, style)
     else:
-        fields = ctx.fit({"type": name, "text": text, "style": style}, ctx.size(op, *ctx.shape_size(name)))
+        probe = {"type": name, "text": text, "style": style}
+        if icon:
+            probe["icon"] = icon
+        fields = ctx.fit(probe, ctx.size(op, *ctx.shape_size(name)))
         asked = (float(fields["fit"]["min"][0]), float(fields["fit"]["min"][1]))
     w, h = fields.pop("w"), fields.pop("h")
+    if icon:
+        fields["icon"] = icon
     x, y, frame = ctx.place(op, w, h, (float(asked[0]), float(asked[1])))
     ctx.create(name, x, y, w, h, op=op, text=text, style=style, frame=frame, **fields)
 
 
 OPS = (
-    OpSpec(name="shape", fields=("kind", "text", "w", "h", "id", "client_id"), create=create, style=True, place=True, order=10,
+    OpSpec(name="shape", fields=("kind", "text", "w", "h", "icon", "id", "client_id"), create=create, style=True, place=True, order=10,
            doc="a box, ellipse, diamond, note or free text, sized from its label (w/h are its minimum)",
            mcp="shape {kind box|ellipse|diamond|note|text, text, at|right_of|below|inside, w, h (minimums: shapes grow to fit their "
                "label), tone neutral|info|success|warning|danger|accent|idea|decision, variant soft|solid|outline, color, fill; a text wraps at w}"),

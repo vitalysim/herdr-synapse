@@ -1,6 +1,6 @@
 // window.__synapseV2: the QA hook tools/canvas_qa.py --engine v2 reads (canvas-v2-phase1.md 4.2,
 // 6.3 J8). No UI; installed by the Board on every v2 page.
-import { camera } from "./camera.js";
+import { MAX_SCALE, MIN_SCALE, camera } from "./camera.js";
 import { fmt } from "./fmt.js";
 
 function fontsLoaded() {
@@ -29,8 +29,10 @@ export function readLines(root) {
 
 /**
  * [{id, overflowPx}] for every entry with a line wider than its text primitive's box by more than
- * half a unit (world units, which are pixels at scale 1). A text group carries its box width in
- * data-box-w on the page; a title that grows with zoom has none and is not audited.
+ * half a unit (world units, which are pixels at scale 1), or lines that take more height than the
+ * box holds ({id, overflowPx, vertical: true}: QA phase 2, F3). A text group carries its box width
+ * in data-box-w, and its box height and its lines' height in data-box-h and data-lines-h, on the
+ * page; a title that grows with zoom has none and is not audited.
  * Also [{id, overflowPx: 0, collapsed}] for every entry whose drawn lines lost characters to
  * whitespace collapsing (the browser dropped an indent the server kept: QA 1 finding 4). The line
  * breaks still compare equal then, since they are read from textContent.
@@ -44,6 +46,14 @@ export function audit(root) {
       if (typeof node.getNumberOfChars !== "function") continue;
       const lost = String(node.textContent || "").length - node.getNumberOfChars();
       if (lost > 0) collapsed.set(id, (collapsed.get(id) || 0) + lost);
+    }
+  }
+  const tall = new Map();
+  for (const group of entryGroups(root)) {
+    const id = group.getAttribute("data-id");
+    for (const block of group.querySelectorAll("g[data-box-h]")) {
+      const over = Number(block.getAttribute("data-lines-h")) - Number(block.getAttribute("data-box-h"));
+      if (Number.isFinite(over) && over > 0.5) tall.set(id, Math.max(tall.get(id) || 0, over));
     }
   }
   for (const group of entryGroups(root)) {
@@ -60,12 +70,13 @@ export function audit(root) {
   }
   return [
     ...[...worst.entries()].map(([id, over]) => ({ id, overflowPx: Number(fmt(over)) })),
+    ...[...tall.entries()].map(([id, over]) => ({ id, overflowPx: Number(fmt(over)), vertical: true })),
     ...[...collapsed.entries()].map(([id, lost]) => ({ id, overflowPx: 0, collapsed: lost })),
   ];
 }
 
 /** Installs window.__synapseV2; returns uninstall(). */
-export function installQAHook({ getDL, getCamera, setCamera, getRoot, getViewport }) {
+export function installQAHook({ getDL, getCamera, setCamera, getRoot, getViewport, getSelection = null }) {
   if (typeof window === "undefined") return () => {};
   const hook = {
     // True once the fonts are loaded and the current list is drawn, settled, on screen.
@@ -94,6 +105,22 @@ export function installQAHook({ getDL, getCamera, setCamera, getRoot, getViewpor
     },
     camera() {
       return getCamera ? getCamera() : null;
+    },
+    // Zooms to `scale` screen px per unit about world point `at` (default: the middle of the view),
+    // for semantic zoom checks (canvas-v2-phase2.md 6.1, 8.3 P8). Returns the new camera.
+    zoom(scale, at = null) {
+      const cam = getCamera ? getCamera() : null;
+      const vp = getViewport ? getViewport() : null;
+      if (!cam || !vp || !(Number(scale) > 0)) return null;
+      const s = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Number(scale)));
+      const centre = Array.isArray(at) ? at : [cam.x + vp.w / (2 * cam.scale), cam.y + vp.h / (2 * cam.scale)];
+      const next = { x: centre[0] - vp.w / (2 * s), y: centre[1] - vp.h / (2 * s), scale: s };
+      setCamera(next);
+      return next;
+    },
+    // The ids the page has selected.
+    selection() {
+      return getSelection ? getSelection().slice() : [];
     },
     dl() {
       return getDL();

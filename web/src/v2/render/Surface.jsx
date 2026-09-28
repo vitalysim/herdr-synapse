@@ -11,8 +11,8 @@
 import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import { camera as cameraMath } from "./camera.js";
 import { contains, createIndex, cull, grow } from "./cull.js";
-import { boxOf, connectorAt, connectorPoints, handleAt, handlePoints, hitTest } from "./hit.js";
-import { dependsOnScale } from "./lod.js";
+import { boxOf, connectorAt, connectorPoints, handleAt, handlePoints, hitTest, partAt, partOf } from "./hit.js";
+import { dependsOnScale, lodVisible } from "./lod.js";
 import { LAYER_NAMES, PAGE_FAMILIES, entryLayers, entryNodes, defsNodes, primitiveNode, slotNode } from "./svgAttrs.js";
 import { urlResolver } from "./svgString.js";
 import { slotRenderer } from "./slots/index.js";
@@ -24,6 +24,10 @@ const GRID_MIN_SCALE = 0.6;
 const CULL_THROTTLE_MS = 100;
 const HANDLE_PX = 8;
 const SELECT_GAP_PX = 4;
+// The pin glyph (canvas-v2-phase2.md 6.3 W-b): 12 screen px at the hit box's top-right corner.
+const PIN_PX = 12;
+// A tip (an element's `detail`) is at most this long in the display list (6.2); anything longer is cut.
+const TIP_MAX = 500;
 // A wheel or pinch zoom is presented by the compositor until it has been quiet this long (see
 // `drawn` below), then drawn once at the new scale.
 const ZOOM_SETTLE_MS = 150;
@@ -143,6 +147,14 @@ function previewShift(entry, preview) {
 
 // -- one entry in one layer ------------------------------------------------------------------------
 
+// An entry's tip, on the first layer it draws in only (one tooltip per entry).
+function tipOf(entry, layer) {
+  if (typeof entry.tip !== "string" || !entry.tip.trim()) return null;
+  const first = LAYER_NAMES.find((l) => layersOf(entry).has(l));
+  if (first !== layer) return null;
+  return entry.tip.length > TIP_MAX ? `${entry.tip.slice(0, TIP_MAX - 1)}…` : entry.tip;
+}
+
 const EntryView = memo(
   function EntryView({ entry, layer, ctx, env, transform }) {
     let nodes = entryNodes(entry, layer, ctx);
@@ -172,8 +184,11 @@ const EntryView = memo(
     }
     if (!nodes.length) return null;
     const slotEnv = { ...env, entry };
+    // The tip (W-d) is an SVG <title> on the entry's first drawn group: the browser's own tooltip.
+    const tip = tipOf(entry, layer);
     return (
       <g data-id={entry.id} transform={transform || undefined}>
+        {tip ? <title>{tip}</title> : null}
         {nodes.map((node, i) => toReact(node, i, slotEnv))}
       </g>
     );
@@ -231,7 +246,7 @@ function Outline({ entry, preview, scale, color, gapPx, widthPx }) {
 function Handles({ entry, preview, scale, color, surface }) {
   const [dx, dy] = previewShift(entry, preview);
   const box = preview?.boxes?.[entry.id];
-  let points = handlePoints(entry);
+  let points = handlePoints(entry, scale);
   if (Array.isArray(box) && entry.handles !== "ends") {
     const [x, y, w, h] = boxOf(entry);
     points = points.map(({ handle, point }) => ({
@@ -253,6 +268,35 @@ function Handles({ entry, preview, scale, color, surface }) {
   );
 }
 
+// A pinned entry's glyph (W-b): a push pin in a small disc, drawn with plain SVG at a fixed screen
+// size just outside the top-right corner of its box (clear of the corner's resize handle). A human pin is in the selection colour, an
+// agent's in the muted ink.
+function PinGlyph({ entry, preview, scale, color, surface }) {
+  const [x, y, w] = previewBox(entry, preview);
+  const k = 1 / scale;
+  return (
+    <g className="sv2-pin" data-pin={entry.pin} data-pin-for={entry.id} transform={`translate(${x + w} ${y}) scale(${k})`}>
+      <circle cx={PIN_PX} cy={-PIN_PX} r={PIN_PX / 2 + 1.5} fill={surface} stroke={color} strokeWidth={1} />
+      <g transform={`translate(${PIN_PX / 2} ${-PIN_PX * 1.5})`} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4.5 1.5h3M5 1.5v3.2L3 7h6L7 4.7V1.5" fill={color} />
+        <path d="M6 7v4" />
+      </g>
+    </g>
+  );
+}
+
+// The outline of the hovered inline part (W-a), when it is drawn at this scale.
+function PartOutline({ entry, part, preview, scale, color }) {
+  if (!part || !lodVisible(part, scale)) return null;
+  const hit = part.hit || {};
+  const box = Array.isArray(hit.box) && hit.box.length === 4 ? hit.box : null;
+  if (!box) return null;
+  const [dx, dy] = previewShift(entry, preview);
+  return (
+    <rect className="sv2-part" data-part={part.part} x={box[0] + dx} y={box[1] + dy} width={box[2]} height={box[3]} rx={2 / scale} fill="none" stroke={color} strokeWidth={1} strokeDasharray="3 2" vectorEffect="non-scaling-stroke" />
+  );
+}
+
 // -- the component ----------------------------------------------------------------------------------
 
 export function Surface({
@@ -263,6 +307,7 @@ export function Surface({
   onViewport,
   selection = [],
   hover = null,
+  hoverPart = null,
   preview = null,
   panMode = false,
   showChips = false,
@@ -467,6 +512,7 @@ export function Surface({
   const pointerOf = (type, e, screen) => {
     const { cam: c, index: idx, selection: sel, hover: hov, writable: canWrite } = live.current;
     const world = cameraMath.toWorld(c, screen);
+    const hit = hitTest(idx, world, c.scale);
     return {
       type,
       world,
@@ -480,7 +526,8 @@ export function Surface({
       ctrl: !!e.ctrlKey,
       pointerId: e.pointerId ?? 1,
       pointerType: e.pointerType || "mouse",
-      hit: hitTest(idx, world, c.scale),
+      hit,
+      part: hit ? partAt(idx, hit, world, c.scale) : null,
       handle: canWrite ? handleAt(idx, sel, world, c.scale) : null,
       connector: canWrite ? connectorAt(idx, world, c.scale, { hover: hov }) : null,
     };
@@ -565,7 +612,7 @@ export function Surface({
       gesture.current = null;
       const handler = live.current.onPointer;
       const { cam: c } = live.current;
-      if (handler) handler({ ...pointerOf("cancel", { pointerId: g.pointerId }, [0, 0]), world: cameraMath.toWorld(c, [0, 0]), hit: null, handle: null, connector: null });
+      if (handler) handler({ ...pointerOf("cancel", { pointerId: g.pointerId }, [0, 0]), world: cameraMath.toWorld(c, [0, 0]), hit: null, part: null, handle: null, connector: null });
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
@@ -629,6 +676,10 @@ export function Surface({
   const hoverEntry = hover ? index.byId.get(hover) : null;
   const selected = selection.map((id) => index.byId.get(id)).filter(Boolean);
   const single = selected.length === 1 ? selected[0] : null;
+  const hoverPartEntry = hoverPart && hoverPart.id ? index.byId.get(hoverPart.id) : null;
+  const hoveredPart = hoverPartEntry ? partOf(index, hoverPart.id, hoverPart.part) : null;
+  const pinned = [...selected, ...(hoverEntry && !selectedSet.has(hoverEntry.id) ? [hoverEntry] : [])].filter((e) => e.pin === "human" || e.pin === "agent");
+  const mutedColor = palette["base.ink_muted"] || "#5b616b";
   const ui = (
     <g data-layer="ui" className="sv2-ui">
       {hoverEntry && !selectedSet.has(hoverEntry.id) ? (
@@ -636,6 +687,10 @@ export function Surface({
       ) : null}
       {selected.map((entry) => (
         <Outline key={entry.id} entry={entry} preview={preview} scale={scale} color={selectionColor} gapPx={SELECT_GAP_PX} widthPx={1.5} />
+      ))}
+      {hoveredPart ? <PartOutline entry={hoverPartEntry} part={hoveredPart} preview={preview} scale={scale} color={selectionColor} /> : null}
+      {pinned.map((entry) => (
+        <PinGlyph key={`pin:${entry.id}`} entry={entry} preview={preview} scale={scale} color={entry.pin === "human" ? selectionColor : mutedColor} surface={surfaceColor} />
       ))}
       {writable && single && !single.locked ? <Handles entry={single} preview={preview} scale={scale} color={selectionColor} surface={surfaceColor} /> : null}
       {writable && hoverEntry && hoverEntry.connect && !hoverEntry.locked

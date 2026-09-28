@@ -1,0 +1,14 @@
+{
+  "name": "table",
+  "about": "The launch risks table of the guide (worked example 6b): named and generated column keys, a centred narrow column, a toned row, zebra rows and a cell long enough to wrap to its two lines. The WEB e2e runs edit a cell here.",
+  "stresses": ["column widths from content", "cell wrap and clamp", "row tones and zebra", "inline parts"],
+  "gates": {"strict": true},
+  "ops": [
+    {"op": "table", "id": "risks", "title": "Launch risks", "at": [0, 0], "intent": "track launch risks", "zebra": true,
+     "columns": ["Risk", {"title": "Owner", "key": "owner"}, {"title": "Level", "key": "level", "align": "center", "width": "s"}],
+     "rows": [["Docs not ready", "writer", "High"],
+              {"id": "price", "cells": ["Pricing unclear for teams above fifty seats", "pm", "Medium"], "tone": "warning"},
+              ["Support rota", "ops", "Low"]],
+     "header": true, "max_lines": 2}
+  ]
+}

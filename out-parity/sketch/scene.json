@@ -1,0 +1,307 @@
+{
+ "v": 1,
+ "team": "qa",
+ "version": 5,
+ "updated_at": "2026-09-28T00:32:11.082Z",
+ "elements": [
+  {
+   "id": "E-1",
+   "type": "frame",
+   "alias": "wire",
+   "client_id": null,
+   "x": 0,
+   "y": 0,
+   "w": 704,
+   "h": 604,
+   "text": "Settings wireframe",
+   "style": {
+    "stroke": "#d9dce1",
+    "fill": "#f0f1f4",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2,
+    "dash": "solid",
+    "opacity": 100,
+    "font": "normal",
+    "size": 20,
+    "rough": 0
+   },
+   "frame": null,
+   "group": null,
+   "role": null,
+   "z": 1,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "intent": "rough wireframe",
+   "batch": "B-1",
+   "created_seq": 1,
+   "updated_seq": 5,
+   "created_at": "2026-09-28T00:32:11.082Z",
+   "updated_at": "2026-09-28T00:32:11.082Z",
+   "block": "section",
+   "settings": {
+    "layout": "free",
+    "gap": "s",
+    "padding": "m",
+    "align": "start",
+    "grid": "8x6",
+    "cell": [
+     80.0,
+     80.0
+    ]
+   },
+   "seq": {},
+   "fit": {
+    "policy": "hug",
+    "min": [
+     704,
+     604
+    ]
+   },
+   "count": 4
+  },
+  {
+   "id": "E-2",
+   "type": "pen",
+   "alias": null,
+   "client_id": null,
+   "x": 32,
+   "y": 92,
+   "w": 640,
+   "h": 480,
+   "text": "",
+   "style": {
+    "stroke": "#1c2024",
+    "fill": null,
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2,
+    "dash": "solid",
+    "opacity": 100,
+    "font": "normal",
+    "size": 20,
+    "rough": 0
+   },
+   "frame": "E-1",
+   "group": null,
+   "role": null,
+   "z": 2,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "intent": "page outline",
+   "batch": "B-1",
+   "created_seq": 2,
+   "updated_seq": 2,
+   "created_at": "2026-09-28T00:32:11.082Z",
+   "updated_at": "2026-09-28T00:32:11.082Z",
+   "points": [
+    [
+     32,
+     92
+    ],
+    [
+     672,
+     92
+    ],
+    [
+     672,
+     572
+    ],
+    [
+     32,
+     572
+    ]
+   ],
+   "closed": true,
+   "smooth": false
+  },
+  {
+   "id": "E-3",
+   "type": "pen",
+   "alias": null,
+   "client_id": null,
+   "x": 192,
+   "y": 92,
+   "w": 1,
+   "h": 480,
+   "text": "",
+   "style": {
+    "stroke": "#1c2024",
+    "fill": null,
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2,
+    "dash": "solid",
+    "opacity": 100,
+    "font": "normal",
+    "size": 20,
+    "rough": 0
+   },
+   "frame": "E-1",
+   "group": null,
+   "role": null,
+   "z": 3,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "intent": "sidebar divider",
+   "batch": "B-1",
+   "created_seq": 3,
+   "updated_seq": 3,
+   "created_at": "2026-09-28T00:32:11.082Z",
+   "updated_at": "2026-09-28T00:32:11.082Z",
+   "points": [
+    [
+     192,
+     92
+    ],
+    [
+     192,
+     572
+    ]
+   ],
+   "closed": false,
+   "smooth": false
+  },
+  {
+   "id": "E-4",
+   "type": "sticky",
+   "alias": null,
+   "client_id": null,
+   "x": 352,
+   "y": 252,
+   "w": 160,
+   "h": 160,
+   "text": "Should billing live here or in its own tab?",
+   "style": {
+    "stroke": "#9e8000",
+    "fill": "#fff0a0",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2,
+    "dash": "solid",
+    "opacity": 100,
+    "font": "normal",
+    "size": 20,
+    "rough": 0
+   },
+   "frame": "E-1",
+   "group": null,
+   "role": null,
+   "z": 4,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "intent": "question",
+   "batch": "B-1",
+   "created_seq": 4,
+   "updated_seq": 4,
+   "created_at": "2026-09-28T00:32:11.082Z",
+   "updated_at": "2026-09-28T00:32:11.082Z",
+   "size": "s",
+   "fit": {
+    "policy": "shrink",
+    "min": [
+     160,
+     160
+    ],
+    "size": 20,
+    "lines": [
+     "Should",
+     "billing live",
+     "here or in its",
+     "own tab?"
+    ],
+    "truncated": false,
+    "estimated": false
+   }
+  },
+  {
+   "id": "E-5",
+   "type": "box",
+   "alias": null,
+   "client_id": null,
+   "x": 432,
+   "y": 492,
+   "w": 120,
+   "h": 60,
+   "text": "Save",
+   "style": {
+    "stroke": "#5b45c4",
+    "fill": "#5b45c4",
+    "text": "#ffffff",
+    "tone": "accent",
+    "variant": "solid",
+    "width": 2,
+    "dash": "solid",
+    "opacity": 100,
+    "font": "normal",
+    "size": 20,
+    "rough": 0
+   },
+   "frame": "E-1",
+   "group": null,
+   "role": null,
+   "z": 5,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "intent": "primary action",
+   "batch": "B-1",
+   "created_seq": 5,
+   "updated_seq": 5,
+   "created_at": "2026-09-28T00:32:11.082Z",
+   "updated_at": "2026-09-28T00:32:11.082Z",
+   "fit": {
+    "policy": "hug",
+    "min": [
+     120,
+     40
+    ],
+    "size": 20,
+    "lines": [
+     "Save"
+    ],
+    "truncated": false,
+    "estimated": false
+   }
+  }
+ ],
+ "claims": [],
+ "locks": [],
+ "legend": [],
+ "homes": {
+  "qa-drawer": [
+   0,
+   -1000,
+   800,
+   -400
+  ]
+ },
+ "authors": {
+  "qa-drawer": {
+   "color": "#1971c2",
+   "index": 0,
+   "kind": "member",
+   "agent": "claude"
+  }
+ },
+ "batches": {
+  "B-1": {
+   "author": "qa-drawer",
+   "first_seq": 1,
+   "last_seq": 5,
+   "at": "2026-09-28T00:32:11.082Z",
+   "undone": false
+  }
+ },
+ "counters": {
+  "E": 5,
+  "C": 0,
+  "K": 0,
+  "X": 0,
+  "G": 0,
+  "B": 1
+ }
+}

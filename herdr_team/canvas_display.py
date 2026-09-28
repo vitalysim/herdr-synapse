@@ -19,8 +19,12 @@ measure or move text.
   element its kind cannot draw, is the placeholder card, never an error.
 * ``paints(el)`` is the one place a stored hex becomes a token reference (1.4).
 * ``validate(doc)`` is the executable schema; ``dumps(doc)`` the canonical JSON.
-* ``python3 -m herdr_team.canvas_display --write-goldens`` rewrites
-  ``tests/fixtures/display`` (``--check-goldens`` fails when they are stale).
+* ``python3 -m herdr_team.canvas_display --write-goldens [scene ...]`` rewrites
+  ``tests/fixtures/display`` (only the named scenes when given; ``--check-goldens``
+  fails when they are stale).
+* Semantic zoom (canvas v2 phase 2, 6.1): ``LOD_BODY``, ``LOD_LABEL``,
+  ``skeleton`` and ``title_pair`` are the helpers every kind draws its level of
+  detail with; the bands are tokens (``canvas_theme.lod``).
 
 Pure: no I/O outside ``main``, and no import of ``canvas`` (which imports this
 module). The same scene always gives the same bytes.
@@ -69,6 +73,20 @@ INK = "base.ink"
 MUTED = "base.ink_muted"
 #: The placeholder card of a kind the page draws itself, or one this build does not know.
 CARD_RADIUS = 8
+
+#: Semantic zoom (phase 2, 6.1): body-level text draws at ``titles`` (0.35) screen pixels per unit and above, a label at
+#: ``overview`` (0.15) and above; between them a body is a skeleton of bars (``skeleton``).
+_LOD = _theme.lod()
+LOD_TITLES = _LOD["titles"]
+LOD_OVERVIEW = _LOD["overview"]
+LOD_BODY: List[Optional[float]] = [LOD_TITLES, None]
+LOD_LABEL: List[Optional[float]] = [LOD_OVERVIEW, None]
+LOD_SKELETON: List[Optional[float]] = [LOD_OVERVIEW, LOD_TITLES]
+TITLE_MIN_PX = _LOD["title_min_px"]
+SKELETON_H = _LOD["skeleton_h"]
+SKELETON_LINES = int(_LOD["skeleton_lines"])
+#: A tooltip (``detail``) is cut to this many characters in the entry's ``tip``.
+TIP_MAX = 500
 
 
 # --------------------------------------------------------------------------
@@ -168,6 +186,15 @@ def _hex(value: Any) -> Optional[str]:
 def _group(kind: str) -> str:
     found = _kinds.get(kind)
     return found.tone_group if found is not None else "other"
+
+
+def tone_refs(el: Mapping[str, Any], kind: Optional[str] = None) -> Dict[str, Optional[str]]:
+    """``{"stroke", "fill", "text"}`` as token references from the element's ``tone`` and ``variant`` (a kind that takes no
+    hex colours draws from these)."""
+    style = style_of(el)
+    tone = style.get("tone") if style.get("tone") in _theme.TONES else "neutral"
+    variant = style.get("variant") if style.get("variant") in _theme.VARIANTS else _theme.default_tone(kind or str(el.get("type")))[1]
+    return _theme.resolve_ref(tone, variant, kind or str(el.get("type") or ""))
 
 
 def paints(el: Mapping[str, Any]) -> Dict[str, Optional[str]]:
@@ -351,9 +378,54 @@ def block(text: str, box: Sequence[float], style: Mapping[str, Any], fill: Any, 
     return text_prim(lines, x + w / 2.0, top, size, style, fill, "middle", (x, y, w, h), weight)
 
 
+def skeleton(box: Sequence[float], line_ws: Sequence[float], lh: float, anchor: str = "start") -> List[Primitive]:
+    """Body text zoomed out (phase 2, 6.1): one bar per line (at most ``SKELETON_LINES``), ``SKELETON_H`` tall and as wide
+    as the line, in ``base.grid``, drawn only between the overview and titles bands. ``box`` is the text's ``[x, y, w, h]``."""
+    x, y, w, _h = (float(v) for v in box)
+    out: List[Primitive] = []
+    for index, line_w in enumerate(list(line_ws)[:SKELETON_LINES]):
+        width = max(4.0, min(float(line_w), w))
+        left = x if anchor == "start" else (x + (w - width) / 2.0 if anchor == "middle" else x + w - width)
+        out.append({"k": "rect", "x": left, "y": y + index * lh + (lh - SKELETON_H) / 2.0, "w": width, "h": SKELETON_H, "r": SKELETON_H / 2.0,
+                    "fill": "base.grid", "lod": list(LOD_SKELETON)})
+    return out
+
+
+def body(prim: Primitive) -> List[Primitive]:
+    """A body-level text primitive as it draws at every zoom: itself at ``LOD_BODY`` and its skeleton below that."""
+    lines = prim.get("lines") or []
+    if not lines:
+        return []
+    prim["lod"] = list(LOD_BODY)
+    box = prim.get("box") or [prim.get("x", 0), 0, 0, 0]
+    top = float(box[1])
+    anchor = str(prim.get("anchor") or "start")
+    return [prim] + skeleton([box[0], top, box[2], box[3]], [num(line.get("w"), 0.0) for line in lines], float(prim.get("lh") or 20), anchor)
+
+
+def title_pair(el: Mapping[str, Any], title: str, x: float, y: float, size: float, weight: int, fill: Any, top_level: bool,
+               room: Optional[float] = None) -> List[Primitive]:
+    """A container's title by the title rule (phase 2, 6.1; phase 1, 1.6 generalised): in its band, cut to ``room``, from
+    ``TITLE_MIN_PX / size`` screen pixels per unit up; below that, a top-level container's whole title stands above it,
+    never under ``TITLE_MIN_PX`` on screen. A nested container's band title stays down to the overview band."""
+    lh = _ctext.line_height(size)
+    width = room if room is not None else max(0.0, box_of(el)[2] - x)
+    switch = TITLE_MIN_PX / float(size)
+    band = text_prim([_geo.fit_line(title, width, size, weight)], x, y, size, {}, fill, "start", (x, y, width, lh), weight)
+    if not top_level:
+        band["lod"] = list(LOD_LABEL)
+        return [band]
+    band["lod"] = [switch, None]
+    x0, y0 = box_of(el)[0], box_of(el)[1]
+    above = text_prim([title], x0, y0 - lh, size, {}, fill, "start", None, weight)
+    above.update(lod=[None, switch], zoom={"min_px": TITLE_MIN_PX, "grow": "up", "bottom": y0},
+                 base_ratio=_ctext.baseline(1, "normal", weight))
+    return [band, above]
+
+
 def text_edit(el: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
     """What a double-click edits in a labelled element: its whole text in its inner box, at its drawn size."""
-    kind = _kinds.get(el.get("type"))
+    kind = _kinds.kind_of(el)
     if kind is None or kind.edit_field is None:
         return None
     style = style_of(el)
@@ -508,9 +580,40 @@ def prim_bounds(prim: Mapping[str, Any], t: Optional[Sequence[float]] = None) ->
     return min(p[0] for p in points), min(p[1] for p in points), max(p[0] for p in points), max(p[1] for p in points)
 
 
+def _tip(el: Mapping[str, Any]) -> Optional[str]:
+    detail = el.get("detail")
+    if not isinstance(detail, str) or not detail.strip():
+        return None
+    detail = detail.strip()
+    return detail if len(detail) <= TIP_MAX else detail[:TIP_MAX - 1].rstrip() + "…"
+
+
+def _extras(el: Mapping[str, Any], kind: Any) -> Dict[str, Any]:
+    """The phase 2 entry fields (6.2), each only when it applies: ``parts``, ``pin``, ``block`` and ``part``, ``container``
+    and ``tip``."""
+    out: Dict[str, Any] = {}
+    if kind is not None and kind.parts is not None:
+        found = kind.parts(dict(el))
+        if found:
+            out["parts"] = found
+    pin = el.get("pin")
+    if isinstance(pin, dict) and pin.get("by") in ("human", "agent"):
+        out["pin"] = pin["by"]
+    if isinstance(el.get("part"), str) and isinstance(el.get("group"), str):
+        out["block"], out["part"] = el["group"], el["part"]
+    settings = el.get("settings") if isinstance(el.get("settings"), dict) else {}
+    if el.get("type") == "frame" and settings.get("layout") in ("row", "column", "grid"):
+        out["container"] = {"layout": settings["layout"], "gap": _theme.gap(settings.get("gap"), 20),
+                            "order": [str(i) for i in el.get("order") or [] if isinstance(i, str)]}
+    tip = _tip(el)
+    if tip is not None:
+        out["tip"] = tip
+    return out
+
+
 def entry(el: Mapping[str, Any], env: Env) -> Dict[str, Any]:
     """One element's entry (1.2): its primitives and what the page needs to select, resize, connect and edit it."""
-    kind = _kinds.get(el.get("type"))
+    kind = _kinds.kind_of(el)
     items: List[Primitive]
     try:
         items = list(kind.emit(dict(el), env)) if kind is not None and kind.emit is not None else generic_emit(el, env)
@@ -541,15 +644,22 @@ def entry(el: Mapping[str, Any], env: Env) -> Dict[str, Any]:
         except (TypeError, ValueError, KeyError, IndexError, AttributeError, ZeroDivisionError):
             hit, edit = _default_hit(el), None
     frame = el.get("frame") if isinstance(el.get("frame"), str) else None
-    return _rounded({
-        "id": str(el.get("id") or ""), "kind": str(el.get("type") or "element"),
+    extras: Dict[str, Any] = {}
+    try:
+        extras = _extras(el, kind)
+    except (TypeError, ValueError, KeyError, IndexError, AttributeError, ZeroDivisionError):
+        extras = {}
+    out = {
+        "id": str(el.get("id") or ""), "kind": kind.name if kind is not None else str(el.get("type") or "element"),
         "layer": kind.layer if kind is not None else "marks",
         "z": int(num(el.get("z"), 0.0)), "v": int(num(el.get("updated_seq"), 0.0)),
         "bbox": list(bbox), "hit": hit, "handles": kind.handles if kind is not None else "none",
         "connect": bool(kind.connectable) if kind is not None else False, "edit": edit,
         "frame": frame, "author": str(el.get("author") or ""), "chip": chip(el.get("author"), env),
         "locked": _in_lock(box, env), "items": items,
-    })
+    }
+    out.update(extras)
+    return _rounded(out)
 
 
 def _claim_entry(claim: Mapping[str, Any], env: Env) -> Optional[Dict[str, Any]]:
@@ -738,6 +848,8 @@ def _check_prim(prim: Any, where: str, palettes: Mapping[str, Mapping[str, str]]
         out.append("{}: not a primitive".format(where))
         return
     kind = prim["k"]
+    if "lod" in prim and not _lod_ok(prim["lod"]):
+        out.append("{}: lod is [min, max]".format(where))
     if "layer" in prim and prim["layer"] not in LAYERS:
         out.append("{}: unknown layer".format(where))
     for key in ("fill", "stroke"):
@@ -771,6 +883,48 @@ def _check_prim(prim: Any, where: str, palettes: Mapping[str, Mapping[str, str]]
     for key in ("items", "fallback"):
         for index, child in enumerate(prim.get(key) or []):
             _check_prim(child, "{}.{}[{}]".format(where, key, index), palettes, out)
+
+
+def _lod_ok(value: Any) -> bool:
+    return isinstance(value, list) and len(value) == 2 and all(v is None or (isinstance(v, (int, float)) and not isinstance(v, bool)) for v in value)
+
+
+def _box_ok(value: Any) -> bool:
+    return isinstance(value, list) and len(value) == 4 and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in value)
+
+
+def _check_extras(item: Mapping[str, Any], where: str, out: List[str]) -> None:
+    """The optional phase 2 entry fields (6.2): ``parts``, ``pin``, ``block``/``part``, ``container`` and ``tip``."""
+    if "parts" in item:
+        parts = item["parts"]
+        if not isinstance(parts, list):
+            out.append("{}: parts is a list".format(where))
+        else:
+            for index, part in enumerate(parts):
+                here = "{}.parts[{}]".format(where, index)
+                hit = part.get("hit") if isinstance(part, dict) else None
+                if not isinstance(part, dict) or not isinstance(part.get("part"), str) or not part["part"]:
+                    out.append(here + ": a part is {part, hit, edit}")
+                    continue
+                if not isinstance(hit, dict) or hit.get("shape") not in ("rect", "ellipse", "diamond") or not _box_ok(hit.get("box")):
+                    out.append(here + ": hit is {shape: rect|ellipse|diamond, box}")
+                edit = part.get("edit")
+                if edit is not None and (not isinstance(edit, dict) or edit.get("wrap") not in EDIT_WRAPS or edit.get("part") != part["part"]
+                                         or not _box_ok(edit.get("box"))):
+                    out.append(here + ": edit is an edit object naming its part")
+                if "lod" in part and not _lod_ok(part["lod"]):
+                    out.append(here + ": lod is [min, max]")
+    if "pin" in item and item["pin"] not in ("human", "agent"):
+        out.append("{}: pin is human or agent".format(where))
+    if ("block" in item) != ("part" in item) or ("block" in item and not (isinstance(item["block"], str) and isinstance(item["part"], str))):
+        out.append("{}: block and part come together, as strings".format(where))
+    if "container" in item:
+        found = item["container"]
+        if not isinstance(found, dict) or found.get("layout") not in ("row", "column", "grid") or not isinstance(found.get("order"), list) \
+                or not isinstance(found.get("gap"), (int, float)):
+            out.append("{}: container is {{layout, gap, order}}".format(where))
+    if "tip" in item and (not isinstance(item["tip"], str) or len(item["tip"]) > TIP_MAX):
+        out.append("{}: tip is a string of at most {} characters".format(where, TIP_MAX))
 
 
 def validate(doc: Any) -> List[str]:
@@ -808,6 +962,7 @@ def validate(doc: Any) -> List[str]:
         edit = item.get("edit")
         if edit is not None and (not isinstance(edit, dict) or edit.get("wrap") not in EDIT_WRAPS or edit.get("align") not in ("center", "start")):
             out.append("{}: edit".format(where))
+        _check_extras(item, where, out)
         for key in ("bg", "fg"):
             problem = _paint_ok((item.get("chip") or {}).get(key), palettes)
             if problem:
@@ -875,11 +1030,20 @@ def golden_outputs(scene: Mapping[str, Any]) -> Dict[str, str]:
     return {"dl": dumps(doc) + "\n", "light": canvas_svg.write(doc, theme="light") + "\n", "dark": canvas_svg.write(doc, theme="dark") + "\n"}
 
 
-def _goldens(write: bool) -> int:
+def _goldens(write: bool, only: Sequence[str] = ()) -> int:
+    """Write (or check) the goldens; ``only`` names the scenes to rewrite (phase 2, D16: one owner per scene file), and
+    the others are left as they are."""
     stale: List[str] = []
     files: Dict[Path, str] = {GOLDENS_DIR / "fmt-vectors.json": json.dumps(fmt_vectors(), indent=0) + "\n"}
+    known = {path.stem for path in SCENES_DIR.glob("*.json")}
+    unknown = [name for name in only if name not in known]
+    if unknown:
+        sys.stderr.write("no golden scene called {} (tests/fixtures/canvas_scenes)\n".format(", ".join(unknown)))
+        return 2
     for path in sorted(SCENES_DIR.glob("*.json")):
         name = path.stem
+        if only and name not in only:
+            continue
         paths = _golden_paths(name)
         if write or not paths["scene"].is_file():
             scene = golden_scene(path)
@@ -913,12 +1077,13 @@ def main(argv: Sequence[str] = ()) -> int:
     parser = argparse.ArgumentParser(prog="python3 -m herdr_team.canvas_display", description="Print a scene's display list, or write its goldens.")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--scene", help="a scene.json (or a golden scene file) to print the display list of")
-    mode.add_argument("--write-goldens", action="store_true", help="rewrite tests/fixtures/display from the golden scenes")
+    mode.add_argument("--write-goldens", nargs="*", metavar="SCENE", default=None,
+                      help="rewrite tests/fixtures/display from the golden scenes (only the named ones when given)")
     mode.add_argument("--check-goldens", action="store_true", help="exit 1 when tests/fixtures/display is stale")
     parser.add_argument("--out", help="write the display list here instead of printing it")
     args = parser.parse_args(list(argv))
-    if args.write_goldens or args.check_goldens:
-        return _goldens(bool(args.write_goldens))
+    if args.write_goldens is not None or args.check_goldens:
+        return _goldens(args.write_goldens is not None, args.write_goldens or ())
     if not args.scene:
         parser.print_usage(sys.stderr)
         return 2

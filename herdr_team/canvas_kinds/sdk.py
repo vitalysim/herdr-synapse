@@ -9,11 +9,19 @@ Every ``raise ctx.invalid(...)`` (or ``ctx.error``, ``ctx.too_big``) refuses
 the op with the canvas's own error codes. Methods may be added; their meaning
 never changes.
 
-Pure: a ``typing.Protocol`` and nothing else.
+Since canvas v2 phase 2 (``.local/prd/canvas-v2-phase2.md`` 1.3) a kind may be
+a *block*: an element an agent describes by structure (items, relations, tone)
+and never by pixels. Its ``Kind.block`` is a ``Block``: the ``Collection`` of
+items it holds, the settings it keeps, and how it is built (``build``, through
+a ``BlockContext``) and read back (``spec``). ``canvas_blocks`` runs the one
+pipeline every block op, patch, upsert and part edit goes through.
+
+Pure: protocols and dataclasses, nothing else.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 try:  # ``typing.Protocol`` is 3.8+; the plugin supports 3.9, so this is only for type checkers on odd builds
     from typing import Protocol
@@ -104,3 +112,119 @@ class OpContext(Protocol):
     def comment(self, ref: Any, field: str) -> Element: ...
     #: A comment that mentions members: posted to them once the batch is applied.
     def mention(self, comment: Element) -> None: ...
+
+    # -- blocks (phase 2) ---------------------------------------------------------------------------------
+    #: Run the block pipeline (``canvas_blocks``, 1.5) for a kind's own op: create the block, or reconcile the one the
+    #: op's ``id`` names (an upsert). Returns the root.
+    def block(self, kind: str, spec: Mapping[str, Any]) -> Element: ...
+    #: ``(id, (x0, y0, x1, y1), outline)`` of every solid element meeting ``box``, leaving out ``exclude`` and the
+    #: containers of those (an arrow's ends are never its own obstacles).
+    def obstacles(self, box: Sequence[float], exclude: Sequence[str]) -> List[Tuple[str, Tuple[float, float, float, float], str]]: ...
+
+
+def _key(item: Dict[str, Any]) -> str:
+    return str(item["id"])
+
+
+@dataclass(frozen=True)
+class Collection:
+    """One kind of item a block holds (``cards``, ``rows``, ``events``)."""
+
+    #: Its name in the op and in ``patch`` (``add: {"cards": [...]}``).
+    name: str
+    #: ``(ctx, raw, field) -> item``: one raw item normalized (a bare string is the short form); refuses with
+    #: ``ctx.invalid(field, ...)``, where ``field`` is ``cards[3]``.
+    item: Callable[[Any, Any, str], Dict[str, Any]]
+    #: Generated ids: ``prefix`` + n (``c`` -> c1, c2 ...), never reused inside one block; "" = the item must carry one.
+    prefix: str = ""
+    #: The item's key (its ``id``).
+    key: Callable[[Dict[str, Any]], str] = _key
+    #: A ``remove`` entry -> the key it removes (default ``str(entry)``).
+    remove_key: Optional[Callable[[Any], str]] = None
+    #: The most items; more is refused ``too_big``.
+    maximum: int = 200
+    doc: str = ""
+    #: The item field an upsert matches an item without an id by (``title``, ``text``): exact text among the members
+    #: no id matched (1.8); "" = match by key only.
+    label: str = ""
+    #: The kind its members are (``card``), so an upsert matches an item only with a member of its own collection.
+    member: str = ""
+    #: What an item names in other collections, as ``(field, collection, how)``, so removing an item takes care of what
+    #: names it (1.7). ``how``: ``drop`` (the item goes with what it names, as an edge with its node; a list field
+    #: loses the entry, and the item goes when the list empties), ``clear`` (the field is cleared, and ``normalize``
+    #: gives its default: a card whose column goes lands in the first), ``key`` (the field is a mapping keyed by
+    #: those items, and loses the key), ``start`` or ``end`` (the field is a 1-based position in that collection,
+    #: renumbered; an item whose start passes its end goes).
+    refs: Tuple[Tuple[str, str, str], ...] = ()
+
+
+def _no_normalize(ctx: Any, spec: Dict[str, Any]) -> Dict[str, Any]:
+    return spec
+
+
+def _no_build(bctx: Any, spec: Dict[str, Any]) -> None:
+    raise NotImplementedError("a block kind needs build")
+
+
+def _no_spec(root: Element, members: List[Element], full: bool) -> Dict[str, Any]:
+    return {}
+
+
+@dataclass(frozen=True)
+class Block:
+    """A composite described by structure (1.3): what it holds and how it is built and read back.
+
+    Round trip (test T-B1): ``normalize(parse(spec(root, members)))`` equals the normalized op that built the block,
+    so what an agent reads back is exactly what it could write."""
+
+    collections: Tuple[Collection, ...] = ()
+    #: Op fields kept in ``root["settings"]``; ``patch set`` may change them.
+    settings: Tuple[str, ...] = ()
+    #: ``members`` (items are elements carrying ``group`` and ``part``) or ``inline`` (the root holds and draws them).
+    parts: str = "members"
+    #: Members keep positions of their own (a move pins them); False: a stack order (a move reorders).
+    positional: bool = True
+    #: ``(ctx, spec) -> spec``: defaults and checks across items; refusals name the field.
+    normalize: Callable[[Any, Dict[str, Any]], Dict[str, Any]] = _no_normalize
+    #: ``(bctx, spec)``: create or reconcile the root and its members (``BlockContext``).
+    build: Callable[[Any, Dict[str, Any]], None] = _no_build
+    #: ``(root, members in part order, full) -> op``: the block read back as the op that would build it.
+    spec: Callable[[Element, List[Element], bool], Dict[str, Any]] = _no_spec
+    #: ``(root, joining element) -> item id``, or None: the element stays a loose child.
+    adopt: Optional[Callable[[Element, Element], Optional[str]]] = None
+    #: ``(root, part, text) -> patch body``: an inline part's edit as a patch.
+    part_edit: Optional[Callable[[Element, str, str], Dict[str, Any]]] = None
+    #: ``(raw op) -> data`` computed outside the canvas lock (a big layout).
+    prepare: Optional[Callable[[Dict[str, Any]], Any]] = None
+    max_members: int = 400
+    #: Fields the op takes that are neither settings nor collections nor common (``title``).
+    fields: Tuple[str, ...] = ("title",)
+
+
+class BlockContext(Protocol):
+    """What ``Block.build`` builds through (``canvas_blocks`` implements it)."""
+
+    ctx: OpContext
+    op: Mapping[str, Any]
+    kind: str
+    #: The root as it stands (None while creating).
+    root: Optional[Element]
+    prepared: Any
+
+    #: Creates the root on first call (placed from the op), else updates it; ``settings`` are merged.
+    def root_fields(self, *, x: Optional[float] = None, y: Optional[float] = None, w: Optional[float] = None, h: Optional[float] = None,
+                    text: Optional[str] = None, style: Optional[Dict[str, Any]] = None, settings: Optional[Dict[str, Any]] = None,
+                    **fields: Any) -> Element: ...
+    #: ``part -> element`` as the block stood before this build.
+    def members(self) -> Dict[str, Element]: ...
+    #: Create (fitted by its kind, alias ``<root alias>.<part>``) or update in place (keeps id, author, pin and z).
+    def member(self, part: str, kind: str, *, text: str = "", style: Optional[Dict[str, Any]] = None, frame: Optional[str] = None,
+               minimum: Optional[Tuple[float, float]] = None, **fields: Any) -> Element: ...
+    #: An arrow member bound to members ``a`` and ``b``.
+    def edge(self, part: str, a: str, b: str, *, label: str = "", style: Optional[Dict[str, Any]] = None, head: str = "arrow",
+             tail: str = "none", frame: Optional[str] = None) -> Element: ...
+    def drop(self, part: str) -> None: ...
+    def keep_only(self, parts: Iterable[str]) -> List[str]: ...
+    def new_id(self, prefix: str) -> str: ...
+    def set_order(self, container: Element, ids: Sequence[str]) -> None: ...
+    def warn(self, code: str, message: str, parts: Sequence[str]) -> None: ...

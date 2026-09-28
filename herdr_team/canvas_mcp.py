@@ -114,8 +114,10 @@ class McpSession:
 
 #: The core ops' part of the op table (they act on any element); each kind module adds its own ``OpSpec.mcp`` fragment.
 _CORE_OP_TABLE = ("claim {region, label}; release {id}; legend {symbol, meaning}; move {id|ids, to|by|right_of..., w, h}; "
-                  "restyle {id, tone, variant, color...}; edit {id, text}; delete {id}; portrait {steps, current}; undo {batch}; "
-                  "refit {ids (none: every element you may edit): size labels again}")
+                  "restyle {id, tone, variant, color..., route straight|orthogonal|curved}; edit {id, text, part}; delete {id}; "
+                  "portrait {steps, current}; undo {batch}; refit {ids (none: every element you may edit): size labels again}; "
+                  "patch {id (a block), add|update|remove {<items>: [...]}, set {<setting>: value}, relayout, if_version}; "
+                  "place {id|ids, right_of|left_of|below|above|in|at, gap s|m|l, align, index}; pin {id|ids}; unpin {id|ids}")
 _PLACES = ("Places: cells c<col>r<row> (20 units), \"x,y\", or ids/aliases; an op's id is your alias for what it creates.")
 
 
@@ -153,6 +155,8 @@ def tool_definitions() -> List[Dict[str, Any]]:
              "since": dict(text, description='"last" or a version number'),
              "image": {"type": "boolean"}, "grid": {"type": "boolean"},
              "exact": {"type": "boolean", "description": "ask an open whiteboard page for the engine's own picture"},
+             "block": dict(text, description="a block (kanban, table, graph ...): its whole spec, one item per line"),
+             "full": {"type": "boolean", "description": "also block part ids, top-level neighbours and details"},
          })},
         {"name": "canvas_check",
          "description": ("Check the canvas layout (or a region): overlapping marks, text on a labelled shape, labels that do not fit "
@@ -247,7 +251,8 @@ def _tool_look(session: McpSession, args: Dict[str, Any]) -> Tuple[Dict[str, Any
     exact = _flag(args, "exact")
     image = _flag(args, "image") or exact
     result = C.look(session.layout, team, author.name, region=_place(_str(args, "region")), around=_str(args, "around"),
-                    since=_str(args, "since"), image=image, grid=_flag(args, "grid"), exact=exact, advance=True, doc=doc)
+                    since=_str(args, "since"), image=image, grid=_flag(args, "grid"), exact=exact, advance=True, doc=doc,
+                    block=_str(args, "block"), full=_flag(args, "full"))
     extra: List[Dict[str, Any]] = []
     if image and result.get("image"):
         try:

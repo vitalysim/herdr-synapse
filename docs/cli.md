@@ -2197,7 +2197,7 @@ Identity as for `post`; members write only as verified members of their own
 team; unverified callers, hooks and startup processes can read only.
 
 ```
-canvas look [--region R | --around ID] [--since N|last] [--image] [--grid] [--exact] [--theme light|dark]
+canvas look [--region R | --around ID] [--since N|last] [--image] [--grid] [--exact] [--theme light|dark] [--block REF] [--full]
 canvas check [--region R | --around ID] [--mine]
 canvas draw [--file PATH|-] [--op JSON]... [--atomic]
 canvas comment AT TEXT [--mention NAME]... [--reply-to C-n] [--intent TEXT]
@@ -2214,6 +2214,7 @@ canvas unlock X-n                            (operator)
 canvas send ID... --to NAME [--note TEXT]    (operator)
 canvas export [--format json|md|svg|png] [--region R] [--out PATH]
 canvas helper [--print]
+canvas icons [--search WORD]
 canvas mcp
 ```
 
@@ -2224,7 +2225,12 @@ names the point at a cell's top-left (`c17r6` = 340,120); a point is also
 `|x|,|y| ≤ 1,000,000`, sizes up to 20,000. Each author gets a home region
 `[i*1000, -1000, i*1000+800, -400]` the first time it draws; an element with
 no placement goes to the next free slot there. Placement is one of `at`,
-`right_of`, `left_of`, `below`, `above` (with `gap`, default 40) or `inside`.
+`right_of`, `left_of`, `below`, `above` (with `gap`: `s` 20, `m` 40 (the
+default), `l` 80, or a number), `inside` a frame, or `in` a container (a
+section, a kanban column) to join its layout at `index` (phase 2; `in` with
+`at` or `points` in a free section resolves cells in its local grid). A block
+(a stack, a kanban, a timeline, a graph) takes members only on purpose (`in`,
+`place in`, a drop), never by where something lands.
 
 **Ids.** `E-n` elements (frames too), `C-n` comments, `K-n` claims, `X-n`
 locks, `G-n` legend entries, `B-n` batches, per team, never reused. An op's
@@ -2257,6 +2263,12 @@ post, and secrets or marker text refuse):
 | `resolve` | close a comment | its author, a mentioned member, manager, operator |
 | `lock` / `unlock` | an operator region lock | operator |
 | `undo` | restore what a batch touched; an element the undoer could not edit directly now (the operator's arrow the batch re-routed) is left as it is, with an `undo_skipped` warning | its author; manager for agents' batches; operator |
+| `refit` | size labels again (`ids`, or every element the author may edit); a block root named in `ids` is rebuilt from its own spec | editor |
+| `section`, `card`, `sticky`, `callout`, `heading`, `badge`, `icon` | content blocks (phase 2): a titled zone that lays out what joins it (`layout` row, column, grid or free, `gap`, `padding`, `align` incl. `stretch`, `cols`, `grid "CxR"`, `children` or `region`); a card (`title`, `body` with `- ` bullets, `icon`, `badges`, `owner`, `status`, `detail`, `size` s/m/l, `tone`, `variant`); a sticky (`text`, `tone`, `size`); a callout (`kind` note/tip/important/warning/danger/decision/question, `title`, `body`, `icon`); a heading (`text`, `level` 1-3); a badge (`text`, `tone`, `variant`, `icon`, `size`); an icon (`name`, `size`, `tone`, `label`; `canvas icons --search`) | writer |
+| `table`, `kanban`, `timeline` | structured blocks: `columns` and `rows` held inline, every cell a part; `columns` of `cards` (a card is `<board>.c<n>`); `events` on a dated or ordinal axis. The same op with the same `id` updates the block in place (items match by id, then by text) | writer |
+| `patch` | inside a block (`id`): `add`, `update`, `remove` (by key) and `set` (settings), `relayout` incremental or full; a key that names no item refuses `part_unknown` with the nearest keys; `if_version` is the block's version (its root's `updated_seq`, which every member change bumps) | editor |
+| `place` | `id` or `ids` as one group: `right_of`, `left_of`, `below`, `above` (with `gap`, `align` start/center/end), `at`, or `in` a container at `index`; a member of a positional block (a graph, a timeline) placed or dragged is pinned where it went, one in a stack is reordered | editor |
+| `pin` / `unpin` | hold elements where they are (`pin: {"by": "human"\|"agent", "who"}`): no layout, growth push-out or other author moves them. An agent never moves, resizes, deletes or unpins a person's pin (`pin_held`), nor a container holding one; `unpin` re-lays out the block | editor |
 
 Writer: a verified member, the operator, or a delegate. Editor: the element's
 author, the manager for any agent's element, the operator for anything; the
@@ -2285,6 +2297,23 @@ a deliberate `move`), so a later point on where it was asked to be is a point
 on it, in the same batch or a later one. A collision the op itself asked for
 is left to `check`. An unlabelled shape drawn over labelled ones goes under
 them, so its fill never hides their text.
+
+**Blocks** (phase 2). A block op builds a finished, laid-out result; every
+apply result then carries, per op, `block` (`{id, kind, box, version, moved,
+pins, upsert, notes, layout?, crossings?}`) and, for the batch, `geometry`
+(the final box and fit of everything it created, moved or resized, after all
+arranging, at most 50) and `check` (the layout problems within 200 units of
+what it touched and involving it, at most 10, each with its fix, and a count
+per code). `look` prints a block as the op that builds it (compact JSON, cut
+at item boundaries, at most 12 lines; `--block REF` prints it whole, one item
+per line) with its members folded in; an element in a container says where
+(` in arch#1/2 (row)`, ` part c2 of work`); `--full` adds each block's part
+ids and a top-level element's nearest neighbours; `look --json` has `blocks:
+{id: spec}`. `canvas icons` lists the Lucide icon names cards, icons and
+shapes take (`--search WORD`); an unknown name refuses `icon_unknown` with
+`did_you_mean`. `restyle {ids, route: "orthogonal"}` reroutes an arrow around
+what is in its way (`straight`, `orthogonal` or `curved`; `route` applies to
+arrows only).
 
 **Arrow labels** (0.22). A label sits in a pill on its arrow's line (on a
 curve, the drawn curve), clear of every mark and every other label: nearest
@@ -2379,8 +2408,10 @@ a grouping), `text_on_label` (text lying on a labelled shape), `label_overflow`
 drawn, measured with the bundled fonts; since 0.22 shapes grow to fit, so this
 finds elements drawn before that), `label_truncated` (a clamped label shows
 only part of its text), `frame_edge` (a mark half inside a frame), `arrow_through` (an arrow
-crossing a mark it does not connect) and `stray` (a mark 1500+ units from the
-rest). Each problem has `ids`, a `message`, `yours`, and `fix`: an operation
+crossing a mark it does not connect), `route_loop` (an arrow whose route crosses
+itself or runs back through one of its own ends), `label_astray` (an arrow label
+placed so far beside its line that it reads as something else's) and `stray` (a
+mark 1500+ units from the rest). Each problem has `ids`, a `message`, `yours`, and `fix`: an operation
 that applies as it stands (`move … to` a free spot, a resize, a frame grown,
 or `inside` a frame) or null. JSON
 `{"team","version","reader","region","mine","problems":[{"code","ids","message","fix","yours"}],"text"}`.

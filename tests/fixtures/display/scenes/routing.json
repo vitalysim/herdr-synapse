@@ -1,0 +1,810 @@
+{
+ "authors": {
+  "qa-drawer": {
+   "agent": "claude",
+   "color": "#1971c2",
+   "index": 0,
+   "kind": "member"
+  }
+ },
+ "batches": {
+  "B-1": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "qa-drawer",
+   "first_seq": 1,
+   "last_seq": 10,
+   "undone": false
+  },
+  "B-2": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "qa-drawer",
+   "first_seq": 11,
+   "last_seq": 14,
+   "undone": false
+  },
+  "B-3": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "qa-drawer",
+   "first_seq": 15,
+   "last_seq": 15,
+   "undone": false
+  }
+ },
+ "claims": [],
+ "counters": {
+  "B": 3,
+  "C": 0,
+  "E": 14,
+  "G": 0,
+  "K": 0,
+  "X": 0
+ },
+ "elements": [
+  {
+   "alias": "a1",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Client"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 80,
+   "id": "E-1",
+   "intent": "left end",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Client",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 160,
+   "x": 0,
+   "y": 0,
+   "z": 1
+  },
+  {
+   "alias": "w1",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Firewall"
+    ],
+    "min": [
+     160,
+     200
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 200,
+   "id": "E-2",
+   "intent": "the wall",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#fdecec",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#dc4b4f",
+    "text": "#6b1519",
+    "tone": "danger",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Firewall",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 160,
+   "x": 260,
+   "y": 0,
+   "z": 2
+  },
+  {
+   "alias": "b1",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Server"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 80,
+   "id": "E-3",
+   "intent": "right end",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Server",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 160,
+   "x": 520,
+   "y": 0,
+   "z": 3
+  },
+  {
+   "alias": "a2",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 4,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Producer"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 80,
+   "id": "E-4",
+   "intent": "left end",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Producer",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 4,
+   "w": 160,
+   "x": 0,
+   "y": 320,
+   "z": 4
+  },
+  {
+   "alias": "w2",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 5,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Queue"
+    ],
+    "min": [
+     160,
+     120
+    ],
+    "policy": "scale_shape",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 120,
+   "id": "E-5",
+   "intent": "in the way",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Queue",
+   "type": "ellipse",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 5,
+   "w": 160,
+   "x": 260,
+   "y": 300,
+   "z": 5
+  },
+  {
+   "alias": "b2",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 6,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Consumer"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 80,
+   "id": "E-6",
+   "intent": "right end",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Consumer",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 6,
+   "w": 160,
+   "x": 520,
+   "y": 380,
+   "z": 6
+  },
+  {
+   "alias": "a3",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 7,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Draft"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 80,
+   "id": "E-7",
+   "intent": "left end",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Draft",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 7,
+   "w": 160,
+   "x": 0,
+   "y": 560,
+   "z": 7
+  },
+  {
+   "alias": "b3",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 8,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Review"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 80,
+   "id": "E-8",
+   "intent": "right end",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Review",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 8,
+   "w": 160,
+   "x": 520,
+   "y": 660,
+   "z": 8
+  },
+  {
+   "alias": "p1",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 9,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Build"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 80,
+   "id": "E-9",
+   "intent": "a step",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Build",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 9,
+   "w": 160,
+   "x": 0,
+   "y": 860,
+   "z": 9
+  },
+  {
+   "alias": "p2",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 10,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Test"
+    ],
+    "min": [
+     160,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 80,
+   "id": "E-10",
+   "intent": "the next step",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Test",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 160,
+   "x": 320,
+   "y": 860,
+   "z": 10
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-2",
+   "bends": "router",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 11,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "events"
+    ],
+    "size": 16
+   },
+   "frame": null,
+   "from": "E-4",
+   "group": null,
+   "h": 80,
+   "head": "arrow",
+   "id": "E-11",
+   "intent": "around the queue",
+   "label_at": [
+    367,
+    440
+   ],
+   "points": [
+    [
+     164,
+     360
+    ],
+    [
+     240,
+     360
+    ],
+    [
+     240,
+     440
+    ],
+    [
+     494,
+     440
+    ],
+    [
+     494,
+     420
+    ],
+    [
+     516,
+     420
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "orthogonal",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "events",
+   "to": "E-6",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 11,
+   "w": 352,
+   "x": 164,
+   "y": 360,
+   "z": 11
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-2",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 12,
+   "curve": true,
+   "frame": null,
+   "from": "E-7",
+   "group": null,
+   "h": 68,
+   "head": "arrow",
+   "id": "E-12",
+   "intent": "a curved route",
+   "points": [
+    [
+     163.93,
+     616.14
+    ],
+    [
+     516.07,
+     683.86
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-8",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 12,
+   "w": 352,
+   "x": 164,
+   "y": 616,
+   "z": 12
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-2",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 13,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "then"
+    ],
+    "size": 16
+   },
+   "frame": null,
+   "from": "E-9",
+   "group": null,
+   "h": 1,
+   "head": "arrow",
+   "id": "E-13",
+   "intent": "side by side",
+   "label_at": [
+    240,
+    900
+   ],
+   "points": [
+    [
+     164,
+     900
+    ],
+    [
+     316,
+     900
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "orthogonal",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "then",
+   "to": "E-10",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 13,
+   "w": 152,
+   "x": 164,
+   "y": 900,
+   "z": 13
+  },
+  {
+   "alias": "via",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-2",
+   "bends": "router",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 14,
+   "curve": false,
+   "frame": null,
+   "from": "E-1",
+   "group": null,
+   "h": 60,
+   "head": "arrow",
+   "id": "E-14",
+   "intent": "straight through the wall, for now",
+   "points": [
+    [
+     164,
+     40
+    ],
+    [
+     240,
+     40
+    ],
+    [
+     240,
+     -20
+    ],
+    [
+     494,
+     -20
+    ],
+    [
+     494,
+     40
+    ],
+    [
+     516,
+     40
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "orthogonal",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-3",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 15,
+   "w": 352,
+   "x": 164,
+   "y": -20,
+   "z": 14
+  }
+ ],
+ "homes": {
+  "qa-drawer": [
+   0,
+   -1000,
+   800,
+   -400
+  ]
+ },
+ "legend": [],
+ "locks": [],
+ "team": "qa",
+ "updated_at": "2026-01-01T00:00:00.000Z",
+ "v": 1,
+ "version": 15
+}

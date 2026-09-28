@@ -1,0 +1,500 @@
+{
+ "authors": {
+  "qa-drawer": {
+   "agent": "claude",
+   "color": "#1971c2",
+   "index": 0,
+   "kind": "member"
+  }
+ },
+ "batches": {
+  "B-1": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "qa-drawer",
+   "first_seq": 1,
+   "last_seq": 1,
+   "undone": false
+  }
+ },
+ "claims": [],
+ "counters": {
+  "B": 1,
+  "C": 0,
+  "E": 5,
+  "G": 0,
+  "K": 0,
+  "X": 0
+ },
+ "elements": [
+  {
+   "alias": "plan",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "axis": {
+    "days": 29,
+    "first": "2026-10-05",
+    "marks": [
+     {
+      "stem": [
+       152,
+       163
+      ],
+      "tone": "neutral",
+      "x": 132
+     },
+     {
+      "stem": [
+       173,
+       212
+      ],
+      "tone": "warning",
+      "x": 483.72
+     },
+     {
+      "milestone": true,
+      "stem": [
+       152,
+       163
+      ],
+      "tone": "success",
+      "x": 812
+     },
+     {
+      "end": 577.52,
+      "stem": [
+       173,
+       212
+      ],
+      "tone": "neutral",
+      "x": 155.45
+     }
+    ],
+    "mode": "time",
+    "scale": "day",
+    "ticks": [
+     [
+      132,
+      "Oct 05"
+     ],
+     [
+      155.45,
+      ""
+     ],
+     [
+      178.9,
+      ""
+     ],
+     [
+      202.34,
+      ""
+     ],
+     [
+      225.79,
+      ""
+     ],
+     [
+      249.24,
+      ""
+     ],
+     [
+      272.69,
+      ""
+     ],
+     [
+      296.14,
+      "Oct 12"
+     ],
+     [
+      319.59,
+      ""
+     ],
+     [
+      343.03,
+      ""
+     ],
+     [
+      366.48,
+      ""
+     ],
+     [
+      389.93,
+      ""
+     ],
+     [
+      413.38,
+      ""
+     ],
+     [
+      436.83,
+      ""
+     ],
+     [
+      460.28,
+      "Oct 19"
+     ],
+     [
+      483.72,
+      ""
+     ],
+     [
+      507.17,
+      ""
+     ],
+     [
+      530.62,
+      ""
+     ],
+     [
+      554.07,
+      ""
+     ],
+     [
+      577.52,
+      ""
+     ],
+     [
+      600.97,
+      ""
+     ],
+     [
+      624.41,
+      "Oct 26"
+     ],
+     [
+      647.86,
+      ""
+     ],
+     [
+      671.31,
+      ""
+     ],
+     [
+      694.76,
+      ""
+     ],
+     [
+      718.21,
+      ""
+     ],
+     [
+      741.66,
+      ""
+     ],
+     [
+      765.1,
+      ""
+     ],
+     [
+      788.55,
+      "Nov 02"
+     ],
+     [
+      812,
+      ""
+     ]
+    ],
+    "x0": 32,
+    "x1": 912,
+    "y": 168
+   },
+   "batch": "B-1",
+   "block": "timeline",
+   "client_id": null,
+   "count": 4,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "min": [
+     800,
+     200
+    ],
+    "policy": "hug"
+   },
+   "frame": null,
+   "group": null,
+   "h": 320,
+   "id": "E-1",
+   "intent": "launch dates",
+   "order": [
+    "E-2",
+    "E-3",
+    "E-4",
+    "E-5"
+   ],
+   "role": null,
+   "seq": {
+    "e": 4
+   },
+   "settings": {
+    "padding": "m",
+    "scale": "auto"
+   },
+   "style": {
+    "dash": "solid",
+    "fill": "#f0f1f4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Launch plan",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 960,
+   "x": 0,
+   "y": 0,
+   "z": 1
+  },
+  {
+   "alias": "plan.e1",
+   "at": "2026-10-05",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "clamp": {
+    "body": 2,
+    "title": 2
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Beta"
+    ],
+    "min": [
+     200,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "fixed_w": 200,
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 60,
+   "id": "E-2",
+   "intent": "launch dates",
+   "part": "e1",
+   "role": null,
+   "size": "s",
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Beta",
+   "type": "card",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 200,
+   "x": 32,
+   "y": 92,
+   "z": 2
+  },
+  {
+   "alias": "plan.e2",
+   "at": "2026-10-20",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "clamp": {
+    "body": 2,
+    "title": 2
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Docs freeze"
+    ],
+    "min": [
+     200,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "fixed_w": 200,
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 60,
+   "id": "E-3",
+   "intent": "launch dates",
+   "part": "e2",
+   "role": null,
+   "size": "s",
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "warning",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Docs freeze",
+   "type": "card",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 200,
+   "x": 384,
+   "y": 212,
+   "z": 3
+  },
+  {
+   "alias": "plan.e3",
+   "at": "2026-11-03",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "clamp": {
+    "body": 2,
+    "title": 2
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Launch"
+    ],
+    "min": [
+     200,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "fixed_w": 200,
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 60,
+   "icon": "rocket",
+   "id": "E-4",
+   "intent": "launch dates",
+   "milestone": true,
+   "part": "e3",
+   "role": null,
+   "size": "s",
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "success",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Launch",
+   "type": "card",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 200,
+   "x": 712,
+   "y": 92,
+   "z": 4
+  },
+  {
+   "alias": "plan.e4",
+   "at": "2026-10-06",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "clamp": {
+    "body": 2,
+    "title": 2
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "end": "2026-10-24",
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Private beta"
+    ],
+    "min": [
+     200,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "fixed_w": 200,
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 60,
+   "id": "E-5",
+   "intent": "launch dates",
+   "part": "e4",
+   "role": null,
+   "size": "s",
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Private beta",
+   "type": "card",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 200,
+   "x": 55,
+   "y": 212,
+   "z": 5
+  }
+ ],
+ "homes": {
+  "qa-drawer": [
+   0,
+   -1000,
+   800,
+   -400
+  ]
+ },
+ "legend": [],
+ "locks": [],
+ "team": "qa",
+ "updated_at": "2026-01-01T00:00:00.000Z",
+ "v": 1,
+ "version": 1
+}

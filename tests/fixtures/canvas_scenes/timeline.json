@@ -1,0 +1,12 @@
+{
+  "name": "timeline",
+  "about": "The launch plan timeline of the guide (worked example 6b): dated events packed above and below a month axis, a warning tone, a milestone with an icon, and a span with an end date.",
+  "stresses": ["time axis and ticks", "greedy level packing", "stems and dots", "spans and milestones"],
+  "gates": {"strict": true},
+  "ops": [
+    {"op": "timeline", "id": "plan", "title": "Launch plan", "at": [0, 0], "intent": "launch dates",
+     "events": [{"at": "2026-10-05", "title": "Beta"}, {"at": "2026-10-20", "title": "Docs freeze", "tone": "warning"},
+                {"at": "2026-11-03", "title": "Launch", "tone": "success", "icon": "rocket", "milestone": true},
+                {"at": "2026-10-06", "end": "2026-10-24", "title": "Private beta"}]}
+  ]
+}

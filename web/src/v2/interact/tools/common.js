@@ -75,6 +75,12 @@ export function ghostArrow(from, to) {
   return [{ k: "arrow", d: `M${from[0]} ${from[1]} L${to[0]} ${to[1]}`, stroke: SEL, sw: 2, heads }];
 }
 
+// A stack drop's insertion line (canvas-v2-phase2.md 6.3 W-f): 3 screen px in the selection colour.
+export function ghostDropLine(points) {
+  if (!Array.isArray(points) || points.length < 2) return [];
+  return [{ k: "line", points, stroke: SEL, sw_px: 3 }];
+}
+
 export function ghostLine(points) {
   return [{ k: "line", points, stroke: "base.ink", sw: 2 }];
 }

@@ -9,6 +9,9 @@ from herdr_team.canvas_kinds import Kind, OpSpec
 from herdr_team.canvas_kinds._common import MAX_SIZE, Element, bounds_text, r2, round_int, style_of
 from herdr_team.errors import HerdrTeamError
 
+#: Its place in the registration order (``canvas_kinds.DEFAULT_ORDER``).
+ORDER = 60
+
 #: The longest path data one op takes.
 MAX_PATH_CHARS = 20000
 

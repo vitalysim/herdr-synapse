@@ -28,7 +28,7 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 _log = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ THEMES = ("light", "dark")
 #: an arrow a line with a muted label, free text and ink strokes are drawn in the text colour. Each kind
 #: says its own group (``canvas_kinds.Kind.tone_group``); ``KIND_GROUPS`` is the registry's view of them
 #: (every kind whose group is not ``other``), derived on first use (canvas v2 phase 1, 2.4).
-GROUPS = ("shape", "note", "frame", "arrow", "text", "ink", "other")
+GROUPS = ("shape", "note", "frame", "arrow", "text", "ink", "other", "card", "badge", "callout")
 
 
 def kind_groups() -> Dict[str, str]:
@@ -53,6 +53,25 @@ def kind_groups() -> Dict[str, str]:
     from herdr_team import canvas_kinds  # the registry imports this module; imported late on purpose
 
     return {kind.name: kind.tone_group for kind in canvas_kinds.kinds() if kind.tone_group != "other"}
+
+
+def tools() -> List[Dict[str, Any]]:
+    """The page's create tools, one per kind with a ``Tool``, in tool bar order: the registry's view for the v2 page
+    (``web/src/v2/interact/toolset.js``), so a new kind's button needs no page edit (QA phase 1, V-2)."""
+    from herdr_team import canvas_kinds
+
+    out: List[Dict[str, Any]] = []
+    for kind in canvas_kinds.tools():
+        tool = kind.tool
+        if tool is None:
+            continue
+        entry: Dict[str, Any] = {"id": kind.name, "kind": kind.name, "key": tool.key, "title": tool.title, "glyph": tool.glyph,
+                                 "gesture": tool.gesture, "one_shot": tool.one_shot, "order": tool.order}
+        template = tool.template_op()
+        if template is not None:
+            entry["template"] = template  # the op the tool sends, without placement (phase 2, 6.4)
+        out.append(entry)
+    return out
 
 
 def _group(kind: str) -> str:
@@ -126,6 +145,15 @@ def resolve(tone: str, variant: str = "soft", kind: str = "box", theme: str = "l
         return {"stroke": b["ink"] if tone == "neutral" else t["stroke"], "fill": None, "text": t["text"]}
     if group == "frame":
         return {"stroke": t["stroke"] if variant == "solid" else t["zone_stroke"], "fill": t["zone"], "text": t["text"]}
+    if group == "callout":
+        return {"stroke": t["solid"], "fill": t["fill"], "text": t["text"]}
+    if group == "card" and variant != "solid":
+        # A card is a surface: its tone is the left bar (``solid``); soft tints it, outline keeps the surface.
+        n = roles("neutral", theme)
+        return {"stroke": n["zone_stroke"], "fill": t["fill"] if variant == "soft" else b["surface"],
+                "text": t["text"] if variant == "soft" else b["ink"]}
+    if group == "badge" and variant == "soft":
+        return {"stroke": None, "fill": t["fill"], "text": t["text"]}
     if variant == "solid":
         return {"stroke": t["solid"], "fill": t["solid"], "text": t["on_solid"]}
     if variant == "outline":
@@ -157,6 +185,13 @@ def resolve_ref(tone: str, variant: str = "soft", kind: str = "box") -> Dict[str
         return {"stroke": "base.ink" if tone == "neutral" else t("stroke"), "fill": None, "text": t("text")}
     if group == "frame":
         return {"stroke": t("stroke") if variant == "solid" else t("zone_stroke"), "fill": t("zone"), "text": t("text")}
+    if group == "callout":
+        return {"stroke": t("solid"), "fill": t("fill"), "text": t("text")}
+    if group == "card" and variant != "solid":
+        return {"stroke": "tone.neutral.zone_stroke", "fill": t("fill") if variant == "soft" else "base.surface",
+                "text": t("text") if variant == "soft" else "base.ink"}
+    if group == "badge" and variant == "soft":
+        return {"stroke": None, "fill": t("fill"), "text": t("text")}
     if variant == "solid":
         return {"stroke": t("solid"), "fill": t("solid"), "text": t("on_solid")}
     if variant == "outline":
@@ -202,11 +237,46 @@ def chip_count(theme: str = "light") -> int:
 
 
 def default_tone(kind: str) -> Tuple[str, str]:
-    """``(tone, variant)`` an element of ``kind`` gets when the op names none: a note is an idea sticky, the rest neutral."""
+    """``(tone, variant)`` an element of ``kind`` gets when the op names none: a sticky (the ``note`` tone group) is an
+    idea, a card an outlined surface, the rest neutral and soft."""
     sticky = tokens().get("sticky") if isinstance(tokens().get("sticky"), dict) else {}
-    if kind == "note":
+    group = _group(kind)
+    if group == "note":
         return str(sticky.get("default_tone") or "idea"), "soft"
+    if group == "card":
+        return "neutral", "outline"
     return "neutral", "soft"
+
+
+def lod() -> Dict[str, float]:
+    """The semantic zoom bands (phase 2, 6.1): ``titles`` (0.35: below it bodies become skeletons), ``overview`` (0.15:
+    below it only silhouettes and top-level titles) and ``title_min_px`` (12), in screen pixels per unit."""
+    found = tokens().get("lod") if isinstance(tokens().get("lod"), dict) else {}
+    return {"titles": float(found.get("titles", 0.35)), "overview": float(found.get("overview", 0.15)),
+            "title_min_px": float(found.get("title_min_px", 12)), "skeleton_h": float(found.get("skeleton_h", 8)),
+            "skeleton_lines": float(found.get("skeleton_lines", 3))}
+
+
+def section(key: str, default: Any = None) -> Any:
+    """A top-level token group (``card``, ``table``, ``kanban`` ...), or ``default`` when the file has none."""
+    found = tokens().get(key)
+    return found if found is not None else default
+
+
+def gap(value: Any, default: float = 40) -> float:
+    """A gap token (``s`` 20, ``m`` 40, ``l`` 80) or a number, in units."""
+    gaps = ((tokens().get("space") or {}).get("gap") or {"s": 20, "m": 40, "l": 80})
+    if isinstance(value, str) and value in gaps:
+        return float(gaps[value])
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    return float(default)
+
+
+def pad(value: Any, default: str = "m") -> float:
+    """A padding token (``s`` 20, ``m`` 32, ``l`` 48)."""
+    pads = ((tokens().get("space") or {}).get("pad") or {"s": 20, "m": 32, "l": 48})
+    return float(pads.get(value) if isinstance(value, str) and value in pads else pads.get(default, 32))
 
 
 def tone_of(value: Any) -> Optional[str]:
@@ -276,8 +346,13 @@ def asset() -> Dict[str, Any]:
         "tones": resolved["shape"],
         "kinds": {group: resolved[group] for group in groups if group != "shape"},
         "kind_groups": kind_groups(),
-        "defaults": {kind: list(default_tone(kind)) for kind in ("box", "ellipse", "diamond", "note", "text", "frame", "arrow", "pen")},
+        "tools": tools(),
+        # Every kind a tone colours (the registry's, QA phase 1 V-2), so a new kind needs no line here.
+        "defaults": {kind: list(default_tone(kind)) for kind in kind_groups()},
         "size_min": doc.get("size_min") or {},
+        "lod": lod(),
+        "layout": doc.get("layout") or {},
+        "space": doc.get("space") or {},
         "padding": doc.get("padding") or {},
         "radius": doc.get("radius") or {},
         "type": doc.get("type") or {},

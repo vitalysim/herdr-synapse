@@ -1,0 +1,303 @@
+{
+ "v": 1,
+ "team": "qa",
+ "version": 2,
+ "updated_at": "2026-09-28T00:31:58.090Z",
+ "elements": [
+  {
+   "id": "E-1",
+   "type": "sequence",
+   "alias": "login",
+   "client_id": null,
+   "x": 0,
+   "y": 0,
+   "w": 580,
+   "h": 466,
+   "text": "Login",
+   "style": {
+    "stroke": "#80858f",
+    "fill": null,
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2,
+    "dash": "solid",
+    "opacity": 100,
+    "font": "normal",
+    "size": 20,
+    "rough": 0
+   },
+   "frame": null,
+   "group": null,
+   "role": null,
+   "z": 1,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "intent": "how login works",
+   "batch": "B-1",
+   "created_seq": 1,
+   "updated_seq": 1,
+   "created_at": "2026-09-28T00:31:58.090Z",
+   "updated_at": "2026-09-28T00:31:58.090Z",
+   "settings": {},
+   "seq": {
+    "m": 5,
+    "n": 1,
+    "g": 1
+   },
+   "participants": [
+    {
+     "id": "u",
+     "text": "User",
+     "icon": "user"
+    },
+    {
+     "id": "api",
+     "text": "API"
+    },
+    {
+     "id": "db",
+     "text": "DB",
+     "icon": "database"
+    }
+   ],
+   "messages": [
+    {
+     "from": "u",
+     "to": "api",
+     "text": "POST /login",
+     "id": "m1"
+    },
+    {
+     "from": "api",
+     "to": "db",
+     "text": "find user",
+     "id": "m2"
+    },
+    {
+     "from": "db",
+     "to": "api",
+     "text": "row",
+     "reply": true,
+     "id": "m3"
+    },
+    {
+     "from": "api",
+     "to": "api",
+     "text": "check hash",
+     "id": "m4"
+    },
+    {
+     "from": "api",
+     "to": "u",
+     "text": "200 + token",
+     "reply": true,
+     "id": "m5"
+    }
+   ],
+   "notes": [
+    {
+     "over": [
+      "api"
+     ],
+     "text": "rate limited",
+     "id": "n1"
+    }
+   ],
+   "groups": [
+    {
+     "kind": "alt",
+     "label": "password ok",
+     "from": 3,
+     "to": 5,
+     "id": "g1"
+    }
+   ],
+   "fit": {
+    "policy": "clamp",
+    "min": [
+     580,
+     466
+    ],
+    "truncated": false,
+    "parts": []
+   }
+  },
+  {
+   "id": "E-2",
+   "type": "sequence",
+   "alias": "deploy",
+   "client_id": null,
+   "x": 660,
+   "y": 0,
+   "w": 750,
+   "h": 692,
+   "text": "Deploy",
+   "style": {
+    "stroke": "#80858f",
+    "fill": null,
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2,
+    "dash": "solid",
+    "opacity": 100,
+    "font": "normal",
+    "size": 20,
+    "rough": 0
+   },
+   "frame": null,
+   "group": null,
+   "role": null,
+   "z": 2,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "intent": "the deploy handshake",
+   "batch": "B-1",
+   "created_seq": 2,
+   "updated_seq": 2,
+   "created_at": "2026-09-28T00:31:58.090Z",
+   "updated_at": "2026-09-28T00:31:58.090Z",
+   "settings": {},
+   "seq": {
+    "m": 10,
+    "g": 1
+   },
+   "participants": [
+    {
+     "id": "ci",
+     "text": "ci"
+    },
+    {
+     "id": "registry",
+     "text": "registry"
+    },
+    {
+     "id": "cluster",
+     "text": "cluster"
+    }
+   ],
+   "messages": [
+    {
+     "from": "ci",
+     "to": "registry",
+     "text": "push image",
+     "id": "m1"
+    },
+    {
+     "from": "registry",
+     "to": "ci",
+     "text": "digest",
+     "reply": true,
+     "id": "m2"
+    },
+    {
+     "from": "ci",
+     "to": "cluster",
+     "text": "apply manifest",
+     "id": "m3"
+    },
+    {
+     "from": "cluster",
+     "to": "registry",
+     "text": "pull",
+     "id": "m4"
+    },
+    {
+     "from": "registry",
+     "to": "cluster",
+     "text": "layers",
+     "reply": true,
+     "id": "m5"
+    },
+    {
+     "from": "cluster",
+     "to": "cluster",
+     "text": "roll pods",
+     "id": "m6"
+    },
+    {
+     "from": "cluster",
+     "to": "ci",
+     "text": "rollout started",
+     "reply": true,
+     "id": "m7"
+    },
+    {
+     "from": "ci",
+     "to": "cluster",
+     "text": "watch",
+     "id": "m8"
+    },
+    {
+     "from": "cluster",
+     "to": "ci",
+     "text": "ready 3/3",
+     "reply": true,
+     "id": "m9"
+    },
+    {
+     "from": "ci",
+     "to": "ci",
+     "text": "mark green",
+     "id": "m10"
+    }
+   ],
+   "notes": [],
+   "groups": [
+    {
+     "kind": "loop",
+     "label": "until ready",
+     "from": 8,
+     "to": 9,
+     "id": "g1"
+    }
+   ],
+   "fit": {
+    "policy": "clamp",
+    "min": [
+     750,
+     692
+    ],
+    "truncated": false,
+    "parts": []
+   }
+  }
+ ],
+ "claims": [],
+ "locks": [],
+ "legend": [],
+ "homes": {
+  "qa-drawer": [
+   0,
+   -1000,
+   800,
+   -400
+  ]
+ },
+ "authors": {
+  "qa-drawer": {
+   "color": "#1971c2",
+   "index": 0,
+   "kind": "member",
+   "agent": "claude"
+  }
+ },
+ "batches": {
+  "B-1": {
+   "author": "qa-drawer",
+   "first_seq": 1,
+   "last_seq": 2,
+   "at": "2026-09-28T00:31:58.090Z",
+   "undone": false
+  }
+ },
+ "counters": {
+  "E": 2,
+  "C": 0,
+  "K": 0,
+  "X": 0,
+  "G": 0,
+  "B": 1
+ }
+}

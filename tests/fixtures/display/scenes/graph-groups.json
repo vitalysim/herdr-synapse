@@ -1,0 +1,2564 @@
+{
+ "authors": {
+  "qa-drawer": {
+   "agent": "claude",
+   "color": "#1971c2",
+   "index": 0,
+   "kind": "member"
+  }
+ },
+ "batches": {
+  "B-1": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "qa-drawer",
+   "first_seq": 1,
+   "last_seq": 3,
+   "undone": false
+  }
+ },
+ "claims": [],
+ "counters": {
+  "B": 1,
+  "C": 0,
+  "E": 42,
+  "G": 0,
+  "K": 0,
+  "X": 0
+ },
+ "elements": [
+  {
+   "alias": "checkout",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "block": "graph",
+   "client_id": null,
+   "count": 3,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "min": [
+     80,
+     80
+    ],
+    "policy": "hug"
+   },
+   "frame": null,
+   "group": null,
+   "h": 480,
+   "id": "E-1",
+   "intent": "show the checkout path for the review",
+   "role": null,
+   "seq": {},
+   "settings": {
+    "direction": "right",
+    "layout": "flow",
+    "route": "orthogonal",
+    "same_rank": [
+     [
+      "db",
+      "fail"
+     ]
+    ]
+   },
+   "style": {
+    "dash": "solid",
+    "fill": "#f0f1f4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Checkout flow",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 1320,
+   "x": 0,
+   "y": 0,
+   "z": 1
+  },
+  {
+   "alias": "checkout.core",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "min": [
+     40,
+     40
+    ],
+    "policy": "hug"
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 220,
+   "id": "E-2",
+   "intent": "show the checkout path for the review",
+   "item": {
+    "id": "core",
+    "title": "Core services",
+    "tone": "info"
+   },
+   "part": "core",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#f1f7fe",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#bcd8f7",
+    "text": "#0b3a6e",
+    "tone": "info",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Core services",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 944,
+   "x": 343,
+   "y": 92,
+   "z": 2
+  },
+  {
+   "alias": "checkout.user",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "detail": null,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Shopper"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 60,
+   "icon": "user",
+   "id": "E-3",
+   "intent": "show the checkout path for the review",
+   "item": {
+    "icon": "user",
+    "id": "user",
+    "text": "Shopper"
+   },
+   "part": "user",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Shopper",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 160,
+   "x": 32,
+   "y": 279,
+   "z": 3
+  },
+  {
+   "alias": "checkout.api",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "detail": null,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Checkout API"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-2",
+   "group": "E-1",
+   "h": 60,
+   "icon": "server",
+   "id": "E-4",
+   "intent": "show the checkout path for the review",
+   "item": {
+    "icon": "server",
+    "id": "api",
+    "in": "core",
+    "text": "Checkout API"
+   },
+   "part": "api",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Checkout API",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 200,
+   "x": 363,
+   "y": 182,
+   "z": 4
+  },
+  {
+   "alias": "checkout.ok",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "detail": null,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Payment",
+     "approved?"
+    ],
+    "min": [
+     200,
+     120
+    ],
+    "policy": "scale_shape",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-2",
+   "group": "E-1",
+   "h": 160,
+   "icon": null,
+   "id": "E-5",
+   "intent": "show the checkout path for the review",
+   "item": {
+    "id": "ok",
+    "in": "core",
+    "kind": "diamond",
+    "text": "Payment approved?"
+   },
+   "part": "ok",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Payment approved?",
+   "type": "diamond",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 260,
+   "x": 643,
+   "y": 132,
+   "z": 5
+  },
+  {
+   "alias": "checkout.db",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "detail": "Postgres 17, primary in eu-west",
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Orders database"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-2",
+   "group": "E-1",
+   "h": 60,
+   "icon": "database",
+   "id": "E-6",
+   "intent": "show the checkout path for the review",
+   "item": {
+    "detail": "Postgres 17, primary in eu-west",
+    "icon": "database",
+    "id": "db",
+    "in": "core",
+    "text": "Orders database"
+   },
+   "part": "db",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Orders database",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 240,
+   "x": 1027,
+   "y": 182,
+   "z": 6
+  },
+  {
+   "alias": "checkout.fail",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "detail": null,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Show retry and",
+     "keep the cart"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 80,
+   "icon": null,
+   "id": "E-7",
+   "intent": "show the checkout path for the review",
+   "item": {
+    "id": "fail",
+    "text": "Show retry and keep the cart",
+    "tone": "danger"
+   },
+   "part": "fail",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#fdecec",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#dc4b4f",
+    "text": "#6b1519",
+    "tone": "danger",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Show retry and keep the cart",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 200,
+   "x": 1047,
+   "y": 359,
+   "z": 7
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "HTTPS"
+    ],
+    "size": 16
+   },
+   "frame": "E-1",
+   "from": "E-3",
+   "group": "E-1",
+   "h": 87,
+   "head": "arrow",
+   "id": "E-8",
+   "intent": "show the checkout path for the review",
+   "item": {
+    "from": "user",
+    "id": "e:user->api",
+    "label": "HTTPS",
+    "to": "api"
+   },
+   "label_at": [
+    267.5,
+    255.5
+   ],
+   "part": "e:user->api",
+   "points": [
+    [
+     196,
+     299
+    ],
+    [
+     267.5,
+     299
+    ],
+    [
+     267.5,
+     212
+    ],
+    [
+     359.01,
+     212
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "orthogonal",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "HTTPS",
+   "to": "E-4",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 163,
+   "x": 196,
+   "y": 212,
+   "z": 8
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-4",
+   "group": "E-1",
+   "h": 1,
+   "head": "arrow",
+   "id": "E-9",
+   "intent": "show the checkout path for the review",
+   "item": {
+    "from": "api",
+    "id": "e:api->ok",
+    "to": "ok"
+   },
+   "part": "e:api->ok",
+   "points": [
+    [
+     567.01,
+     212
+    ],
+    [
+     639.01,
+     212
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "orthogonal",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-5",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 72,
+   "x": 567,
+   "y": 212,
+   "z": 9
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "yes"
+    ],
+    "size": 16
+   },
+   "frame": "E-1",
+   "from": "E-5",
+   "group": "E-1",
+   "h": 27,
+   "head": "arrow",
+   "id": "E-10",
+   "intent": "show the checkout path for the review",
+   "item": {
+    "from": "ok",
+    "id": "e:ok->db",
+    "label": "yes",
+    "to": "db"
+   },
+   "label_at": [
+    965.03,
+    198.67
+   ],
+   "part": "e:ok->db",
+   "points": [
+    [
+     863.68,
+     185.33
+    ],
+    [
+     965.03,
+     185.33
+    ],
+    [
+     965.03,
+     212
+    ],
+    [
+     1023.04,
+     212
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "orthogonal",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "yes",
+   "to": "E-6",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 159,
+   "x": 864,
+   "y": 185,
+   "z": 10
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "no"
+    ],
+    "size": 16
+   },
+   "frame": "E-1",
+   "from": "E-5",
+   "group": "E-1",
+   "h": 147,
+   "head": "arrow",
+   "id": "E-11",
+   "intent": "show the checkout path for the review",
+   "item": {
+    "from": "ok",
+    "id": "e:ok->fail",
+    "label": "no",
+    "to": "fail"
+   },
+   "label_at": [
+    965.03,
+    312.17
+   ],
+   "part": "e:ok->fail",
+   "points": [
+    [
+     863.68,
+     238.67
+    ],
+    [
+     965.03,
+     238.67
+    ],
+    [
+     965.03,
+     385.67
+    ],
+    [
+     1043.04,
+     385.67
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "orthogonal",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "no",
+   "to": "E-7",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 179,
+   "x": 864,
+   "y": 239,
+   "z": 11
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-7",
+   "group": "E-1",
+   "h": 101,
+   "head": "arrow",
+   "id": "E-12",
+   "intent": "show the checkout path for the review",
+   "item": {
+    "from": "fail",
+    "id": "e:fail->user",
+    "style": "dashed",
+    "to": "user"
+   },
+   "part": "e:fail->user",
+   "points": [
+    [
+     1043.04,
+     412.33
+    ],
+    [
+     965.03,
+     412.33
+    ],
+    [
+     965.03,
+     420
+    ],
+    [
+     267.5,
+     420
+    ],
+    [
+     267.5,
+     319
+    ],
+    [
+     196,
+     319
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "dashed",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "orthogonal",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-3",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 847,
+   "x": 196,
+   "y": 319,
+   "z": 12
+  },
+  {
+   "alias": "platform",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "block": "graph",
+   "client_id": null,
+   "count": 4,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "min": [
+     80,
+     80
+    ],
+    "policy": "hug"
+   },
+   "frame": null,
+   "group": null,
+   "h": 1320,
+   "id": "E-13",
+   "intent": "the service map with its zones",
+   "role": null,
+   "seq": {},
+   "settings": {
+    "gap": 80
+   },
+   "style": {
+    "dash": "solid",
+    "fill": "#f0f1f4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Platform services",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 680,
+   "x": 0,
+   "y": 560,
+   "z": 13
+  },
+  {
+   "alias": "platform.edge",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "min": [
+     40,
+     40
+    ],
+    "policy": "hug"
+   },
+   "frame": "E-13",
+   "group": "E-13",
+   "h": 260,
+   "id": "E-14",
+   "intent": "the service map with its zones",
+   "item": {
+    "id": "edge",
+    "title": "Edge",
+    "tone": "accent"
+   },
+   "part": "edge",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#f7f5ff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d6cef7",
+    "text": "#2f2468",
+    "tone": "accent",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Edge",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 200,
+   "x": 301,
+   "y": 832,
+   "z": 14
+  },
+  {
+   "alias": "platform.data",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "min": [
+     40,
+     40
+    ],
+    "policy": "hug"
+   },
+   "frame": "E-13",
+   "group": "E-13",
+   "h": 404,
+   "id": "E-15",
+   "intent": "the service map with its zones",
+   "item": {
+    "id": "data",
+    "title": "Data tier",
+    "tone": "success"
+   },
+   "part": "data",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#f1faf4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#b9e0c6",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Data tier",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 600,
+   "x": 32,
+   "y": 1440,
+   "z": 15
+  },
+  {
+   "alias": "platform.hot",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "min": [
+     40,
+     40
+    ],
+    "policy": "hug"
+   },
+   "frame": "E-15",
+   "group": "E-13",
+   "h": 140,
+   "id": "E-16",
+   "intent": "the service map with its zones",
+   "item": {
+    "id": "hot",
+    "parent": "data",
+    "title": "Hot path",
+    "tone": "warning"
+   },
+   "part": "hot",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#fff7f0",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#f7cfaa",
+    "text": "#5c2a07",
+    "tone": "warning",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Hot path",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 560,
+   "x": 52,
+   "y": 1480,
+   "z": 16
+  },
+  {
+   "alias": "platform.web",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "detail": null,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Web app"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-13",
+   "group": "E-13",
+   "h": 60,
+   "icon": null,
+   "id": "E-17",
+   "intent": "the service map with its zones",
+   "item": {
+    "id": "web",
+    "text": "Web app"
+   },
+   "part": "web",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Web app",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 160,
+   "x": 321,
+   "y": 652,
+   "z": 17
+  },
+  {
+   "alias": "platform.gw",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "detail": null,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "API gateway"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-14",
+   "group": "E-13",
+   "h": 60,
+   "icon": null,
+   "id": "E-18",
+   "intent": "the service map with its zones",
+   "item": {
+    "id": "gw",
+    "in": "edge",
+    "text": "API gateway"
+   },
+   "part": "gw",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "API gateway",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 160,
+   "x": 321,
+   "y": 1012,
+   "z": 18
+  },
+  {
+   "alias": "platform.waf",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "detail": null,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "WAF"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-14",
+   "group": "E-13",
+   "h": 60,
+   "icon": null,
+   "id": "E-19",
+   "intent": "the service map with its zones",
+   "item": {
+    "id": "waf",
+    "in": "edge",
+    "text": "WAF"
+   },
+   "part": "waf",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "WAF",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 160,
+   "x": 321,
+   "y": 872,
+   "z": 19
+  },
+  {
+   "alias": "platform.orders",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "detail": null,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Order service"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-13",
+   "group": "E-13",
+   "h": 60,
+   "icon": null,
+   "id": "E-20",
+   "intent": "the service map with its zones",
+   "item": {
+    "id": "orders",
+    "text": "Order service"
+   },
+   "part": "orders",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Order service",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 180,
+   "x": 311,
+   "y": 1236,
+   "z": 20
+  },
+  {
+   "alias": "platform.cache",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "detail": null,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Redis cache"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "scale_shape",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-16",
+   "group": "E-13",
+   "h": 80,
+   "icon": null,
+   "id": "E-21",
+   "intent": "the service map with its zones",
+   "item": {
+    "id": "cache",
+    "in": "hot",
+    "kind": "ellipse",
+    "text": "Redis cache"
+   },
+   "part": "cache",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Redis cache",
+   "type": "ellipse",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 200,
+   "x": 72,
+   "y": 1520,
+   "z": 21
+  },
+  {
+   "alias": "platform.pg",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "detail": null,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "PostgreSQL primary"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-16",
+   "group": "E-13",
+   "h": 60,
+   "icon": null,
+   "id": "E-22",
+   "intent": "the service map with its zones",
+   "item": {
+    "id": "pg",
+    "in": "hot",
+    "text": "PostgreSQL primary"
+   },
+   "part": "pg",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "PostgreSQL primary",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 240,
+   "x": 352,
+   "y": 1530,
+   "z": 22
+  },
+  {
+   "alias": "platform.wh",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "detail": null,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Warehouse"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-15",
+   "group": "E-13",
+   "h": 60,
+   "icon": null,
+   "id": "E-23",
+   "intent": "the service map with its zones",
+   "item": {
+    "id": "wh",
+    "in": "data",
+    "text": "Warehouse"
+   },
+   "part": "wh",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Warehouse",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 160,
+   "x": 392,
+   "y": 1764,
+   "z": 23
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-13",
+   "from": "E-17",
+   "group": "E-13",
+   "h": 152,
+   "head": "arrow",
+   "id": "E-24",
+   "intent": "the service map with its zones",
+   "item": {
+    "from": "web",
+    "id": "e:web->waf",
+    "to": "waf"
+   },
+   "part": "e:web->waf",
+   "points": [
+    [
+     400.79,
+     716
+    ],
+    [
+     400.79,
+     868
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "orthogonal",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-19",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 1,
+   "x": 401,
+   "y": 716,
+   "z": 24
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-13",
+   "from": "E-19",
+   "group": "E-13",
+   "h": 72,
+   "head": "arrow",
+   "id": "E-25",
+   "intent": "the service map with its zones",
+   "item": {
+    "from": "waf",
+    "id": "e:waf->gw",
+    "to": "gw"
+   },
+   "part": "e:waf->gw",
+   "points": [
+    [
+     400.79,
+     936
+    ],
+    [
+     400.79,
+     1008
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "orthogonal",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-18",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 1,
+   "x": 401,
+   "y": 936,
+   "z": 25
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "REST"
+    ],
+    "size": 16
+   },
+   "frame": "E-13",
+   "from": "E-18",
+   "group": "E-13",
+   "h": 156,
+   "head": "arrow",
+   "id": "E-26",
+   "intent": "the service map with its zones",
+   "item": {
+    "from": "gw",
+    "id": "e:gw->orders",
+    "label": "REST",
+    "to": "orders"
+   },
+   "label_at": [
+    400.79,
+    1154
+   ],
+   "part": "e:gw->orders",
+   "points": [
+    [
+     400.79,
+     1076
+    ],
+    [
+     400.79,
+     1232
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "orthogonal",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "REST",
+   "to": "E-20",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 1,
+   "x": 401,
+   "y": 1076,
+   "z": 26
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-13",
+   "from": "E-20",
+   "group": "E-13",
+   "h": 216,
+   "head": "arrow",
+   "id": "E-27",
+   "intent": "the service map with its zones",
+   "item": {
+    "from": "orders",
+    "id": "e:orders->cache",
+    "to": "cache"
+   },
+   "part": "e:orders->cache",
+   "points": [
+    [
+     355.79,
+     1300
+    ],
+    [
+     355.79,
+     1348
+    ],
+    [
+     172,
+     1348
+    ],
+    [
+     172,
+     1516
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "orthogonal",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-21",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 184,
+   "x": 172,
+   "y": 1300,
+   "z": 27
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "writes"
+    ],
+    "size": 16
+   },
+   "frame": "E-13",
+   "from": "E-20",
+   "group": "E-13",
+   "h": 226,
+   "head": "arrow",
+   "id": "E-28",
+   "intent": "the service map with its zones",
+   "item": {
+    "from": "orders",
+    "id": "e:orders->pg",
+    "label": "writes",
+    "to": "pg"
+   },
+   "label_at": [
+    416.39,
+    1348
+   ],
+   "part": "e:orders->pg",
+   "points": [
+    [
+     400.79,
+     1300
+    ],
+    [
+     400.79,
+     1348
+    ],
+    [
+     432,
+     1348
+    ],
+    [
+     432,
+     1526
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "orthogonal",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "writes",
+   "to": "E-22",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 31,
+   "x": 401,
+   "y": 1300,
+   "z": 28
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "reads"
+    ],
+    "size": 16
+   },
+   "frame": "E-13",
+   "from": "E-20",
+   "group": "E-13",
+   "h": 226,
+   "head": "arrow",
+   "id": "E-29",
+   "intent": "the service map with its zones",
+   "item": {
+    "from": "orders",
+    "id": "e:orders->pg#2",
+    "label": "reads",
+    "to": "pg"
+   },
+   "label_at": [
+    494.5,
+    1348
+   ],
+   "part": "e:orders->pg#2",
+   "points": [
+    [
+     445.79,
+     1300
+    ],
+    [
+     445.79,
+     1348
+    ],
+    [
+     543.21,
+     1348
+    ],
+    [
+     543.21,
+     1426
+    ],
+    [
+     512,
+     1426
+    ],
+    [
+     512,
+     1526
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "orthogonal",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "reads",
+   "to": "E-22",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 97,
+   "x": 446,
+   "y": 1300,
+   "z": 29
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "nightly"
+    ],
+    "size": 16
+   },
+   "frame": "E-13",
+   "from": "E-22",
+   "group": "E-13",
+   "h": 166,
+   "head": "arrow",
+   "id": "E-30",
+   "intent": "the service map with its zones",
+   "item": {
+    "from": "pg",
+    "id": "e:pg->wh",
+    "label": "nightly",
+    "style": "dashed",
+    "to": "wh"
+   },
+   "label_at": [
+    472,
+    1677
+   ],
+   "part": "e:pg->wh",
+   "points": [
+    [
+     472,
+     1594
+    ],
+    [
+     472,
+     1760
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "dashed",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "orthogonal",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "nightly",
+   "to": "E-23",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 1,
+   "x": 472,
+   "y": 1594,
+   "z": 30
+  },
+  {
+   "alias": "team",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "block": "graph",
+   "client_id": null,
+   "count": 6,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "fit": {
+    "min": [
+     80,
+     80
+    ],
+    "policy": "hug"
+   },
+   "frame": null,
+   "group": null,
+   "h": 640,
+   "id": "E-31",
+   "intent": "the team's channels",
+   "role": null,
+   "seq": {},
+   "settings": {
+    "gap": 80,
+    "layout": "radial"
+   },
+   "style": {
+    "dash": "solid",
+    "fill": "#f0f1f4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Who talks to whom",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 720,
+   "x": 760,
+   "y": 560,
+   "z": 31
+  },
+  {
+   "alias": "team.lead",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "detail": null,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "lead"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-31",
+   "group": "E-31",
+   "h": 60,
+   "icon": null,
+   "id": "E-32",
+   "intent": "the team's channels",
+   "item": {
+    "id": "lead",
+    "text": "lead"
+   },
+   "part": "lead",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "lead",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 160,
+   "x": 1031,
+   "y": 855,
+   "z": 32
+  },
+  {
+   "alias": "team.design",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "detail": null,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "design"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-31",
+   "group": "E-31",
+   "h": 60,
+   "icon": null,
+   "id": "E-33",
+   "intent": "the team's channels",
+   "item": {
+    "id": "design",
+    "text": "design"
+   },
+   "part": "design",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "design",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 160,
+   "x": 1178,
+   "y": 652,
+   "z": 33
+  },
+  {
+   "alias": "team.backend",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "detail": null,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "backend"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-31",
+   "group": "E-31",
+   "h": 60,
+   "icon": null,
+   "id": "E-34",
+   "intent": "the team's channels",
+   "item": {
+    "id": "backend",
+    "text": "backend"
+   },
+   "part": "backend",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "backend",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 160,
+   "x": 1269,
+   "y": 932,
+   "z": 34
+  },
+  {
+   "alias": "team.frontend",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "detail": null,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "frontend"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-31",
+   "group": "E-31",
+   "h": 60,
+   "icon": null,
+   "id": "E-35",
+   "intent": "the team's channels",
+   "item": {
+    "id": "frontend",
+    "text": "frontend"
+   },
+   "part": "frontend",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "frontend",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 160,
+   "x": 1031,
+   "y": 1106,
+   "z": 35
+  },
+  {
+   "alias": "team.qa",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "detail": null,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "qa"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-31",
+   "group": "E-31",
+   "h": 60,
+   "icon": null,
+   "id": "E-36",
+   "intent": "the team's channels",
+   "item": {
+    "id": "qa",
+    "text": "qa"
+   },
+   "part": "qa",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "qa",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 160,
+   "x": 792,
+   "y": 932,
+   "z": 36
+  },
+  {
+   "alias": "team.ops",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "detail": null,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "ops"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-31",
+   "group": "E-31",
+   "h": 60,
+   "icon": null,
+   "id": "E-37",
+   "intent": "the team's channels",
+   "item": {
+    "id": "ops",
+    "text": "ops"
+   },
+   "part": "ops",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "ops",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 160,
+   "x": 883,
+   "y": 652,
+   "z": 37
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "curve": false,
+   "frame": "E-31",
+   "from": "E-32",
+   "group": "E-31",
+   "h": 136,
+   "head": "none",
+   "id": "E-38",
+   "intent": "the team's channels",
+   "item": {
+    "from": "lead",
+    "head": "none",
+    "id": "e:lead->design",
+    "to": "design"
+   },
+   "part": "e:lead->design",
+   "points": [
+    [
+     1134.75,
+     851.73
+    ],
+    [
+     1233.91,
+     715.24
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "straight",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-33",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 99,
+   "x": 1135,
+   "y": 715,
+   "z": 38
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "curve": false,
+   "frame": "E-31",
+   "from": "E-32",
+   "group": "E-31",
+   "h": 23,
+   "head": "none",
+   "id": "E-39",
+   "intent": "the team's channels",
+   "item": {
+    "from": "lead",
+    "head": "none",
+    "id": "e:lead->backend",
+    "to": "backend"
+   },
+   "part": "e:lead->backend",
+   "points": [
+    [
+     1194.4,
+     912.2
+    ],
+    [
+     1265.4,
+     935.26
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "straight",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-34",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 71,
+   "x": 1194,
+   "y": 912,
+   "z": 39
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "curve": false,
+   "frame": "E-31",
+   "from": "E-32",
+   "group": "E-31",
+   "h": 183,
+   "head": "none",
+   "id": "E-40",
+   "intent": "the team's channels",
+   "item": {
+    "from": "lead",
+    "head": "none",
+    "id": "e:lead->frontend",
+    "to": "frontend"
+   },
+   "part": "e:lead->frontend",
+   "points": [
+    [
+     1110.6,
+     918.97
+    ],
+    [
+     1110.6,
+     1101.85
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "straight",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-35",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 1,
+   "x": 1111,
+   "y": 919,
+   "z": 40
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "curve": false,
+   "frame": "E-31",
+   "from": "E-32",
+   "group": "E-31",
+   "h": 23,
+   "head": "none",
+   "id": "E-41",
+   "intent": "the team's channels",
+   "item": {
+    "from": "lead",
+    "head": "none",
+    "id": "e:lead->qa",
+    "to": "qa"
+   },
+   "part": "e:lead->qa",
+   "points": [
+    [
+     1026.8,
+     912.2
+    ],
+    [
+     955.8,
+     935.26
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "straight",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-36",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 71,
+   "x": 956,
+   "y": 912,
+   "z": 41
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "curve": false,
+   "frame": "E-31",
+   "from": "E-32",
+   "group": "E-31",
+   "h": 136,
+   "head": "none",
+   "id": "E-42",
+   "intent": "the team's channels",
+   "item": {
+    "from": "lead",
+    "head": "none",
+    "id": "e:lead->ops",
+    "to": "ops"
+   },
+   "part": "e:lead->ops",
+   "points": [
+    [
+     1086.45,
+     851.73
+    ],
+    [
+     987.29,
+     715.24
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "straight",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-37",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 99,
+   "x": 987,
+   "y": 715,
+   "z": 42
+  }
+ ],
+ "homes": {
+  "qa-drawer": [
+   0,
+   -1000,
+   800,
+   -400
+  ]
+ },
+ "legend": [],
+ "locks": [],
+ "team": "qa",
+ "updated_at": "2026-01-01T00:00:00.000Z",
+ "v": 1,
+ "version": 3
+}

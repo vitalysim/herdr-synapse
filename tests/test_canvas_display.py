@@ -46,7 +46,10 @@ class Goldens(unittest.TestCase):
     """T-D1: each golden scene's display list and both themes' canonical SVG are exactly the goldens."""
 
     def test_every_golden_scene_has_its_goldens(self):
-        self.assertEqual(len(SCENES), 9)
+        # The 9 scenes of phases 0 and 1, and phase 2's (blocks, diagrams, routing): 19 in all (phase 2, 8.2).
+        for name in ("arrow-labels", "font-sizes", "frame-children", "house", "i18n", "sticky-notes", "text-notes", "flowchart", "architecture",
+                     "blocks", "composed", "kanban", "table", "timeline", "sketch"):
+            self.assertIn(name, SCENES)
         for name in SCENES:
             for suffix in (".json", ".light.svg", ".dark.svg"):
                 self.assertTrue((GOLDENS / (name + suffix)).is_file(), name + suffix)
@@ -99,6 +102,22 @@ class Schema(unittest.TestCase):
         self.assertEqual((found["kind"], found["handles"]), ("kanban", "none"))
         self.assertEqual(found["items"][0]["dash"], [8, 6])
         self.assertIn("Sprint", [line["t"] for p in walk(found["items"]) if p["k"] == "text" for line in p["lines"]])
+
+    def test_the_phase2_entry_fields_validate(self):
+        doc = D.display_list({"elements": [{"id": "E-1", "type": "box", "x": 0, "y": 0, "w": 160, "h": 80, "text": "a"}]})
+        entry = doc["entries"][0]
+        good = dict(entry, pin="human", block="E-9", part="c2", tip="why", container={"layout": "row", "gap": 20, "order": ["E-2"]},
+                    parts=[{"part": "r1.c1", "hit": {"shape": "rect", "box": [0, 0, 10, 10]}, "lod": [0.35, None],
+                            "edit": dict(entry["edit"], part="r1.c1")}])
+        self.assertEqual(D.validate(dict(doc, entries=[good])), [])
+        for bad, needle in ((dict(good, pin="robot"), "pin"), (dict(good, part=None), "block and part"),
+                            (dict(good, container={"layout": "spiral", "gap": 1, "order": []}), "container"), (dict(good, tip="x" * 501), "tip"),
+                            (dict(good, parts=[{"part": "", "hit": {"shape": "rect", "box": [0, 0, 1, 1]}}]), "a part"),
+                            (dict(good, parts=[{"part": "p", "hit": {"shape": "rect", "box": [0, 0, 1, 1]}, "edit": dict(entry["edit"])}]), "edit"),
+                            (dict(good, parts=[{"part": "p", "hit": {"shape": "rect", "box": [0, 0, 1, 1]}, "lod": [1]}]), "lod")):
+            with self.subTest(needle=needle):
+                problems = D.validate(dict(doc, entries=[bad]))
+                self.assertTrue(any(needle in p for p in problems), problems)
 
     def test_validate_names_what_is_wrong(self):
         doc = D.display_list({"elements": [{"id": "E-1", "type": "box", "x": 0, "y": 0, "w": 160, "h": 80, "text": "a"}]})

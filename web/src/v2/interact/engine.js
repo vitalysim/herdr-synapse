@@ -6,6 +6,8 @@
 export const ENGINES = ["v1", "v2"];
 export const DEFAULT_ENGINE = "v1";
 export const ENGINE_KEY = "synapse-engine";
+// Set to "1" in this browser's storage to always show the engine toggle (a developer's flag).
+export const DEV_KEY = "synapse-dev";
 
 const valid = (value) => (ENGINES.includes(value) ? value : null);
 
@@ -59,4 +61,18 @@ export function withEngine(href, value) {
   if (value && value !== DEFAULT_ENGINE) url.searchParams.set("engine", value);
   else url.searchParams.delete("engine");
   return url.toString();
+}
+
+// Whether the top bar shows the "v2 preview" toggle (Phase 1 open question 8.4-2, carried item 16):
+// only for someone who asked for v2 (?engine=v2 in the URL), who runs it now from an earlier choice
+// (so there is always a way back), or who set the developer flag (`dev`, e.g. the Vite dev server,
+// or DEV_KEY in storage). Everyone else sees the default engine and no toggle.
+export function engineToggleVisible(location, storage, { dev = false } = {}) {
+  if (dev || queryEngine(location) === "v2" || storedEngine(storage) === "v2") return true;
+  if (!storage) return false;
+  try {
+    return storage.getItem(DEV_KEY) === "1";
+  } catch {
+    return false;
+  }
 }

@@ -1,0 +1,5009 @@
+{
+ "authors": {
+  "qa-drawer": {
+   "agent": "claude",
+   "color": "#1971c2",
+   "index": 0,
+   "kind": "member"
+  }
+ },
+ "batches": {
+  "B-1": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "qa-drawer",
+   "first_seq": 1,
+   "last_seq": 18,
+   "undone": false
+  }
+ },
+ "claims": [],
+ "counters": {
+  "B": 1,
+  "C": 0,
+  "E": 79,
+  "G": 0,
+  "K": 0,
+  "X": 0
+ },
+ "elements": [
+  {
+   "alias": "incident",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "block": "graph",
+   "client_id": null,
+   "count": 5,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "min": [
+     80,
+     80
+    ],
+    "policy": "hug"
+   },
+   "frame": null,
+   "group": null,
+   "h": 400,
+   "id": "E-1",
+   "intent": "show how a page becomes a fix",
+   "role": null,
+   "seq": {},
+   "settings": {
+    "direction": "right",
+    "layout": "flow",
+    "same_rank": [
+     [
+      "war",
+      "log"
+     ]
+    ]
+   },
+   "style": {
+    "dash": "solid",
+    "fill": "#f0f1f4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Incident response",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 1820,
+   "x": 20,
+   "y": -784,
+   "z": 1
+  },
+  {
+   "alias": "incident.oncall",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "min": [
+     40,
+     40
+    ],
+    "policy": "hug"
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 200,
+   "id": "E-2",
+   "intent": "show how a page becomes a fix",
+   "item": {
+    "id": "oncall",
+    "title": "On-call",
+    "tone": "warning"
+   },
+   "part": "oncall",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#fff7f0",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#f7cfaa",
+    "text": "#5c2a07",
+    "tone": "warning",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "On-call",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 520,
+   "x": 352,
+   "y": -652,
+   "z": 2
+  },
+  {
+   "alias": "incident.eng",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "min": [
+     40,
+     40
+    ],
+    "policy": "hug"
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 140,
+   "id": "E-3",
+   "intent": "show how a page becomes a fix",
+   "item": {
+    "id": "eng",
+    "title": "Engineering",
+    "tone": "info"
+   },
+   "part": "eng",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#f1f7fe",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#bcd8f7",
+    "text": "#0b3a6e",
+    "tone": "info",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Engineering",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 540,
+   "x": 996,
+   "y": -692,
+   "z": 3
+  },
+  {
+   "alias": "incident.alert",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "detail": null,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Pager alert fires"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 60,
+   "icon": "bell",
+   "id": "E-4",
+   "intent": "show how a page becomes a fix",
+   "item": {
+    "icon": "bell",
+    "id": "alert",
+    "text": "Pager alert fires"
+   },
+   "part": "alert",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Pager alert fires",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 220,
+   "x": 52,
+   "y": -572,
+   "z": 4
+  },
+  {
+   "alias": "incident.ack",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "detail": null,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Acknowledge",
+     "within 5 min"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-2",
+   "group": "E-1",
+   "h": 80,
+   "icon": null,
+   "id": "E-5",
+   "intent": "show how a page becomes a fix",
+   "item": {
+    "id": "ack",
+    "in": "oncall",
+    "text": "Acknowledge within 5 min"
+   },
+   "part": "ack",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Acknowledge within 5 min",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 180,
+   "x": 372,
+   "y": -582,
+   "z": 5
+  },
+  {
+   "alias": "incident.sev",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "detail": null,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Customer",
+     "impact?"
+    ],
+    "min": [
+     200,
+     120
+    ],
+    "policy": "scale_shape",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-2",
+   "group": "E-1",
+   "h": 140,
+   "icon": null,
+   "id": "E-6",
+   "intent": "show how a page becomes a fix",
+   "item": {
+    "id": "sev",
+    "in": "oncall",
+    "kind": "diamond",
+    "text": "Customer impact?"
+   },
+   "part": "sev",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Customer impact?",
+   "type": "diamond",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 220,
+   "x": 632,
+   "y": -612,
+   "z": 6
+  },
+  {
+   "alias": "incident.war",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "detail": null,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Open incident",
+     "channel"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-3",
+   "group": "E-1",
+   "h": 80,
+   "icon": "message-square",
+   "id": "E-7",
+   "intent": "show how a page becomes a fix",
+   "item": {
+    "icon": "message-square",
+    "id": "war",
+    "in": "eng",
+    "text": "Open incident channel"
+   },
+   "part": "war",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Open incident channel",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 200,
+   "x": 1016,
+   "y": -652,
+   "z": 7
+  },
+  {
+   "alias": "incident.fix",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "detail": null,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Ship the mitigation"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-3",
+   "group": "E-1",
+   "h": 60,
+   "icon": null,
+   "id": "E-8",
+   "intent": "show how a page becomes a fix",
+   "item": {
+    "id": "fix",
+    "in": "eng",
+    "text": "Ship the mitigation",
+    "tone": "success"
+   },
+   "part": "fix",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#e7f6ec",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Ship the mitigation",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 220,
+   "x": 1296,
+   "y": -642,
+   "z": 8
+  },
+  {
+   "alias": "incident.log",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "detail": "Low severity: no status page",
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Log it for the",
+     "weekly review"
+    ],
+    "min": [
+     160,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 80,
+   "icon": null,
+   "id": "E-9",
+   "intent": "show how a page becomes a fix",
+   "item": {
+    "detail": "Low severity: no status page",
+    "id": "log",
+    "text": "Log it for the weekly review",
+    "tone": "neutral"
+   },
+   "part": "log",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Log it for the weekly review",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 180,
+   "x": 1026,
+   "y": -512,
+   "z": 9
+  },
+  {
+   "alias": "incident.pm",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "detail": null,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Write the",
+     "postmortem"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 120,
+   "icon": null,
+   "id": "E-10",
+   "intent": "show how a page becomes a fix",
+   "item": {
+    "id": "pm",
+    "kind": "note",
+    "text": "Write the postmortem"
+   },
+   "part": "pm",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#fff0a0",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Write the postmortem",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 180,
+   "x": 1616,
+   "y": -602,
+   "z": 10
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-4",
+   "group": "E-1",
+   "h": 1,
+   "head": "arrow",
+   "id": "E-11",
+   "intent": "show how a page becomes a fix",
+   "item": {
+    "from": "alert",
+    "id": "e:alert->ack",
+    "to": "ack"
+   },
+   "part": "e:alert->ack",
+   "points": [
+    [
+     276,
+     -542
+    ],
+    [
+     368,
+     -542
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "orthogonal",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-5",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 92,
+   "x": 276,
+   "y": -542,
+   "z": 11
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-5",
+   "group": "E-1",
+   "h": 1,
+   "head": "arrow",
+   "id": "E-12",
+   "intent": "show how a page becomes a fix",
+   "item": {
+    "from": "ack",
+    "id": "e:ack->sev",
+    "to": "sev"
+   },
+   "part": "e:ack->sev",
+   "points": [
+    [
+     556,
+     -542
+    ],
+    [
+     628,
+     -542
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "orthogonal",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-6",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 72,
+   "x": 556,
+   "y": -542,
+   "z": 12
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "yes"
+    ],
+    "size": 16
+   },
+   "frame": "E-1",
+   "from": "E-6",
+   "group": "E-1",
+   "h": 47,
+   "head": "arrow",
+   "id": "E-13",
+   "intent": "show how a page becomes a fix",
+   "item": {
+    "from": "sev",
+    "id": "e:sev->war",
+    "label": "yes",
+    "to": "war"
+   },
+   "label_at": [
+    934.02,
+    -588.66
+   ],
+   "part": "e:sev->war",
+   "points": [
+    [
+     819.33,
+     -565.33
+    ],
+    [
+     934.02,
+     -565.33
+    ],
+    [
+     934.02,
+     -612
+    ],
+    [
+     1012.04,
+     -612
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "orthogonal",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "yes",
+   "to": "E-7",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 193,
+   "x": 819,
+   "y": -612,
+   "z": 13
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "no"
+    ],
+    "size": 16
+   },
+   "frame": "E-1",
+   "from": "E-6",
+   "group": "E-1",
+   "h": 47,
+   "head": "arrow",
+   "id": "E-14",
+   "intent": "show how a page becomes a fix",
+   "item": {
+    "from": "sev",
+    "id": "e:sev->log",
+    "label": "no",
+    "to": "log"
+   },
+   "label_at": [
+    934.02,
+    -495.34
+   ],
+   "part": "e:sev->log",
+   "points": [
+    [
+     819.33,
+     -518.67
+    ],
+    [
+     934.02,
+     -518.67
+    ],
+    [
+     934.02,
+     -472
+    ],
+    [
+     1022.04,
+     -472
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "orthogonal",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "no",
+   "to": "E-9",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 203,
+   "x": 819,
+   "y": -519,
+   "z": 14
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-7",
+   "group": "E-1",
+   "h": 1,
+   "head": "arrow",
+   "id": "E-15",
+   "intent": "show how a page becomes a fix",
+   "item": {
+    "from": "war",
+    "id": "e:war->fix",
+    "to": "fix"
+   },
+   "part": "e:war->fix",
+   "points": [
+    [
+     1220.04,
+     -612
+    ],
+    [
+     1292.04,
+     -612
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "orthogonal",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-8",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 72,
+   "x": 1220,
+   "y": -612,
+   "z": 15
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-8",
+   "group": "E-1",
+   "h": 50,
+   "head": "arrow",
+   "id": "E-16",
+   "intent": "show how a page becomes a fix",
+   "item": {
+    "from": "fix",
+    "id": "e:fix->pm",
+    "to": "pm"
+   },
+   "part": "e:fix->pm",
+   "points": [
+    [
+     1520.04,
+     -612
+    ],
+    [
+     1576.04,
+     -612
+    ],
+    [
+     1576.04,
+     -562
+    ],
+    [
+     1612.04,
+     -562
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "orthogonal",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-10",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 92,
+   "x": 1520,
+   "y": -612,
+   "z": 16
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "weekly"
+    ],
+    "size": 16
+   },
+   "frame": "E-1",
+   "from": "E-9",
+   "group": "E-1",
+   "h": 50,
+   "head": "arrow",
+   "id": "E-17",
+   "intent": "show how a page becomes a fix",
+   "item": {
+    "from": "log",
+    "id": "e:log->pm",
+    "label": "weekly",
+    "style": "dashed",
+    "to": "pm"
+   },
+   "label_at": [
+    1576.04,
+    -497
+   ],
+   "part": "e:log->pm",
+   "points": [
+    [
+     1210.04,
+     -472
+    ],
+    [
+     1576.04,
+     -472
+    ],
+    [
+     1576.04,
+     -522
+    ],
+    [
+     1612.04,
+     -522
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "dashed",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "orthogonal",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "weekly",
+   "to": "E-10",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 402,
+   "x": 1210,
+   "y": -522,
+   "z": 17
+  },
+  {
+   "alias": "spring",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "block": "mindmap",
+   "client_id": null,
+   "count": 17,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "min": [
+     40,
+     40
+    ],
+    "policy": "hug"
+   },
+   "frame": null,
+   "group": null,
+   "h": 540,
+   "id": "E-18",
+   "intent": "brainstorm the spring campaign with marketing",
+   "nudged": [
+    620,
+    0
+   ],
+   "role": null,
+   "seq": {
+    "t": 16
+   },
+   "settings": {
+    "band": 0,
+    "branch_tones": "auto",
+    "padding": 20,
+    "side": "both"
+   },
+   "style": {
+    "dash": "solid",
+    "fill": "#f0f1f4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Spring campaign",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 1460,
+   "x": 2540,
+   "y": -784,
+   "z": 18
+  },
+  {
+   "alias": "spring.root",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Spring",
+     "campaign"
+    ],
+    "min": [
+     180,
+     64
+    ],
+    "policy": "hug",
+    "size": 28,
+    "truncated": false
+   },
+   "frame": "E-18",
+   "group": "E-18",
+   "h": 100,
+   "id": "E-19",
+   "intent": "brainstorm the spring campaign with marketing",
+   "item": {
+    "id": "root"
+   },
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "root",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#5b45c4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 28,
+    "stroke": "#5b45c4",
+    "text": "#ffffff",
+    "tone": "accent",
+    "variant": "solid",
+    "width": 2
+   },
+   "text": "Spring campaign",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 180,
+   "x": 3240,
+   "y": -540,
+   "z": 19
+  },
+  {
+   "alias": "spring.t1",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Goals"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-18",
+   "group": "E-18",
+   "h": 60,
+   "icon": null,
+   "id": "E-20",
+   "intent": "brainstorm the spring campaign with marketing",
+   "item": {
+    "id": "t1",
+    "text": "Goals"
+   },
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "t1",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#e8f2fe",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#3f84d8",
+    "text": "#0b3a6e",
+    "tone": "info",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Goals",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 120,
+   "x": 3520,
+   "y": -707,
+   "z": 20
+  },
+  {
+   "alias": "spring.t2",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Grow the",
+     "waitlist to 5k"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-18",
+   "group": "E-18",
+   "h": 80,
+   "icon": null,
+   "id": "E-21",
+   "intent": "brainstorm the spring campaign with marketing",
+   "item": {
+    "id": "t2",
+    "text": "Grow the waitlist to 5k",
+    "under": "t1"
+   },
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "t2",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#3f84d8",
+    "text": "#0b3a6e",
+    "tone": "info",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Grow the waitlist to 5k",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 160,
+   "x": 3780,
+   "y": -764,
+   "z": 21
+  },
+  {
+   "alias": "spring.t3",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Two press mentions"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-18",
+   "group": "E-18",
+   "h": 60,
+   "icon": null,
+   "id": "E-22",
+   "intent": "brainstorm the spring campaign with marketing",
+   "item": {
+    "id": "t3",
+    "text": "Two press mentions",
+    "under": "t1"
+   },
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "t3",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#3f84d8",
+    "text": "#0b3a6e",
+    "tone": "info",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Two press mentions",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 240,
+   "x": 3740,
+   "y": -660,
+   "z": 22
+  },
+  {
+   "alias": "spring.t4",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Channels"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-18",
+   "group": "E-18",
+   "h": 60,
+   "icon": null,
+   "id": "E-23",
+   "intent": "brainstorm the spring campaign with marketing",
+   "item": {
+    "id": "t4",
+    "text": "Channels"
+   },
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "t4",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#e7f6ec",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Channels",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 140,
+   "x": 3040,
+   "y": -520,
+   "z": 23
+  },
+  {
+   "alias": "spring.t5",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Newsletter"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-18",
+   "group": "E-18",
+   "h": 60,
+   "icon": null,
+   "id": "E-24",
+   "intent": "brainstorm the spring campaign with marketing",
+   "item": {
+    "id": "t5",
+    "text": "Newsletter",
+    "under": "t4"
+   },
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "t5",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Newsletter",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 140,
+   "x": 2840,
+   "y": -652,
+   "z": 24
+  },
+  {
+   "alias": "spring.t6",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Weekly tips"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-18",
+   "group": "E-18",
+   "h": 60,
+   "icon": null,
+   "id": "E-25",
+   "intent": "brainstorm the spring campaign with marketing",
+   "item": {
+    "id": "t6",
+    "text": "Weekly tips",
+    "under": "t5"
+   },
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "t6",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Weekly tips",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 160,
+   "x": 2590,
+   "y": -694,
+   "z": 25
+  },
+  {
+   "alias": "spring.t7",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Founder letter"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-18",
+   "group": "E-18",
+   "h": 60,
+   "icon": null,
+   "id": "E-26",
+   "intent": "brainstorm the spring campaign with marketing",
+   "item": {
+    "id": "t7",
+    "text": "Founder letter",
+    "under": "t5"
+   },
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "t7",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Founder letter",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 180,
+   "x": 2580,
+   "y": -610,
+   "z": 26
+  },
+  {
+   "alias": "spring.t8",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Social"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-18",
+   "group": "E-18",
+   "h": 60,
+   "icon": null,
+   "id": "E-27",
+   "intent": "brainstorm the spring campaign with marketing",
+   "item": {
+    "id": "t8",
+    "text": "Social",
+    "under": "t4"
+   },
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "t8",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Social",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 120,
+   "x": 2850,
+   "y": -472,
+   "z": 27
+  },
+  {
+   "alias": "spring.t9",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "LinkedIn carousel"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-18",
+   "group": "E-18",
+   "h": 60,
+   "icon": null,
+   "id": "E-28",
+   "intent": "brainstorm the spring campaign with marketing",
+   "item": {
+    "id": "t9",
+    "text": "LinkedIn carousel",
+    "under": "t8"
+   },
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "t9",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "LinkedIn carousel",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 220,
+   "x": 2560,
+   "y": -514,
+   "z": 28
+  },
+  {
+   "alias": "spring.t10",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Short videos"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-18",
+   "group": "E-18",
+   "h": 60,
+   "icon": null,
+   "id": "E-29",
+   "intent": "brainstorm the spring campaign with marketing",
+   "item": {
+    "id": "t10",
+    "text": "Short videos",
+    "under": "t8"
+   },
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "t10",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Short videos",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 160,
+   "x": 2590,
+   "y": -430,
+   "z": 29
+  },
+  {
+   "alias": "spring.t11",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Events"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-18",
+   "group": "E-18",
+   "h": 60,
+   "icon": null,
+   "id": "E-30",
+   "intent": "brainstorm the spring campaign with marketing",
+   "item": {
+    "id": "t11",
+    "text": "Events",
+    "under": "t4"
+   },
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "t11",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Events",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 120,
+   "x": 2850,
+   "y": -388,
+   "z": 30
+  },
+  {
+   "alias": "spring.t12",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Budget"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-18",
+   "group": "E-18",
+   "h": 60,
+   "icon": null,
+   "id": "E-31",
+   "intent": "brainstorm the spring campaign with marketing",
+   "item": {
+    "id": "t12",
+    "text": "Budget"
+   },
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "t12",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#fff0e3",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#cc6a1e",
+    "text": "#5c2a07",
+    "tone": "warning",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Budget",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 120,
+   "x": 3520,
+   "y": -502,
+   "z": 31
+  },
+  {
+   "alias": "spring.t13",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Ads under",
+     "2k a month"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-18",
+   "group": "E-18",
+   "h": 80,
+   "icon": null,
+   "id": "E-32",
+   "intent": "brainstorm the spring campaign with marketing",
+   "item": {
+    "id": "t13",
+    "text": "Ads under 2k a month",
+    "under": "t12"
+   },
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "t13",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#cc6a1e",
+    "text": "#5c2a07",
+    "tone": "warning",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Ads under 2k a month",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 160,
+   "x": 3780,
+   "y": -564,
+   "z": 32
+  },
+  {
+   "alias": "spring.t14",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "One freelance",
+     "designer"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-18",
+   "group": "E-18",
+   "h": 80,
+   "icon": null,
+   "id": "E-33",
+   "intent": "brainstorm the spring campaign with marketing",
+   "item": {
+    "id": "t14",
+    "text": "One freelance designer",
+    "under": "t12"
+   },
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "t14",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#cc6a1e",
+    "text": "#5c2a07",
+    "tone": "warning",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "One freelance designer",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 180,
+   "x": 3770,
+   "y": -460,
+   "z": 33
+  },
+  {
+   "alias": "spring.t15",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Open questions"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-18",
+   "group": "E-18",
+   "h": 60,
+   "icon": null,
+   "id": "E-34",
+   "intent": "brainstorm the spring campaign with marketing",
+   "item": {
+    "id": "t15",
+    "text": "Open questions"
+   },
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "t15",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#f1eefe",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#7d68d8",
+    "text": "#2f2468",
+    "tone": "accent",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Open questions",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 200,
+   "x": 3480,
+   "y": -334,
+   "z": 34
+  },
+  {
+   "alias": "spring.t16",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Do we sponsor",
+     "the meetup?"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-18",
+   "group": "E-18",
+   "h": 80,
+   "icon": null,
+   "id": "E-35",
+   "intent": "brainstorm the spring campaign with marketing",
+   "item": {
+    "id": "t16",
+    "text": "Do we sponsor the meetup?",
+    "under": "t15"
+   },
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "t16",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#7d68d8",
+    "text": "#2f2468",
+    "tone": "accent",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Do we sponsor the meetup?",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 180,
+   "x": 3770,
+   "y": -344,
+   "z": 35
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-18",
+   "from": "E-19",
+   "group": "E-18",
+   "h": 187,
+   "head": "none",
+   "id": "E-36",
+   "intent": "brainstorm the spring campaign with marketing",
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "e:root->t1",
+   "points": [
+    [
+     3424,
+     -490.5
+    ],
+    [
+     3470,
+     -490.5
+    ],
+    [
+     3470,
+     -677
+    ],
+    [
+     3516,
+     -677
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#3f84d8",
+    "text": "#0b3a6e",
+    "tone": "info",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-20",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 92,
+   "x": 3424,
+   "y": -677,
+   "z": 36
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-18",
+   "from": "E-20",
+   "group": "E-18",
+   "h": 47,
+   "head": "none",
+   "id": "E-37",
+   "intent": "brainstorm the spring campaign with marketing",
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "e:t1->t2",
+   "points": [
+    [
+     3644,
+     -677
+    ],
+    [
+     3710,
+     -677
+    ],
+    [
+     3710,
+     -724
+    ],
+    [
+     3776,
+     -724
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#3f84d8",
+    "text": "#0b3a6e",
+    "tone": "info",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-21",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 132,
+   "x": 3644,
+   "y": -724,
+   "z": 37
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-18",
+   "from": "E-20",
+   "group": "E-18",
+   "h": 47,
+   "head": "none",
+   "id": "E-38",
+   "intent": "brainstorm the spring campaign with marketing",
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "e:t1->t3",
+   "points": [
+    [
+     3644,
+     -677
+    ],
+    [
+     3690,
+     -677
+    ],
+    [
+     3690,
+     -630
+    ],
+    [
+     3736,
+     -630
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#3f84d8",
+    "text": "#0b3a6e",
+    "tone": "info",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-22",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 92,
+   "x": 3644,
+   "y": -677,
+   "z": 38
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-18",
+   "from": "E-19",
+   "group": "E-18",
+   "h": 1,
+   "head": "none",
+   "id": "E-39",
+   "intent": "brainstorm the spring campaign with marketing",
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "e:root->t4",
+   "points": [
+    [
+     3236,
+     -490.5
+    ],
+    [
+     3210,
+     -490.5
+    ],
+    [
+     3184,
+     -490.5
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-23",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 52,
+   "x": 3184,
+   "y": -490,
+   "z": 39
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-18",
+   "from": "E-23",
+   "group": "E-18",
+   "h": 132,
+   "head": "none",
+   "id": "E-40",
+   "intent": "brainstorm the spring campaign with marketing",
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "e:t4->t5",
+   "points": [
+    [
+     3036,
+     -490.5
+    ],
+    [
+     3010,
+     -490.5
+    ],
+    [
+     3010,
+     -622.5
+    ],
+    [
+     2984,
+     -622.5
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-24",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 52,
+   "x": 2984,
+   "y": -622,
+   "z": 40
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-18",
+   "from": "E-24",
+   "group": "E-18",
+   "h": 42,
+   "head": "none",
+   "id": "E-41",
+   "intent": "brainstorm the spring campaign with marketing",
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "e:t5->t6",
+   "points": [
+    [
+     2836,
+     -622.5
+    ],
+    [
+     2795,
+     -622.5
+    ],
+    [
+     2795,
+     -664.5
+    ],
+    [
+     2754,
+     -664.5
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-25",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 82,
+   "x": 2754,
+   "y": -664,
+   "z": 41
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-18",
+   "from": "E-24",
+   "group": "E-18",
+   "h": 42,
+   "head": "none",
+   "id": "E-42",
+   "intent": "brainstorm the spring campaign with marketing",
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "e:t5->t7",
+   "points": [
+    [
+     2836,
+     -622.5
+    ],
+    [
+     2800,
+     -622.5
+    ],
+    [
+     2800,
+     -580.5
+    ],
+    [
+     2764,
+     -580.5
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-26",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 72,
+   "x": 2764,
+   "y": -622,
+   "z": 42
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-18",
+   "from": "E-23",
+   "group": "E-18",
+   "h": 48,
+   "head": "none",
+   "id": "E-43",
+   "intent": "brainstorm the spring campaign with marketing",
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "e:t4->t8",
+   "points": [
+    [
+     3036,
+     -490.5
+    ],
+    [
+     3005,
+     -490.5
+    ],
+    [
+     3005,
+     -442.5
+    ],
+    [
+     2974,
+     -442.5
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-27",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 62,
+   "x": 2974,
+   "y": -490,
+   "z": 43
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-18",
+   "from": "E-27",
+   "group": "E-18",
+   "h": 42,
+   "head": "none",
+   "id": "E-44",
+   "intent": "brainstorm the spring campaign with marketing",
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "e:t8->t9",
+   "points": [
+    [
+     2846,
+     -442.5
+    ],
+    [
+     2815,
+     -442.5
+    ],
+    [
+     2815,
+     -484.5
+    ],
+    [
+     2784,
+     -484.5
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-28",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 62,
+   "x": 2784,
+   "y": -484,
+   "z": 44
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-18",
+   "from": "E-27",
+   "group": "E-18",
+   "h": 42,
+   "head": "none",
+   "id": "E-45",
+   "intent": "brainstorm the spring campaign with marketing",
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "e:t8->t10",
+   "points": [
+    [
+     2846,
+     -442.5
+    ],
+    [
+     2800,
+     -442.5
+    ],
+    [
+     2800,
+     -400.5
+    ],
+    [
+     2754,
+     -400.5
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-29",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 92,
+   "x": 2754,
+   "y": -442,
+   "z": 45
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-18",
+   "from": "E-23",
+   "group": "E-18",
+   "h": 132,
+   "head": "none",
+   "id": "E-46",
+   "intent": "brainstorm the spring campaign with marketing",
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "e:t4->t11",
+   "points": [
+    [
+     3036,
+     -490.5
+    ],
+    [
+     3005,
+     -490.5
+    ],
+    [
+     3005,
+     -358.5
+    ],
+    [
+     2974,
+     -358.5
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-30",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 62,
+   "x": 2974,
+   "y": -490,
+   "z": 46
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-18",
+   "from": "E-19",
+   "group": "E-18",
+   "h": 19,
+   "head": "none",
+   "id": "E-47",
+   "intent": "brainstorm the spring campaign with marketing",
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "e:root->t12",
+   "points": [
+    [
+     3424,
+     -490.5
+    ],
+    [
+     3470,
+     -490.5
+    ],
+    [
+     3470,
+     -472
+    ],
+    [
+     3516,
+     -472
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#cc6a1e",
+    "text": "#5c2a07",
+    "tone": "warning",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-31",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 92,
+   "x": 3424,
+   "y": -490,
+   "z": 47
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-18",
+   "from": "E-31",
+   "group": "E-18",
+   "h": 52,
+   "head": "none",
+   "id": "E-48",
+   "intent": "brainstorm the spring campaign with marketing",
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "e:t12->t13",
+   "points": [
+    [
+     3644,
+     -472
+    ],
+    [
+     3710,
+     -472
+    ],
+    [
+     3710,
+     -524
+    ],
+    [
+     3776,
+     -524
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#cc6a1e",
+    "text": "#5c2a07",
+    "tone": "warning",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-32",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 132,
+   "x": 3644,
+   "y": -524,
+   "z": 48
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-18",
+   "from": "E-31",
+   "group": "E-18",
+   "h": 52,
+   "head": "none",
+   "id": "E-49",
+   "intent": "brainstorm the spring campaign with marketing",
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "e:t12->t14",
+   "points": [
+    [
+     3644,
+     -472
+    ],
+    [
+     3705,
+     -472
+    ],
+    [
+     3705,
+     -420
+    ],
+    [
+     3766,
+     -420
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#cc6a1e",
+    "text": "#5c2a07",
+    "tone": "warning",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-33",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 122,
+   "x": 3644,
+   "y": -472,
+   "z": 49
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-18",
+   "from": "E-19",
+   "group": "E-18",
+   "h": 187,
+   "head": "none",
+   "id": "E-50",
+   "intent": "brainstorm the spring campaign with marketing",
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "e:root->t15",
+   "points": [
+    [
+     3424,
+     -490.5
+    ],
+    [
+     3450,
+     -490.5
+    ],
+    [
+     3450,
+     -304
+    ],
+    [
+     3476,
+     -304
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#7d68d8",
+    "text": "#2f2468",
+    "tone": "accent",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-34",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 52,
+   "x": 3424,
+   "y": -490,
+   "z": 50
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-18",
+   "from": "E-34",
+   "group": "E-18",
+   "h": 1,
+   "head": "none",
+   "id": "E-51",
+   "intent": "brainstorm the spring campaign with marketing",
+   "nudged": [
+    620,
+    0
+   ],
+   "part": "e:t15->t16",
+   "points": [
+    [
+     3684,
+     -304
+    ],
+    [
+     3725,
+     -304
+    ],
+    [
+     3766,
+     -304
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#7d68d8",
+    "text": "#2f2468",
+    "tone": "accent",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-35",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 82,
+   "x": 3684,
+   "y": -304,
+   "z": 51
+  },
+  {
+   "alias": "hiring",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "block": "kanban",
+   "client_id": null,
+   "count": 4,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "fit": {
+    "min": [
+     320,
+     200
+    ],
+    "policy": "hug"
+   },
+   "frame": null,
+   "group": null,
+   "h": 540,
+   "id": "E-52",
+   "intent": "track candidates for the ops lead role",
+   "order": [
+    "E-53",
+    "E-54",
+    "E-55",
+    "E-56"
+   ],
+   "role": null,
+   "seq": {
+    "c": 5
+   },
+   "settings": {
+    "gap": "s",
+    "layout": "row",
+    "padding": "m"
+   },
+   "style": {
+    "dash": "solid",
+    "fill": "#f0f1f4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Hiring pipeline",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 4,
+   "w": 1280,
+   "x": 20,
+   "y": -304,
+   "z": 52
+  },
+  {
+   "alias": "hiring.sourced",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "block": "section",
+   "client_id": null,
+   "count": 3,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "fit": {
+    "min": [
+     280,
+     200
+    ],
+    "policy": "hug"
+   },
+   "frame": "E-52",
+   "group": "E-52",
+   "h": 400,
+   "id": "E-53",
+   "intent": "track candidates for the ops lead role",
+   "order": [
+    "E-57",
+    "E-58",
+    "E-59"
+   ],
+   "part": "sourced",
+   "role": null,
+   "settings": {
+    "align": "stretch",
+    "counter": true,
+    "gap": "s",
+    "layout": "column",
+    "padding": "s"
+   },
+   "style": {
+    "dash": "solid",
+    "fill": "#f0f1f4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Sourced",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 280,
+   "x": 52,
+   "y": -212,
+   "z": 53
+  },
+  {
+   "alias": "hiring.screen",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "block": "section",
+   "client_id": null,
+   "count": 0,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "fit": {
+    "min": [
+     280,
+     200
+    ],
+    "policy": "hug"
+   },
+   "frame": "E-52",
+   "group": "E-52",
+   "h": 200,
+   "id": "E-54",
+   "intent": "track candidates for the ops lead role",
+   "order": [],
+   "part": "screen",
+   "role": null,
+   "settings": {
+    "align": "stretch",
+    "counter": true,
+    "gap": "s",
+    "layout": "column",
+    "limit": 2,
+    "padding": "s"
+   },
+   "style": {
+    "dash": "solid",
+    "fill": "#f1f7fe",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#bcd8f7",
+    "text": "#0b3a6e",
+    "tone": "info",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Phone screen",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 4,
+   "w": 280,
+   "x": 352,
+   "y": -212,
+   "z": 54
+  },
+  {
+   "alias": "hiring.onsite",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "block": "section",
+   "client_id": null,
+   "count": 2,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "fit": {
+    "min": [
+     280,
+     200
+    ],
+    "policy": "hug"
+   },
+   "frame": "E-52",
+   "group": "E-52",
+   "h": 360,
+   "id": "E-55",
+   "intent": "track candidates for the ops lead role",
+   "order": [
+    "E-60",
+    "E-61"
+   ],
+   "part": "onsite",
+   "role": null,
+   "settings": {
+    "align": "stretch",
+    "counter": true,
+    "gap": "s",
+    "layout": "column",
+    "padding": "s"
+   },
+   "style": {
+    "dash": "solid",
+    "fill": "#fff7f0",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#f7cfaa",
+    "text": "#5c2a07",
+    "tone": "warning",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Onsite",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 4,
+   "w": 300,
+   "x": 652,
+   "y": -212,
+   "z": 55
+  },
+  {
+   "alias": "hiring.offer",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "block": "section",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "fit": {
+    "min": [
+     280,
+     200
+    ],
+    "policy": "hug"
+   },
+   "frame": "E-52",
+   "group": "E-52",
+   "h": 200,
+   "id": "E-56",
+   "intent": "track candidates for the ops lead role",
+   "part": "offer",
+   "role": null,
+   "settings": {
+    "align": "stretch",
+    "counter": true,
+    "gap": "s",
+    "layout": "column",
+    "padding": "s"
+   },
+   "style": {
+    "dash": "solid",
+    "fill": "#f1faf4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#b9e0c6",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Offer",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 280,
+   "x": 972,
+   "y": -212,
+   "z": 56
+  },
+  {
+   "alias": "hiring.c1",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "clamp": {
+    "body": 3,
+    "title": 2
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Ana P."
+    ],
+    "min": [
+     240,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-53",
+   "group": "E-52",
+   "h": 80,
+   "id": "E-57",
+   "intent": "track candidates for the ops lead role",
+   "part": "c1",
+   "role": null,
+   "size": "m",
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Ana P.",
+   "type": "card",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 240,
+   "x": 72,
+   "y": -132,
+   "z": 57
+  },
+  {
+   "alias": "hiring.c2",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "clamp": {
+    "body": 3,
+    "title": 2
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Bilal K."
+    ],
+    "min": [
+     240,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-53",
+   "group": "E-52",
+   "h": 80,
+   "id": "E-58",
+   "intent": "track candidates for the ops lead role",
+   "part": "c2",
+   "role": null,
+   "size": "m",
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Bilal K.",
+   "type": "card",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 240,
+   "x": 72,
+   "y": -32,
+   "z": 58
+  },
+  {
+   "alias": "hiring.c3",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "badges": [
+    {
+     "text": "referral"
+    }
+   ],
+   "batch": "B-1",
+   "clamp": {
+    "body": 3,
+    "title": 2
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Chen W."
+    ],
+    "min": [
+     240,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-53",
+   "group": "E-52",
+   "h": 100,
+   "id": "E-59",
+   "intent": "track candidates for the ops lead role",
+   "part": "c3",
+   "role": null,
+   "size": "m",
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Chen W.",
+   "type": "card",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 240,
+   "x": 72,
+   "y": 68,
+   "z": 59
+  },
+  {
+   "alias": "hiring.c4",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "body": "Strong on vendor contracts",
+   "clamp": {
+    "body": 3,
+    "title": 2
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Dana M."
+    ],
+    "min": [
+     240,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-55",
+   "group": "E-52",
+   "h": 120,
+   "id": "E-60",
+   "intent": "track candidates for the ops lead role",
+   "owner": "human",
+   "owner_known": true,
+   "part": "c4",
+   "role": null,
+   "size": "m",
+   "status": "doing",
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Dana M.",
+   "type": "card",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 4,
+   "w": 260,
+   "x": 672,
+   "y": -132,
+   "z": 60
+  },
+  {
+   "alias": "hiring.c5",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "body": "Waiting on references",
+   "clamp": {
+    "body": 3,
+    "title": 2
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Eli R."
+    ],
+    "min": [
+     240,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-55",
+   "group": "E-52",
+   "h": 120,
+   "id": "E-61",
+   "intent": "track candidates for the ops lead role",
+   "part": "c5",
+   "role": null,
+   "size": "m",
+   "status": "blocked",
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Eli R.",
+   "type": "card",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 4,
+   "w": 260,
+   "x": 672,
+   "y": 8,
+   "z": 61
+  },
+  {
+   "alias": "pay",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "block": "section",
+   "client_id": null,
+   "count": 3,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 5,
+   "fit": {
+    "min": [
+     320,
+     200
+    ],
+    "policy": "hug"
+   },
+   "frame": null,
+   "group": null,
+   "h": 300,
+   "id": "E-62",
+   "intent": "payments architecture for the review",
+   "order": [
+    "E-63",
+    "E-64",
+    "E-65"
+   ],
+   "role": null,
+   "seq": {},
+   "settings": {
+    "align": "start",
+    "gap": "l",
+    "layout": "row",
+    "padding": "m"
+   },
+   "style": {
+    "dash": "solid",
+    "fill": "#f1f7fe",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#bcd8f7",
+    "text": "#0b3a6e",
+    "tone": "info",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Payments overview",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 1140,
+   "x": 1380,
+   "y": -304,
+   "z": 62
+  },
+  {
+   "alias": "web",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "body": "Collects card details with the hosted form",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 6,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Web checkout"
+    ],
+    "min": [
+     240,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-62",
+   "group": null,
+   "h": 120,
+   "icon": "globe",
+   "id": "E-63",
+   "intent": "entry point",
+   "role": null,
+   "size": "m",
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Web checkout",
+   "type": "card",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 6,
+   "w": 320,
+   "x": 1412,
+   "y": -212,
+   "z": 63
+  },
+  {
+   "alias": "psp",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "badges": [
+    {
+     "text": "vendor"
+    }
+   ],
+   "batch": "B-1",
+   "body": "- authorises\n- captures\n- refunds",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 7,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Payment provider"
+    ],
+    "min": [
+     240,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-62",
+   "group": null,
+   "h": 160,
+   "icon": "credit-card",
+   "id": "E-64",
+   "intent": "external provider",
+   "role": null,
+   "size": "m",
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "accent",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Payment provider",
+   "type": "card",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 9,
+   "w": 240,
+   "x": 1816,
+   "y": -212,
+   "z": 64
+  },
+  {
+   "alias": "ledger",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "body": "Double-entry books, append only",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 8,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Ledger"
+    ],
+    "min": [
+     240,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-62",
+   "group": null,
+   "h": 120,
+   "icon": "database",
+   "id": "E-65",
+   "intent": "source of truth",
+   "role": null,
+   "size": "m",
+   "status": "review",
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Ledger",
+   "type": "card",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 300,
+   "x": 2169,
+   "y": -212,
+   "z": 65
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 9,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "token"
+    ],
+    "size": 16
+   },
+   "frame": null,
+   "from": "E-63",
+   "group": null,
+   "h": 1,
+   "head": "arrow",
+   "id": "E-66",
+   "intent": "card token",
+   "label_at": [
+    1774,
+    -152
+   ],
+   "points": [
+    [
+     1736,
+     -152
+    ],
+    [
+     1812,
+     -152
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "orthogonal",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "token",
+   "to": "E-64",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 9,
+   "w": 76,
+   "x": 1736,
+   "y": -152,
+   "z": 66
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 10,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "webhook"
+    ],
+    "size": 16
+   },
+   "frame": null,
+   "from": "E-64",
+   "group": null,
+   "h": 1,
+   "head": "arrow",
+   "id": "E-67",
+   "intent": "settlement events",
+   "label_at": [
+    2112.5,
+    -132
+   ],
+   "points": [
+    [
+     2060,
+     -132
+    ],
+    [
+     2165,
+     -132
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "orthogonal",
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "webhook",
+   "to": "E-65",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 105,
+   "x": 2060,
+   "y": -132,
+   "z": 67
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "body": "Keep raw card numbers out of our servers",
+   "callout": "warning",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 11,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "PCI scope"
+    ],
+    "min": [
+     240,
+     64
+    ],
+    "policy": "hug",
+    "size": 16,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 80,
+   "id": "E-68",
+   "intent": "risk",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#fff0e3",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#b8520c",
+    "text": "#5c2a07",
+    "tone": "warning",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "PCI scope",
+   "type": "callout",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 11,
+   "w": 400,
+   "x": 1380,
+   "y": 36,
+   "z": 68
+  },
+  {
+   "alias": "vendors",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "columns": [
+    {
+     "id": "c1",
+     "title": "Venue"
+    },
+    {
+     "id": "city",
+     "title": "City"
+    },
+    {
+     "align": "end",
+     "id": "cap",
+     "title": "Capacity",
+     "width": "s"
+    },
+    {
+     "id": "notes",
+     "title": "Notes",
+     "width": "l"
+    }
+   ],
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 12,
+   "fit": {
+    "min": [
+     684,
+     216
+    ],
+    "parts": [
+     "mill.notes"
+    ],
+    "policy": "clamp",
+    "truncated": true
+   },
+   "frame": null,
+   "group": null,
+   "h": 216,
+   "id": "E-69",
+   "intent": "compare venues for the offsite",
+   "role": null,
+   "rows": [
+    {
+     "cells": {
+      "c1": "Harbour Loft",
+      "cap": "80",
+      "city": "Lisbon",
+      "notes": "Great light, no parking"
+     },
+     "id": "r1"
+    },
+    {
+     "cells": {
+      "c1": "The Old Mill",
+      "cap": "120",
+      "city": "Porto",
+      "notes": "Needs a caterer from their list, which is expensive and must be booked six weeks ahead"
+     },
+     "id": "mill",
+     "tone": "warning"
+    },
+    {
+     "cells": {
+      "c1": "Casa Verde",
+      "cap": "45",
+      "city": "Sintra",
+      "notes": "Too small for the whole team"
+     },
+     "id": "r2"
+    }
+   ],
+   "seq": {
+    "c": 1,
+    "r": 2
+   },
+   "settings": {
+    "header": true,
+    "max_lines": 2,
+    "size": "m",
+    "zebra": false
+   },
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Venue shortlist",
+   "type": "table",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 12,
+   "w": 684,
+   "x": 20,
+   "y": 316,
+   "z": 69
+  },
+  {
+   "alias": "offsite",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "axis": {
+    "days": 38,
+    "first": "2026-11-02",
+    "marks": [
+     {
+      "stem": [
+       508,
+       519
+      ],
+      "tone": "neutral",
+      "x": 916
+     },
+     {
+      "stem": [
+       529,
+       568
+      ],
+      "tone": "info",
+      "x": 1166.53
+     },
+     {
+      "end": 1488.63,
+      "stem": [
+       508,
+       519
+      ],
+      "tone": "neutral",
+      "x": 1238.11
+     },
+     {
+      "milestone": true,
+      "stem": [
+       529,
+       568
+      ],
+      "tone": "success",
+      "x": 1596
+     }
+    ],
+    "mode": "time",
+    "scale": "day",
+    "ticks": [
+     [
+      916,
+      "Nov 02"
+     ],
+     [
+      933.89,
+      ""
+     ],
+     [
+      951.79,
+      ""
+     ],
+     [
+      969.68,
+      ""
+     ],
+     [
+      987.58,
+      ""
+     ],
+     [
+      1005.47,
+      ""
+     ],
+     [
+      1023.37,
+      ""
+     ],
+     [
+      1041.26,
+      "Nov 09"
+     ],
+     [
+      1059.16,
+      ""
+     ],
+     [
+      1077.05,
+      ""
+     ],
+     [
+      1094.95,
+      ""
+     ],
+     [
+      1112.84,
+      ""
+     ],
+     [
+      1130.74,
+      ""
+     ],
+     [
+      1148.63,
+      ""
+     ],
+     [
+      1166.53,
+      "Nov 16"
+     ],
+     [
+      1184.42,
+      ""
+     ],
+     [
+      1202.32,
+      ""
+     ],
+     [
+      1220.21,
+      ""
+     ],
+     [
+      1238.11,
+      ""
+     ],
+     [
+      1256,
+      ""
+     ],
+     [
+      1273.89,
+      ""
+     ],
+     [
+      1291.79,
+      "Nov 23"
+     ],
+     [
+      1309.68,
+      ""
+     ],
+     [
+      1327.58,
+      ""
+     ],
+     [
+      1345.47,
+      ""
+     ],
+     [
+      1363.37,
+      ""
+     ],
+     [
+      1381.26,
+      ""
+     ],
+     [
+      1399.16,
+      ""
+     ],
+     [
+      1417.05,
+      "Nov 30"
+     ],
+     [
+      1434.95,
+      ""
+     ],
+     [
+      1452.84,
+      ""
+     ],
+     [
+      1470.74,
+      ""
+     ],
+     [
+      1488.63,
+      ""
+     ],
+     [
+      1506.53,
+      ""
+     ],
+     [
+      1524.42,
+      ""
+     ],
+     [
+      1542.32,
+      "Dec 07"
+     ],
+     [
+      1560.21,
+      ""
+     ],
+     [
+      1578.11,
+      ""
+     ],
+     [
+      1596,
+      ""
+     ]
+    ],
+    "x0": 816,
+    "x1": 1696,
+    "y": 524
+   },
+   "batch": "B-1",
+   "block": "timeline",
+   "client_id": null,
+   "count": 4,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 13,
+   "fit": {
+    "min": [
+     800,
+     200
+    ],
+    "policy": "hug"
+   },
+   "frame": null,
+   "group": null,
+   "h": 400,
+   "id": "E-70",
+   "intent": "the offsite dates",
+   "order": [
+    "E-71",
+    "E-72",
+    "E-73",
+    "E-74"
+   ],
+   "role": null,
+   "seq": {
+    "e": 4
+   },
+   "settings": {
+    "padding": "m",
+    "scale": "auto"
+   },
+   "style": {
+    "dash": "solid",
+    "fill": "#f0f1f4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Offsite plan",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 13,
+   "w": 960,
+   "x": 784,
+   "y": 316,
+   "z": 70
+  },
+  {
+   "alias": "offsite.e1",
+   "at": "2026-11-02",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "clamp": {
+    "body": 2,
+    "title": 2
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 13,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Venue booked"
+    ],
+    "min": [
+     200,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "fixed_w": 200,
+   "frame": "E-70",
+   "group": "E-70",
+   "h": 60,
+   "id": "E-71",
+   "intent": "the offsite dates",
+   "part": "e1",
+   "role": null,
+   "size": "s",
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Venue booked",
+   "type": "card",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 13,
+   "w": 200,
+   "x": 816,
+   "y": 448,
+   "z": 71
+  },
+  {
+   "alias": "offsite.e2",
+   "at": "2026-11-16",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "clamp": {
+    "body": 2,
+    "title": 2
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 13,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Agenda draft"
+    ],
+    "min": [
+     200,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "fixed_w": 200,
+   "frame": "E-70",
+   "group": "E-70",
+   "h": 60,
+   "id": "E-72",
+   "intent": "the offsite dates",
+   "part": "e2",
+   "role": null,
+   "size": "s",
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "info",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Agenda draft",
+   "type": "card",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 13,
+   "w": 200,
+   "x": 1067,
+   "y": 568,
+   "z": 72
+  },
+  {
+   "alias": "offsite.e3",
+   "at": "2026-11-20",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "clamp": {
+    "body": 2,
+    "title": 2
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 13,
+   "end": "2026-12-04",
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Travel booking",
+     "window"
+    ],
+    "min": [
+     200,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "fixed_w": 200,
+   "frame": "E-70",
+   "group": "E-70",
+   "h": 100,
+   "id": "E-73",
+   "intent": "the offsite dates",
+   "part": "e3",
+   "role": null,
+   "size": "s",
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Travel booking window",
+   "type": "card",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 13,
+   "w": 200,
+   "x": 1138,
+   "y": 408,
+   "z": 73
+  },
+  {
+   "alias": "offsite.e4",
+   "at": "2026-12-10",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "clamp": {
+    "body": 2,
+    "title": 2
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 13,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Offsite"
+    ],
+    "min": [
+     200,
+     60
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "fixed_w": 200,
+   "frame": "E-70",
+   "group": "E-70",
+   "h": 60,
+   "icon": "plane",
+   "id": "E-74",
+   "intent": "the offsite dates",
+   "milestone": true,
+   "part": "e4",
+   "role": null,
+   "size": "s",
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "success",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Offsite",
+   "type": "card",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 13,
+   "w": 200,
+   "x": 1496,
+   "y": 568,
+   "z": 74
+  },
+  {
+   "alias": "mock",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "block": "section",
+   "client_id": null,
+   "count": 4,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 14,
+   "fit": {
+    "min": [
+     544,
+     764
+    ],
+    "policy": "hug"
+   },
+   "frame": null,
+   "group": null,
+   "h": 764,
+   "id": "E-75",
+   "intent": "rough onboarding screen",
+   "role": null,
+   "seq": {},
+   "settings": {
+    "align": "start",
+    "cell": [
+     80.0,
+     80.0
+    ],
+    "gap": "l",
+    "grid": "6x8",
+    "layout": "free",
+    "padding": "m"
+   },
+   "style": {
+    "dash": "solid",
+    "fill": "#f0f1f4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Mobile onboarding sketch",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 18,
+   "w": 544,
+   "x": 20,
+   "y": 612,
+   "z": 75
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "closed": true,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 15,
+   "frame": "E-75",
+   "group": null,
+   "h": 640,
+   "id": "E-76",
+   "intent": "phone outline",
+   "points": [
+    [
+     52,
+     704
+    ],
+    [
+     532,
+     704
+    ],
+    [
+     532,
+     1344
+    ],
+    [
+     52,
+     1344
+    ]
+   ],
+   "role": null,
+   "smooth": false,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#1c2024",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "",
+   "type": "pen",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 15,
+   "w": 480,
+   "x": 52,
+   "y": 704,
+   "z": 76
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "closed": false,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 16,
+   "frame": "E-75",
+   "group": null,
+   "h": 1,
+   "id": "E-77",
+   "intent": "status bar",
+   "points": [
+    [
+     52,
+     784
+    ],
+    [
+     532,
+     784
+    ]
+   ],
+   "role": null,
+   "smooth": false,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#1c2024",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "",
+   "type": "pen",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 16,
+   "w": 480,
+   "x": 52,
+   "y": 784,
+   "z": 77
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 17,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Skip button",
+     "or not?"
+    ],
+    "min": [
+     160,
+     160
+    ],
+    "policy": "shrink",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-75",
+   "group": null,
+   "h": 160,
+   "id": "E-78",
+   "intent": "question",
+   "role": null,
+   "size": "s",
+   "style": {
+    "dash": "solid",
+    "fill": "#fff0a0",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Skip button or not?",
+   "type": "sticky",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 17,
+   "w": 160,
+   "x": 132,
+   "y": 944,
+   "z": 78
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 18,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Get started"
+    ],
+    "min": [
+     160,
+     40
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-75",
+   "group": null,
+   "h": 60,
+   "id": "E-79",
+   "intent": "primary action",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#5b45c4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#5b45c4",
+    "text": "#ffffff",
+    "tone": "accent",
+    "variant": "solid",
+    "width": 2
+   },
+   "text": "Get started",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 18,
+   "w": 160,
+   "x": 132,
+   "y": 1264,
+   "z": 79
+  }
+ ],
+ "homes": {
+  "qa-drawer": [
+   0,
+   -1000,
+   800,
+   -400
+  ]
+ },
+ "legend": [],
+ "locks": [],
+ "team": "qa",
+ "updated_at": "2026-01-01T00:00:00.000Z",
+ "v": 1,
+ "version": 18
+}

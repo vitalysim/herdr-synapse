@@ -1,0 +1,19 @@
+{
+  "name": "sequence",
+  "about": "The phase 2 sequence diagram (4.7.3): three participants with icons, calls and replies, a self-message, a note over one participant and an alt group; a second diagram with ten messages repeats its participants at the bottom.",
+  "stresses": ["column spacing by label width", "self-message loop", "notes", "group tabs", "footer participants"],
+  "gates": {"strict": true},
+  "ops": [
+    {"op": "sequence", "id": "login", "title": "Login", "at": [0, 0], "intent": "how login works",
+     "participants": [{"id": "u", "text": "User", "icon": "user"}, {"id": "api", "text": "API"}, {"id": "db", "text": "DB", "icon": "database"}],
+     "messages": ["u -> api: POST /login", "api -> db: find user", "db --> api: row", "api -> api: check hash", "api --> u: 200 + token"],
+     "notes": [{"over": ["api"], "text": "rate limited"}],
+     "groups": [{"kind": "alt", "label": "password ok", "from": 3, "to": 5}]},
+    {"op": "sequence", "id": "deploy", "title": "Deploy", "right_of": "login", "gap": 80, "intent": "the deploy handshake",
+     "participants": ["ci", "registry", "cluster"],
+     "messages": ["ci -> registry: push image", "registry --> ci: digest", "ci -> cluster: apply manifest", "cluster -> registry: pull",
+                  "registry --> cluster: layers", "cluster -> cluster: roll pods", "cluster --> ci: rollout started", "ci -> cluster: watch",
+                  "cluster --> ci: ready 3/3", "ci -> ci: mark green"],
+     "groups": [{"kind": "loop", "label": "until ready", "from": 8, "to": 9}]}
+  ]
+}

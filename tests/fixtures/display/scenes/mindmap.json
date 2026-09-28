@@ -1,0 +1,2229 @@
+{
+ "authors": {
+  "qa-drawer": {
+   "agent": "claude",
+   "color": "#1971c2",
+   "index": 0,
+   "kind": "member"
+  }
+ },
+ "batches": {
+  "B-1": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "qa-drawer",
+   "first_seq": 1,
+   "last_seq": 2,
+   "undone": false
+  }
+ },
+ "claims": [],
+ "counters": {
+  "B": 1,
+  "C": 0,
+  "E": 38,
+  "G": 0,
+  "K": 0,
+  "X": 0
+ },
+ "elements": [
+  {
+   "alias": "launch",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "block": "mindmap",
+   "client_id": null,
+   "count": 13,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "min": [
+     40,
+     40
+    ],
+    "policy": "hug"
+   },
+   "frame": null,
+   "group": null,
+   "h": 400,
+   "id": "E-1",
+   "intent": "brainstorm the launch",
+   "role": null,
+   "seq": {
+    "t": 12
+   },
+   "settings": {
+    "band": 0,
+    "branch_tones": "auto",
+    "padding": 20,
+    "side": "both"
+   },
+   "style": {
+    "dash": "solid",
+    "fill": "#f0f1f4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Q4 launch",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 1380,
+   "x": 0,
+   "y": 0,
+   "z": 1
+  },
+  {
+   "alias": "launch.root",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Q4 launch"
+    ],
+    "min": [
+     180,
+     64
+    ],
+    "policy": "hug",
+    "size": 28,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 64,
+   "id": "E-2",
+   "intent": "brainstorm the launch",
+   "item": {
+    "id": "root"
+   },
+   "part": "root",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#5b45c4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 28,
+    "stroke": "#5b45c4",
+    "text": "#ffffff",
+    "tone": "accent",
+    "variant": "solid",
+    "width": 2
+   },
+   "text": "Q4 launch",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 180,
+   "x": 720,
+   "y": 163,
+   "z": 2
+  },
+  {
+   "alias": "launch.t1",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Audience"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 60,
+   "icon": null,
+   "id": "E-3",
+   "intent": "brainstorm the launch",
+   "item": {
+    "id": "t1",
+    "text": "Audience"
+   },
+   "part": "t1",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#e8f2fe",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#3f84d8",
+    "text": "#0b3a6e",
+    "tone": "info",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Audience",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 140,
+   "x": 960,
+   "y": 67,
+   "z": 3
+  },
+  {
+   "alias": "launch.t2",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Platform devs"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 60,
+   "icon": null,
+   "id": "E-4",
+   "intent": "brainstorm the launch",
+   "item": {
+    "id": "t2",
+    "text": "Platform devs",
+    "under": "t1"
+   },
+   "part": "t2",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#3f84d8",
+    "text": "#0b3a6e",
+    "tone": "info",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Platform devs",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 180,
+   "x": 1170,
+   "y": 20,
+   "z": 4
+  },
+  {
+   "alias": "launch.t3",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Engineering",
+     "managers"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 80,
+   "icon": null,
+   "id": "E-5",
+   "intent": "brainstorm the launch",
+   "item": {
+    "id": "t3",
+    "text": "Engineering managers",
+    "under": "t1"
+   },
+   "part": "t3",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#3f84d8",
+    "text": "#0b3a6e",
+    "tone": "info",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Engineering managers",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 160,
+   "x": 1180,
+   "y": 104,
+   "z": 5
+  },
+  {
+   "alias": "launch.t4",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Channels"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 60,
+   "icon": null,
+   "id": "E-6",
+   "intent": "brainstorm the launch",
+   "item": {
+    "id": "t4",
+    "text": "Channels"
+   },
+   "part": "t4",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#e7f6ec",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Channels",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 140,
+   "x": 520,
+   "y": 165,
+   "z": 6
+  },
+  {
+   "alias": "launch.t5",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Podcast tour"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 60,
+   "icon": null,
+   "id": "E-7",
+   "intent": "brainstorm the launch",
+   "item": {
+    "id": "t5",
+    "text": "Podcast tour",
+    "under": "t4"
+   },
+   "part": "t5",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Podcast tour",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 160,
+   "x": 280,
+   "y": 81,
+   "z": 7
+  },
+  {
+   "alias": "launch.t6",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Blog"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 60,
+   "icon": null,
+   "id": "E-8",
+   "intent": "brainstorm the launch",
+   "item": {
+    "id": "t6",
+    "text": "Blog",
+    "under": "t4"
+   },
+   "part": "t6",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Blog",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 120,
+   "x": 300,
+   "y": 165,
+   "z": 8
+  },
+  {
+   "alias": "launch.t7",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "SEO pillar post"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 60,
+   "icon": null,
+   "id": "E-9",
+   "intent": "brainstorm the launch",
+   "item": {
+    "id": "t7",
+    "text": "SEO pillar post",
+    "under": "t6"
+   },
+   "part": "t7",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "SEO pillar post",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 180,
+   "x": 20,
+   "y": 123,
+   "z": 9
+  },
+  {
+   "alias": "launch.t8",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Guest posts"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 60,
+   "icon": null,
+   "id": "E-10",
+   "intent": "brainstorm the launch",
+   "item": {
+    "id": "t8",
+    "text": "Guest posts",
+    "under": "t6"
+   },
+   "part": "t8",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Guest posts",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 160,
+   "x": 30,
+   "y": 207,
+   "z": 10
+  },
+  {
+   "alias": "launch.t9",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Conference talk"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 60,
+   "icon": null,
+   "id": "E-11",
+   "intent": "brainstorm the launch",
+   "item": {
+    "id": "t9",
+    "text": "Conference talk",
+    "under": "t4"
+   },
+   "part": "t9",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Conference talk",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 200,
+   "x": 260,
+   "y": 249,
+   "z": 11
+  },
+  {
+   "alias": "launch.t10",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Risks"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 60,
+   "icon": null,
+   "id": "E-12",
+   "intent": "brainstorm the launch",
+   "item": {
+    "id": "t10",
+    "text": "Risks"
+   },
+   "part": "t10",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#fff0e3",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#cc6a1e",
+    "text": "#5c2a07",
+    "tone": "warning",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Risks",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 120,
+   "x": 970,
+   "y": 262,
+   "z": 12
+  },
+  {
+   "alias": "launch.t11",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Docs not ready"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 60,
+   "icon": null,
+   "id": "E-13",
+   "intent": "brainstorm the launch",
+   "item": {
+    "id": "t11",
+    "text": "Docs not ready",
+    "under": "t10"
+   },
+   "part": "t11",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#cc6a1e",
+    "text": "#5c2a07",
+    "tone": "warning",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Docs not ready",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 200,
+   "x": 1160,
+   "y": 220,
+   "z": 13
+  },
+  {
+   "alias": "launch.t12",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Pricing unclear"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": "E-1",
+   "h": 60,
+   "icon": null,
+   "id": "E-14",
+   "intent": "brainstorm the launch",
+   "item": {
+    "id": "t12",
+    "text": "Pricing unclear",
+    "under": "t10"
+   },
+   "part": "t12",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#cc6a1e",
+    "text": "#5c2a07",
+    "tone": "warning",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Pricing unclear",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 180,
+   "x": 1170,
+   "y": 304,
+   "z": 14
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-2",
+   "group": "E-1",
+   "h": 98,
+   "head": "none",
+   "id": "E-15",
+   "intent": "brainstorm the launch",
+   "part": "e:root->t1",
+   "points": [
+    [
+     904,
+     194.5
+    ],
+    [
+     930,
+     194.5
+    ],
+    [
+     930,
+     97
+    ],
+    [
+     956,
+     97
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#3f84d8",
+    "text": "#0b3a6e",
+    "tone": "info",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-3",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 52,
+   "x": 904,
+   "y": 97,
+   "z": 15
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-3",
+   "group": "E-1",
+   "h": 47,
+   "head": "none",
+   "id": "E-16",
+   "intent": "brainstorm the launch",
+   "part": "e:t1->t2",
+   "points": [
+    [
+     1104,
+     97
+    ],
+    [
+     1135,
+     97
+    ],
+    [
+     1135,
+     50
+    ],
+    [
+     1166,
+     50
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#3f84d8",
+    "text": "#0b3a6e",
+    "tone": "info",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-4",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 62,
+   "x": 1104,
+   "y": 50,
+   "z": 16
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-3",
+   "group": "E-1",
+   "h": 47,
+   "head": "none",
+   "id": "E-17",
+   "intent": "brainstorm the launch",
+   "part": "e:t1->t3",
+   "points": [
+    [
+     1104,
+     97
+    ],
+    [
+     1140,
+     97
+    ],
+    [
+     1140,
+     144
+    ],
+    [
+     1176,
+     144
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#3f84d8",
+    "text": "#0b3a6e",
+    "tone": "info",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-5",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 72,
+   "x": 1104,
+   "y": 97,
+   "z": 17
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-2",
+   "group": "E-1",
+   "h": 1,
+   "head": "none",
+   "id": "E-18",
+   "intent": "brainstorm the launch",
+   "part": "e:root->t4",
+   "points": [
+    [
+     716,
+     194.5
+    ],
+    [
+     690,
+     194.5
+    ],
+    [
+     664,
+     194.5
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-6",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 52,
+   "x": 664,
+   "y": 195,
+   "z": 18
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-6",
+   "group": "E-1",
+   "h": 84,
+   "head": "none",
+   "id": "E-19",
+   "intent": "brainstorm the launch",
+   "part": "e:t4->t5",
+   "points": [
+    [
+     516,
+     194.5
+    ],
+    [
+     480,
+     194.5
+    ],
+    [
+     480,
+     110.5
+    ],
+    [
+     444,
+     110.5
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-7",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 72,
+   "x": 444,
+   "y": 111,
+   "z": 19
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-6",
+   "group": "E-1",
+   "h": 1,
+   "head": "none",
+   "id": "E-20",
+   "intent": "brainstorm the launch",
+   "part": "e:t4->t6",
+   "points": [
+    [
+     516,
+     194.5
+    ],
+    [
+     470,
+     194.5
+    ],
+    [
+     424,
+     194.5
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-8",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 92,
+   "x": 424,
+   "y": 195,
+   "z": 20
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-8",
+   "group": "E-1",
+   "h": 42,
+   "head": "none",
+   "id": "E-21",
+   "intent": "brainstorm the launch",
+   "part": "e:t6->t7",
+   "points": [
+    [
+     296,
+     194.5
+    ],
+    [
+     250,
+     194.5
+    ],
+    [
+     250,
+     152.5
+    ],
+    [
+     204,
+     152.5
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-9",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 92,
+   "x": 204,
+   "y": 153,
+   "z": 21
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-8",
+   "group": "E-1",
+   "h": 42,
+   "head": "none",
+   "id": "E-22",
+   "intent": "brainstorm the launch",
+   "part": "e:t6->t8",
+   "points": [
+    [
+     296,
+     194.5
+    ],
+    [
+     245,
+     194.5
+    ],
+    [
+     245,
+     236.5
+    ],
+    [
+     194,
+     236.5
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-10",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 102,
+   "x": 194,
+   "y": 195,
+   "z": 22
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-6",
+   "group": "E-1",
+   "h": 84,
+   "head": "none",
+   "id": "E-23",
+   "intent": "brainstorm the launch",
+   "part": "e:t4->t9",
+   "points": [
+    [
+     516,
+     194.5
+    ],
+    [
+     490,
+     194.5
+    ],
+    [
+     490,
+     278.5
+    ],
+    [
+     464,
+     278.5
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#3d9a63",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-11",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 52,
+   "x": 464,
+   "y": 195,
+   "z": 23
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-2",
+   "group": "E-1",
+   "h": 98,
+   "head": "none",
+   "id": "E-24",
+   "intent": "brainstorm the launch",
+   "part": "e:root->t10",
+   "points": [
+    [
+     904,
+     194.5
+    ],
+    [
+     935,
+     194.5
+    ],
+    [
+     935,
+     292
+    ],
+    [
+     966,
+     292
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#cc6a1e",
+    "text": "#5c2a07",
+    "tone": "warning",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-12",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 62,
+   "x": 904,
+   "y": 195,
+   "z": 24
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-12",
+   "group": "E-1",
+   "h": 42,
+   "head": "none",
+   "id": "E-25",
+   "intent": "brainstorm the launch",
+   "part": "e:t10->t11",
+   "points": [
+    [
+     1094,
+     292
+    ],
+    [
+     1125,
+     292
+    ],
+    [
+     1125,
+     250
+    ],
+    [
+     1156,
+     250
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#cc6a1e",
+    "text": "#5c2a07",
+    "tone": "warning",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-13",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 62,
+   "x": 1094,
+   "y": 250,
+   "z": 25
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "curve": false,
+   "frame": "E-1",
+   "from": "E-12",
+   "group": "E-1",
+   "h": 42,
+   "head": "none",
+   "id": "E-26",
+   "intent": "brainstorm the launch",
+   "part": "e:t10->t12",
+   "points": [
+    [
+     1094,
+     292
+    ],
+    [
+     1130,
+     292
+    ],
+    [
+     1130,
+     334
+    ],
+    [
+     1166,
+     334
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#cc6a1e",
+    "text": "#5c2a07",
+    "tone": "warning",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-14",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 72,
+   "x": 1094,
+   "y": 292,
+   "z": 26
+  },
+  {
+   "alias": "hiring",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "block": "mindmap",
+   "client_id": null,
+   "count": 6,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "min": [
+     40,
+     40
+    ],
+    "policy": "hug"
+   },
+   "frame": null,
+   "group": null,
+   "h": 280,
+   "id": "E-27",
+   "intent": "who we hire next",
+   "role": null,
+   "seq": {},
+   "settings": {
+    "band": 0,
+    "padding": 20,
+    "side": "right"
+   },
+   "style": {
+    "dash": "solid",
+    "fill": "#f0f1f4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Hiring plan",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 760,
+   "x": 0,
+   "y": 480,
+   "z": 27
+  },
+  {
+   "alias": "hiring.root",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Hiring plan"
+    ],
+    "min": [
+     180,
+     64
+    ],
+    "policy": "hug",
+    "size": 28,
+    "truncated": false
+   },
+   "frame": "E-27",
+   "group": "E-27",
+   "h": 64,
+   "id": "E-28",
+   "intent": "who we hire next",
+   "item": {
+    "id": "root"
+   },
+   "part": "root",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#5b45c4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 28,
+    "stroke": "#5b45c4",
+    "text": "#ffffff",
+    "tone": "accent",
+    "variant": "solid",
+    "width": 2
+   },
+   "text": "Hiring plan",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 200,
+   "x": 20,
+   "y": 609,
+   "z": 28
+  },
+  {
+   "alias": "hiring.eng",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Engineering"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-27",
+   "group": "E-27",
+   "h": 60,
+   "icon": null,
+   "id": "E-29",
+   "intent": "who we hire next",
+   "item": {
+    "id": "eng",
+    "text": "Engineering"
+   },
+   "part": "eng",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#e8f2fe",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#3f84d8",
+    "text": "#0b3a6e",
+    "tone": "info",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Engineering",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 160,
+   "x": 280,
+   "y": 542,
+   "z": 29
+  },
+  {
+   "alias": "hiring.be",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Backend (2)"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-27",
+   "group": "E-27",
+   "h": 60,
+   "icon": null,
+   "id": "E-30",
+   "intent": "who we hire next",
+   "item": {
+    "id": "be",
+    "text": "Backend (2)",
+    "under": "eng"
+   },
+   "part": "be",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#3f84d8",
+    "text": "#0b3a6e",
+    "tone": "info",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Backend (2)",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 160,
+   "x": 540,
+   "y": 500,
+   "z": 30
+  },
+  {
+   "alias": "hiring.fe",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Frontend"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-27",
+   "group": "E-27",
+   "h": 60,
+   "icon": null,
+   "id": "E-31",
+   "intent": "who we hire next",
+   "item": {
+    "id": "fe",
+    "text": "Frontend",
+    "under": "eng"
+   },
+   "part": "fe",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#3f84d8",
+    "text": "#0b3a6e",
+    "tone": "info",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Frontend",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 140,
+   "x": 550,
+   "y": 584,
+   "z": 31
+  },
+  {
+   "alias": "hiring.gtm",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Go to market"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-27",
+   "group": "E-27",
+   "h": 60,
+   "icon": null,
+   "id": "E-32",
+   "intent": "who we hire next",
+   "item": {
+    "id": "gtm",
+    "text": "Go to market",
+    "tone": "accent"
+   },
+   "part": "gtm",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#f1eefe",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#7d68d8",
+    "text": "#2f2468",
+    "tone": "accent",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Go to market",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 160,
+   "x": 280,
+   "y": 680,
+   "z": 32
+  },
+  {
+   "alias": "hiring.dr",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Developer relations"
+    ],
+    "min": [
+     120,
+     44
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-27",
+   "group": "E-27",
+   "h": 60,
+   "icon": null,
+   "id": "E-33",
+   "intent": "who we hire next",
+   "item": {
+    "id": "dr",
+    "text": "Developer relations",
+    "under": "gtm"
+   },
+   "part": "dr",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#7d68d8",
+    "text": "#2f2468",
+    "tone": "accent",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Developer relations",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 240,
+   "x": 500,
+   "y": 680,
+   "z": 33
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-27",
+   "from": "E-28",
+   "group": "E-27",
+   "h": 69,
+   "head": "none",
+   "id": "E-34",
+   "intent": "who we hire next",
+   "part": "e:root->eng",
+   "points": [
+    [
+     224,
+     641
+    ],
+    [
+     250,
+     641
+    ],
+    [
+     250,
+     572
+    ],
+    [
+     276,
+     572
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#3f84d8",
+    "text": "#0b3a6e",
+    "tone": "info",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-29",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 52,
+   "x": 224,
+   "y": 572,
+   "z": 34
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-27",
+   "from": "E-29",
+   "group": "E-27",
+   "h": 42,
+   "head": "none",
+   "id": "E-35",
+   "intent": "who we hire next",
+   "part": "e:eng->be",
+   "points": [
+    [
+     444,
+     572
+    ],
+    [
+     490,
+     572
+    ],
+    [
+     490,
+     530
+    ],
+    [
+     536,
+     530
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#3f84d8",
+    "text": "#0b3a6e",
+    "tone": "info",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-30",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 92,
+   "x": 444,
+   "y": 530,
+   "z": 35
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-27",
+   "from": "E-29",
+   "group": "E-27",
+   "h": 42,
+   "head": "none",
+   "id": "E-36",
+   "intent": "who we hire next",
+   "part": "e:eng->fe",
+   "points": [
+    [
+     444,
+     572
+    ],
+    [
+     495,
+     572
+    ],
+    [
+     495,
+     614
+    ],
+    [
+     546,
+     614
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#3f84d8",
+    "text": "#0b3a6e",
+    "tone": "info",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-31",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 102,
+   "x": 444,
+   "y": 572,
+   "z": 36
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-27",
+   "from": "E-28",
+   "group": "E-27",
+   "h": 69,
+   "head": "none",
+   "id": "E-37",
+   "intent": "who we hire next",
+   "part": "e:root->gtm",
+   "points": [
+    [
+     224,
+     641
+    ],
+    [
+     250,
+     641
+    ],
+    [
+     250,
+     710
+    ],
+    [
+     276,
+     710
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#7d68d8",
+    "text": "#2f2468",
+    "tone": "accent",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-32",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 52,
+   "x": 224,
+   "y": 641,
+   "z": 37
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "curve": false,
+   "frame": "E-27",
+   "from": "E-32",
+   "group": "E-27",
+   "h": 1,
+   "head": "none",
+   "id": "E-38",
+   "intent": "who we hire next",
+   "part": "e:gtm->dr",
+   "points": [
+    [
+     444,
+     710
+    ],
+    [
+     470,
+     710
+    ],
+    [
+     496,
+     710
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "route": "curved",
+    "size": 20,
+    "stroke": "#7d68d8",
+    "text": "#2f2468",
+    "tone": "accent",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "",
+   "to": "E-33",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 52,
+   "x": 444,
+   "y": 710,
+   "z": 38
+  }
+ ],
+ "homes": {
+  "qa-drawer": [
+   0,
+   -1000,
+   800,
+   -400
+  ]
+ },
+ "legend": [],
+ "locks": [],
+ "team": "qa",
+ "updated_at": "2026-01-01T00:00:00.000Z",
+ "v": 1,
+ "version": 2
+}

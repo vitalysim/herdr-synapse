@@ -41,6 +41,29 @@ describe("own versions (QA 1 finding 6)", () => {
     expect(O.versionOf(m, "E-5")).toBe(5);
     expect(O.versionOf(O.createModel(dl), "E-5")).toBe(5);
   });
+  it("a gesture's model sees the newest list even after the page dropped its own version (V-3)", () => {
+    // The gesture started on the list at v5; the page's op moved E-5 to v9, the list caught up to
+    // v9 while the gesture ran, and the page dropped its own version: the old model must say 9.
+    const own = new Map([["E-5", 9]]);
+    let index = { byId: new Map([["E-5", { id: "E-5", v: 5 }]]) };
+    const started = O.createModel(dl, () => null, { own: (id) => O.newestVersion(own, index, id) });
+    expect(O.versionOf(started, "E-5")).toBe(9);
+    index = { byId: new Map([["E-5", { id: "E-5", v: 9 }]]) };
+    own.delete("E-5");
+    expect(O.versionOf(started, "E-5")).toBe(9);
+    expect(O.buildMove(started, ["E-5"], [40, 0]).if_version).toBe(9);
+    index = { byId: new Map([["E-5", { id: "E-5", v: 12 }]]) }; // someone else since: the newest wins
+    expect(O.versionOf(started, "E-5")).toBe(12);
+  });
+  it("newestVersion", () => {
+    const index = { byId: new Map([["E-1", { id: "E-1", v: 4 }], ["E-2", { id: "E-2" }]]) };
+    expect(O.newestVersion(new Map([["E-1", 7]]), index, "E-1")).toBe(7);
+    expect(O.newestVersion(new Map([["E-1", 3]]), index, "E-1")).toBe(4);
+    expect(O.newestVersion(new Map(), index, "E-1")).toBe(4);
+    expect(O.newestVersion(new Map([["E-2", 5]]), index, "E-2")).toBe(5);
+    expect(O.newestVersion(new Map(), index, "E-2")).toBeNull();
+    expect(O.newestVersion(null, null, "E-9")).toBeNull();
+  });
   it("appliedVersions: exact only for one applied op", () => {
     expect(O.appliedVersions({ version: 9, applied: [{ index: 0, op: "move", ids: ["E-5", "E-6"] }] })).toEqual({ "E-5": 9, "E-6": 9 });
     expect(O.appliedVersions({ version: 9, applied: [{ ids: ["E-5"] }, { ids: ["E-6"] }] })).toEqual({});
@@ -206,12 +229,15 @@ describe("create", () => {
     expect(O.buildShape("box", { rect: [300, 200, 100, 100] })).toEqual({ op: "shape", kind: "box", at: [100, 100], w: 200, h: 100, text: "" });
   });
   it("clicks the default size at the point", () => {
-    expect(O.buildShape("note", { point: [10.4, 20.6] })).toEqual({ op: "shape", kind: "note", at: [10, 21], text: "" });
+    expect(O.buildShape("diamond", { point: [10.4, 20.6] })).toEqual({ op: "shape", kind: "diamond", at: [10, 21], text: "" });
     expect(O.buildShape("ellipse", { rect: [0, 0, 3, 3] })).toEqual({ op: "shape", kind: "ellipse", at: [0, 0], text: "" });
   });
   it("makes only the shape tools' kinds", () => {
-    for (const kind of ["box", "ellipse", "diamond", "note"]) expect(O.buildShape(kind, { point: [0, 0] }).kind).toBe(kind);
+    for (const kind of ["box", "ellipse", "diamond"]) expect(O.buildShape(kind, { point: [0, 0] }).kind).toBe(kind);
     expect(O.buildShape("frame", { point: [0, 0] })).toBeNull();
+    // N makes a sticky with its template since phase 2 (6.4); a note is an agent's kind now.
+    expect(O.buildShape("note", { point: [0, 0] })).toBeNull();
+    expect(O.buildShape("sticky", { point: [4, 5], template: { op: "sticky", text: "" } })).toEqual({ op: "sticky", text: "", at: [4, 5] });
   });
   it("types a free text", () => {
     expect(O.buildText("hello", [5, 6])).toEqual({ op: "shape", kind: "text", text: "hello", at: [5, 6] });

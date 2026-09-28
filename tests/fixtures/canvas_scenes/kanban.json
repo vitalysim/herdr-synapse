@@ -1,0 +1,19 @@
+{
+  "name": "kanban",
+  "about": "The launch kanban of the guide (worked example 3): three columns, a WIP limit, cards with owners, badges and a blocked status, then a card moved to Done with place in. The WEB e2e runs drag a card between columns and select the board with Esc here.",
+  "stresses": ["stack columns with stretch", "column counters and limits", "card clamps in a kanban", "place in (a reorder across columns)", "upsert-free readback"],
+  "gates": {"strict": true},
+  "batches": [
+    [
+      {"op": "heading", "id": "launch", "text": "Launch", "level": 2, "at": [0, 0], "intent": "the area title"},
+      {"op": "kanban", "id": "work", "title": "Launch work", "below": "launch", "intent": "track launch tasks",
+       "columns": [
+        {"id": "todo", "title": "Todo", "cards": ["Rotate API keys", {"title": "Landing page copy v3", "owner": "qa-drawer", "badges": ["P0"]}]},
+        {"id": "doing", "title": "Doing", "tone": "warning", "limit": 3, "cards": [{"title": "Gateway JWT check", "owner": "human", "status": "blocked", "body": "Waiting on the key rotation"}]},
+        {"id": "done", "title": "Done", "tone": "success", "cards": ["Persona research"]}]}
+    ],
+    [
+      {"op": "place", "id": "work.c2", "in": "work.done", "intent": "the copy is final"}
+    ]
+  ]
+}

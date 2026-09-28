@@ -1,5 +1,5 @@
 // The v2 board's CDP interaction tests (canvas-v2-phase1.md 5.3, E1 to E12, plus the Q phase 1 QA
-// regressions): `npm run test:e2e`.
+// regressions, and canvas-v2-phase2.md 8.3, P1 to P12 in phase2.mjs): `npm run test:e2e`.
 //
 // Each rig is tools/canvas_rig.py (a throwaway team on loopback, never the real session) with a
 // golden scene; one headless Chrome started here drives the page with real mouse and key events
@@ -12,6 +12,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { MOD, findChrome, launchChrome, openPage, sleep } from "./cdp.mjs";
+import { PHASE2_SCENARIOS } from "./phase2.mjs";
 import { REPO, rigAvailable, startRig } from "./rig.mjs";
 
 const args = process.argv.slice(2);
@@ -546,7 +547,7 @@ async function x4Restyle(b) {
   return `restyle ${sun.id} tone warning`;
 }
 
-// -- QA phase 1 regressions (findings 2, 3, 4 and 6 of .local/qa/phase1/qa-report.md) ------------
+// -- QA phase 1 regressions (findings 2, 3, 4 and 6 of qa-report.md; V-1 and V-3 of verdict.md) ---
 
 // Q2: a shape small on screen moves when dragged from its middle (connection points used to cover
 // it, so the drag drew an arrow instead).
@@ -608,6 +609,65 @@ async function q6ChainedDrags(b) {
   return `two drags, if_version ${first.ops[0].if_version} then ${second.ops[0].if_version}, moved ${moved}`;
 }
 
+// Q7: a second drag released while the first POST /ops is still on its way (250 ms of network
+// latency) waits behind it, is sent with if_version rebased onto the first one's answer, and
+// is applied (QA phase 1, V-3: the op queue).
+async function q7DragWhileInFlight(b) {
+  const sun = await b.entry(byText(SUN));
+  await b.page.key("Escape");
+  await b.fit();
+  const scale = await b.scale();
+  const start = hitBox(sun);
+  const from = await b.toScreen(center(start));
+  const mark = b.mark();
+  await b.page.send("Network.emulateNetworkConditions", { offline: false, latency: 250, downloadThroughput: -1, uploadThroughput: -1 });
+  let first;
+  let second;
+  try {
+    await b.page.drag(from, [from[0] + 40 * scale, from[1]], { steps: 4, pauseMs: 8 });
+    await b.page.drag([from[0] + 40 * scale, from[1]], [from[0] + 80 * scale, from[1]], { steps: 4, pauseMs: 8 });
+    const early = b.since(mark, { method: "POST", suffix: "/ops" });
+    assert(early.length === 1 && !early[0].done, `the second POST did not wait for the first (${early.length} sent, first done: ${early[0] && early[0].done})`);
+    [first, second] = await b.opsPost(mark, { count: 2 });
+  } finally {
+    await b.page.send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+  }
+  for (const { result } of [first, second]) assert(!(result.refused || []).length, `a drag was refused: ${JSON.stringify(result.refused)}`);
+  assert(second.ops[0].if_version === first.result.version, `the second drag carried if_version ${second.ops[0].if_version}, not ${first.result.version}`);
+  const moved = (first.ops[0].by || [0])[0] + (second.ops[0].by || [0])[0];
+  const after = await b.entry((e) => e.id === sun.id);
+  assert(hitBox(after)[0] === start[0] + moved, `the sun is at x ${hitBox(after)[0]}, not ${start[0] + moved}`);
+  return `queued behind the first POST, if_version ${first.ops[0].if_version} then ${second.ops[0].if_version}, moved ${moved}`;
+}
+
+// Q8: a shape small on screen, once selected, still moves when dragged from its middle: its
+// resize handles are left out, so they cannot win over the body (QA phase 1, V-1).
+async function q8SelectedSmallShapeMoves(b) {
+  const tree = await b.entry(byText(TREE));
+  await b.page.key("Escape");
+  await b.fit();
+  for (let i = 0; i < 20 && hitBox(tree)[3] * (await b.scale()) >= 12; i += 1) {
+    await b.page.key("-", { modifiers: MOD_KEY });
+    await sleep(120);
+  }
+  const scale = await b.scale();
+  assert(hitBox(tree)[3] * scale < 12, `could not make the tree small on screen (scale ${scale})`);
+  await b.page.waitFor("window.__synapseV2.ready()", { what: "the zoomed-out board to settle" });
+  const from = await b.toScreen(center(hitBox(tree)));
+  await b.page.click(from);
+  await sleep(150);
+  const selected = await b.page.eval(`document.querySelectorAll(".sv2-handles [data-handle]").length`);
+  const mark = b.mark();
+  await b.page.drag(from, [from[0] + 30, from[1] + 20]);
+  const { ops } = await b.opsPost(mark);
+  assert(ops.length === 1 && ops[0].op === "move" && JSON.stringify(ops[0].ids) === JSON.stringify([tree.id]) && ops[0].by && ops[0].w === undefined && ops[0].h === undefined,
+    `expected a move of ${tree.id} by a delta, sent ${JSON.stringify(ops)}`);
+  await b.page.key("z", { modifiers: MOD_KEY });
+  await sleep(300);
+  await b.fit();
+  return `at scale ${scale.toFixed(3)} (${(hitBox(tree)[3] * scale).toFixed(1)} px tall, ${selected} handle(s) drawn) the drag moved ${tree.id}`;
+}
+
 // Q4: indented lines keep their indentation on the page (xml:space on each <text>).
 async function q4Indent(b) {
   const collapsed = await b.page.eval(`[...document.querySelectorAll("svg.sv2-svg text")].filter((t) => t.textContent.startsWith(" ")).map((t) => [t.textContent, t.getNumberOfChars()])`);
@@ -623,9 +683,20 @@ const SCENARIOS = [
   { rig: "house", writable: true, list: [["E1", e1], ["E9", e9], ["E3", e3], ["E4", e4], ["E5", e5], ["E6", e6], ["E7", e7], ["E8", e8], ["X1", x1CreateBox], ["X2", x2Rebind], ["X3", x3Nudge], ["X4", x4Restyle], ["E11", e11]] },
   { rig: "sticky-notes", writable: true, list: [["E2", e2]] },
   { rig: "house", writable: false, list: [["E10", e10]] },
-  { rig: "house", writable: true, list: [["Q2", q2SmallShapeMoves], ["Q3", q3ZoomLimitSettles], ["Q6", q6ChainedDrags]] },
+  { rig: "house", writable: true, list: [["Q2", q2SmallShapeMoves], ["Q3", q3ZoomLimitSettles], ["Q6", q6ChainedDrags], ["Q7", q7DragWhileInFlight], ["Q8", q8SelectedSmallShapeMoves]] },
   { rig: "text-notes", writable: false, list: [["Q4", q4Indent]] },
+  ...PHASE2_SCENARIOS,
 ];
+
+// A scene the Python side has not written yet: its scenarios are reported as skipped, not run.
+// SYNAPSE_E2E_SCENES names a folder of scene files that stand in for golden scenes not written
+// yet (a page change tried before its scene lands); a golden scene of the name always wins.
+const SCENE_DIR = process.env.SYNAPSE_E2E_SCENES || "";
+const sceneOf = (name) => {
+  if (fs.existsSync(path.join(REPO, "tests", "fixtures", "canvas_scenes", `${name}.json`))) return name;
+  const local = SCENE_DIR ? path.join(SCENE_DIR, `${name}.json`) : "";
+  return local && fs.existsSync(local) ? local : null;
+};
 
 // -- the run --------------------------------------------------------------------------------------
 
@@ -648,7 +719,15 @@ async function main() {
       // E9 undoes E1's move, so asking for E9 runs E1 first.
       const wanted = group.list.filter(([name]) => !ONLY || ONLY.has(name) || (name === "E1" && ONLY.has("E9")));
       if (!wanted.length) continue;
-      const rig = await startRig(group.rig, { writable: group.writable, out: path.join(OUT, `${group.rig}-${group.writable ? "rw" : "ro"}`) });
+      const scene = sceneOf(group.rig);
+      if (!scene) {
+        for (const [name] of wanted) {
+          results.push({ name, ok: true, skipped: true, detail: `scene ${group.rig} is not written yet` });
+          console.log(`SKIP ${name}  scene ${group.rig} is not written yet`);
+        }
+        continue;
+      }
+      const rig = await startRig(scene, { writable: group.writable, out: path.join(OUT, `${group.rig}-${group.writable ? "rw" : "ro"}`) });
       let board = null;
       try {
         board = await Board.open(browser.port, rig);
@@ -679,10 +758,11 @@ async function main() {
         await rig.stop();
       }
     }
-    if (!ONLY || ONLY.has("E12")) {
+    for (const [name, during] of [["E12", "E1-E11"], ["P12", "P1-P11"]]) {
+      if (ONLY && !ONLY.has(name)) continue;
       const ok = csp.length === 0;
-      results.push({ name: "E12", ok, detail: ok ? "no CSP violation during E1-E11" : csp.join("\n") });
-      console.log(`${ok ? "PASS" : "FAIL"} E12  ${ok ? "no CSP violation during E1-E11" : csp.join("; ")}`);
+      results.push({ name, ok, detail: ok ? `no CSP violation during ${during}` : csp.join("\n") });
+      console.log(`${ok ? "PASS" : "FAIL"} ${name}  ${ok ? `no CSP violation during ${during}` : csp.join("; ")}`);
     }
   } finally {
     await browser.close();
@@ -690,7 +770,8 @@ async function main() {
   if (exceptions.length) console.log(`page exceptions:\n  ${exceptions.join("\n  ")}`);
   fs.writeFileSync(path.join(OUT, "results.json"), `${JSON.stringify({ results, exceptions }, null, 2)}\n`);
   const failed = results.filter((r) => !r.ok);
-  console.log(`\n${results.length - failed.length}/${results.length} passed; evidence in ${OUT}`);
+  const skipped = results.filter((r) => r.skipped).length;
+  console.log(`\n${results.length - failed.length - skipped}/${results.length} passed${skipped ? `, ${skipped} skipped` : ""}; evidence in ${OUT}`);
   process.exit(failed.length || exceptions.length ? 1 : 0);
 }
 

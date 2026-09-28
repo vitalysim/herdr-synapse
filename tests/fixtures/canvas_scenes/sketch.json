@@ -1,0 +1,13 @@
+{
+  "name": "sketch",
+  "about": "A freeform wireframe on a free section's local grid (worked example 7): pen strokes and a sticky placed in cells of the section's own 8x6 grid, and a solid primary button.",
+  "stresses": ["free section with a local grid", "in with at and points", "section hug around strokes"],
+  "gates": {"strict": true},
+  "ops": [
+    {"op": "section", "id": "wire", "intent": "rough wireframe", "title": "Settings wireframe", "layout": "free", "grid": "8x6", "at": [0, 0]},
+    {"op": "pen", "in": "wire", "intent": "page outline", "points": ["c0r0", "c8r0", "c8r6", "c0r6"], "closed": true, "style": "straight"},
+    {"op": "pen", "in": "wire", "intent": "sidebar divider", "points": ["c2r0", "c2r6"], "style": "straight"},
+    {"op": "sticky", "in": "wire", "at": "c4r2", "intent": "question", "text": "Should billing live here or in its own tab?", "tone": "idea", "size": "s"},
+    {"op": "shape", "kind": "box", "in": "wire", "at": "c5r5", "intent": "primary action", "text": "Save", "variant": "solid", "tone": "accent", "w": 120, "h": 40}
+  ]
+}

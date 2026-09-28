@@ -2,7 +2,7 @@
 
 Every kind of element the canvas knows (``box``, ``text``, ``arrow`` today;
 ``card``, ``kanban``, ``chart``, ``scene3d`` later) is one ``Kind`` record,
-defined in one module of this package and listed once in ``_MODULES``. The
+defined in one module of this package, which ``load`` finds by itself. The
 record carries the hooks the rest of the canvas asks a kind for: which op
 fields it takes, how its text is fitted (``canvas_text`` fit policies), how
 big it is before layout, what it reads back as in ``look``, which checks
@@ -16,7 +16,10 @@ the ``OpSpec`` of each op it adds (``shape``, ``arrow`` ...), so the op table,
 the accepted fields, the MCP op table and the reference docs are all derived
 from this registry (``.local/prd/canvas-v2-phase1.md`` 2). A module may export
 ``OPS`` without ``KINDS`` (``graph`` creates other kinds). Adding a kind is one
-module plus its name in ``_MODULES``, nothing else.
+module in this package, nothing else: every public module here that exports
+``KINDS`` or ``OPS`` is registered (``modules()``), in the order its ``ORDER``
+says (QA phase 1, V-2). Modules whose name starts with ``_`` are shared helpers,
+and a module exporting neither (``sdk``) registers nothing.
 
 The v1 (Excalidraw) page keeps its own list of builders under
 ``web/src/canvas/kinds/``; ``Kind.page`` says a kind has one there, and a test
@@ -33,12 +36,15 @@ reaches the canvas only through the ``OpContext`` it is given
 from __future__ import annotations
 
 import importlib
+import pkgutil
 import sys
-from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+import json
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
-#: The version of the ``Kind`` contract itself; bumped when a hook's signature changes (2: ops, drawing, editing).
-API_VERSION = 2
+#: The version of the ``Kind`` contract itself; bumped when a hook's signature changes (2: ops, drawing, editing;
+#: 3: blocks, stored-as kinds, arrangements, reroutes and inline parts, canvas v2 phase 2).
+API_VERSION = 3
 
 #: The outlines layout knows how to test exactly (arrow label placement, making room). Anything
 #: else is its bounding box.
@@ -52,14 +58,24 @@ ROLES = ("leaf", "container", "composite", "connector", "overlay")
 
 #: How a tone colours a kind (``canvas_theme.resolve``): a shape is fill and outline, a note sticky paper, a
 #: frame a tinted zone, an arrow a line with a muted label, free text and ink strokes the text colour.
-TONE_GROUPS = ("shape", "note", "frame", "arrow", "text", "ink", "other")
+TONE_GROUPS = ("shape", "note", "frame", "arrow", "text", "ink", "other", "card", "badge", "callout")
 #: The resize handles the page offers (display list ``handles``).
 HANDLES = ("box", "width", "ends", "none")
 #: The display-list layers, in drawing order (``canvas_display.LAYERS``).
 LAYERS = ("zones", "marks", "labels", "overlays")
+#: How a kind's tool on the page makes one (``web/src/v2/interact/gesture.js`` ``GESTURES``): ``shape`` drags a box or
+#: clicks for the default size and sends the ``shape`` op with the kind (a ``subkind_of="shape"`` kind only); ``text``
+#: opens the text editor where it clicks; ``connect`` drags an arrow between two points or elements; ``pen`` draws a
+#: stroke; ``frame`` drags a frame around what it covers; ``block`` clicks or drags and sends the tool's ``template`` op at
+#: that point or box (canvas v2 phase 2, 6.4).
+GESTURES = ("shape", "text", "connect", "pen", "frame", "block")
+#: The keys the page's own tools take (``v`` select, ``h`` hand); a kind's tool may not use them.
+RESERVED_TOOL_KEYS = ("v", "h")
 
-#: The kind modules, in registration order. Adding a kind: one module here plus this one line.
-_MODULES: Tuple[str, ...] = ("shape", "text", "arrow", "frame", "pen", "path", "svg", "diagram", "chart", "viz", "image", "comment")
+#: Where a kind module without its own ``ORDER`` is registered: after the built-in ones, by module name. A module's
+#: ``ORDER`` (an int) sets its place in the registration order, which is the order of ``names()``, the shape op's
+#: kinds and change summaries; the built-in modules use 10, 20, ... 120.
+DEFAULT_ORDER = 1000
 
 Element = Dict[str, Any]
 Size = Tuple[float, float]
@@ -86,6 +102,58 @@ class OpSpec:
     doc: str = ""
     #: Its fragment of the MCP op table, e.g. ``card {title, body, tone}``.
     mcp: str = ""
+
+
+@dataclass(frozen=True)
+class Tool:
+    """A person's way to make a kind on the page: one button of the v2 tool bar and its key (QA phase 1, V-2).
+
+    The page reads every kind's tool from ``assets/canvas/tokens.json`` (``tools``, written by ``canvas_theme``), so a
+    new kind with a tool needs no page edit as long as it uses one of the ``GESTURES``.
+    """
+
+    #: The one-letter shortcut, lower case (``r``); unique across kinds, never one of ``RESERVED_TOOL_KEYS``.
+    key: str
+    #: The button's name (``Rectangle``).
+    title: str
+    #: A short symbol drawn on the button.
+    glyph: str
+    #: How the tool makes the kind (one of ``GESTURES``).
+    gesture: str
+    #: Its place in the tool bar, after the select and hand tools.
+    order: int = 100
+    #: Back to select after one use (the pen stays, as in most whiteboards).
+    one_shot: bool = True
+    #: The op the tool sends, as a JSON object text without placement (``{"op": "sticky", "text": ""}``); the gesture
+    #: adds ``at`` (and ``w``/``h``, or ``region`` for the frame gesture). Empty: the gesture's own op.
+    template: str = ""
+
+    def template_op(self) -> Optional[Dict[str, Any]]:
+        """``template`` parsed (None when the tool has none)."""
+        return json.loads(self.template) if self.template else None
+
+
+@dataclass(frozen=True)
+class Arrangement:
+    """Where a container's or composite's members go (``Kind.arrange``, canvas v2 phase 2, 1.4). Pure data.
+
+    Boxes are world ``(x, y, w, h)``; a pinned member's box must equal its current box. The core applies the boxes
+    (refitting a member whose size changed), the routes and the inner frames, then hugs the root unless ``root`` says
+    where it goes."""
+
+    boxes: Dict[str, Tuple[float, float, float, float]]
+    #: Arrow member id -> ``{"points", "label_at"?}`` (from ``canvas_routers``).
+    routes: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    #: Inner frames (a graph's groups) -> their world box.
+    frames: Dict[str, Tuple[float, float, float, float]] = field(default_factory=dict)
+    #: The root's own box; None: the core hugs it around its members (1.6).
+    root: Optional[Tuple[float, float, float, float]] = None
+    #: Layout notes, reported as ``layout_note`` warnings.
+    notes: Tuple[str, ...] = ()
+    #: ``crossings``, ``moved``, ``iterations`` ...
+    stats: Mapping[str, float] = field(default_factory=dict)
+    #: Fields of the root the arrangement computed from where its members went (a timeline's axis and marks).
+    fields: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -166,6 +234,24 @@ class Kind:
     line: Optional[Callable[[Element, Optional[str], bool], str]] = None
     #: One line for generated docs and MCP schema descriptions.
     doc: str = ""
+    #: Its button in the page's tool bar; None: people do not make it from the tool bar.
+    tool: Optional[Tool] = None
+    #: How its elements are stored when that is another kind's ``type``: ``"frame"`` stores ``{"type": "frame",
+    #: "block": <name>}`` (a section, a kanban), so every frame mechanism holds (phase 2, D2); None: ``type`` is the name.
+    stored_as: Optional[str] = None
+    #: A composite described by structure (``canvas_kinds.sdk.Block``): its collections, settings, build and readback.
+    block: Optional[Any] = None
+    #: ``(root, members, env) -> Arrangement``: where a container's or composite's members go (1.4).
+    arrange: Optional[Callable[[Element, List[Element], Dict[str, Any]], Arrangement]] = None
+    #: ``(el, start element, end element, env) -> fields``: a connector's route after its ends moved or its route style
+    #: changed (``points``, ``x``, ``y``, ``w``, ``h``, ``label_at``?) (3.4).
+    reroute: Optional[Callable[[Element, Optional[Element], Optional[Element], Dict[str, Any]], Dict[str, Any]]] = None
+    #: May be a node of a graph or a topic of a mindmap (box, ellipse, diamond, note, card, sticky, icon).
+    node: bool = False
+    #: A stack's ``align: stretch`` may widen or heighten it (False keeps its own shape: a sticky's square paper).
+    stretch: bool = True
+    #: ``element -> [{"part", "hit", "edit", "lod"?}]``: its inline parts in the display entry (6.2).
+    parts: Optional[Callable[[Element], List[Dict[str, Any]]]] = None
 
     def nouns(self) -> Tuple[str, str]:
         """``(singular, plural)`` for change summaries."""
@@ -173,6 +259,9 @@ class Kind:
             return self.noun[0], self.noun[1] or self.noun[0] + "s"
         return self.name, self.name + "s"
 
+
+#: How a block item follows a removed item it names (``sdk.Collection.refs``).
+REF_HOWS = ("drop", "clear", "key", "start", "end")
 
 _REGISTRY: Dict[str, Kind] = {}
 _OPS: Dict[str, OpSpec] = {}
@@ -190,8 +279,42 @@ def register(kind: Kind) -> Kind:
             raise ValueError("kind {}: {} {!r} is not one of {}".format(kind.name, field, value, ", ".join(allowed)))
     if kind.name in _REGISTRY and _REGISTRY[kind.name] is not kind:
         raise ValueError("kind {} is registered twice".format(kind.name))
+    if kind.tool is not None:
+        _check_tool(kind)
+    if kind.block is not None:
+        names = {coll.name for coll in kind.block.collections}
+        for coll in kind.block.collections:
+            for ref in getattr(coll, "refs", ()):
+                if len(ref) != 3 or ref[1] not in names or ref[2] not in REF_HOWS:
+                    raise ValueError("kind {}: {} refs {!r} must be (field, one of its collections, one of {})".format(
+                        kind.name, coll.name, ref, ", ".join(REF_HOWS)))
+    if kind.stored_as is not None:
+        if kind.stored_as == kind.name or kind.stored_as not in _REGISTRY or _REGISTRY[kind.stored_as].stored_as is not None:
+            raise ValueError("kind {}: stored_as {!r} must name a kind registered before it that is stored as itself".format(
+                kind.name, kind.stored_as))
     _REGISTRY[kind.name] = kind
     return kind
+
+
+def _check_tool(kind: Kind) -> None:
+    tool = kind.tool
+    assert tool is not None
+    if tool.gesture not in GESTURES:
+        raise ValueError("kind {}: tool gesture {!r} is not one of {}".format(kind.name, tool.gesture, ", ".join(GESTURES)))
+    if tool.gesture == "shape" and kind.subkind_of != "shape":
+        raise ValueError("kind {}: the shape gesture sends the shape op, so the kind must be a shape subkind".format(kind.name))
+    if tool.template:
+        try:
+            parsed = json.loads(tool.template)
+        except ValueError:
+            parsed = None
+        if not isinstance(parsed, dict) or not isinstance(parsed.get("op"), str):
+            raise ValueError("kind {}: tool template must be a JSON object with an op".format(kind.name))
+    if len(tool.key) != 1 or not ("a" <= tool.key <= "z") or tool.key in RESERVED_TOOL_KEYS:
+        raise ValueError("kind {}: tool key {!r} must be one lower-case letter other than {}".format(kind.name, tool.key, ", ".join(RESERVED_TOOL_KEYS)))
+    for other in _REGISTRY.values():
+        if other.name != kind.name and other.tool is not None and other.tool.key == tool.key:
+            raise ValueError("kind {}: tool key {!r} is already {}'s".format(kind.name, tool.key, other.name))
 
 
 def register_op(spec: OpSpec, reserved: Sequence[str] = ()) -> OpSpec:
@@ -217,19 +340,52 @@ def _register_module(module: Any, owner: str) -> None:
         _OWNER[("op", spec.name)] = owner
 
 
+def _discover() -> List[Tuple[int, str, Any]]:
+    """``(order, name, module)`` of every kind module in this package, in registration order."""
+    found = []
+    for info in pkgutil.iter_modules(__path__):
+        if info.name.startswith("_"):
+            continue
+        name = "{}.{}".format(__name__, info.name)
+        module = importlib.import_module(name)
+        if not (hasattr(module, "KINDS") or hasattr(module, "OPS")):
+            continue
+        order = getattr(module, "ORDER", DEFAULT_ORDER)
+        if not isinstance(order, int) or isinstance(order, bool):
+            raise ValueError("kind module {}: ORDER must be an int, not {!r}".format(info.name, order))
+        found.append((order, info.name, module))
+    return sorted(found, key=lambda item: (item[0], item[1]))
+
+
+def modules() -> List[str]:
+    """The kind modules found in this package (their short names), in registration order."""
+    return [name for _order, name, _module in _discover()]
+
+
 def load() -> None:
-    """Import every module in ``_MODULES`` once; each registers its ``KINDS`` and ``OPS``."""
+    """Import every kind module in this package once (``modules()``); each registers its ``KINDS`` and ``OPS``."""
     global _LOADED
     if _LOADED:
         return
     _LOADED = True
     try:
-        for module_name in _MODULES:
-            name = "{}.{}".format(__name__, module_name)
-            _register_module(importlib.import_module(name), name)
+        for _order, short, module in _discover():
+            _register_module(module, "{}.{}".format(__name__, short))
     except BaseException:
         _LOADED = False
         raise
+
+
+def _reload() -> None:
+    """Test hook: forget every registration and find the kind modules again (after a test adds a module file)."""
+    global _LOADED
+    _REGISTRY.clear()
+    _OPS.clear()
+    _OWNER.clear()
+    _LOADED = False
+    load()
+    for hook in _CHANGED:
+        hook()
 
 
 def _load_extra(module_name: str) -> None:
@@ -269,6 +425,30 @@ def get(name: Any) -> Optional[Kind]:
     return _REGISTRY.get(name) if isinstance(name, str) else None
 
 
+def kind_of(el: Mapping[str, Any]) -> Optional[Kind]:
+    """An element's kind: its ``block`` kind when that kind is stored as the element's ``type`` (a section is a frame
+    with ``block: "section"``), else the kind its ``type`` names; None for a kind this build does not know."""
+    load()
+    block = el.get("block")
+    if isinstance(block, str):
+        found = _REGISTRY.get(block)
+        if found is not None and found.stored_as is not None and found.stored_as == el.get("type"):
+            return found
+    kind = _REGISTRY.get(el.get("type")) if isinstance(el.get("type"), str) else None
+    # A kind stored as another is never an element's own type (an element ``{"type": "kanban"}`` is no kanban).
+    return kind if kind is not None and kind.stored_as is None else None
+
+
+def element_types() -> List[str]:
+    """The element ``type`` values this build stores: every kind stored as itself (a section is a ``frame``)."""
+    return [kind.name for kind in kinds() if kind.stored_as is None]
+
+
+def blocks() -> List[Kind]:
+    """The kinds described by structure (``Kind.block``), in registration order."""
+    return [kind for kind in kinds() if kind.block is not None]
+
+
 def kinds() -> List[Kind]:
     """Every registered kind, in registration order."""
     load()
@@ -298,6 +478,12 @@ def subkinds(parent: str) -> List[Kind]:
     return [kind for kind in kinds() if kind.subkind_of == parent]
 
 
+def tools() -> List[Kind]:
+    """The kinds with a tool bar button, in tool bar order (``Tool.order``, then registration order)."""
+    found = [kind for kind in kinds() if kind.tool is not None]
+    return sorted(found, key=lambda kind: (kind.tool.order if kind.tool is not None else 0, found.index(kind)))
+
+
 def slots() -> List[str]:
     """Every slot renderer key a kind names (the v2 page's ``SLOT_KINDS``)."""
     return [kind.slot for kind in kinds() if kind.slot]
@@ -305,7 +491,7 @@ def slots() -> List[str]:
 
 def outline(el: Element) -> str:
     """The element's outline (``rect`` for a kind this build does not know)."""
-    kind = get(el.get("type"))
+    kind = kind_of(el)
     return kind.outline if kind is not None else "rect"
 
 
@@ -337,7 +523,7 @@ def outline_holds(box: Box, outline_name: str, rect: Box) -> bool:
 
 def hosts(el: Element) -> bool:
     """Whether marks placed on this element sit on it (it grows to hold them and carries them when it moves)."""
-    kind = get(el.get("type"))
+    kind = kind_of(el)
     return bool(kind is not None and kind.hosts)
 
 
@@ -354,7 +540,7 @@ def drawn(el: Element) -> Any:
     ``canvas_check`` compares its size with the element's to find overflow, and
     ``canvas_display`` takes its inner box and lines to draw the label.
     """
-    kind = get(el.get("type"))
+    kind = kind_of(el)
     if kind is None or kind.measure is None:
         return None
     style = el.get("style") if isinstance(el.get("style"), dict) else {}

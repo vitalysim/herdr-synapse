@@ -1,61 +1,28 @@
-"""Diagrams (canvas v2): ``graph`` and ``mermaid`` ops, and the ``mermaid`` kind the page renders.
+"""Diagrams (canvas v2): the ``mermaid`` op, and the ``mermaid`` kind the page renders.
 
-A ``graph`` (nodes and edges) and a Mermaid flowchart become native shapes and
-bound arrows in a frame, laid out in Python (``OpContext.expand_graph``); any
-other Mermaid diagram is a ``mermaid`` element the page renders.
+A Mermaid flowchart becomes a ``graph`` block (``canvas_kinds.graph``): its
+subgraphs are the graph's groups and its direction maps, so every node is a
+native shape the team can move, restyle and patch. Any other Mermaid diagram
+(a sequence diagram included) is a ``mermaid`` element the page renders.
+
+The graph limits live here, shared by the ``graph`` op and Mermaid flowcharts.
 """
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from herdr_team import canvas_layout, canvas_mermaid
+from herdr_team import canvas_mermaid
 from herdr_team.canvas_kinds import Kind, OpSpec
-from herdr_team.canvas_kinds._common import DASHES, Element, bounds_text, quote
+from herdr_team.canvas_kinds._common import Element, bounds_text, quote
 from herdr_team.canvas_kinds._slot import slot_emit
+
+#: Its place in the registration order (``canvas_kinds.DEFAULT_ORDER``).
+ORDER = 80
 
 MAX_GRAPH_NODES = 200
 MAX_GRAPH_EDGES = 400
 MAX_MERMAID_BYTES = 20 * 1024
 _NODE_ID = __import__("re").compile(r"^[A-Za-z0-9_-]{1,32}\Z")
-
-
-def create_graph(ctx: Any, op: Dict[str, Any]) -> None:
-    """The ``graph`` op: nodes and edges laid out in Python as native shapes and bound arrows in a frame."""
-    nodes_raw, edges_raw = op.get("nodes"), op.get("edges") if op.get("edges") is not None else []
-    if not isinstance(nodes_raw, list) or not nodes_raw:
-        raise ctx.invalid("nodes", "graph needs nodes: [{\"id\": \"a\", \"text\": \"...\"}, ...]")
-    if len(nodes_raw) > MAX_GRAPH_NODES:
-        raise ctx.too_big("nodes", "MAX_GRAPH_NODES", MAX_GRAPH_NODES, "{} nodes; the limit is {}".format(len(nodes_raw), MAX_GRAPH_NODES))
-    if not isinstance(edges_raw, list):
-        raise ctx.invalid("edges", "edges must be a list of {\"from\", \"to\"}")
-    if len(edges_raw) > MAX_GRAPH_EDGES:
-        raise ctx.too_big("edges", "MAX_GRAPH_EDGES", MAX_GRAPH_EDGES, "{} edges; the limit is {}".format(len(edges_raw), MAX_GRAPH_EDGES))
-    nodes = ctx.graph_nodes(nodes_raw)
-    seen = {node["id"] for node in nodes}
-    edges: List[Dict[str, Any]] = []
-    for index, edge in enumerate(edges_raw):
-        field = "edges[{}]".format(index)
-        if isinstance(edge, (list, tuple)) and len(edge) in (2, 3):
-            edge = {"from": edge[0], "to": edge[1], "label": edge[2] if len(edge) == 3 else None}
-        if not isinstance(edge, dict):
-            raise ctx.invalid(field, "{} must be {{\"from\", \"to\", \"label\"}}".format(field))
-        for key in edge:
-            if key not in ("from", "to", "label", "dash"):
-                raise ctx.invalid("{}.{}".format(field, key), "an edge takes from, to, label, dash")
-        for end in ("from", "to"):
-            value = edge.get(end)
-            if not isinstance(value, str) or value not in seen:
-                raise ctx.invalid("{}.{}".format(field, end), "{} is not one of the graph's node ids".format(
-                    value if isinstance(value, str) else "{}.{}".format(field, end)))
-        dash = edge.get("dash")
-        dash_style = ("dashed" if dash else "solid") if isinstance(dash, bool) or dash is None else \
-            ctx.choice(edge, "dash", DASHES, "solid", label=field + ".dash")
-        edges.append({"from": edge["from"], "to": edge["to"], "dash": dash_style, "head": "arrow", "thick": False,
-                      "label": ctx.text(edge, "label", limit="label", one_line=True, label=field + ".label")})
-    algorithm = ctx.choice(op, "layout", canvas_layout.LAYOUTS, "layered")
-    direction = ctx.choice(op, "direction", ("down", "right"), "down")
-    title = ctx.text(op, "title", limit="label", one_line=True)
-    ctx.expand_graph(op, title or (op.get("id") if isinstance(op.get("id"), str) else "") or "graph", nodes, edges, algorithm, direction)
 
 
 def create_mermaid(ctx: Any, op: Dict[str, Any]) -> None:
@@ -88,12 +55,29 @@ def create_mermaid(ctx: Any, op: Dict[str, Any]) -> None:
             def label(value: Any) -> str:
                 return ctx.text({}, "source", limit="label", one_line=True, value=value)
 
-            nodes = [{"id": n["id"], "kind": n["kind"], "subgraph": n.get("subgraph"), "color": None, "fill": None, "fill_set": False,
-                      "text": label(n["text"]) or n["id"]} for n in parsed["nodes"]]
-            edges = [{"from": e["from"], "to": e["to"], "dash": "dashed" if e["dash"] else "solid", "head": e["head"], "thick": e["thick"],
-                      "label": label(e.get("label"))} for e in parsed["edges"]]
-            subgraphs = [{"id": sg["id"], "parent": sg.get("parent"), "title": label(sg.get("title"))} for sg in parsed["subgraphs"]]
-            ctx.expand_graph(op, title or "flowchart", nodes, edges, "layered", parsed["direction"], subgraphs)
+            graph: Dict[str, Any] = {key: op[key] for key in op if key not in ("op", "source", "w", "h", "title", "client_id")}
+            graph.update(op="graph", title=title or "flowchart", direction=parsed["direction"])
+            graph["groups"] = [dict({"id": sg["id"], "title": label(sg.get("title")) or sg["id"]},
+                                    **({"parent": sg["parent"]} if sg.get("parent") else {})) for sg in parsed["subgraphs"]]
+            graph["nodes"] = [dict({"id": n["id"], "text": label(n["text"]) or n["id"]}, **({"kind": n["kind"]} if n["kind"] != "box" else {}),
+                                   **({"in": n["subgraph"]} if n.get("subgraph") else {})) for n in parsed["nodes"]]
+            edges = []
+            for e in parsed["edges"]:
+                edge: Dict[str, Any] = {"from": e["from"], "to": e["to"]}
+                text = label(e.get("label"))
+                if text:
+                    edge["label"] = text
+                if e["dash"]:
+                    edge["style"] = "dashed"
+                if e["head"] != "arrow":
+                    edge["head"] = e["head"]
+                if e["thick"]:
+                    edge["thick"] = True
+                edges.append(edge)
+            graph["edges"] = edges
+            if not graph["groups"]:
+                graph.pop("groups")
+            ctx.block("graph", graph)
             return
         diagram = "other"
     w, h = ctx.size(op, 480, 320)
@@ -109,11 +93,8 @@ def readback(el: Element, full: bool) -> str:
 
 
 OPS = (
-    OpSpec(name="graph", fields=("nodes", "edges", "layout", "direction", "title", "id"), create=create_graph, style=True, place=True, order=70,
-           doc="nodes and edges laid out in Python as native shapes and arrows in a frame",
-           mcp="graph {nodes [{id,text,kind,tone}], edges [{from,to,label}], layout layered|radial|force|grid}"),
     OpSpec(name="mermaid", fields=("source", "w", "h", "title", "id", "client_id"), create=create_mermaid, style=True, place=True, order=80,
-           doc="a Mermaid diagram: a flowchart becomes native shapes, anything else the page renders", mcp="mermaid {source}"),
+           doc="a Mermaid diagram: a flowchart becomes a graph block of native shapes, anything else the page renders", mcp="mermaid {source}"),
 )
 
 KINDS = (

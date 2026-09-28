@@ -6,6 +6,7 @@
 //
 // Boxes here are [x, y, w, h] (as the display list's hit and edit boxes); rects are
 // [x0, y0, x1, y1] (as the render interface's Rect).
+import { TOOLSET, templateOf } from "./toolset.js";
 
 export const GRID = 20;
 export const NUDGE = 1;
@@ -17,8 +18,11 @@ export const VARIANTS = ["soft", "solid", "outline"];
 export const SIZES = ["s", "m", "l", "xl"];
 export const DASHES = ["solid", "dashed", "dotted"];
 export const FONTS = ["normal", "hand", "code"];
-// The kinds a create tool makes with the shape op (the text tool goes through the editor).
-export const SHAPE_TOOLS = { box: "box", ellipse: "ellipse", diamond: "diamond", note: "note" };
+// Arrow route styles (canvas-v2-phase2.md 3.2 and 6.3 W-c): the style bar's straight, elbow, curve.
+export const ROUTES = ["straight", "orthogonal", "curved"];
+// The kinds a create tool makes with the shape op (the text tool goes through the editor): the
+// registry's tools with the "shape" gesture (toolset.js).
+export const SHAPE_TOOLS = TOOLSET.shapes;
 
 const r2 = (v) => Math.round(v * 100) / 100;
 const round = (v) => Math.round(v);
@@ -28,7 +32,8 @@ const isElementId = (id) => typeof id === "string" && /^(E|C)-[1-9][0-9]*$/.test
 
 // model(dl, elementOf, {own}): entries by id from the display list, the canonical element by id
 // from the scene store (optional: every builder falls back to the entry alone), and `own(id)`: the
-// version this page's own last applied op left an element at (optional). The list catches up
+// version this page's own last applied op left an element at (optional; Board passes newestVersion,
+// which also knows the newest list). The list catches up
 // 100-250 ms after an op, so a second drag in that window would otherwise send the version the
 // list still shows and be refused as stale (QA phase 1, finding 6).
 export function createModel(dl, elementOf = () => null, { own = null } = {}) {
@@ -66,6 +71,19 @@ export function versionOf(m, id) {
   }
   const own = typeof m.own === "function" ? m.own(id) : null;
   return own !== null && (v === null || own > v) ? own : v;
+}
+
+// The newest version the page knows of element `id`: what its own applied ops left it at (`own`,
+// a Map) or what the newest display list shows (`index`, render/cull.js createIndex), whichever is
+// higher. Board hands this to createModel as `own`: a gesture keeps the model it started with,
+// and when the list catches up while it runs the page drops its own version, so neither the
+// model's list nor the own versions alone would do (QA phase 1, V-3). Versions only grow.
+export function newestVersion(own, index, id) {
+  const mine = own && typeof own.get === "function" ? own.get(id) : undefined;
+  const entry = index && index.byId ? index.byId.get(id) : null;
+  const shown = entry && Number.isFinite(entry.v) ? entry.v : null;
+  if (!Number.isFinite(mine)) return shown;
+  return shown !== null && shown > mine ? shown : mine;
 }
 
 // {id: version} for what one /ops answer changed, when that is known exactly: with one applied
@@ -120,6 +138,25 @@ function boxOfPoints(points) {
   const x0 = Math.min(...xs);
   const y0 = Math.min(...ys);
   return [x0, y0, Math.max(...xs) - x0, Math.max(...ys) - y0];
+}
+
+// Whether element `id` is a container other elements join: a frame, and every block stored as one
+// (section, kanban and its columns, graph, mindmap, timeline: canvas-v2-phase2.md D2). Entry kinds
+// are now the block's kind, so the canonical type decides; without the element, the entry's frame
+// hit or its stack `container` does.
+export function isContainer(m, id) {
+  const el = m.element(id);
+  if (el && typeof el.type === "string") return el.type === "frame";
+  const entry = m.entry(id);
+  if (!entry) return false;
+  return entry.kind === "frame" || (entry.hit && entry.hit.shape === "frame") || Boolean(stackOf(entry));
+}
+
+// A stack container's drop hint (6.2 `container`), or null: {layout, gap, order}.
+export function stackOf(entry) {
+  const c = entry && entry.container;
+  if (!c || typeof c !== "object" || !["row", "column", "grid"].includes(c.layout)) return null;
+  return { layout: c.layout, gap: Number.isFinite(Number(c.gap)) ? Number(c.gap) : GRID, order: Array.isArray(c.order) ? c.order.filter((id) => typeof id === "string") : [] };
 }
 
 export function kindOf(m, id) {
@@ -239,17 +276,22 @@ export function snapDelta(m, ids, [dx, dy], { free = false, grid = GRID } = {}) 
   return [r2(snap(box[0] + dx, grid) - box[0]), r2(snap(box[1] + dy, grid) - box[1])];
 }
 
-// The frame a single element dropped at `box` belongs to: wholly inside a frame other than its
-// own joins the innermost such frame; wholly outside its own frame leaves it. undefined = no change.
+// The container a single element dropped at `box` belongs to: a plain frame when the box lands
+// wholly inside it, a stack container (a section row, column or grid; a kanban column) when the
+// box's centre lands inside it, the innermost such container winning. The element's own frame
+// means no change (undefined); wholly outside its own frame it leaves it (null).
 export function dropFrame(m, id, box) {
   const current = frameOf(m, id);
   const exclude = new Set([id, ...descendantsOf(m, [id])]);
+  const centre = [box[0] + box[2] / 2, box[1] + box[3] / 2];
   let best = null;
   let bestArea = Infinity;
   for (const entry of m.entries()) {
-    if (entry.kind !== "frame" || exclude.has(entry.id)) continue;
+    if (exclude.has(entry.id) || !isContainer(m, entry.id)) continue;
     const frameBox = boxOf(m, entry.id);
-    if (!frameBox || !contains(frameBox, box)) continue;
+    if (!frameBox) continue;
+    const inside = stackOf(entry) ? pointIn(frameBox, centre) : contains(frameBox, box);
+    if (!inside) continue;
     const area = frameBox[2] * frameBox[3];
     if (area < bestArea) {
       best = entry.id;
@@ -262,6 +304,102 @@ export function dropFrame(m, id, box) {
     if (frameBox && !intersects(frameBox, box)) return null;
   }
   return undefined;
+}
+
+const pointIn = (box, [x, y]) => x >= box[0] && x <= box[0] + box[2] && y >= box[1] && y <= box[1] + box[3];
+
+// -- stack drops (canvas-v2-phase2.md 1.5 and 6.3 W-f) ------------------------------------------------
+
+// The index a member dropped with its centre at `centre` takes among a stack container's other
+// members (`siblings`: their boxes in layout order, the dragged one left out), by the server's
+// rule (herdr_team/canvas_blocks.py drop_index): the number of siblings whose centre comes before
+// it along the axis; row-major for a grid (a sibling comes first when its bottom is at or above the
+// point, or it spans the point's height and its centre is left of it).
+// Shared with the server through tests/fixtures/display/stack-drop-vectors.json.
+export function stackIndex(layout, siblings, centre) {
+  const [px, py] = centre;
+  let index = 0;
+  for (const b of siblings) {
+    const cx = b[0] + b[2] / 2;
+    const cy = b[1] + b[3] / 2;
+    let before;
+    if (layout === "row") before = cx < px;
+    else if (layout === "column") before = cy < py;
+    else before = b[1] + b[3] <= py || (b[1] <= py && py < b[1] + b[3] && cx < px);
+    if (before) index += 1;
+  }
+  return index;
+}
+
+// Where the insertion line goes for `index` among `siblings` in container box `cbox`: two world
+// points. Row: a vertical line in the gap before the index-th sibling (or after the last);
+// column: a horizontal one; grid: a vertical line beside the sibling it lands before.
+export function stackDropLine(layout, siblings, index, cbox, gap = GRID) {
+  const half = gap / 2;
+  if (!siblings.length) {
+    const inset = Math.min(GRID, cbox[2] / 4, cbox[3] / 4);
+    if (layout === "column") return [[cbox[0] + inset, cbox[1] + cbox[3] / 2], [cbox[0] + cbox[2] - inset, cbox[1] + cbox[3] / 2]];
+    return [[cbox[0] + cbox[2] / 2, cbox[1] + inset], [cbox[0] + cbox[2] / 2, cbox[1] + cbox[3] - inset]];
+  }
+  const at = Math.max(0, Math.min(index, siblings.length));
+  const next = siblings[at] || null;
+  const prev = siblings[at - 1] || null;
+  if (layout === "column") {
+    const x0 = Math.min(...siblings.map((b) => b[0]));
+    const x1 = Math.max(...siblings.map((b) => b[0] + b[2]));
+    const y = next && prev ? (prev[1] + prev[3] + next[1]) / 2 : next ? next[1] - half : prev[1] + prev[3] + half;
+    return [[x0, y], [x1, y]];
+  }
+  if (layout === "row") {
+    const y0 = Math.min(...siblings.map((b) => b[1]));
+    const y1 = Math.max(...siblings.map((b) => b[1] + b[3]));
+    const x = next && prev ? (prev[0] + prev[2] + next[0]) / 2 : next ? next[0] - half : prev[0] + prev[2] + half;
+    return [[x, y0], [x, y1]];
+  }
+  const ref = next || prev;
+  const x = next ? next[0] - half : prev[0] + prev[2] + half;
+  return [[x, ref[1]], [x, ref[1] + ref[3]]];
+}
+
+// The innermost stack container (a section row, column or grid; a kanban column) holding world
+// point `p`, and the index something new placed there takes: {container, index}, or null. A new
+// card or sticky clicked into a stack joins it (`in`), as a drop would (QA phase 2, F6).
+export function stackAt(m, p) {
+  if (!Array.isArray(p)) return null;
+  let best = null;
+  let bestArea = Infinity;
+  for (const entry of m.entries()) {
+    if (!stackOf(entry) || entry.locked) continue;
+    const b = boxOf(m, entry.id);
+    if (!b || !pointIn(b, p)) continue;
+    const area = b[2] * b[3];
+    if (area < bestArea) {
+      best = entry;
+      bestArea = area;
+    }
+  }
+  if (!best) return null;
+  const stack = stackOf(best);
+  const members = stack.order.length ? stack.order : [...m.entries()].filter((e) => frameOf(m, e.id) === best.id).map((e) => e.id);
+  const siblings = members.map((sid) => boxOf(m, sid)).filter(Boolean);
+  return { container: best.id, index: stackIndex(stack.layout, siblings, p) };
+}
+
+// The drop hint while one element is dragged to `box`: {container, index, line} when it would land
+// in a stack container (the one it would join, or the stack it is already in), else null.
+export function stackDrop(m, id, box) {
+  const joined = dropFrame(m, id, box);
+  const target = joined === undefined ? frameOf(m, id) : joined;
+  if (!target) return null;
+  const entry = m.entry(target);
+  const stack = stackOf(entry);
+  const cbox = stack ? boxOf(m, target) : null;
+  if (!stack || !cbox) return null;
+  const members = stack.order.length ? stack.order : [...m.entries()].filter((e) => frameOf(m, e.id) === target).map((e) => e.id);
+  const siblings = members.filter((sid) => sid !== id).map((sid) => boxOf(m, sid)).filter(Boolean);
+  const centre = [box[0] + box[2] / 2, box[1] + box[3] / 2];
+  const index = stackIndex(stack.layout, siblings, centre);
+  return { container: target, index, line: stackDropLine(stack.layout, siblings, index, cbox, stack.gap) };
 }
 
 export function buildMove(m, ids, by) {
@@ -391,8 +529,10 @@ export function buildConnect(from, to, { minLength = 8 } = {}) {
 // -- creating ---------------------------------------------------------------------------------------
 
 // A create tool's drag (rect in world units) or click (rect null, at the point): the kind's
-// default size on a click. The text starts empty; the editor opens once the element arrives.
-export function buildShape(kind, { rect = null, point = null } = {}) {
+// default size on a click. The text starts empty; the editor opens once the element arrives. A
+// tool with a template sends that op instead, placed the same way.
+export function buildShape(kind, { rect = null, point = null, template = null, into = null } = {}) {
+  if (templateOf(template)) return buildBlock(template, { rect, point, into });
   if (!Object.values(SHAPE_TOOLS).includes(kind)) return null;
   if (rect) {
     const [x, y, w, h] = rectToBox(rect);
@@ -427,10 +567,13 @@ export function buildPen(points) {
   return { op: "pen", points: unique, style: "smooth", closed: false };
 }
 
-export function buildFrame(rect, title = "Frame") {
+// The frame gesture: frame {title, region}, or the tool's template with the region (a section).
+export function buildFrame(rect, title = "Frame", template = null) {
   const [x, y, w, h] = rectToBox(rect);
   if (w < MIN_SIZE * 2 || h < MIN_SIZE * 2) return null;
-  return { op: "frame", title, region: [round(x), round(y), round(x + w), round(y + h)] };
+  const region = [round(x), round(y), round(x + w), round(y + h)];
+  if (templateOf(template)) return buildFromTemplate(template, { region });
+  return { op: "frame", title, region };
 }
 
 // -- editing and styling ------------------------------------------------------------------------------
@@ -449,7 +592,8 @@ export function buildDelete(m, ids) {
   const targets = [...new Set(ids.filter(isElementId))];
   if (!targets.length) return null;
   const op = { op: "delete", ids: targets };
-  if (targets.some((id) => kindOf(m, id) === "frame")) op.with_children = false;
+  // Deleting a frame or a block root keeps what it holds, as loose elements (canvas-v2-phase2.md 1.7).
+  if (targets.some((id) => isContainer(m, id))) op.with_children = false;
   return withVersion(m, op, targets);
 }
 
@@ -469,6 +613,89 @@ export function buildRestyle(m, ids, patch) {
   }
   return any ? withVersion(m, op, targets) : null;
 }
+
+// -- blocks: parts, pins, routes and tool templates (canvas-v2-phase2.md 6.3) -------------------------
+
+// An entry's inline part named `part` (6.2 `parts`), or null.
+export function partOfEntry(entry, part) {
+  const parts = entry && Array.isArray(entry.parts) ? entry.parts : [];
+  return parts.find((p) => p && p.part === part) || null;
+}
+
+// The part editor's commit: edit {id, part, text} (a table cell, a card's title or body), nothing
+// when the part has no editor or the text did not change.
+export function buildEditPart(m, id, part, text) {
+  const found = partOfEntry(m.entry(id), part);
+  if (!found || !found.edit) return null;
+  const value = String(text ?? "");
+  if (value === (found.edit.value ?? "")) return null;
+  return withVersion(m, { op: "edit", id, part, text: value }, [id]);
+}
+
+const pinOf = (m, id) => {
+  const entry = m.entry(id);
+  const pin = entry && entry.pin;
+  return pin === "human" || pin === "agent" ? pin : null;
+};
+
+// Pin: holds each selected element where it is (no layout, growth or other author moves it).
+export function buildPin(m, ids) {
+  const targets = [...new Set((ids || []).filter(isElementId))].filter((id) => kindOf(m, id) !== "comment" && pinOf(m, id) !== "human");
+  if (!targets.length) return null;
+  return withVersion(m, { op: "pin", ids: targets }, targets);
+}
+
+// Unpin: the selected elements that hold a pin; the enclosing block then lays them out again.
+export function buildUnpin(m, ids) {
+  const targets = [...new Set((ids || []).filter(isElementId))].filter((id) => pinOf(m, id));
+  if (!targets.length) return null;
+  return withVersion(m, { op: "unpin", ids: targets }, targets);
+}
+
+// What the style bar's pin buttons offer for a selection: {pin, unpin} (either may be false).
+export function pinChoices(m, ids) {
+  return { pin: Boolean(buildPin(m, ids)), unpin: Boolean(buildUnpin(m, ids)) };
+}
+
+// The style bar's route choice: restyle {ids, route} over the selected arrows only.
+export function buildRestyleRoute(m, ids, route) {
+  if (!ROUTES.includes(route)) throw new Error(`unknown route ${route}`);
+  const targets = [...new Set((ids || []).filter(isElementId))].filter((id) => kindOf(m, id) === "arrow");
+  if (!targets.length) return null;
+  return withVersion(m, { op: "restyle", ids: targets, route }, targets);
+}
+
+// A tool's template (tokens.json `tools[].template`, canvas-v2-phase2.md 6.4): toolset.js reads it.
+export { templateOf };
+
+// A template op placed by a gesture: the template's fields, then the gesture's own (`at` and
+// optionally `w`/`h` for block and shape, `region` for frame), which win.
+export function buildFromTemplate(template, fields) {
+  const t = templateOf(template);
+  if (!t) return null;
+  return { ...JSON.parse(JSON.stringify(t)), ...fields };
+}
+
+// The block gesture (6.3 W-e): a click sends the template at the point; a drag also sends the box's
+// w and h (sizes are minimums: the kind fits its content).
+// With `into` ({container, index}: stackAt), a click in a stack container sends `in` and `index`
+// instead of `at`: the new element joins that stack where it was clicked.
+export function buildBlock(template, { rect = null, point = null, into = null } = {}) {
+  if (rect) {
+    const [x, y, w, h] = rectToBox(rect);
+    if (w >= MIN_SIZE && h >= MIN_SIZE) return buildFromTemplate(template, { at: [round(x), round(y)], w: round(w), h: round(h) });
+    return buildBlock(template, { point: [x, y], into });
+  }
+  if (!point) return null;
+  if (into && typeof into.container === "string" && JOINS.has((templateOf(template) || {}).op)) {
+    return buildFromTemplate(template, { in: into.container, index: Math.max(0, Math.round(Number(into.index) || 0)) });
+  }
+  return buildFromTemplate(template, { at: [round(point[0]), round(point[1])] });
+}
+
+// The template ops that join a stack when clicked into one (a card, and a sticky, which a kanban
+// column takes as a card); a block of its own (a table, a kanban) stays where it was clicked.
+const JOINS = new Set(["card", "sticky"]);
 
 export function buildUndo(batch) {
   return typeof batch === "string" && batch ? { op: "undo", batch } : null;

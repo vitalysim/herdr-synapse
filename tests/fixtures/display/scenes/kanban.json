@@ -1,0 +1,560 @@
+{
+ "authors": {
+  "qa-drawer": {
+   "agent": "claude",
+   "color": "#1971c2",
+   "index": 0,
+   "kind": "member"
+  }
+ },
+ "batches": {
+  "B-1": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "qa-drawer",
+   "first_seq": 1,
+   "last_seq": 2,
+   "undone": false
+  },
+  "B-2": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "qa-drawer",
+   "first_seq": 3,
+   "last_seq": 3,
+   "undone": false
+  }
+ },
+ "claims": [],
+ "counters": {
+  "B": 2,
+  "C": 0,
+  "E": 9,
+  "G": 0,
+  "K": 0,
+  "X": 0
+ },
+ "elements": [
+  {
+   "alias": "launch",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Launch"
+    ],
+    "min": [
+     1,
+     1
+    ],
+    "policy": "hug",
+    "size": 36,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 45,
+   "id": "E-1",
+   "intent": "the area title",
+   "level": 2,
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#1c2024",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Launch",
+   "type": "heading",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 134,
+   "x": 0,
+   "y": 0,
+   "z": 1
+  },
+  {
+   "alias": "work",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "block": "kanban",
+   "client_id": null,
+   "count": 3,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "min": [
+     320,
+     200
+    ],
+    "policy": "hug"
+   },
+   "frame": null,
+   "group": null,
+   "h": 460,
+   "id": "E-2",
+   "intent": "track launch tasks",
+   "order": [
+    "E-3",
+    "E-4",
+    "E-5"
+   ],
+   "role": null,
+   "seq": {
+    "c": 4
+   },
+   "settings": {
+    "gap": "s",
+    "layout": "row",
+    "padding": "m"
+   },
+   "style": {
+    "dash": "solid",
+    "fill": "#f0f1f4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Launch work",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 1000,
+   "x": 0,
+   "y": 85,
+   "z": 2
+  },
+  {
+   "alias": "work.todo",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "block": "section",
+   "client_id": null,
+   "count": 1,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "min": [
+     280,
+     200
+    ],
+    "policy": "hug"
+   },
+   "frame": "E-2",
+   "group": "E-2",
+   "h": 200,
+   "id": "E-3",
+   "intent": "track launch tasks",
+   "order": [
+    "E-6"
+   ],
+   "part": "todo",
+   "role": null,
+   "settings": {
+    "align": "stretch",
+    "counter": true,
+    "gap": "s",
+    "layout": "column",
+    "padding": "s"
+   },
+   "style": {
+    "dash": "solid",
+    "fill": "#f0f1f4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Todo",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 280,
+   "x": 32,
+   "y": 177,
+   "z": 3
+  },
+  {
+   "alias": "work.doing",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "block": "section",
+   "client_id": null,
+   "count": 1,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "min": [
+     280,
+     200
+    ],
+    "policy": "hug"
+   },
+   "frame": "E-2",
+   "group": "E-2",
+   "h": 220,
+   "id": "E-4",
+   "intent": "track launch tasks",
+   "order": [
+    "E-8"
+   ],
+   "part": "doing",
+   "role": null,
+   "settings": {
+    "align": "stretch",
+    "counter": true,
+    "gap": "s",
+    "layout": "column",
+    "limit": 3,
+    "padding": "s"
+   },
+   "style": {
+    "dash": "solid",
+    "fill": "#fff7f0",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#f7cfaa",
+    "text": "#5c2a07",
+    "tone": "warning",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Doing",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 300,
+   "x": 332,
+   "y": 177,
+   "z": 4
+  },
+  {
+   "alias": "work.done",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "block": "section",
+   "client_id": null,
+   "count": 2,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "min": [
+     280,
+     200
+    ],
+    "policy": "hug"
+   },
+   "frame": "E-2",
+   "group": "E-2",
+   "h": 320,
+   "id": "E-5",
+   "intent": "track launch tasks",
+   "order": [
+    "E-9",
+    "E-7"
+   ],
+   "part": "done",
+   "role": null,
+   "settings": {
+    "align": "stretch",
+    "counter": true,
+    "gap": "s",
+    "layout": "column",
+    "padding": "s"
+   },
+   "style": {
+    "dash": "solid",
+    "fill": "#f1faf4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#b9e0c6",
+    "text": "#15452c",
+    "tone": "success",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Done",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 300,
+   "x": 652,
+   "y": 177,
+   "z": 5
+  },
+  {
+   "alias": "work.c1",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "clamp": {
+    "body": 3,
+    "title": 2
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Rotate API keys"
+    ],
+    "min": [
+     240,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-3",
+   "group": "E-2",
+   "h": 80,
+   "id": "E-6",
+   "intent": "track launch tasks",
+   "part": "c1",
+   "role": null,
+   "size": "m",
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Rotate API keys",
+   "type": "card",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 240,
+   "x": 52,
+   "y": 257,
+   "z": 6
+  },
+  {
+   "alias": "work.c2",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "badges": [
+    {
+     "text": "P0"
+    }
+   ],
+   "batch": "B-1",
+   "clamp": {
+    "body": 3,
+    "title": 2
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Landing page copy v3"
+    ],
+    "min": [
+     240,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-5",
+   "group": "E-2",
+   "h": 120,
+   "id": "E-7",
+   "intent": "track launch tasks",
+   "owner": "qa-drawer",
+   "owner_known": true,
+   "part": "c2",
+   "role": null,
+   "size": "m",
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Landing page copy v3",
+   "type": "card",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 260,
+   "x": 672,
+   "y": 357,
+   "z": 7
+  },
+  {
+   "alias": "work.c3",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "body": "Waiting on the key rotation",
+   "clamp": {
+    "body": 3,
+    "title": 2
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Gateway JWT check"
+    ],
+    "min": [
+     240,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-4",
+   "group": "E-2",
+   "h": 120,
+   "id": "E-8",
+   "intent": "track launch tasks",
+   "owner": "human",
+   "owner_known": true,
+   "part": "c3",
+   "role": null,
+   "size": "m",
+   "status": "blocked",
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Gateway JWT check",
+   "type": "card",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 260,
+   "x": 352,
+   "y": 257,
+   "z": 8
+  },
+  {
+   "alias": "work.c4",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "clamp": {
+    "body": 3,
+    "title": 2
+   },
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Persona research"
+    ],
+    "min": [
+     240,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-5",
+   "group": "E-2",
+   "h": 80,
+   "id": "E-9",
+   "intent": "track launch tasks",
+   "part": "c4",
+   "role": null,
+   "size": "m",
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Persona research",
+   "type": "card",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 260,
+   "x": 672,
+   "y": 257,
+   "z": 9
+  }
+ ],
+ "homes": {
+  "qa-drawer": [
+   0,
+   -1000,
+   800,
+   -400
+  ]
+ },
+ "legend": [],
+ "locks": [],
+ "team": "qa",
+ "updated_at": "2026-01-01T00:00:00.000Z",
+ "v": 1,
+ "version": 3
+}

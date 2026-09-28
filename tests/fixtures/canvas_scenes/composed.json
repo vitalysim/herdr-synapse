@@ -1,0 +1,14 @@
+{
+  "name": "composed",
+  "about": "A composed architecture board (worked example 4): a row section of two toned cards with icons and bodies, an orthogonal arrow between them, and a decision callout, under a level-1 heading. The WEB e2e runs zoom it to 0.3 and 0.1 (semantic zoom) here.",
+  "stresses": ["section hug with a row gap", "cards as arrow ends", "orthogonal route", "callout beside a section", "level of detail at three zooms"],
+  "gates": {"strict": true},
+  "ops": [
+    {"op": "heading", "id": "board", "text": "Auth redesign board", "level": 1, "at": [0, 0], "intent": "the board title"},
+    {"op": "section", "id": "arch", "intent": "auth redesign overview", "title": "Auth redesign", "tone": "info", "layout": "row", "gap": "m", "below": "board"},
+    {"op": "card", "in": "arch", "id": "gw", "intent": "gateway", "title": "API gateway", "icon": "network", "body": "Terminates TLS and forwards the JWT", "badges": ["P0"]},
+    {"op": "card", "in": "arch", "id": "auth", "intent": "auth service", "title": "Auth service", "icon": "shield-check", "tone": "accent", "body": "Issues and rotates tokens"},
+    {"op": "arrow", "from": "gw", "to": "auth", "label": "verify", "route": "orthogonal", "intent": "call path"},
+    {"op": "callout", "kind": "decision", "right_of": "arch", "intent": "open question", "title": "Open question", "body": "Keep sessions or go stateless?"}
+  ]
+}

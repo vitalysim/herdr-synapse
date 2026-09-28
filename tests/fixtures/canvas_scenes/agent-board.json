@@ -1,0 +1,387 @@
+{
+ "name": "agent-board",
+ "about": "QA phase 2 LLM-contract trial: the worked examples (a grouped flowchart, a mind map, a kanban with a place-in move, a composed section with orthogonal arrows and a callout, a table and a timeline, a sketch on a local grid) written fresh by an agent that read only the canvas guides: structure, relations and tones, never coordinates, on one board.",
+ "gates": {
+  "strict": true
+ },
+ "ops": [
+  {
+   "op": "graph",
+   "id": "incident",
+   "title": "Incident response",
+   "layout": "flow",
+   "direction": "right",
+   "intent": "show how a page becomes a fix",
+   "groups": [
+    {
+     "id": "oncall",
+     "title": "On-call",
+     "tone": "warning"
+    },
+    {
+     "id": "eng",
+     "title": "Engineering",
+     "tone": "info"
+    }
+   ],
+   "nodes": [
+    {
+     "id": "alert",
+     "text": "Pager alert fires",
+     "icon": "bell"
+    },
+    {
+     "id": "ack",
+     "text": "Acknowledge within 5 min",
+     "in": "oncall"
+    },
+    {
+     "id": "sev",
+     "text": "Customer impact?",
+     "kind": "diamond",
+     "in": "oncall"
+    },
+    {
+     "id": "war",
+     "text": "Open incident channel",
+     "in": "eng",
+     "icon": "message-square"
+    },
+    {
+     "id": "fix",
+     "text": "Ship the mitigation",
+     "in": "eng",
+     "tone": "success"
+    },
+    {
+     "id": "log",
+     "text": "Log it for the weekly review",
+     "tone": "neutral",
+     "detail": "Low severity: no status page"
+    },
+    {
+     "id": "pm",
+     "text": "Write the postmortem",
+     "kind": "note"
+    }
+   ],
+   "edges": [
+    "alert -> ack",
+    "ack -> sev",
+    "sev -> war: yes",
+    "sev -> log: no",
+    "war -> fix",
+    "fix -> pm",
+    "log --> pm: weekly"
+   ],
+   "same_rank": [
+    [
+     "war",
+     "log"
+    ]
+   ]
+  },
+  {
+   "op": "mindmap",
+   "id": "spring",
+   "title": "Spring campaign",
+   "right_of": "incident",
+   "gap": "l",
+   "intent": "brainstorm the spring campaign with marketing",
+   "tree": {
+    "Goals": [
+     "Grow the waitlist to 5k",
+     "Two press mentions"
+    ],
+    "Channels": {
+     "Newsletter": [
+      "Weekly tips",
+      "Founder letter"
+     ],
+     "Social": [
+      "LinkedIn carousel",
+      "Short videos"
+     ],
+     "Events": []
+    },
+    "Budget": [
+     "Ads under 2k a month",
+     "One freelance designer"
+    ],
+    "Open questions": [
+     "Do we sponsor the meetup?"
+    ]
+   },
+   "branch_tones": "auto",
+   "side": "both"
+  },
+  {
+   "op": "kanban",
+   "id": "hiring",
+   "title": "Hiring pipeline",
+   "below": "incident",
+   "gap": "l",
+   "intent": "track candidates for the ops lead role",
+   "columns": [
+    {
+     "id": "sourced",
+     "title": "Sourced",
+     "cards": [
+      "Ana P.",
+      "Bilal K.",
+      {
+       "title": "Chen W.",
+       "badges": [
+        "referral"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "screen",
+     "title": "Phone screen",
+     "tone": "info",
+     "limit": 2,
+     "cards": [
+      {
+       "title": "Dana M.",
+       "owner": "human",
+       "status": "doing",
+       "body": "Strong on vendor contracts"
+      }
+     ]
+    },
+    {
+     "id": "onsite",
+     "title": "Onsite",
+     "tone": "warning",
+     "cards": [
+      {
+       "title": "Eli R.",
+       "status": "blocked",
+       "body": "Waiting on references"
+      }
+     ]
+    },
+    {
+     "id": "offer",
+     "title": "Offer",
+     "tone": "success",
+     "cards": []
+    }
+   ]
+  },
+  {
+   "op": "place",
+   "id": "hiring.c4",
+   "in": "hiring.onsite",
+   "intent": "Dana passed the screen"
+  },
+  {
+   "op": "section",
+   "id": "pay",
+   "title": "Payments overview",
+   "tone": "info",
+   "layout": "row",
+   "gap": "l",
+   "right_of": "hiring",
+   "intent": "payments architecture for the review"
+  },
+  {
+   "op": "card",
+   "in": "pay",
+   "id": "web",
+   "title": "Web checkout",
+   "icon": "globe",
+   "body": "Collects card details with the hosted form",
+   "intent": "entry point"
+  },
+  {
+   "op": "card",
+   "in": "pay",
+   "id": "psp",
+   "title": "Payment provider",
+   "icon": "credit-card",
+   "tone": "accent",
+   "body": "- authorises\n- captures\n- refunds",
+   "badges": [
+    "vendor"
+   ],
+   "intent": "external provider"
+  },
+  {
+   "op": "card",
+   "in": "pay",
+   "id": "ledger",
+   "title": "Ledger",
+   "icon": "database",
+   "body": "Double-entry books, append only",
+   "status": "review",
+   "intent": "source of truth"
+  },
+  {
+   "op": "arrow",
+   "from": "web",
+   "to": "psp",
+   "label": "token",
+   "route": "orthogonal",
+   "intent": "card token"
+  },
+  {
+   "op": "arrow",
+   "from": "psp",
+   "to": "ledger",
+   "label": "webhook",
+   "route": "orthogonal",
+   "intent": "settlement events"
+  },
+  {
+   "op": "callout",
+   "kind": "warning",
+   "below": "pay",
+   "intent": "risk",
+   "title": "PCI scope",
+   "body": "Keep raw card numbers out of our servers"
+  },
+  {
+   "op": "table",
+   "id": "vendors",
+   "title": "Venue shortlist",
+   "below": "hiring",
+   "gap": "l",
+   "intent": "compare venues for the offsite",
+   "columns": [
+    "Venue",
+    {
+     "title": "City",
+     "key": "city"
+    },
+    {
+     "title": "Capacity",
+     "key": "cap",
+     "align": "end",
+     "width": "s"
+    },
+    {
+     "title": "Notes",
+     "key": "notes",
+     "width": "l"
+    }
+   ],
+   "rows": [
+    [
+     "Harbour Loft",
+     "Lisbon",
+     "80",
+     "Great light, no parking"
+    ],
+    {
+     "id": "mill",
+     "cells": [
+      "The Old Mill",
+      "Porto",
+      "120",
+      "Needs a caterer from their list, which is expensive and must be booked six weeks ahead"
+     ],
+     "tone": "warning"
+    },
+    [
+     "Casa Verde",
+     "Sintra",
+     "45",
+     "Too small for the whole team"
+    ]
+   ],
+   "max_lines": 2
+  },
+  {
+   "op": "timeline",
+   "id": "offsite",
+   "title": "Offsite plan",
+   "right_of": "vendors",
+   "gap": "l",
+   "intent": "the offsite dates",
+   "events": [
+    {
+     "at": "2026-11-02",
+     "title": "Venue booked"
+    },
+    {
+     "at": "2026-11-16",
+     "title": "Agenda draft",
+     "tone": "info"
+    },
+    {
+     "at": "2026-11-20",
+     "end": "2026-12-04",
+     "title": "Travel booking window"
+    },
+    {
+     "at": "2026-12-10",
+     "title": "Offsite",
+     "tone": "success",
+     "icon": "plane",
+     "milestone": true
+    }
+   ]
+  },
+  {
+   "op": "section",
+   "id": "mock",
+   "title": "Mobile onboarding sketch",
+   "layout": "free",
+   "grid": "6x8",
+   "below": "vendors",
+   "gap": "l",
+   "intent": "rough onboarding screen"
+  },
+  {
+   "op": "pen",
+   "in": "mock",
+   "points": [
+    "c0r0",
+    "c6r0",
+    "c6r8",
+    "c0r8"
+   ],
+   "closed": true,
+   "style": "straight",
+   "intent": "phone outline"
+  },
+  {
+   "op": "pen",
+   "in": "mock",
+   "points": [
+    "c0r1",
+    "c6r1"
+   ],
+   "style": "straight",
+   "intent": "status bar"
+  },
+  {
+   "op": "sticky",
+   "in": "mock",
+   "at": "c1r3",
+   "text": "Skip button or not?",
+   "size": "s",
+   "intent": "question"
+  },
+  {
+   "op": "shape",
+   "kind": "box",
+   "in": "mock",
+   "at": "c1r7",
+   "text": "Get started",
+   "variant": "solid",
+   "tone": "accent",
+   "w": 160,
+   "h": 40,
+   "intent": "primary action"
+  }
+ ],
+ "stresses": [
+  "relative placement only",
+  "all block kinds on one board",
+  "first-try readability"
+ ]
+}

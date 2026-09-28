@@ -114,6 +114,22 @@ class Tools(McpRig):
         self.assertIn('E-1 note "hello"', look["content"][0]["text"])
         self.assertEqual(C.cursor(self.team, "alpha-worker"), 1)
 
+    def test_blocks_through_the_tools(self):
+        # Phase 2: a block op, a patch, look --block and the batch's geometry and check, all through MCP.
+        result = self.tool("canvas_draw", {"ops": [{"op": "kanban", "id": "work", "at": "c0r0", "intent": "t",
+                                                    "columns": [{"title": "Todo", "cards": ["A"]}, {"title": "Done", "cards": []}]}]})
+        self.assertFalse(result["isError"], result)
+        content = result["structuredContent"]
+        self.assertEqual(content["applied"][0]["block"]["kind"], "kanban")
+        self.assertIn("geometry", content)
+        self.assertIn("check", content)
+        patched = self.tool("canvas_draw", {"ops": [{"op": "place", "id": "work.c1", "in": "work.done", "intent": "t"}]})
+        self.assertFalse(patched["isError"], patched)
+        look = self.tool("canvas_look", {"block": "work", "full": True})
+        self.assertFalse(look["isError"], look)
+        self.assertEqual(look["structuredContent"]["block"]["columns"][1]["cards"], ["A"])
+        self.assertIn("patch {id (a block)", C.op_table() if hasattr(C, "op_table") else __import__("herdr_team.canvas_mcp", fromlist=["x"]).op_table())
+
     def test_look_with_an_image_inlines_the_png(self):
         self.tool("canvas_draw", {"ops": [{"op": "shape", "text": "x", "at": "c0r0", "intent": "t"}]})
         with mock.patch.object(R, "find_resvg", return_value="/fake/resvg"), mock.patch.object(R, "RUN", fake_resvg):

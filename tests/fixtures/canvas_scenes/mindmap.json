@@ -1,0 +1,16 @@
+{
+  "name": "mindmap",
+  "about": "The phase 2 mind map (4.7.2): a root, three branches in their own tones split left and right by leaf count, second- and third-level topics, curved branch lines; a second map grows to the right only.",
+  "stresses": ["tidy tree", "side both", "branch tones", "curved routes"],
+  "gates": {"strict": true},
+  "ops": [
+    {"op": "mindmap", "id": "launch", "title": "Q4 launch", "at": [0, 0], "intent": "brainstorm the launch",
+     "tree": {"Audience": ["Platform devs", "Engineering managers"],
+              "Channels": {"Podcast tour": [], "Blog": ["SEO pillar post", "Guest posts"], "Conference talk": []},
+              "Risks": ["Docs not ready", "Pricing unclear"]},
+     "branch_tones": "auto", "side": "both"},
+    {"op": "mindmap", "id": "hiring", "title": "Hiring plan", "below": "launch", "gap": 80, "side": "right", "intent": "who we hire next",
+     "topics": [{"id": "eng", "text": "Engineering"}, {"id": "be", "text": "Backend (2)", "under": "eng"}, {"id": "fe", "text": "Frontend", "under": "eng"},
+                {"id": "gtm", "text": "Go to market", "tone": "accent"}, {"id": "dr", "text": "Developer relations", "under": "gtm"}]}
+  ]
+}

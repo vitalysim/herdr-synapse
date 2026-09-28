@@ -176,5 +176,28 @@ class Mcp(McpRig):
         self.assertTrue(result["structuredContent"]["problems"])
 
 
+class ArrowThroughFix(CanvasRig):
+    """Phase 2 (3.4): a bound arrow through a mark gets a ready fix, a route around it; a free arrow is moved by hand."""
+
+    def test_the_fix_reroutes_a_bound_arrow(self):
+        a = self.ok({"op": "shape", "text": "A", "at": [0, 0], "intent": "t"})["ids"][0]
+        b = self.ok({"op": "shape", "text": "B", "at": [800, 0], "intent": "t"})["ids"][0]
+        self.ok({"op": "shape", "text": "in the way", "at": [400, 0], "intent": "t"})
+        arrow = self.ok({"op": "arrow", "from": a, "to": b, "intent": "t"})["ids"][0]
+        free = self.ok({"op": "arrow", "points": [[300, 40], [700, 40]], "intent": "t"})["ids"][0]
+        problems = [p for p in C.check(self.layout, self.team, "alpha-worker")["problems"] if p["code"] == "arrow_through"]
+        bound = next(p for p in problems if p["ids"][0] == arrow)
+        self.assertEqual({k: bound["fix"][k] for k in ("op", "ids", "route")}, {"op": "restyle", "ids": [arrow], "route": "orthogonal"})
+        self.assertTrue(bound["fix"]["intent"].startswith("route around"))
+        self.assertIsNone(next(p for p in problems if p["ids"][0] == free)["fix"])
+        self.ok(bound["fix"])
+        self.assertEqual(self.el(arrow)["style"]["route"], "orthogonal")
+
+    def test_route_applies_to_arrows_only(self):
+        eid = self.ok({"op": "shape", "text": "A", "at": [0, 0], "intent": "t"})["ids"][0]
+        refused = self.refused({"op": "restyle", "id": eid, "route": "orthogonal", "intent": "t"})
+        self.assertIn("route applies to arrows", refused["message"])
+
+
 if __name__ == "__main__":
     unittest.main()

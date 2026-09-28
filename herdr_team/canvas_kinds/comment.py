@@ -9,6 +9,9 @@ from herdr_team import canvas_text
 from herdr_team.canvas_kinds import Kind, OpSpec
 from herdr_team.canvas_kinds._common import Element, bounds, cell_name, quote, r2, who
 
+#: Its place in the registration order (``canvas_kinds.DEFAULT_ORDER``).
+ORDER = 120
+
 #: The pin's radius and number size in screen pixels.
 PIN_PX = 10
 NUMBER_PX = 11

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ENGINE_KEY, engineOf, setEngine, withEngine } from "./engine.js";
+import { DEV_KEY, ENGINE_KEY, engineOf, engineToggleVisible, setEngine, withEngine } from "./engine.js";
 
 function storage(initial = {}) {
   const data = { ...initial };
@@ -32,5 +32,16 @@ describe("engine", () => {
   it("keeps the query in step and leaves the hash alone", () => {
     expect(withEngine("http://127.0.0.1:9/?engine=v2#team=a&tab=canvas", "v1")).toBe("http://127.0.0.1:9/#team=a&tab=canvas");
     expect(withEngine("http://127.0.0.1:9/#team=a", "v2")).toBe("http://127.0.0.1:9/?engine=v2#team=a");
+  });
+  it("shows the v2 toggle only to who asked for v2 or set the developer flag (carried item 16)", () => {
+    expect(engineToggleVisible({ search: "" }, storage())).toBe(false);
+    expect(engineToggleVisible({ search: "?engine=v1" }, storage())).toBe(false);
+    expect(engineToggleVisible(null, null)).toBe(false);
+    expect(engineToggleVisible({ search: "" }, throwing)).toBe(false);
+    expect(engineToggleVisible({ search: "?engine=v2" }, storage())).toBe(true);
+    expect(engineToggleVisible({ search: "" }, storage({ [ENGINE_KEY]: "v2" }))).toBe(true); // a way back
+    expect(engineToggleVisible({ search: "" }, storage({ [DEV_KEY]: "1" }))).toBe(true);
+    expect(engineToggleVisible({ search: "" }, storage({ [DEV_KEY]: "0" }))).toBe(false);
+    expect(engineToggleVisible({ search: "" }, storage(), { dev: true })).toBe(true);
   });
 });

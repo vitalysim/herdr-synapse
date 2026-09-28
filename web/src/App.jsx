@@ -14,7 +14,7 @@ import { applyTheme } from "./theme/tokens.js";
 import ActivityTab from "./views/ActivityTab.jsx";
 import DiagramsTab from "./views/DiagramsTab.jsx";
 import TeamTab from "./views/TeamTab.jsx";
-import { engineFromQuery, engineOf, setEngine, withEngine } from "./v2/interact/engine.js";
+import { engineFromQuery, engineOf, engineToggleVisible, setEngine, withEngine } from "./v2/interact/engine.js";
 
 const CanvasTab = lazy(() => import("./canvas/CanvasTab.jsx"));
 const Board = lazy(() => import("./v2/Board.jsx"));
@@ -108,6 +108,13 @@ function useEngine() {
   return [fallback ? "v1" : engine, choose, setFallback, fallback];
 }
 
+// Whether this page shows the engine toggle: decided once when the page opens, so turning back to
+// v1 from ?engine=v2 leaves the toggle there for the rest of the visit.
+function useEngineToggle() {
+  const [visible] = useState(() => engineToggleVisible(window.location, browserStorage(), { dev: !!import.meta.env?.DEV }));
+  return visible;
+}
+
 function Toasts({ toasts, dismiss }) {
   return (
     <div className="toasts" role="status">
@@ -134,6 +141,7 @@ export default function App() {
   const [toasts, setToasts] = useState([]);
   const [theme, setTheme] = useTheme();
   const [engine, chooseEngine, fallBack, fallbackReason] = useEngine();
+  const showEngineToggle = useEngineToggle();
   const toastId = useRef(0);
   const store = useMemo(() => createSceneStore(), []);
   const bus = useMemo(() => createBus(), []);
@@ -234,15 +242,17 @@ export default function App() {
         <span className={`status ${streamStatus}`} title={`stream: ${streamStatus}`}>
           {streamStatus}
         </span>
-        <button
-          type="button"
-          className={engine === "v2" ? "chip on engine-toggle" : "chip engine-toggle"}
-          title={engine === "v2" ? "Back to the classic canvas" : "Try the new canvas (v2 preview)"}
-          aria-pressed={engine === "v2"}
-          onClick={() => chooseEngine(engine === "v2" ? "v1" : "v2")}
-        >
-          v2 preview
-        </button>
+        {showEngineToggle ? (
+          <button
+            type="button"
+            className={engine === "v2" ? "chip on engine-toggle" : "chip engine-toggle"}
+            title={engine === "v2" ? "Back to the classic canvas" : "Try the new canvas (v2 preview)"}
+            aria-pressed={engine === "v2"}
+            onClick={() => chooseEngine(engine === "v2" ? "v1" : "v2")}
+          >
+            v2 preview
+          </button>
+        ) : null}
         <span className="muted small">v{session.server_version}</span>
         <button
           type="button"

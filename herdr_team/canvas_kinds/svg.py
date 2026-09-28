@@ -9,6 +9,9 @@ from herdr_team import canvas_render
 from herdr_team.canvas_kinds import Kind, OpSpec
 from herdr_team.canvas_kinds._common import MAX_SIZE, Element
 
+#: Its place in the registration order (``canvas_kinds.DEFAULT_ORDER``).
+ORDER = 70
+
 _ASSET = re.compile(r"^[0-9a-f]{32}\.(png|jpg|svg)\Z")
 
 

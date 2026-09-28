@@ -16,12 +16,13 @@
  *   pointerId: number, pointerType: "mouse"|"pen"|"touch",
  *   hit: string|null,
  *   handle: {id: string, handle: string}|null,
- *   connector: {id: string, side: string, point: Pt}|null
+ *   connector: {id: string, side: string, point: Pt}|null,
+ *   part: {part: string, hit: object, edit: object|null, lod?: Array}|null   the hit entry's part
  * }} SurfacePointer
  */
 /**
  * Surface props: dl, theme ("light"|"dark"), camera, onCamera(Camera), onViewport({w, h}),
- * selection (id[]), hover (id|null), preview ({move?: {ids, by}, boxes?: {id: [x,y,w,h]},
+ * selection (id[]), hover (id|null), hoverPart ({id, part}|null), preview ({move?: {ids, by}, boxes?: {id: [x,y,w,h]},
  * hide?: id[], ghost?: Primitive[]} | null), panMode, showChips, writable, vizOn, team,
  * urls ({asset(name), still(name), viz(id), artifact(rel)}), elementOf(id), onPointer(SurfacePointer),
  * onStill(id, version, pngBlob), onRendered({version, root}), children (screen-space HTML).
@@ -31,7 +32,7 @@ export { DL_SUPPORTED, SLOT_KINDS } from "./version.js";
 export { camera, MIN_SCALE, MAX_SCALE } from "./camera.js";
 export { isSupported, applyDelta, LAYERS } from "./delta.js";
 export { createIndex, entryOf, cull } from "./cull.js";
-export { hitTest, queryRect, handleAt, connectorAt, boxOf, handlePoints, connectorPoints } from "./hit.js";
+export { hitTest, queryRect, handleAt, connectorAt, boxOf, handlePoints, connectorPoints, partAt, partOf, partsOf } from "./hit.js";
 export { lodVisible, textLayout } from "./lod.js";
 export { Surface } from "./Surface.jsx";
 export { CANONICAL_FAMILIES, PAGE_FAMILIES } from "./svgAttrs.js";

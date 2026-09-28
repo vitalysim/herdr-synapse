@@ -18,7 +18,7 @@ export function editorRect(box, camera) {
   return { left: (box[0] - camera.x) * s, top: (box[1] - camera.y) * s, width: box[2] * s, height: box[3] * s };
 }
 
-export default function TextEditor({ spec, camera, color, onCommit, onCancel }) {
+export default function TextEditor({ spec, part = null, camera, color, onCommit, onCancel }) {
   const ref = useRef(null);
   const done = useRef(false);
   const composing = useRef(false);
@@ -87,6 +87,7 @@ export default function TextEditor({ spec, camera, color, onCommit, onCancel }) 
     <textarea
       ref={ref}
       className="v2-text-editor"
+      data-part={part || undefined}
       style={style}
       value={value}
       spellCheck={false}

@@ -1,0 +1,723 @@
+{
+ "authors": {
+  "qa-drawer": {
+   "agent": "claude",
+   "color": "#1971c2",
+   "index": 0,
+   "kind": "member"
+  }
+ },
+ "batches": {
+  "B-1": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "qa-drawer",
+   "first_seq": 1,
+   "last_seq": 13,
+   "undone": false
+  }
+ },
+ "claims": [],
+ "counters": {
+  "B": 1,
+  "C": 0,
+  "E": 13,
+  "G": 0,
+  "K": 0,
+  "X": 0
+ },
+ "elements": [
+  {
+   "alias": "title",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Checkout revamp"
+    ],
+    "min": [
+     1,
+     1
+    ],
+    "policy": "hug",
+    "size": 48,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 60,
+   "id": "E-1",
+   "intent": "the board title",
+   "level": 1,
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#1c2024",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Checkout revamp",
+   "type": "heading",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 430,
+   "x": 0,
+   "y": 0,
+   "z": 1
+  },
+  {
+   "alias": "now",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "block": "section",
+   "client_id": null,
+   "count": 2,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "min": [
+     320,
+     200
+    ],
+    "policy": "hug"
+   },
+   "frame": null,
+   "group": null,
+   "h": 320,
+   "id": "E-2",
+   "intent": "what is in flight",
+   "order": [
+    "E-3",
+    "E-4"
+   ],
+   "role": null,
+   "seq": {},
+   "settings": {
+    "align": "start",
+    "gap": "m",
+    "layout": "row",
+    "padding": "m"
+   },
+   "style": {
+    "dash": "solid",
+    "fill": "#f0f1f4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "In flight",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 4,
+   "w": 600,
+   "x": 0,
+   "y": 100,
+   "z": 2
+  },
+  {
+   "alias": "gw",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "badges": [
+    {
+     "text": "P0"
+    },
+    {
+     "text": "security",
+     "tone": "danger"
+    }
+   ],
+   "batch": "B-1",
+   "body": "Terminates TLS\n- forwards the JWT\n- rate limits per key",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "API gateway"
+    ],
+    "min": [
+     240,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-2",
+   "group": null,
+   "h": 180,
+   "icon": "network",
+   "id": "E-3",
+   "intent": "the gateway card",
+   "owner": "qa-drawer",
+   "owner_known": true,
+   "role": null,
+   "size": "m",
+   "status": "doing",
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "API gateway",
+   "type": "card",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 3,
+   "w": 240,
+   "x": 32,
+   "y": 192,
+   "z": 3
+  },
+  {
+   "alias": "pay",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "body": "Retries with backoff",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 4,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Payments"
+    ],
+    "min": [
+     240,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-2",
+   "group": null,
+   "h": 120,
+   "icon": "credit-card",
+   "id": "E-4",
+   "intent": "the payments card",
+   "role": null,
+   "size": "m",
+   "status": "review",
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "success",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Payments",
+   "type": "card",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 4,
+   "w": 240,
+   "x": 312,
+   "y": 192,
+   "z": 4
+  },
+  {
+   "alias": "loose1",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "body": "Boost exact matches",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 5,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Search tuning"
+    ],
+    "min": [
+     240,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 100,
+   "id": "E-5",
+   "intent": "a loose card",
+   "role": null,
+   "size": "m",
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Search tuning",
+   "type": "card",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 5,
+   "w": 240,
+   "x": 680,
+   "y": 100,
+   "z": 5
+  },
+  {
+   "alias": "loose2",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 6,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Cart cleanup"
+    ],
+    "min": [
+     240,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 80,
+   "id": "E-6",
+   "intent": "another loose card",
+   "role": null,
+   "size": "s",
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "Cart cleanup",
+   "type": "card",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 6,
+   "w": 240,
+   "x": 680,
+   "y": 240,
+   "z": 6
+  },
+  {
+   "alias": "q",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 7,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Do we keep",
+     "guest checkout?"
+    ],
+    "min": [
+     200,
+     200
+    ],
+    "policy": "shrink",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 200,
+   "id": "E-7",
+   "intent": "an open question",
+   "role": null,
+   "size": "m",
+   "style": {
+    "dash": "solid",
+    "fill": "#fff0a0",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Do we keep guest checkout?",
+   "type": "sticky",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 7,
+   "w": 200,
+   "x": 1000,
+   "y": 100,
+   "z": 7
+  },
+  {
+   "alias": "risk",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "body": "No deploys after 14:00",
+   "callout": "warning",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 8,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Freeze on Friday"
+    ],
+    "min": [
+     240,
+     64
+    ],
+    "policy": "hug",
+    "size": 16,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 80,
+   "id": "E-8",
+   "intent": "the freeze",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#fff0e3",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#b8520c",
+    "text": "#5c2a07",
+    "tone": "warning",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Freeze on Friday",
+   "type": "callout",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 8,
+   "w": 260,
+   "x": 0,
+   "y": 500,
+   "z": 8
+  },
+  {
+   "alias": "b1",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 9,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "P0"
+    ],
+    "min": [
+     1,
+     1
+    ],
+    "policy": "clamp",
+    "size": 14,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 24,
+   "id": "E-9",
+   "intent": "priority",
+   "role": null,
+   "size": "m",
+   "style": {
+    "dash": "solid",
+    "fill": "#fdecec",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": null,
+    "text": "#6b1519",
+    "tone": "danger",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "P0",
+   "type": "badge",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 9,
+   "w": 35,
+   "x": 340,
+   "y": 500,
+   "z": 9
+  },
+  {
+   "alias": "b2",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 10,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "shipped"
+    ],
+    "min": [
+     1,
+     1
+    ],
+    "policy": "clamp",
+    "size": 14,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 24,
+   "id": "E-10",
+   "intent": "status",
+   "role": null,
+   "size": "m",
+   "style": {
+    "dash": "solid",
+    "fill": "#1d7a47",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#1d7a47",
+    "text": "#ffffff",
+    "tone": "success",
+    "variant": "solid",
+    "width": 2
+   },
+   "text": "shipped",
+   "type": "badge",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 72,
+   "x": 395,
+   "y": 500,
+   "z": 10
+  },
+  {
+   "alias": "b3",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 11,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "beta"
+    ],
+    "min": [
+     1,
+     1
+    ],
+    "policy": "clamp",
+    "size": 14,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 24,
+   "icon": "flask-conical",
+   "id": "E-11",
+   "intent": "stage",
+   "role": null,
+   "size": "m",
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#7d68d8",
+    "text": "#2f2468",
+    "tone": "accent",
+    "variant": "outline",
+    "width": 2
+   },
+   "text": "beta",
+   "type": "badge",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 11,
+   "w": 65,
+   "x": 487,
+   "y": 500,
+   "z": 11
+  },
+  {
+   "alias": "db",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 12,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Orders DB"
+    ],
+    "min": [
+     1,
+     1
+    ],
+    "policy": "clamp",
+    "size": 12,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 69,
+   "icon": "database",
+   "id": "E-12",
+   "intent": "the database",
+   "role": null,
+   "size": "l",
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#1c2024",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Orders DB",
+   "type": "icon",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 12,
+   "w": 61,
+   "x": 340,
+   "y": 604,
+   "z": 12
+  },
+  {
+   "alias": "users",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 13,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Shoppers"
+    ],
+    "min": [
+     1,
+     1
+    ],
+    "policy": "clamp",
+    "size": 12,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 69,
+   "icon": "users",
+   "id": "E-13",
+   "intent": "the users",
+   "role": null,
+   "size": "l",
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#0b3a6e",
+    "text": "#0b3a6e",
+    "tone": "info",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Shoppers",
+   "type": "icon",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 13,
+   "w": 57,
+   "x": 481,
+   "y": 604,
+   "z": 13
+  }
+ ],
+ "homes": {
+  "qa-drawer": [
+   0,
+   -1000,
+   800,
+   -400
+  ]
+ },
+ "legend": [],
+ "locks": [],
+ "team": "qa",
+ "updated_at": "2026-01-01T00:00:00.000Z",
+ "v": 1,
+ "version": 13
+}

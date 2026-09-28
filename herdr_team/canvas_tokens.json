@@ -40,6 +40,7 @@
     "grid": 20,
     "scale": [0, 4, 8, 12, 16, 20, 24, 32, 40, 48, 64, 80, 96],
     "gap": {"s": 20, "m": 40, "l": 80},
+    "pad": {"s": 20, "m": 32, "l": 48},
     "snap": "a container grown to fit its text rounds its w and h up to the next multiple of grid"
   },
   "padding": {
@@ -113,8 +114,23 @@
       "phase0": {"size": 16, "at": [20, 8], "ink": "text"},
       "v2": {"role": "section_title", "at": [20, 16], "ink": "text"}
     },
-    "default_tone": "neutral"
+    "default_tone": "neutral",
+    "band": 60,
+    "title_at_y": 16,
+    "min": [320, 200],
+    "empty_hint": "Empty section"
   },
+  "layout": {"gap": 40, "rank_gap": 80, "group_pad": [20, 40, 20, 20], "tree_gap": 24, "tree_level_gap": 60, "clearance": 20,
+             "elbow_radius": 8, "port_spacing": 12},
+  "lod": {"titles": 0.35, "overview": 0.15, "title_min_px": 12, "skeleton_h": 8, "skeleton_lines": 3},
+  "card": {"widths": {"s": 240, "m": 320, "l": 440}, "min": [240, 80], "bar": 4, "icon": 20, "icon_indent": 28, "badge_gap": 8,
+           "row_gap": 8, "owner_r": 9, "kanban_clamp": {"title": 2, "body": 3}, "timeline_clamp": {"title": 2, "body": 2},
+           "bullet_indent": 16},
+  "table": {"widths": {"s": 120, "m": 200, "l": 320}, "min_w": 120, "max_w": 320, "row_min": 40, "band": 40, "max_lines": 2,
+            "size": {"s": 14, "m": 16}},
+  "kanban": {"column_min": [280, 200], "gap": "s", "limit_over": "danger"},
+  "timeline": {"card_w": 200, "min_w": 800, "gap": 20, "axis": 2, "span": 6, "level_gap": 24, "stem_gap": 16},
+  "icon": {"sizes": {"s": 24, "m": 32, "l": 48, "xl": 64}, "stroke": 2, "label_max": 160, "label_gap": 6},
   "sticky": {
     "fill": "sticky",
     "text": "text",

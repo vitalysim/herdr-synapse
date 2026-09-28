@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
 import { createIndex } from "./cull.js";
-import { boxOf, connectorAt, connectorPoints, handleAt, handlePoints, hitTest, queryRect } from "./hit.js";
+import { HANDLE_MIN_SIDE_PX, boxOf, connectorAt, connectorPoints, handleAt, handlePoints, hitTest, queryRect } from "./hit.js";
 
 const load = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
 const sample = load(path.resolve(import.meta.dirname, "__fixtures__/sample.json"));
@@ -118,6 +118,38 @@ describe("handles", () => {
   }
 });
 
+describe("handles on a shape small on screen (QA 1 V-1)", () => {
+  const index = createIndex(sample);
+  const e2 = index.byId.get("E-2"); // 160 x 80 at (120, 160)
+  test("a side too small on screen offers no handle that resizes across it; a corner needs both", () => {
+    expect(handlePoints(e2, 1).map((h) => h.handle)).toEqual(["nw", "n", "ne", "e", "se", "s", "sw", "w"]);
+    expect(handlePoints(e2, 0.2).map((h) => h.handle)).toEqual(["e", "w"]); // 32 x 16 px
+    expect(handlePoints(e2, 0.1)).toEqual([]); // 16 x 8 px
+    expect(handlePoints({ handles: "width", hit: { shape: "rect", box: [0, 0, 100, 20] } }, 0.1)).toEqual([]);
+    expect(handlePoints(index.byId.get("E-4"), 0.1)).toEqual([]); // 112 units between the ends: 11 px
+    expect(handlePoints(index.byId.get("E-4"), 0.5).map((h) => h.handle)).toEqual(["start", "end"]);
+  });
+  test("the rule is the connectors' rule: 3 reaches", () => {
+    expect(HANDLE_MIN_SIDE_PX).toBe(18);
+    const at = (h) => handlePoints({ handles: "box", hit: { shape: "rect", box: [0, 0, 100, h] } }, 1).map((p) => p.handle);
+    expect(at(17)).toEqual(["e", "w"]);
+    expect(at(18)).toEqual(["nw", "n", "ne", "e", "se", "s", "sw", "w"]);
+  });
+  for (const scale of [0.05, 0.1, 0.134, 0.2]) {
+    test(`the middle of the selected shape is no handle at scale ${scale}: a drag there moves it`, () => {
+      expect(handleAt(index, ["E-2"], [200, 200], scale)).toBeNull();
+      expect(handleAt(index, ["E-2"], [200, 200 + 3 / scale], scale)).toBeNull();
+      // (At 0.05 the arrow next to it is within the 4 px click slop of the middle, and is on top.)
+      if (scale >= 0.1) expect(hitTest(index, [200, 200], scale)).toBe("E-2");
+    });
+  }
+  test("every handle still offered is found where it is drawn", () => {
+    for (const scale of [0.1, 0.2, 0.5, 1]) {
+      for (const { handle, point } of handlePoints(e2, scale)) expect(handleAt(index, ["E-2"], point, scale)?.handle).toBe(handle);
+    }
+  });
+});
+
 describe("connectors", () => {
   const index = createIndex(sample);
   test("side midpoints of connectable entries only", () => {
@@ -166,7 +198,7 @@ describe("CORE goldens (house, arrow-labels)", () => {
         }
         // Handles of each box-handled entry are found where handlePoints puts them.
         for (const entry of index.entries.filter((e) => e.handles === "box" && !e.locked)) {
-          for (const { handle, point } of handlePoints(entry)) {
+          for (const { handle, point } of handlePoints(entry, scale)) {
             expect(handleAt(index, [entry.id], point, scale)?.handle).toBe(handle);
           }
         }

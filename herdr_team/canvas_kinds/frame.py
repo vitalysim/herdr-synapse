@@ -13,8 +13,11 @@ from typing import Any, Dict, List, Optional
 from herdr_team import canvas_display as D
 from herdr_team import canvas_geometry as G
 from herdr_team import canvas_text
-from herdr_team.canvas_kinds import Kind, OpSpec
+from herdr_team.canvas_kinds import Kind, OpSpec, Tool
 from herdr_team.canvas_kinds._common import Element, bounds, contains, style_of, who
+
+#: Its place in the registration order (``canvas_kinds.DEFAULT_ORDER``).
+ORDER = 40
 
 #: Room a frame keeps around its children, and its title band on top (``canvas.FRAME_PAD``, ``FRAME_TOP``).
 FRAME_PAD, FRAME_TOP = 20, G.FRAME_BAND
@@ -120,5 +123,6 @@ OPS = (
 
 KINDS = (
     Kind(name="frame", role="container", ops=("frame", "graph", "mermaid", "portrait"), page=True, cell=True, tone_group="frame", layer="zones",
-         emit=emit, hit=hit, text_edit=text_edit, doc="a titled area that owns its children"),
+         emit=emit, hit=hit, text_edit=text_edit, doc="a titled area that owns its children",
+         tool=Tool(key="f", title="Frame", glyph="\u2b1a", gesture="frame", order=80)),
 )

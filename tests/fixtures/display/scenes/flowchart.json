@@ -31,15 +31,29 @@
    "author": "qa-drawer",
    "author_kind": "member",
    "batch": "B-1",
+   "block": "graph",
    "client_id": null,
+   "count": 9,
    "created_at": "2026-01-01T00:00:00.000Z",
    "created_seq": 1,
+   "fit": {
+    "min": [
+     80,
+     80
+    ],
+    "policy": "hug"
+   },
    "frame": null,
    "group": null,
-   "h": 1840,
+   "h": 1860,
    "id": "E-1",
    "intent": "the checkout path",
    "role": null,
+   "seq": {},
+   "settings": {
+    "direction": "down",
+    "layout": "layered"
+   },
    "style": {
     "dash": "solid",
     "fill": "#f0f1f4",
@@ -57,7 +71,7 @@
    "type": "frame",
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 1,
-   "w": 580,
+   "w": 760,
    "x": 0,
    "y": 0,
    "z": 1
@@ -70,6 +84,7 @@
    "client_id": null,
    "created_at": "2026-01-01T00:00:00.000Z",
    "created_seq": 1,
+   "detail": null,
    "fit": {
     "estimated": false,
     "lines": [
@@ -87,8 +102,15 @@
    "frame": "E-1",
    "group": "E-1",
    "h": 140,
+   "icon": null,
    "id": "E-2",
    "intent": "the checkout path",
+   "item": {
+    "id": "start",
+    "kind": "ellipse",
+    "text": "Shopper presses Pay now on the cart page"
+   },
+   "part": "start",
    "role": null,
    "style": {
     "dash": "solid",
@@ -108,8 +130,8 @@
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 1,
    "w": 340,
-   "x": 120,
-   "y": 40,
+   "x": 254,
+   "y": 92,
    "z": 2
   },
   {
@@ -120,6 +142,7 @@
    "client_id": null,
    "created_at": "2026-01-01T00:00:00.000Z",
    "created_seq": 1,
+   "detail": null,
    "fit": {
     "estimated": false,
     "lines": [
@@ -138,8 +161,14 @@
    "frame": "E-1",
    "group": "E-1",
    "h": 100,
+   "icon": null,
    "id": "E-3",
    "intent": "the checkout path",
+   "item": {
+    "id": "auth",
+    "text": "Validate the session token and the CSRF cookie"
+   },
+   "part": "auth",
    "role": null,
    "style": {
     "dash": "solid",
@@ -159,8 +188,8 @@
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 1,
    "w": 240,
-   "x": 140,
-   "y": 280,
+   "x": 189,
+   "y": 312,
    "z": 3
   },
   {
@@ -171,6 +200,7 @@
    "client_id": null,
    "created_at": "2026-01-01T00:00:00.000Z",
    "created_seq": 1,
+   "detail": null,
    "fit": {
     "estimated": false,
     "lines": [
@@ -189,8 +219,15 @@
    "frame": "E-1",
    "group": "E-1",
    "h": 240,
+   "icon": null,
    "id": "E-4",
    "intent": "the checkout path",
+   "item": {
+    "id": "reach",
+    "kind": "diamond",
+    "text": "Is the payment provider reachable within 800 ms?"
+   },
+   "part": "reach",
    "role": null,
    "style": {
     "dash": "solid",
@@ -210,8 +247,8 @@
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 1,
    "w": 400,
-   "x": 60,
-   "y": 480,
+   "x": 109,
+   "y": 492,
    "z": 4
   },
   {
@@ -222,6 +259,7 @@
    "client_id": null,
    "created_at": "2026-01-01T00:00:00.000Z",
    "created_seq": 1,
+   "detail": null,
    "fit": {
     "estimated": false,
     "lines": [
@@ -240,8 +278,14 @@
    "frame": "E-1",
    "group": "E-1",
    "h": 100,
+   "icon": null,
    "id": "E-5",
    "intent": "the checkout path",
+   "item": {
+    "id": "charge",
+    "text": "Charge the saved card through the provider API"
+   },
+   "part": "charge",
    "role": null,
    "style": {
     "dash": "solid",
@@ -261,8 +305,8 @@
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 1,
    "w": 220,
-   "x": 120,
-   "y": 820,
+   "x": 119,
+   "y": 836,
    "z": 5
   },
   {
@@ -273,6 +317,7 @@
    "client_id": null,
    "created_at": "2026-01-01T00:00:00.000Z",
    "created_seq": 1,
+   "detail": null,
    "fit": {
     "estimated": false,
     "lines": [
@@ -290,8 +335,15 @@
    "frame": "E-1",
    "group": "E-1",
    "h": 160,
+   "icon": null,
    "id": "E-6",
    "intent": "the checkout path",
+   "item": {
+    "id": "ok",
+    "kind": "diamond",
+    "text": "Payment approved?"
+   },
+   "part": "ok",
    "role": null,
    "style": {
     "dash": "solid",
@@ -311,8 +363,8 @@
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 1,
    "w": 260,
-   "x": 100,
-   "y": 1020,
+   "x": 99,
+   "y": 1040,
    "z": 6
   },
   {
@@ -323,6 +375,7 @@
    "client_id": null,
    "created_at": "2026-01-01T00:00:00.000Z",
    "created_seq": 1,
+   "detail": null,
    "fit": {
     "estimated": false,
     "lines": [
@@ -342,8 +395,14 @@
    "frame": "E-1",
    "group": "E-1",
    "h": 140,
+   "icon": null,
    "id": "E-7",
    "intent": "the checkout path",
+   "item": {
+    "id": "order",
+    "text": "Write the order to the orders database (Postgres 17 primary)"
+   },
+   "part": "order",
    "role": null,
    "style": {
     "dash": "solid",
@@ -363,8 +422,8 @@
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 1,
    "w": 240,
-   "x": 20,
-   "y": 1280,
+   "x": 32,
+   "y": 1324,
    "z": 7
   },
   {
@@ -375,6 +434,7 @@
    "client_id": null,
    "created_at": "2026-01-01T00:00:00.000Z",
    "created_seq": 1,
+   "detail": null,
    "fit": {
     "estimated": false,
     "lines": [
@@ -393,8 +453,14 @@
    "frame": "E-1",
    "group": "E-1",
    "h": 100,
+   "icon": null,
    "id": "E-8",
    "intent": "the checkout path",
+   "item": {
+    "id": "retry",
+    "text": "Show a retry banner and keep the cart intact for 30 minutes"
+   },
+   "part": "retry",
    "role": null,
    "style": {
     "dash": "solid",
@@ -414,8 +480,8 @@
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 1,
    "w": 240,
-   "x": 320,
-   "y": 1300,
+   "x": 382,
+   "y": 1344,
    "z": 8
   },
   {
@@ -426,6 +492,7 @@
    "client_id": null,
    "created_at": "2026-01-01T00:00:00.000Z",
    "created_seq": 1,
+   "detail": null,
    "fit": {
     "estimated": false,
     "lines": [
@@ -445,8 +512,15 @@
    "frame": "E-1",
    "group": "E-1",
    "h": 140,
+   "icon": null,
    "id": "E-9",
    "intent": "the checkout path",
+   "item": {
+    "id": "mail",
+    "kind": "note",
+    "text": "Send the confirmation e-mail with the invoice PDF attached"
+   },
+   "part": "mail",
    "role": null,
    "style": {
     "dash": "solid",
@@ -466,8 +540,8 @@
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 1,
    "w": 240,
-   "x": 170,
-   "y": 1520,
+   "x": 32,
+   "y": 1544,
    "z": 9
   },
   {
@@ -478,6 +552,7 @@
    "client_id": null,
    "created_at": "2026-01-01T00:00:00.000Z",
    "created_seq": 1,
+   "detail": null,
    "fit": {
     "estimated": false,
     "lines": [
@@ -494,8 +569,15 @@
    "frame": "E-1",
    "group": "E-1",
    "h": 60,
+   "icon": null,
    "id": "E-10",
    "intent": "the checkout path",
+   "item": {
+    "id": "done",
+    "kind": "ellipse",
+    "text": "Done"
+   },
+   "part": "done",
    "role": null,
    "style": {
     "dash": "solid",
@@ -515,8 +597,8 @@
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 1,
    "w": 160,
-   "x": 210,
-   "y": 1760,
+   "x": 72,
+   "y": 1764,
    "z": 10
   },
   {
@@ -531,18 +613,32 @@
    "frame": "E-1",
    "from": "E-2",
    "group": "E-1",
-   "h": 92,
+   "h": 76,
    "head": "arrow",
    "id": "E-11",
    "intent": "the checkout path",
+   "item": {
+    "from": "start",
+    "id": "e:start->auth",
+    "to": "auth"
+   },
+   "part": "e:start->auth",
    "points": [
     [
-     279.93,
-     183.85
+     367.46,
+     232
     ],
     [
-     267.36,
-     276.04
+     367.46,
+     272
+    ],
+    [
+     309.13,
+     272
+    ],
+    [
+     309.13,
+     308
     ]
    ],
    "role": null,
@@ -552,6 +648,7 @@
     "font": "normal",
     "opacity": 100,
     "rough": 0,
+    "route": "orthogonal",
     "size": 20,
     "stroke": "#6b7079",
     "text": "#5b616b",
@@ -565,9 +662,9 @@
    "type": "arrow",
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 1,
-   "w": 13,
-   "x": 267,
-   "y": 184,
+   "w": 58,
+   "x": 309,
+   "y": 232,
    "z": 11
   },
   {
@@ -582,18 +679,24 @@
    "frame": "E-1",
    "from": "E-3",
    "group": "E-1",
-   "h": 92,
+   "h": 72,
    "head": "arrow",
    "id": "E-12",
    "intent": "the checkout path",
+   "item": {
+    "from": "auth",
+    "id": "e:auth->reach",
+    "to": "reach"
+   },
+   "part": "e:auth->reach",
    "points": [
     [
-     260,
-     384
+     309.13,
+     416
     ],
     [
-     260,
-     476
+     309.13,
+     488
     ]
    ],
    "role": null,
@@ -603,6 +706,7 @@
     "font": "normal",
     "opacity": 100,
     "rough": 0,
+    "route": "orthogonal",
     "size": 20,
     "stroke": "#6b7079",
     "text": "#5b616b",
@@ -617,8 +721,8 @@
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 1,
    "w": 1,
-   "x": 260,
-   "y": 384,
+   "x": 309,
+   "y": 416,
    "z": 12
   },
   {
@@ -639,22 +743,37 @@
    "frame": "E-1",
    "from": "E-4",
    "group": "E-1",
-   "h": 100,
+   "h": 136,
    "head": "arrow",
    "id": "E-13",
    "intent": "the checkout path",
+   "item": {
+    "from": "reach",
+    "id": "e:reach->charge",
+    "label": "yes",
+    "to": "charge"
+   },
    "label_at": [
-    241.53,
-    766.25
+    235.8,
+    784
    ],
+   "part": "e:reach->charge",
    "points": [
     [
-     247.06,
-     716.48
+     242.46,
+     696
     ],
     [
-     236,
-     816.02
+     242.46,
+     784
+    ],
+    [
+     229.13,
+     784
+    ],
+    [
+     229.13,
+     832
     ]
    ],
    "role": null,
@@ -664,6 +783,7 @@
     "font": "normal",
     "opacity": 100,
     "rough": 0,
+    "route": "orthogonal",
     "size": 20,
     "stroke": "#6b7079",
     "text": "#5b616b",
@@ -677,9 +797,9 @@
    "type": "arrow",
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 1,
-   "w": 11,
-   "x": 236,
-   "y": 716,
+   "w": 13,
+   "x": 229,
+   "y": 696,
    "z": 13
   },
   {
@@ -700,30 +820,45 @@
    "frame": "E-1",
    "from": "E-4",
    "group": "E-1",
-   "h": 601,
+   "h": 644,
    "head": "arrow",
    "id": "E-14",
    "intent": "the checkout path",
+   "item": {
+    "from": "reach",
+    "id": "e:reach->retry",
+    "label": "no, provider timed out",
+    "to": "retry"
+   },
    "label_at": [
-    409.98,
-    984.8
+    449.13,
+    1023
    ],
+   "part": "e:reach->retry",
    "points": [
     [
-     309.3,
-     695.08
+     375.8,
+     696
     ],
     [
-     400,
-     870
+     375.8,
+     784
     ],
     [
-     420,
-     1100
+     449.13,
+     784
     ],
     [
-     435.68,
-     1296.01
+     449.13,
+     1262
+    ],
+    [
+     501.59,
+     1262
+    ],
+    [
+     501.59,
+     1340
     ]
    ],
    "role": null,
@@ -733,6 +868,7 @@
     "font": "normal",
     "opacity": 100,
     "rough": 0,
+    "route": "orthogonal",
     "size": 20,
     "stroke": "#6b7079",
     "text": "#5b616b",
@@ -747,8 +883,8 @@
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 1,
    "w": 126,
-   "x": 309,
-   "y": 695,
+   "x": 376,
+   "y": 696,
    "z": 14
   },
   {
@@ -763,18 +899,24 @@
    "frame": "E-1",
    "from": "E-5",
    "group": "E-1",
-   "h": 92,
+   "h": 96,
    "head": "arrow",
    "id": "E-15",
    "intent": "the checkout path",
+   "item": {
+    "from": "charge",
+    "id": "e:charge->ok",
+    "to": "ok"
+   },
+   "part": "e:charge->ok",
    "points": [
     [
-     230,
-     924
+     229.13,
+     940
     ],
     [
-     230,
-     1016
+     229.13,
+     1036
     ]
    ],
    "role": null,
@@ -784,6 +926,7 @@
     "font": "normal",
     "opacity": 100,
     "rough": 0,
+    "route": "orthogonal",
     "size": 20,
     "stroke": "#6b7079",
     "text": "#5b616b",
@@ -798,8 +941,8 @@
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 1,
    "w": 1,
-   "x": 230,
-   "y": 924,
+   "x": 229,
+   "y": 940,
    "z": 15
   },
   {
@@ -820,22 +963,37 @@
    "frame": "E-1",
    "from": "E-6",
    "group": "E-1",
-   "h": 107,
+   "h": 143,
    "head": "arrow",
    "id": "E-16",
    "intent": "the checkout path",
+   "item": {
+    "from": "ok",
+    "id": "e:ok->order",
+    "label": "approved",
+    "to": "order"
+   },
    "label_at": [
-    185.81,
-    1222.75
+    168.9,
+    1262
    ],
+   "part": "e:ok->order",
    "points": [
     [
-     205.07,
-     1169.25
+     185.8,
+     1177.33
     ],
     [
-     166.55,
-     1276.24
+     185.8,
+     1262
+    ],
+    [
+     152,
+     1262
+    ],
+    [
+     152,
+     1320
     ]
    ],
    "role": null,
@@ -845,6 +1003,7 @@
     "font": "normal",
     "opacity": 100,
     "rough": 0,
+    "route": "orthogonal",
     "size": 20,
     "stroke": "#6b7079",
     "text": "#5b616b",
@@ -858,9 +1017,9 @@
    "type": "arrow",
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 1,
-   "w": 39,
-   "x": 167,
-   "y": 1169,
+   "w": 34,
+   "x": 152,
+   "y": 1177,
    "z": 16
   },
   {
@@ -882,22 +1041,37 @@
    "frame": "E-1",
    "from": "E-6",
    "group": "E-1",
-   "h": 141,
+   "h": 163,
    "head": "arrow",
    "id": "E-17",
    "intent": "the checkout path",
+   "item": {
+    "from": "ok",
+    "id": "e:ok->retry",
+    "label": "declined by the issuing bank",
+    "to": "retry"
+   },
    "label_at": [
-    336.15,
-    1226.37
+    357.02,
+    1262
    ],
+   "part": "e:ok->retry",
    "points": [
     [
-     276.87,
-     1155.8
+     272.46,
+     1177.33
     ],
     [
-     395.43,
-     1296.94
+     272.46,
+     1262
+    ],
+    [
+     441.59,
+     1262
+    ],
+    [
+     441.59,
+     1340
     ]
    ],
    "role": null,
@@ -907,6 +1081,7 @@
     "font": "normal",
     "opacity": 100,
     "rough": 0,
+    "route": "orthogonal",
     "size": 20,
     "stroke": "#6b7079",
     "text": "#5b616b",
@@ -920,9 +1095,9 @@
    "type": "arrow",
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 1,
-   "w": 119,
-   "x": 277,
-   "y": 1156,
+   "w": 169,
+   "x": 272,
+   "y": 1177,
    "z": 17
   },
   {
@@ -937,18 +1112,24 @@
    "frame": "E-1",
    "from": "E-7",
    "group": "E-1",
-   "h": 93,
+   "h": 72,
    "head": "arrow",
    "id": "E-18",
    "intent": "the checkout path",
+   "item": {
+    "from": "order",
+    "id": "e:order->mail",
+    "to": "mail"
+   },
+   "part": "e:order->mail",
    "points": [
     [
-     185.87,
-     1423.39
+     152,
+     1468
     ],
     [
-     244.13,
-     1516.61
+     152,
+     1540
     ]
    ],
    "role": null,
@@ -958,6 +1139,7 @@
     "font": "normal",
     "opacity": 100,
     "rough": 0,
+    "route": "orthogonal",
     "size": 20,
     "stroke": "#6b7079",
     "text": "#5b616b",
@@ -971,9 +1153,9 @@
    "type": "arrow",
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 1,
-   "w": 58,
-   "x": 186,
-   "y": 1423,
+   "w": 1,
+   "x": 152,
+   "y": 1468,
    "z": 18
   },
   {
@@ -988,18 +1170,24 @@
    "frame": "E-1",
    "from": "E-9",
    "group": "E-1",
-   "h": 92,
+   "h": 72,
    "head": "arrow",
    "id": "E-19",
    "intent": "the checkout path",
+   "item": {
+    "from": "mail",
+    "id": "e:mail->done",
+    "to": "done"
+   },
+   "part": "e:mail->done",
    "points": [
     [
-     290,
-     1664
+     152,
+     1688
     ],
     [
-     290,
-     1756
+     152,
+     1760
     ]
    ],
    "role": null,
@@ -1009,6 +1197,7 @@
     "font": "normal",
     "opacity": 100,
     "rough": 0,
+    "route": "orthogonal",
     "size": 20,
     "stroke": "#6b7079",
     "text": "#5b616b",
@@ -1023,8 +1212,8 @@
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 1,
    "w": 1,
-   "x": 290,
-   "y": 1664,
+   "x": 152,
+   "y": 1688,
    "z": 19
   },
   {
@@ -1045,38 +1234,46 @@
    "frame": "E-1",
    "from": "E-8",
    "group": "E-1",
-   "h": 1115,
+   "h": 1108,
    "head": "arrow",
    "id": "E-20",
    "intent": "the checkout path",
+   "item": {
+    "from": "retry",
+    "id": "e:retry->start",
+    "label": "shopper tries again",
+    "style": "dashed",
+    "to": "start"
+   },
    "label_at": [
-    493.57,
-    718.94
+    626.67,
+    767
    ],
+   "part": "e:retry->start",
    "points": [
     [
-     448.63,
-     1296.05
+     561.59,
+     1340
     ],
     [
-     480,
-     1100
+     561.59,
+     1262
     ],
     [
-     460,
-     870
+     626.67,
+     1262
     ],
     [
-     520,
-     600
+     626.67,
+     272
     ],
     [
-     440,
-     330
+     480.8,
+     272
     ],
     [
-     338.2,
-     180.7
+     480.8,
+     232
     ]
    ],
    "role": null,
@@ -1086,6 +1283,7 @@
     "font": "normal",
     "opacity": 100,
     "rough": 0,
+    "route": "orthogonal",
     "size": 20,
     "stroke": "#6b7079",
     "text": "#5b616b",
@@ -1099,9 +1297,9 @@
    "type": "arrow",
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 1,
-   "w": 182,
-   "x": 338,
-   "y": 181,
+   "w": 146,
+   "x": 481,
+   "y": 232,
    "z": 20
   },
   {
@@ -1109,15 +1307,29 @@
    "author": "qa-drawer",
    "author_kind": "member",
    "batch": "B-1",
+   "block": "graph",
    "client_id": null,
+   "count": 6,
    "created_at": "2026-01-01T00:00:00.000Z",
    "created_seq": 2,
+   "fit": {
+    "min": [
+     80,
+     80
+    ],
+    "policy": "hug"
+   },
    "frame": null,
    "group": null,
-   "h": 320,
+   "h": 420,
    "id": "E-21",
    "intent": "the refund path as Mermaid",
    "role": null,
+   "seq": {},
+   "settings": {
+    "direction": "right",
+    "gap": 80
+   },
    "style": {
     "dash": "solid",
     "fill": "#f0f1f4",
@@ -1135,9 +1347,9 @@
    "type": "frame",
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 2,
-   "w": 2120,
+   "w": 2220,
    "x": 0,
-   "y": 1920,
+   "y": 1940,
    "z": 21
   },
   {
@@ -1148,11 +1360,23 @@
    "client_id": null,
    "created_at": "2026-01-01T00:00:00.000Z",
    "created_seq": 2,
+   "fit": {
+    "min": [
+     40,
+     40
+    ],
+    "policy": "hug"
+   },
    "frame": "E-21",
    "group": "E-21",
    "h": 160,
    "id": "E-22",
    "intent": "the refund path as Mermaid",
+   "item": {
+    "id": "ledger",
+    "title": "Ledger and notifications"
+   },
+   "part": "ledger",
    "role": null,
    "style": {
     "dash": "solid",
@@ -1171,9 +1395,9 @@
    "type": "frame",
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 2,
-   "w": 620,
-   "x": 1240,
-   "y": 2000,
+   "w": 600,
+   "x": 1296,
+   "y": 2082,
    "z": 22
   },
   {
@@ -1184,6 +1408,7 @@
    "client_id": null,
    "created_at": "2026-01-01T00:00:00.000Z",
    "created_seq": 2,
+   "detail": null,
    "fit": {
     "estimated": false,
     "lines": [
@@ -1202,8 +1427,15 @@
    "frame": "E-21",
    "group": "E-21",
    "h": 140,
+   "icon": null,
    "id": "E-23",
    "intent": "the refund path as Mermaid",
+   "item": {
+    "id": "req",
+    "kind": "ellipse",
+    "text": "Customer asks for a refund through the support widget"
+   },
+   "part": "req",
    "role": null,
    "style": {
     "dash": "solid",
@@ -1223,8 +1455,8 @@
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 2,
    "w": 380,
-   "x": 20,
-   "y": 2020,
+   "x": 32,
+   "y": 2102,
    "z": 23
   },
   {
@@ -1235,6 +1467,7 @@
    "client_id": null,
    "created_at": "2026-01-01T00:00:00.000Z",
    "created_seq": 2,
+   "detail": null,
    "fit": {
     "estimated": false,
     "lines": [
@@ -1253,8 +1486,15 @@
    "frame": "E-21",
    "group": "E-21",
    "h": 200,
+   "icon": null,
    "id": "E-24",
    "intent": "the refund path as Mermaid",
+   "item": {
+    "id": "policy",
+    "kind": "diamond",
+    "text": "Is the order younger than thirty days?"
+   },
+   "part": "policy",
    "role": null,
    "style": {
     "dash": "solid",
@@ -1274,8 +1514,8 @@
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 2,
    "w": 320,
-   "x": 500,
-   "y": 1990,
+   "x": 492,
+   "y": 2072,
    "z": 24
   },
   {
@@ -1286,6 +1526,7 @@
    "client_id": null,
    "created_at": "2026-01-01T00:00:00.000Z",
    "created_seq": 2,
+   "detail": null,
    "fit": {
     "estimated": false,
     "lines": [
@@ -1304,8 +1545,14 @@
    "frame": "E-21",
    "group": "E-21",
    "h": 100,
+   "icon": null,
    "id": "E-25",
    "intent": "the refund path as Mermaid",
+   "item": {
+    "id": "auto",
+    "text": "Refund automatically to the original payment method"
+   },
+   "part": "auto",
    "role": null,
    "style": {
     "dash": "solid",
@@ -1325,8 +1572,8 @@
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 2,
    "w": 240,
-   "x": 920,
-   "y": 1960,
+   "x": 936,
+   "y": 2032,
    "z": 25
   },
   {
@@ -1337,6 +1584,7 @@
    "client_id": null,
    "created_at": "2026-01-01T00:00:00.000Z",
    "created_seq": 2,
+   "detail": null,
    "fit": {
     "estimated": false,
     "lines": [
@@ -1355,8 +1603,14 @@
    "frame": "E-21",
    "group": "E-21",
    "h": 100,
+   "icon": null,
    "id": "E-26",
    "intent": "the refund path as Mermaid",
+   "item": {
+    "id": "human",
+    "text": "Escalate to a human agent in the Tier-2 queue"
+   },
+   "part": "human",
    "role": null,
    "style": {
     "dash": "solid",
@@ -1376,8 +1630,8 @@
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 2,
    "w": 240,
-   "x": 920,
-   "y": 2120,
+   "x": 936,
+   "y": 2212,
    "z": 26
   },
   {
@@ -1388,6 +1642,7 @@
    "client_id": null,
    "created_at": "2026-01-01T00:00:00.000Z",
    "created_seq": 2,
+   "detail": null,
    "fit": {
     "estimated": false,
     "lines": [
@@ -1406,8 +1661,15 @@
    "frame": "E-22",
    "group": "E-21",
    "h": 100,
+   "icon": null,
    "id": "E-27",
    "intent": "the refund path as Mermaid",
+   "item": {
+    "id": "book",
+    "in": "ledger",
+    "text": "Book a negative ledger entry with the reason code"
+   },
+   "part": "book",
    "role": null,
    "style": {
     "dash": "solid",
@@ -1427,8 +1689,8 @@
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 2,
    "w": 240,
-   "x": 1260,
-   "y": 2040,
+   "x": 1316,
+   "y": 2122,
    "z": 27
   },
   {
@@ -1439,6 +1701,7 @@
    "client_id": null,
    "created_at": "2026-01-01T00:00:00.000Z",
    "created_seq": 2,
+   "detail": null,
    "fit": {
     "estimated": false,
     "lines": [
@@ -1457,8 +1720,15 @@
    "frame": "E-22",
    "group": "E-21",
    "h": 100,
+   "icon": null,
    "id": "E-28",
    "intent": "the refund path as Mermaid",
+   "item": {
+    "id": "notify",
+    "in": "ledger",
+    "text": "Notify the customer and the accounting mailbox"
+   },
+   "part": "notify",
    "role": null,
    "style": {
     "dash": "solid",
@@ -1478,8 +1748,8 @@
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 2,
    "w": 240,
-   "x": 1600,
-   "y": 2040,
+   "x": 1636,
+   "y": 2122,
    "z": 28
   },
   {
@@ -1490,6 +1760,7 @@
    "client_id": null,
    "created_at": "2026-01-01T00:00:00.000Z",
    "created_seq": 2,
+   "detail": null,
    "fit": {
     "estimated": false,
     "lines": [
@@ -1506,8 +1777,15 @@
    "frame": "E-21",
    "group": "E-21",
    "h": 60,
+   "icon": null,
    "id": "E-29",
    "intent": "the refund path as Mermaid",
+   "item": {
+    "id": "closed",
+    "kind": "ellipse",
+    "text": "Closed"
+   },
+   "part": "closed",
    "role": null,
    "style": {
     "dash": "solid",
@@ -1527,8 +1805,8 @@
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 2,
    "w": 160,
-   "x": 1940,
-   "y": 2060,
+   "x": 2016,
+   "y": 2142,
    "z": 29
   },
   {
@@ -1547,14 +1825,20 @@
    "head": "arrow",
    "id": "E-30",
    "intent": "the refund path as Mermaid",
+   "item": {
+    "from": "req",
+    "id": "e:req->policy",
+    "to": "policy"
+   },
+   "part": "e:req->policy",
    "points": [
     [
-     404,
-     2090
+     416,
+     2172
     ],
     [
-     496,
-     2090
+     488,
+     2172
     ]
    ],
    "role": null,
@@ -1564,6 +1848,7 @@
     "font": "normal",
     "opacity": 100,
     "rough": 0,
+    "route": "orthogonal",
     "size": 20,
     "stroke": "#6b7079",
     "text": "#5b616b",
@@ -1577,9 +1862,9 @@
    "type": "arrow",
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 2,
-   "w": 92,
-   "x": 404,
-   "y": 2090,
+   "w": 72,
+   "x": 416,
+   "y": 2172,
    "z": 30
   },
   {
@@ -1600,22 +1885,37 @@
    "frame": "E-21",
    "from": "E-24",
    "group": "E-21",
-   "h": 28,
+   "h": 57,
    "head": "arrow",
    "id": "E-31",
    "intent": "the refund path as Mermaid",
+   "item": {
+    "from": "policy",
+    "id": "e:policy->auto",
+    "label": "yes",
+    "to": "auto"
+   },
    "label_at": [
-    849.85,
-    2050.03
+    874.02,
+    2110.34
    ],
+   "part": "e:policy->auto",
    "points": [
     [
-     783.6,
-     2063.98
+     762.67,
+     2138.67
     ],
     [
-     916.09,
-     2036.09
+     874.02,
+     2138.67
+    ],
+    [
+     874.02,
+     2082
+    ],
+    [
+     932.04,
+     2082
     ]
    ],
    "role": null,
@@ -1625,6 +1925,7 @@
     "font": "normal",
     "opacity": 100,
     "rough": 0,
+    "route": "orthogonal",
     "size": 20,
     "stroke": "#6b7079",
     "text": "#5b616b",
@@ -1638,9 +1939,9 @@
    "type": "arrow",
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 2,
-   "w": 132,
-   "x": 784,
-   "y": 2036,
+   "w": 169,
+   "x": 763,
+   "y": 2082,
    "z": 31
   },
   {
@@ -1661,22 +1962,37 @@
    "frame": "E-21",
    "from": "E-24",
    "group": "E-21",
-   "h": 28,
+   "h": 57,
    "head": "arrow",
    "id": "E-32",
    "intent": "the refund path as Mermaid",
+   "item": {
+    "from": "policy",
+    "id": "e:policy->human",
+    "label": "no",
+    "to": "human"
+   },
    "label_at": [
-    849.85,
-    2129.97
+    874.02,
+    2233.66
    ],
+   "part": "e:policy->human",
    "points": [
     [
-     783.6,
-     2116.02
+     762.67,
+     2205.33
     ],
     [
-     916.09,
-     2143.91
+     874.02,
+     2205.33
+    ],
+    [
+     874.02,
+     2262
+    ],
+    [
+     932.04,
+     2262
     ]
    ],
    "role": null,
@@ -1686,6 +2002,7 @@
     "font": "normal",
     "opacity": 100,
     "rough": 0,
+    "route": "orthogonal",
     "size": 20,
     "stroke": "#6b7079",
     "text": "#5b616b",
@@ -1699,9 +2016,9 @@
    "type": "arrow",
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 2,
-   "w": 132,
-   "x": 784,
-   "y": 2116,
+   "w": 169,
+   "x": 763,
+   "y": 2205,
    "z": 32
   },
   {
@@ -1716,18 +2033,32 @@
    "frame": "E-21",
    "from": "E-25",
    "group": "E-21",
-   "h": 22,
+   "h": 73,
    "head": "arrow",
    "id": "E-33",
    "intent": "the refund path as Mermaid",
+   "item": {
+    "from": "auto",
+    "id": "e:auto->book",
+    "to": "book"
+   },
+   "part": "e:auto->book",
    "points": [
     [
-     1163.89,
-     2039.15
+     1180.04,
+     2082
     ],
     [
-     1256.11,
-     2060.85
+     1216.04,
+     2082
+    ],
+    [
+     1216.04,
+     2155.33
+    ],
+    [
+     1312.04,
+     2155.33
     ]
    ],
    "role": null,
@@ -1737,6 +2068,7 @@
     "font": "normal",
     "opacity": 100,
     "rough": 0,
+    "route": "orthogonal",
     "size": 20,
     "stroke": "#6b7079",
     "text": "#5b616b",
@@ -1750,9 +2082,9 @@
    "type": "arrow",
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 2,
-   "w": 92,
-   "x": 1164,
-   "y": 2039,
+   "w": 132,
+   "x": 1180,
+   "y": 2082,
    "z": 33
   },
   {
@@ -1767,18 +2099,32 @@
    "frame": "E-21",
    "from": "E-26",
    "group": "E-21",
-   "h": 22,
+   "h": 73,
    "head": "arrow",
    "id": "E-34",
    "intent": "the refund path as Mermaid",
+   "item": {
+    "from": "human",
+    "id": "e:human->book",
+    "to": "book"
+   },
+   "part": "e:human->book",
    "points": [
     [
-     1163.89,
-     2140.85
+     1180.04,
+     2262
     ],
     [
-     1256.11,
-     2119.15
+     1216.04,
+     2262
+    ],
+    [
+     1216.04,
+     2188.67
+    ],
+    [
+     1312.04,
+     2188.67
     ]
    ],
    "role": null,
@@ -1788,6 +2134,7 @@
     "font": "normal",
     "opacity": 100,
     "rough": 0,
+    "route": "orthogonal",
     "size": 20,
     "stroke": "#6b7079",
     "text": "#5b616b",
@@ -1801,9 +2148,9 @@
    "type": "arrow",
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 2,
-   "w": 92,
-   "x": 1164,
-   "y": 2119,
+   "w": 132,
+   "x": 1180,
+   "y": 2189,
    "z": 34
   },
   {
@@ -1822,14 +2169,20 @@
    "head": "arrow",
    "id": "E-35",
    "intent": "the refund path as Mermaid",
+   "item": {
+    "from": "book",
+    "id": "e:book->notify",
+    "to": "notify"
+   },
+   "part": "e:book->notify",
    "points": [
     [
-     1504,
-     2090
+     1560.04,
+     2172
     ],
     [
-     1596,
-     2090
+     1632.04,
+     2172
     ]
    ],
    "role": null,
@@ -1839,6 +2192,7 @@
     "font": "normal",
     "opacity": 100,
     "rough": 0,
+    "route": "orthogonal",
     "size": 20,
     "stroke": "#6b7079",
     "text": "#5b616b",
@@ -1852,9 +2206,9 @@
    "type": "arrow",
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 2,
-   "w": 92,
-   "x": 1504,
-   "y": 2090,
+   "w": 72,
+   "x": 1560,
+   "y": 2172,
    "z": 35
   },
   {
@@ -1873,14 +2227,20 @@
    "head": "arrow",
    "id": "E-36",
    "intent": "the refund path as Mermaid",
+   "item": {
+    "from": "notify",
+    "id": "e:notify->closed",
+    "to": "closed"
+   },
+   "part": "e:notify->closed",
    "points": [
     [
-     1844,
-     2090
+     1880.04,
+     2172
     ],
     [
-     1936,
-     2090
+     2012.04,
+     2172
     ]
    ],
    "role": null,
@@ -1890,6 +2250,7 @@
     "font": "normal",
     "opacity": 100,
     "rough": 0,
+    "route": "orthogonal",
     "size": 20,
     "stroke": "#6b7079",
     "text": "#5b616b",
@@ -1903,9 +2264,9 @@
    "type": "arrow",
    "updated_at": "2026-01-01T00:00:00.000Z",
    "updated_seq": 2,
-   "w": 92,
-   "x": 1844,
-   "y": 2090,
+   "w": 132,
+   "x": 1880,
+   "y": 2172,
    "z": 36
   }
  ],

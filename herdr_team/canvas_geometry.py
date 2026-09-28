@@ -481,6 +481,29 @@ def curve_pieces(points: List[Point]) -> List[Tuple[Point, Point, Point]]:
 _curve_pieces = curve_pieces
 
 
+def rounded_path(points: Sequence[Sequence[float]], r: float) -> List[Tuple[str, List[float]]]:
+    """An orthogonal route as path pieces with rounded elbows (canvas v2 phase 2, 3.3): ``M``, then per bend an ``L``
+    to where the curve starts and a ``Q`` through the corner, then an ``L`` to the end. A corner's radius is ``r`` or
+    half of either neighbouring piece, whichever is smaller, so short jogs stay square."""
+    pts = [(float(p[0]), float(p[1])) for p in points]
+    if len(pts) < 2:
+        return [("M", [pts[0][0], pts[0][1]])] if pts else []
+    out: List[Tuple[str, List[float]]] = [("M", [pts[0][0], pts[0][1]])]
+    for index in range(1, len(pts) - 1):
+        (ax, ay), (bx, by), (cx, cy) = pts[index - 1], pts[index], pts[index + 1]
+        before, after = math.hypot(bx - ax, by - ay), math.hypot(cx - bx, cy - by)
+        radius = min(float(r), before / 2.0, after / 2.0)
+        if radius <= 0 or before == 0 or after == 0:
+            out.append(("L", [bx, by]))
+            continue
+        sx, sy = bx - (bx - ax) / before * radius, by - (by - ay) / before * radius
+        ex, ey = bx + (cx - bx) / after * radius, by + (cy - by) / after * radius
+        out.append(("L", [sx, sy]))
+        out.append(("Q", [bx, by, ex, ey]))
+    out.append(("L", [pts[-1][0], pts[-1][1]]))
+    return out
+
+
 def arrow_route(el: Dict[str, Any], per_piece: int = 12) -> List[Point]:
     """The line an arrow is drawn along, as a polyline: its points, or its curve sampled (what a label sits on)."""
     points = _points(el.get("points"))

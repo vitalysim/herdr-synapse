@@ -12,7 +12,8 @@ above version 1: ``upgrade`` from every older version gives an element its
 readback and measure accept. Since canvas v2 phase 1, for every kind: its
 display-list entry validates (random and malformed elements alike), its
 ``hit``, ``handles`` and ``edit`` are well formed, and a ``translate`` or
-``resize`` leaves an element that still validates.
+``resize`` leaves an element that still validates. A kind with a ``tool`` has a
+button the page can use (QA phase 1, V-2).
 """
 from __future__ import annotations
 
@@ -46,10 +47,17 @@ def random_text(rng: random.Random) -> str:
     return " ".join(rng.choice(WORDS) for _ in range(rng.randint(1, 12)))
 
 
+def typed(kind: R.Kind) -> Dict[str, Any]:
+    """An element's type fields: its name, or for a kind stored as another (a section) that type and its ``block``."""
+    return {"type": kind.stored_as, "block": kind.name} if kind.stored_as else {"type": kind.name}
+
+
 def element(kind: R.Kind, rng: random.Random) -> Dict[str, Any]:
-    return {"id": "E-1", "type": kind.name, "x": 0, "y": 0, "w": 160, "h": 80, "text": random_text(rng),
-            "style": {"size": rng.choice((16, 20, 28, 36)), "font": rng.choice(("normal", "normal", "code", "hand"))},
-            "wrap": rng.random() < 0.3}
+    return dict({"id": "E-1", "x": 0, "y": 0, "w": 160, "h": 80, "text": random_text(rng),
+                 "style": {"size": rng.choice((16, 20, 28, 36)), "font": rng.choice(("normal", "normal", "code", "hand"))},
+                 "wrap": rng.random() < 0.3, "body": random_text(rng), "detail": random_text(rng), "icon": rng.choice((None, "database", "nope")),
+                 "badges": [{"text": random_text(rng)[:30] or "x"}], "owner": rng.choice((None, "alpha-worker")), "status": rng.choice((None, "done"))},
+                **typed(kind))
 
 
 def check_kind(case: Any, kind: R.Kind) -> None:
@@ -59,8 +67,20 @@ def check_kind(case: Any, kind: R.Kind) -> None:
     case.assertGreaterEqual(kind.version, 1)
     if kind.fit is not None:
         case.assertIn(kind.fit, X.FIT_POLICIES, "{}'s default fit policy is registered".format(kind.name))
+    if kind.tool is not None:
+        # Its tool-bar button: a gesture the page has, a free key, and the shape op only for a shape subkind.
+        case.assertIn(kind.tool.gesture, R.GESTURES, kind.name)
+        case.assertNotIn(kind.tool.key, R.RESERVED_TOOL_KEYS, kind.name)
+        case.assertEqual([k.name for k in R.tools() if k.tool is not None and k.tool.key == kind.tool.key], [kind.name])
+        case.assertTrue(kind.tool.gesture != "shape" or kind.subkind_of == "shape", kind.name)
+        case.assertIn(kind.name, [t["id"] for t in T.tools()], "{}'s tool is in the page's manifest".format(kind.name))
+    case.assertIs(R.kind_of(typed(kind)), kind, "{} is found from its stored element".format(kind.name))
+    if kind.stored_as is not None:
+        case.assertNotIn(kind.name, R.element_types())
+    if kind.block is not None:
+        check_block(case, kind)
     for bad in MALFORMED:
-        el = dict(bad, type=kind.name)
+        el = dict(bad, **typed(kind))
         if kind.readback is not None:
             case.assertIsInstance(kind.readback(el, True), str)
             case.assertIsInstance(kind.readback(el, False), str)
@@ -109,6 +129,19 @@ class _ResizeCtx:
 
 def _valid_entry(case, kind, el, context):
     entry = D.entry(el, D.environment({}))
+    case.assertEqual(entry["kind"], kind.name, context)
+    for part in entry.get("parts") or []:
+        # Inline parts are well formed (6.2), and their text only ever uses tokens the lod bands name.
+        case.assertTrue(part["part"], context)
+        if part.get("lod") is not None:
+            case.assertIn(tuple(part["lod"]), {tuple(D.LOD_BODY), tuple(D.LOD_LABEL), tuple(D.LOD_SKELETON)}, context)
+    for prim in entry["items"]:
+        lod = prim.get("lod")
+        if lod is not None and prim.get("zoom") is None:
+            # A lod band comes from the tokens (6.1): the body, label or skeleton band, or a title's 12 px switch.
+            allowed = {tuple(D.LOD_BODY), tuple(D.LOD_LABEL), tuple(D.LOD_SKELETON)}
+            case.assertTrue(tuple(lod) in allowed or (lod[1] is None and lod[0] and abs(lod[0] * prim.get("size", 0) - D.TITLE_MIN_PX) < 0.1)
+                            or tuple(lod) == (0.75, None), (context, lod))
     doc = {"dl": 1, "palettes": {theme: T.palette(theme) for theme in T.THEMES}, "entries": [entry]}
     case.assertEqual(D.validate(doc), [], context)
     case.assertIn(entry["hit"]["shape"], D.HITS, context)
@@ -117,6 +150,20 @@ def _valid_entry(case, kind, el, context):
         case.assertEqual(set(entry["edit"]) >= {"field", "value", "box", "font", "weight", "size", "lh", "align", "wrap", "fill"}, True, context)
         case.assertEqual(len(entry["edit"]["box"]), 4, context)
     return entry
+
+
+def check_block(case, kind):
+    """A block (phase 2, 1.3): named collections with unique names, settings that are not collections, a build and a spec."""
+    block = kind.block
+    names = [c.name for c in block.collections]
+    case.assertEqual(len(set(names)), len(names), kind.name)
+    case.assertFalse(set(names) & set(block.settings), kind.name)
+    case.assertIn(block.parts, ("members", "inline"), kind.name)
+    for coll in block.collections:
+        case.assertTrue(callable(coll.item), (kind.name, coll.name))
+        case.assertGreater(coll.maximum, 0, (kind.name, coll.name))
+    case.assertTrue(callable(block.build) and callable(block.spec) and callable(block.normalize), kind.name)
+    case.assertEqual(kind.stored_as is not None or block.parts == "inline", True, "{}: a members block is stored as a frame".format(kind.name))
 
 
 def check_display(case, kind, rng):
@@ -136,4 +183,4 @@ def check_display(case, kind, rng):
                 continue  # a kind without a size (a comment pin) refuses a resize, and says so
             _valid_entry(case, kind, resized, (kind.name, index, "resized"))
     for bad in MALFORMED:
-        _valid_entry(case, kind, dict(bad, type=kind.name), (kind.name, bad))
+        _valid_entry(case, kind, dict(bad, **typed(kind)), (kind.name, bad))

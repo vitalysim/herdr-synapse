@@ -1,0 +1,21 @@
+{
+  "name": "blocks",
+  "about": "The content blocks side by side: a level-1 heading, a row section of two cards (icons, badges, an owner and a status), a loose card and a loose sticky to pick up, a callout, badges in three variants and labelled icons. The WEB e2e runs make a card with C and a section over two cards with S here.",
+  "stresses": ["card fit (title, body bullets, badges, footer)", "row section hug", "sticky shrink", "callout bar and icon", "badge variants", "icon labels", "title rule on a heading"],
+  "gates": {"strict": true},
+  "ops": [
+    {"op": "heading", "id": "title", "text": "Checkout revamp", "level": 1, "at": [0, 0], "intent": "the board title"},
+    {"op": "section", "id": "now", "title": "In flight", "layout": "row", "gap": "m", "below": "title", "intent": "what is in flight"},
+    {"op": "card", "id": "gw", "in": "now", "title": "API gateway", "icon": "network", "body": "Terminates TLS\n- forwards the JWT\n- rate limits per key", "badges": ["P0", {"text": "security", "tone": "danger"}], "owner": "qa-drawer", "status": "doing", "intent": "the gateway card"},
+    {"op": "card", "id": "pay", "in": "now", "title": "Payments", "icon": "credit-card", "tone": "success", "body": "Retries with backoff", "status": "review", "intent": "the payments card"},
+    {"op": "card", "id": "loose1", "title": "Search tuning", "body": "Boost exact matches", "right_of": "now", "gap": "l", "intent": "a loose card"},
+    {"op": "card", "id": "loose2", "title": "Cart cleanup", "size": "s", "below": "loose1", "intent": "another loose card"},
+    {"op": "sticky", "id": "q", "text": "Do we keep guest checkout?", "right_of": "loose1", "gap": "l", "intent": "an open question"},
+    {"op": "callout", "id": "risk", "kind": "warning", "title": "Freeze on Friday", "body": "No deploys after 14:00", "below": "now", "gap": "l", "intent": "the freeze"},
+    {"op": "badge", "id": "b1", "text": "P0", "tone": "danger", "right_of": "risk", "gap": "l", "intent": "priority"},
+    {"op": "badge", "id": "b2", "text": "shipped", "tone": "success", "variant": "solid", "right_of": "b1", "gap": "s", "intent": "status"},
+    {"op": "badge", "id": "b3", "text": "beta", "icon": "flask-conical", "variant": "outline", "tone": "accent", "right_of": "b2", "gap": "s", "intent": "stage"},
+    {"op": "icon", "id": "db", "name": "database", "label": "Orders DB", "size": "l", "below": "b1", "gap": "l", "intent": "the database"},
+    {"op": "icon", "id": "users", "name": "users", "label": "Shoppers", "size": "l", "tone": "info", "right_of": "db", "gap": "l", "intent": "the users"}
+  ]
+}

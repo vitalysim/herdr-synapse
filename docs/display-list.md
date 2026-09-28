@@ -13,8 +13,9 @@ move text, and never compute geometry.
 - Served by `GET /api/teams/<team>/display[?since=<version>]` (full or delta).
 - Goldens: `tests/fixtures/display/<scene>.json`, `<scene>.light.svg`,
   `<scene>.dark.svg` and `fmt-vectors.json`, regenerated only by
-  `python3 -m herdr_team.canvas_display --write-goldens`
-  (`--check-goldens` fails when they are stale). The Python writer and the
+  `python3 -m herdr_team.canvas_display --write-goldens [scene ...]` (only the
+  named scenes when given: each scene has one owner, canvas v2 phase 2 D16;
+  `--check-goldens` fails when any is stale). The Python writer and the
   page's `toSVGString` must both produce the golden SVG byte for byte.
 
 ## Document
@@ -59,7 +60,7 @@ One per element, claim (`K-n`) or lock (`X-n`).
 
 | Field | Meaning |
 |---|---|
-| `id`, `kind` | Element id and `type`, or `claim` / `lock`. An unknown type keeps its name and draws the placeholder card. |
+| `id`, `kind` | Element id and its kind (`canvas_kinds.kind_of`: a frame with `block: "section"` is a `section`, a plain frame a `frame`), or `claim` / `lock`. An unknown type keeps its name and draws the placeholder card. |
 | `layer` | The entry's layer; an item may override it with its own `layer` (an arrow's label pill is in `labels`). |
 | `z`, `v` | The element's `z` and its `updated_seq`. Memoise an entry by `(id, v)`. |
 | `bbox` | `[x0, y0, x1, y1]` of everything the entry draws at any zoom, except the title above a frame (it depends on the zoom). |
@@ -71,6 +72,11 @@ One per element, claim (`K-n`) or lock (`X-n`).
 | `author`, `chip` | The author and their chip: token references plus up to two initials. The operator is `chip.human`, initials `OP`. |
 | `locked` | The element lies in a lock's region. |
 | `until` | Claims only: the ISO expiry. |
+| `parts` | Optional (phase 2). The parts a person may hit and edit one by one: a table's cells, a sequence's participants and messages, a card's `title` and `body`. `[{"part": "r2.owner", "hit": {"shape": "rect", "box": [x, y, w, h]}, "edit": Edit \| null, "lod": [min, max]?}]`, hit before the entry's own `hit`, the last in the list on top. Their `edit` is an edit object with `"part"`; a commit sends `edit {id, part, text}`. |
+| `pin` | Optional: `"human"` or `"agent"`, who pinned it (no layout, growth or other author moves it). |
+| `block`, `part` | Optional, together: a block member's root id and its item id (`c2`). |
+| `container` | Optional: a stack container's `{"layout": "row" \| "column" \| "grid", "gap": n, "order": [ids]}`, the page's drop hint. The index a drop takes is `tests/fixtures/display/stack-drop-vectors.json`'s rule. |
+| `tip` | Optional: the element's `detail`, cut to 500 characters, for a tooltip. |
 
 ## Primitives
 
@@ -107,7 +113,22 @@ becomes that role's reference, any other hex stays literal, and an element from
 before 0.22 goes through the legacy tables. A label on a literal fill stays
 literal too, so it keeps its contrast in both themes.
 
-**Frame titles** (the one zoom rule): a frame emits its title twice. In the
+**Semantic zoom** (phase 2): the bands are tokens (`lod` in `tokens.json`).
+From `titles` (0.35 screen pixels per unit) up everything draws; between
+`overview` (0.15) and `titles`, bodies (a card's body, table cells, timeline
+ticks, captions) are replaced by skeleton bars: one `rect` per line, up to
+three, 8 units tall in `base.grid`, with `lod: [0.15, 0.35]`; below `overview`
+only silhouettes and top-level container titles remain. Kinds build these with
+`canvas_display.LOD_BODY` (`[0.35, null]`), `LOD_LABEL` (`[0.15, null]`),
+`skeleton` and `body`. Renderers need nothing new: they already honour `lod`.
+
+**Container titles** (phase 2, the frame rule generalised): a section, a
+kanban, a timeline or a graph root emits its title with `title_pair`: in its
+60-unit band (20/600) with `lod: [12 / size, null]`, and, for a top-level
+container only, above it with `lod: [null, 12 / size]` and `zoom` as below. A
+nested container's band title draws down to the overview band.
+
+**Frame titles** (the one zoom rule of phase 1): a frame emits its title twice. In the
 band: 16/600 at `(x + 20, y + 8)`, cut to the band's width, `lod: [0.75, null]`.
 Above the frame: the whole title, `lod: [null, 0.75]`,
 `zoom: {"min_px": 12, "grow": "up", "bottom": y0}` and `base_ratio`. A renderer
@@ -185,7 +206,9 @@ Both writers produce exactly this, with no whitespace between elements:
 
 A new kind draws itself: its module's `emit(element, env)` returns primitives
 built with the helpers in `canvas_display` (`paints`, `label`, `text_prim`,
-`stroke_fields`, `card`). Nothing else changes, on either side, unless the kind
+`stroke_fields`, `card`, and for level of detail `body`, `skeleton`,
+`title_pair`). Icons are paths too: `canvas_icons.emit(name, x, y, size, paint)`
+is one `group` with a scale, so neither side has icon code. Nothing else changes, on either side, unless the kind
 needs browser-drawn content: then it names a `slot`, and the page adds one
 renderer under `web/src/v2/render/slots/`. A new primitive kind or field is
 added here first, then to both writers, then to the goldens.

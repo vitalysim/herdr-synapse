@@ -56,6 +56,25 @@ class WebContract(unittest.TestCase):
                 self.assertIn(name, text)
                 self.assertIn(licence.read_text(encoding="utf-8").strip().splitlines()[0], text, "the licence text itself")
 
+    def test_every_tool_is_one_the_page_can_use(self):
+        # Phase 2 (6.4): tools carry the op they send (``template``); the page knows every gesture the registry names.
+        source = (PLUGIN_ROOT / "web" / "src" / "v2" / "interact" / "toolset.js").read_text(encoding="utf-8")
+        names = re.search(r"GESTURE_NAMES\s*=\s*\[([^\]]*)\]", source)
+        self.assertIsNotNone(names, "toolset.js lists GESTURE_NAMES")
+        page = set(re.findall(r'"([a-z]+)"', names.group(1)))
+        self.assertLessEqual(set(R.GESTURES), page, "the page has a handler for every gesture a kind's tool may use")
+        from herdr_team import canvas as C
+
+        for tool in T.asset()["tools"]:
+            with self.subTest(tool=tool["id"]):
+                self.assertIn(tool["gesture"], R.GESTURES)
+                if "template" in tool:
+                    self.assertIn(tool["template"]["op"], C.OPS, "a template sends an op the canvas takes")
+                    for key in tool["template"]:
+                        self.assertIn(key, C._FIELDS[tool["template"]["op"]], "{} takes {}".format(tool["template"]["op"], key))
+                if tool["gesture"] == "block":
+                    self.assertIn("template", tool, "the block gesture sends its template")
+
     def test_the_page_reads_the_resolved_tokens(self):
         self.assertEqual(T.main(["--check"]), 0)
         vite = (PLUGIN_ROOT / "web" / "vite.config.js").read_text(encoding="utf-8")

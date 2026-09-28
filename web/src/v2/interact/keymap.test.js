@@ -5,7 +5,7 @@ const key = (k, extra = {}) => ({ type: "keydown", key: k, target: { tagName: "D
 
 describe("keymap", () => {
   it("maps the tool letters", () => {
-    const tools = { v: "select", h: "hand", r: "box", o: "ellipse", d: "diamond", n: "note", t: "text", a: "arrow", p: "pen", f: "frame" };
+    const tools = { v: "select", h: "hand", r: "box", o: "ellipse", d: "diamond", n: "sticky", c: "card", t: "text", a: "arrow", p: "pen", f: "frame", s: "section" };
     for (const [letter, tool] of Object.entries(tools)) {
       expect(commandOf(key(letter))).toEqual({ command: "tool", tool });
       expect(commandOf(key(letter.toUpperCase()))).toEqual({ command: "tool", tool });

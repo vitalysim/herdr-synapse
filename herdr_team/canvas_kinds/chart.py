@@ -8,6 +8,9 @@ from herdr_team.canvas_kinds import Kind, OpSpec
 from herdr_team.canvas_kinds._common import Element, bounds_text, quote
 from herdr_team.canvas_kinds._slot import slot_emit
 
+#: Its place in the registration order (``canvas_kinds.DEFAULT_ORDER``).
+ORDER = 90
+
 MAX_CHART_SPEC_BYTES = 200 * 1024
 #: How deep a chart spec may nest (Vega-Lite ``layer``/``concat``); deeper is refused, never skipped.
 MAX_SPEC_DEPTH = 64

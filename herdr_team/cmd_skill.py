@@ -298,10 +298,15 @@ def _canvas_visible(args: argparse.Namespace) -> bool:
 
 
 def _hidden_references(args: argparse.Namespace) -> List[str]:
-    """References this caller is not served: ``canvas`` while its canvas is off."""
+    """References this caller is not served: every ``canvas*`` reference (``canvas``, ``canvas-blocks``,
+    ``canvas-diagrams``) while its canvas is off."""
     from herdr_team import features
 
-    return [] if _canvas_visible(args) else [features.SKILL_REFERENCE]
+    if _canvas_visible(args):
+        return []
+    root = paths.skill_guides_dir() / "references"
+    found = sorted(p.stem for p in root.glob(features.SKILL_REFERENCE + "*.md")) if root.is_dir() else []
+    return found or [features.SKILL_REFERENCE]
 
 
 def run_skill_get(args: argparse.Namespace) -> int:

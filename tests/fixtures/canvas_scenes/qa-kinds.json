@@ -1,0 +1,452 @@
+{
+ "name": "qa-kinds",
+ "about": "QA phase 2: every new kind with its less common options (sizes, variants, grid stretch, all callout kinds, badge variants, icon aliases, zebra table with keyed cells, ordinal timeline, a tree graph of node kinds, a right-sided mind map, a sequence with a self message, notes on three sides and a loop).",
+ "stresses": [
+  "size and variant tokens",
+  "grid stretch",
+  "icon aliases",
+  "keyed cells",
+  "ordinal axis",
+  "node kinds",
+  "notes left/right/over"
+ ],
+ "gates": {
+  "strict": true
+ },
+ "ops": [
+  {
+   "op": "heading",
+   "id": "h1",
+   "text": "Every block kind, less common options",
+   "level": 1,
+   "at": [
+    0,
+    0
+   ],
+   "intent": "title"
+  },
+  {
+   "op": "heading",
+   "id": "h2",
+   "text": "Level two heading",
+   "level": 2,
+   "below": "h1",
+   "intent": "h2"
+  },
+  {
+   "op": "heading",
+   "id": "h3",
+   "text": "Level three, centred",
+   "level": 3,
+   "align": "center",
+   "right_of": "h2",
+   "gap": "l",
+   "tone": "accent",
+   "intent": "h3"
+  },
+  {
+   "op": "section",
+   "id": "grid",
+   "title": "A grid section that stretches",
+   "layout": "grid",
+   "cols": 3,
+   "align": "stretch",
+   "gap": "m",
+   "padding": "s",
+   "below": "h2",
+   "tone": "neutral",
+   "intent": "grid"
+  },
+  {
+   "op": "card",
+   "in": "grid",
+   "title": "Small",
+   "size": "s",
+   "intent": "c"
+  },
+  {
+   "op": "card",
+   "in": "grid",
+   "title": "Large card",
+   "size": "l",
+   "body": "- first point\n- second point that wraps across the line\n- third",
+   "variant": "solid",
+   "tone": "accent",
+   "intent": "c"
+  },
+  {
+   "op": "card",
+   "in": "grid",
+   "title": "Outline",
+   "variant": "outline",
+   "tone": "danger",
+   "status": "blocked",
+   "owner": "human",
+   "badges": [
+    {
+     "text": "urgent",
+     "tone": "danger"
+    },
+    "v2"
+   ],
+   "intent": "c"
+  },
+  {
+   "op": "sticky",
+   "in": "grid",
+   "text": "Small sticky",
+   "size": "s",
+   "tone": "success",
+   "intent": "s"
+  },
+  {
+   "op": "sticky",
+   "in": "grid",
+   "text": "Large sticky",
+   "size": "l",
+   "tone": "warning",
+   "intent": "s"
+  },
+  {
+   "op": "icon",
+   "in": "grid",
+   "name": "rocket",
+   "size": "xl",
+   "tone": "accent",
+   "label": "Launch",
+   "intent": "i"
+  },
+  {
+   "op": "section",
+   "id": "callouts",
+   "title": "Callouts",
+   "layout": "column",
+   "right_of": "grid",
+   "gap": "l",
+   "intent": "callouts"
+  },
+  {
+   "op": "callout",
+   "in": "callouts",
+   "kind": "note",
+   "title": "Note",
+   "body": "A note callout body",
+   "intent": "c"
+  },
+  {
+   "op": "callout",
+   "in": "callouts",
+   "kind": "tip",
+   "title": "Tip",
+   "body": "A tip callout body",
+   "intent": "c"
+  },
+  {
+   "op": "callout",
+   "in": "callouts",
+   "kind": "important",
+   "title": "Important",
+   "body": "A important callout body",
+   "intent": "c"
+  },
+  {
+   "op": "callout",
+   "in": "callouts",
+   "kind": "warning",
+   "title": "Warning",
+   "body": "A warning callout body",
+   "intent": "c"
+  },
+  {
+   "op": "callout",
+   "in": "callouts",
+   "kind": "danger",
+   "title": "Danger",
+   "body": "A danger callout body",
+   "intent": "c"
+  },
+  {
+   "op": "callout",
+   "in": "callouts",
+   "kind": "decision",
+   "title": "Decision",
+   "body": "A decision callout body",
+   "intent": "c"
+  },
+  {
+   "op": "callout",
+   "in": "callouts",
+   "kind": "question",
+   "title": "Question",
+   "body": "A question callout body",
+   "intent": "c"
+  },
+  {
+   "op": "section",
+   "id": "badges",
+   "title": "Badges and icons",
+   "layout": "row",
+   "gap": "m",
+   "below": "grid",
+   "intent": "badges"
+  },
+  {
+   "op": "badge",
+   "in": "badges",
+   "text": "soft",
+   "tone": "info",
+   "intent": "b"
+  },
+  {
+   "op": "badge",
+   "in": "badges",
+   "text": "solid",
+   "tone": "success",
+   "variant": "solid",
+   "icon": "check",
+   "intent": "b"
+  },
+  {
+   "op": "badge",
+   "in": "badges",
+   "text": "outline small",
+   "tone": "warning",
+   "variant": "outline",
+   "size": "s",
+   "intent": "b"
+  },
+  {
+   "op": "icon",
+   "in": "badges",
+   "name": "db",
+   "size": "s",
+   "intent": "i"
+  },
+  {
+   "op": "icon",
+   "in": "badges",
+   "name": "k8s",
+   "size": "m",
+   "label": "A long label under an icon that wraps",
+   "intent": "i"
+  },
+  {
+   "op": "icon",
+   "in": "badges",
+   "name": "users",
+   "size": "l",
+   "tone": "success",
+   "intent": "i"
+  },
+  {
+   "op": "table",
+   "id": "tbl",
+   "title": "A small zebra table",
+   "below": "badges",
+   "gap": "m",
+   "zebra": true,
+   "max_lines": 3,
+   "intent": "t",
+   "columns": [
+    {
+     "title": "Name",
+     "width": "s"
+    },
+    {
+     "title": "Notes",
+     "key": "notes",
+     "width": "l"
+    },
+    {
+     "title": "Qty",
+     "key": "q",
+     "align": "end",
+     "width": 80
+    }
+   ],
+   "rows": [
+    [
+     "Alpha",
+     "A short note",
+     "1"
+    ],
+    [
+     "Beta",
+     "A longer note that has to wrap onto a second line in this column",
+     "22"
+    ],
+    {
+     "id": "g",
+     "cells": {
+      "c1": "Gamma",
+      "notes": "keyed cells",
+      "q": "333"
+     },
+     "tone": "success"
+    },
+    [
+     "Delta",
+     "",
+     "4"
+    ]
+   ]
+  },
+  {
+   "op": "timeline",
+   "id": "ord",
+   "title": "An ordinal timeline",
+   "right_of": "tbl",
+   "gap": "l",
+   "intent": "t",
+   "events": [
+    {
+     "at": "Discovery",
+     "title": "Discovery"
+    },
+    {
+     "at": "Design",
+     "title": "Design",
+     "tone": "info"
+    },
+    {
+     "at": "Build",
+     "title": "Build",
+     "body": "Two sprints"
+    },
+    {
+     "at": "Launch",
+     "title": "Launch",
+     "milestone": true,
+     "tone": "success"
+    }
+   ]
+  },
+  {
+   "op": "graph",
+   "id": "tree",
+   "title": "A tree of node kinds",
+   "layout": "tree",
+   "below": "tbl",
+   "gap": "l",
+   "intent": "g",
+   "nodes": [
+    {
+     "id": "root",
+     "text": "Platform",
+     "kind": "card",
+     "detail": "The platform team owns these"
+    },
+    {
+     "id": "a",
+     "text": "Idea",
+     "kind": "sticky"
+    },
+    {
+     "id": "b",
+     "text": "Storage",
+     "kind": "icon",
+     "icon": "database"
+    },
+    {
+     "id": "c",
+     "text": "Is it ready?",
+     "kind": "diamond"
+    },
+    {
+     "id": "d",
+     "text": "Ellipse",
+     "kind": "ellipse"
+    },
+    {
+     "id": "e",
+     "text": "A note",
+     "kind": "note"
+    }
+   ],
+   "edges": [
+    "root -> a",
+    "root -> b",
+    "root -> c",
+    "c -> d: yes",
+    "c -- e"
+   ]
+  },
+  {
+   "op": "mindmap",
+   "id": "mm",
+   "title": "Right-sided map",
+   "side": "right",
+   "right_of": "tree",
+   "gap": "l",
+   "branch_tones": "none",
+   "intent": "m",
+   "tree": {
+    "One": [
+     "a",
+     "b"
+    ],
+    "Two": {
+     "c": [
+      "d"
+     ]
+    }
+   }
+  },
+  {
+   "op": "sequence",
+   "id": "seq",
+   "title": "Sequence with a loop and notes",
+   "below": "tree",
+   "gap": "l",
+   "intent": "s",
+   "participants": [
+    {
+     "id": "c",
+     "text": "Client",
+     "icon": "user"
+    },
+    {
+     "id": "s",
+     "text": "Server",
+     "tone": "info"
+    },
+    {
+     "id": "q",
+     "text": "Queue"
+    }
+   ],
+   "messages": [
+    "c -> s: request",
+    "s -> s: validate",
+    "s -> q: enqueue job",
+    "q --> s: ack",
+    "s --> c: 202 accepted"
+   ],
+   "notes": [
+    {
+     "left_of": "c",
+     "text": "retries twice"
+    },
+    {
+     "right_of": "q",
+     "text": "FIFO"
+    },
+    {
+     "over": [
+      "s",
+      "q"
+     ],
+     "text": "inside the VPC"
+    }
+   ],
+   "groups": [
+    {
+     "kind": "loop",
+     "label": "until acked",
+     "from": 3,
+     "to": 4
+    }
+   ]
+  }
+ ]
+}

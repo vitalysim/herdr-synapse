@@ -1,0 +1,73 @@
+{
+ "name": "board-refund",
+ "kind": "board",
+ "about": "the flowchart scene's refund flowchart",
+ "nodes": [
+  {
+   "id": "req",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "policy",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "auto",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "human",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "book",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "notify",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "closed",
+   "w": 160,
+   "h": 60
+  }
+ ],
+ "edges": [
+  [
+   "req",
+   "policy"
+  ],
+  [
+   "policy",
+   "auto"
+  ],
+  [
+   "policy",
+   "human"
+  ],
+  [
+   "auto",
+   "book"
+  ],
+  [
+   "human",
+   "book"
+  ],
+  [
+   "book",
+   "notify"
+  ],
+  [
+   "notify",
+   "closed"
+  ]
+ ],
+ "phase1_crossings": 0
+}

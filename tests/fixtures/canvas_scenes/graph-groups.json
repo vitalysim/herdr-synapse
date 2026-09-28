@@ -1,0 +1,28 @@
+{
+  "name": "graph-groups",
+  "about": "The phase 2 graph block: the checkout flow of the spec (4.7.1) left to right with a group of core services, icons on nodes, a detail, a same_rank pair and edge shorthand (a dashed back edge, labels), routed orthogonally; then a top-down service map with two nested groups and a parallel edge, and a radial graph routed straight.",
+  "stresses": ["layers with groups", "same_rank", "orthogonal routes around groups", "icons on nodes", "nested groups", "parallel edges", "radial"],
+  "gates": {"strict": true},
+  "ops": [
+    {"op": "graph", "id": "checkout", "title": "Checkout flow", "layout": "flow", "direction": "right", "at": [0, 0],
+     "intent": "show the checkout path for the review",
+     "groups": [{"id": "core", "title": "Core services", "tone": "info"}],
+     "nodes": [{"id": "user", "text": "Shopper", "icon": "user"},
+               {"id": "api", "text": "Checkout API", "icon": "server", "in": "core"},
+               {"id": "ok", "text": "Payment approved?", "kind": "diamond", "in": "core"},
+               {"id": "db", "text": "Orders database", "icon": "database", "in": "core", "detail": "Postgres 17, primary in eu-west"},
+               {"id": "fail", "text": "Show retry and keep the cart", "tone": "danger"}],
+     "edges": ["user -> api: HTTPS", "api -> ok", "ok -> db: yes", "ok -> fail: no", "fail --> user"],
+     "same_rank": [["db", "fail"]], "route": "orthogonal"},
+    {"op": "graph", "id": "platform", "title": "Platform services", "below": "checkout", "gap": 80, "intent": "the service map with its zones",
+     "groups": [{"id": "edge", "title": "Edge", "tone": "accent"}, {"id": "data", "title": "Data tier", "tone": "success"},
+                {"id": "hot", "title": "Hot path", "parent": "data", "tone": "warning"}],
+     "nodes": [{"id": "web", "text": "Web app"}, {"id": "gw", "text": "API gateway", "in": "edge"}, {"id": "waf", "text": "WAF", "in": "edge"},
+               {"id": "orders", "text": "Order service"}, {"id": "cache", "text": "Redis cache", "kind": "ellipse", "in": "hot"},
+               {"id": "pg", "text": "PostgreSQL primary", "in": "hot"}, {"id": "wh", "text": "Warehouse", "in": "data"}],
+     "edges": ["web -> waf", "waf -> gw", "gw -> orders: REST", "orders -> cache", "orders -> pg: writes", "orders -> pg: reads", "pg --> wh: nightly"]},
+    {"op": "graph", "id": "team", "title": "Who talks to whom", "layout": "radial", "right_of": "platform", "gap": 80, "intent": "the team's channels",
+     "nodes": ["lead", "design", "backend", "frontend", "qa", "ops"],
+     "edges": ["lead -- design", "lead -- backend", "lead -- frontend", "lead -- qa", "lead -- ops"]}
+  ]
+}

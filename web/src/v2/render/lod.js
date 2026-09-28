@@ -45,7 +45,7 @@ export function dependsOnScale(entry) {
     Array.isArray(items) &&
     items.some(
       (p) =>
-        p && typeof p === "object" && (p.lod || p.zoom || p.sw_px !== undefined || p.screen || walk(p.items) || walk(p.fallback)),
+        p && typeof p === "object" && (p.lod || p.zoom || p.elev || p.sw_px !== undefined || p.screen || walk(p.items) || walk(p.fallback)),
     );
   const result = walk(entry.items);
   scaleCache.set(entry, result);

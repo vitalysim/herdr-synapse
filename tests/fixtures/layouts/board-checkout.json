@@ -1,0 +1,95 @@
+{
+ "name": "board-checkout",
+ "kind": "board",
+ "about": "the flowchart scene's checkout graph",
+ "nodes": [
+  {
+   "id": "start",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "auth",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "reach",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "charge",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "ok",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "order",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "retry",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "mail",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "done",
+   "w": 160,
+   "h": 60
+  }
+ ],
+ "edges": [
+  [
+   "start",
+   "auth"
+  ],
+  [
+   "auth",
+   "reach"
+  ],
+  [
+   "reach",
+   "charge"
+  ],
+  [
+   "reach",
+   "retry"
+  ],
+  [
+   "charge",
+   "ok"
+  ],
+  [
+   "ok",
+   "order"
+  ],
+  [
+   "ok",
+   "retry"
+  ],
+  [
+   "order",
+   "mail"
+  ],
+  [
+   "mail",
+   "done"
+  ],
+  [
+   "retry",
+   "start"
+  ]
+ ],
+ "phase1_crossings": 0
+}

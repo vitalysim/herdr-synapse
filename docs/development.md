@@ -31,6 +31,10 @@ herdr_team/
   canvas_svg.py          the display list as canonical SVG, byte-identical to the page's toSVGString (plus badges and grid for agents)
   canvas_check.py        layout checks as a registry (CHECKS, register_check) plus each kind's own checks
   canvas_labels.py       where an arrow label goes: on its route, clear of marks and other labels (pure; canvas stores label_at)
+  canvas_blocks.py       blocks (canvas v2 phase 2): the one pipeline for block ops, patch, place, pin and unpin; arranging
+                         containers after every op (stacks, hug, pins); the result's geometry and check; look's block readback
+  canvas_icons.py        Lucide icons (assets/icons, vendored) resolved by name and drawn as display-list paths
+  canvas_layouts/ canvas_routers/   the layout and edge router registries (docs/layout-engine.md)
   canvas_kinds/          the component registry: one module per kind with its ops, size, readback, checks and drawing (sdk.py is
                          the OpContext an op handler draws through; canvas derives every op and kind table from the registry)
   canvas_text.py         the text engine: measure with the bundled fonts' metrics, wrap, fit policies (hug, shrink, scale_shape, clamp, keep)
@@ -80,9 +84,10 @@ python3 -m unittest discover -s tests -v            # Homebrew python (3.14)
 /usr/bin/python3 -m unittest discover -s tests -v   # Apple python (3.9): both must pass
 python3 -m herdr_team.reference_docs --check
 python3 -m herdr_team.canvas_fontgen --write        # after changing a font in assets/fonts (tests run --check)
-python3 -m herdr_team.canvas_theme --write          # after editing herdr_team/canvas_tokens.json (tests run --check)
+python3 -m herdr_team.canvas_theme --write          # after editing herdr_team/canvas_tokens.json or a kind (tests run --check)
 python3 tools/canvas_qa.py [--page [--engine v2]]   # the canvas v2 golden scenes: overflow, overlap, contrast, page lines
-python3 -m herdr_team.canvas_display --check-goldens    # display-list goldens (--write-goldens after a drawing change)
+python3 -m herdr_team.canvas_display --check-goldens    # display-list goldens (--write-goldens <scene> after a drawing change)
+python3 -m herdr_team.canvas_icons --check          # the vendored Lucide icons match their checksums
 python3 tools/canvas_rig.py house --engine v2 --writable  # serve one scene on loopback for a browser or a CDP test
 ./bin/herdr-synapse --version
 ./bin/herdr-synapse --skill
@@ -99,22 +104,67 @@ page server's process through `whiteboard_server.SPAWN`, and the browser
 through `cmd_whiteboard.OPEN_BROWSER`; `tests/test_canvas_e2e.py` runs the
 whole path (switch, draw, look, mention, page server on loopback) in one test.
 
-Adding a canvas kind is one module in `herdr_team/canvas_kinds/` plus its
-name in `_MODULES`: `KINDS` (the `Kind` record with its hooks: `measure`,
-`readback`, `checks`, `emit` for the display list, `hit`, `translate`,
-`resize`) and `OPS` (each `OpSpec` with its fields and a `create(ctx, op)`
-that draws through `canvas_kinds.sdk.OpContext`, never through `canvas`).
-The op table, the accepted fields, `look`, `check`, the picture, the page,
-the MCP op table and the canvas section of `docs/reference.md` all follow
-from the registry; `tests/test_canvas_one_module.py` adds a `badge` kind from
-`tests/fixtures/kind_badge.py` to prove it. Only content the browser draws
-itself (a `slot`) needs a renderer under `web/src/v2/render/slots/`.
+Adding a canvas kind is one module in `herdr_team/canvas_kinds/`, and no
+list anywhere: the registry imports every module there whose name does not
+start with `_` and registers what it exports, `KINDS` (the `Kind` record with
+its hooks: `measure`, `readback`, `checks`, `emit` for the display list,
+`hit`, `translate`, `resize`, and an optional `tool` for the page's tool bar)
+and `OPS` (each `OpSpec` with its fields and a `create(ctx, op)` that draws
+through `canvas_kinds.sdk.OpContext`, never through `canvas`). A module's
+`ORDER` sets its place in the registration order (the built-in ones use 10
+to 120; without one it comes after them). The op table, the accepted fields,
+`look`, `check`, the picture, the page and its tool bar (the `tools` list in
+`assets/canvas/tokens.json`), the MCP op table, the canvas section of
+`docs/reference.md` and `tools/canvas_qa.py` all follow from the registry;
+`tests/test_canvas_one_module.py` drops a `stamp` kind from
+`tests/fixtures/kind_stamp.py` into the package to prove it. After adding a
+kind, run `python3 -m herdr_team.canvas_theme --write` and
+`python3 -m herdr_team.reference_docs --write` for the generated files. Only
+content the browser draws itself (a `slot`) needs a renderer under
+`web/src/v2/render/slots/`.
+
+A **block** (canvas v2 phase 2, `.local/prd/canvas-v2-phase2.md`) is a kind an
+agent describes by structure: its `Kind.block` is a `canvas_kinds.sdk.Block`
+(its `Collection`s of items, its `settings`, `normalize`, `build` and `spec`),
+and `canvas_blocks` runs every create, upsert, `patch`, part edit and `refit`
+through the same path: parse each item, normalize, build through a
+`BlockContext` (`root_fields`, `member`, `edge`, `drop`, `set_order`), then
+arrange. A container block is stored as a frame (`stored_as="frame"`, the
+element carries `block: "<kind>"`; `canvas_kinds.kind_of(el)` finds its kind),
+so every frame mechanism holds; its members carry `group` (the root) and `part`
+(the item id). Its `Kind.arrange(root, members, env)` returns an
+`Arrangement` (member boxes, routes, inner frames, the root's box or none to
+hug it); stacks use `_zone.stack_arrange` over `canvas_layouts` (`row`,
+`column`, `grid`), and `align: stretch` is the core's. After every op,
+`canvas_blocks.settle` arranges what the op changed, innermost first; a moved
+member of a positional block is pinned, one in a stack reordered by where its
+centre landed (`drop_index`, shared with the page through
+`tests/fixtures/display/stack-drop-vectors.json`). Pins are never moved by a
+layout, by growth push-out, or by an agent when a person set them
+(`tests/test_canvas_pins.py` is the property test); a container someone else
+may not edit is neither joined nor re-arranged by them. A `Collection`'s `refs`
+say what its items name in other collections (`(field, collection, how)`: `drop`,
+`clear`, `key`, `start`, `end`), so `patch remove` takes what names a removed
+item with it (`canvas_blocks.cascade`); an adopted member's part is claimed in
+the root's `seq`, and a `Kind` with `stretch=False` keeps its shape under
+`align: stretch`. `tests/test_canvas_qa_phase2_fixes.py` holds the Phase 2 QA
+regressions. `readback` round trip:
+`normalize(parse(spec(...)))` equals the normalized op
+(`tests/test_canvas_blocks.py` `RoundTrip`). A new block is one module too:
+`tests/test_canvas_block_one_module.py` loads `tests/fixtures/kind_checklist.py`
+and proves it. Layouts and routers are registries of their own, one module
+each: see `docs/layout-engine.md`.
+
+Icons come from `assets/icons/` (Lucide in the Iconify format, vendored
+unmodified; `assets/icons/README.md` has the source, checksums and how to
+refresh). `python3 -m herdr_team.canvas_icons --check` verifies them.
 
 The display-list goldens (`tests/fixtures/display/`) hold both SVG writers to
 the same bytes: after a change to what a kind draws, run
-`python3 -m herdr_team.canvas_display --write-goldens`, look at the pictures
-before and after, and give the reason in the commit message; the page's
-vitest parity test reads the same files.
+`python3 -m herdr_team.canvas_display --write-goldens <scene ...>` for the
+scenes you own (each scene file has one owner), look at the pictures before
+and after, and give the reason in the commit message; the page's vitest parity
+test reads the same files.
 
 Rules for code in this package:
 

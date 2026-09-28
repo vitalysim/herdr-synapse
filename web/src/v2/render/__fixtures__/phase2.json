@@ -1,0 +1,1650 @@
+{
+ "dl": 1,
+ "generator": "herdr_team.canvas_display 1",
+ "team": "demo",
+ "layers": [
+  "zones",
+  "marks",
+  "labels",
+  "overlays"
+ ],
+ "fonts": {
+  "sans": {
+   "family": "Inter",
+   "weights": [
+    400,
+    500,
+    600,
+    700
+   ]
+  },
+  "mono": {
+   "family": "Geist Mono",
+   "weights": [
+    400
+   ]
+  }
+ },
+ "palettes": {
+  "light": {
+   "base.canvas": "#f7f8fa",
+   "base.surface": "#ffffff",
+   "base.grid": "#e3e5e9",
+   "base.line": "#6b7079",
+   "base.ink": "#1c2024",
+   "base.ink_muted": "#5b616b",
+   "base.selection": "#6e56cf",
+   "tone.neutral.fill": "#ffffff",
+   "tone.neutral.stroke": "#80858f",
+   "tone.neutral.text": "#1c2024",
+   "tone.neutral.zone": "#f0f1f4",
+   "tone.neutral.zone_stroke": "#d9dce1",
+   "tone.info.fill": "#e8f2fe",
+   "tone.info.stroke": "#3f84d8",
+   "tone.info.text": "#0b3a6e",
+   "chip.0.bg": "#3e5bd6",
+   "chip.0.fg": "#ffffff"
+  },
+  "dark": {
+   "base.canvas": "#111214",
+   "base.surface": "#1b1c20",
+   "base.grid": "#26282c",
+   "base.line": "#8a8f98",
+   "base.ink": "#edeef0",
+   "base.ink_muted": "#a8adb5",
+   "base.selection": "#9b8afb",
+   "tone.neutral.fill": "#1b1c20",
+   "tone.neutral.stroke": "#7b818b",
+   "tone.neutral.text": "#edeef0",
+   "tone.neutral.zone": "#17181b",
+   "tone.neutral.zone_stroke": "#2b2e33",
+   "tone.info.fill": "#122640",
+   "tone.info.stroke": "#4a8fe0",
+   "tone.info.text": "#c4dffd",
+   "chip.0.bg": "#9aabff",
+   "chip.0.fg": "#0d1433"
+  }
+ },
+ "shadows": {
+  "light": {},
+  "dark": {}
+ },
+ "version": 12,
+ "bbox": [
+  80,
+  40,
+  1200,
+  760
+ ],
+ "entries": [
+  {
+   "id": "E-10",
+   "kind": "kanban",
+   "layer": "zones",
+   "z": 10,
+   "v": 5,
+   "bbox": [
+    100,
+    100,
+    744,
+    504
+   ],
+   "hit": {
+    "shape": "frame",
+    "box": [
+     100,
+     100,
+     644,
+     404
+    ],
+    "band": 60
+   },
+   "handles": "box",
+   "connect": false,
+   "edit": {
+    "field": "text",
+    "value": "Launch work",
+    "box": [
+     120,
+     116,
+     604,
+     25
+    ],
+    "font": "sans",
+    "weight": 600,
+    "size": 20,
+    "lh": 25,
+    "align": "start",
+    "wrap": "line",
+    "fill": "tone.neutral.text"
+   },
+   "frame": null,
+   "author": "alpha",
+   "chip": {
+    "bg": "chip.0.bg",
+    "fg": "chip.0.fg",
+    "initials": "AL"
+   },
+   "locked": false,
+   "container": {
+    "layout": "row",
+    "gap": 20,
+    "order": [
+     "E-11",
+     "E-14"
+    ]
+   },
+   "items": [
+    {
+     "k": "rect",
+     "x": 100,
+     "y": 100,
+     "w": 644,
+     "h": 404,
+     "r": 16,
+     "fill": "tone.neutral.zone",
+     "stroke": "tone.neutral.zone_stroke",
+     "sw": 1
+    },
+    {
+     "k": "text",
+     "lod": [
+      0.6,
+      null
+     ],
+     "x": 120,
+     "anchor": "start",
+     "font": "sans",
+     "weight": 600,
+     "size": 20,
+     "lh": 25,
+     "fill": "tone.neutral.text",
+     "box": [
+      120,
+      116,
+      604,
+      25
+     ],
+     "lines": [
+      {
+       "y": 137.5,
+       "t": "Launch work",
+       "w": 121.0
+      }
+     ]
+    },
+    {
+     "k": "text",
+     "lod": [
+      null,
+      0.6
+     ],
+     "x": 100,
+     "anchor": "start",
+     "font": "sans",
+     "weight": 600,
+     "size": 20,
+     "lh": 25,
+     "base_ratio": 0.95,
+     "zoom": {
+      "min_px": 12,
+      "grow": "up",
+      "bottom": 100
+     },
+     "fill": "tone.neutral.text",
+     "box": [
+      100,
+      75,
+      121,
+      25
+     ],
+     "lines": [
+      {
+       "y": 96.5,
+       "t": "Launch work",
+       "w": 121.0
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "E-11",
+   "kind": "section",
+   "layer": "zones",
+   "z": 11,
+   "v": 4,
+   "bbox": [
+    132,
+    192,
+    412,
+    472
+   ],
+   "hit": {
+    "shape": "frame",
+    "box": [
+     132,
+     192,
+     280,
+     280
+    ],
+    "band": 60
+   },
+   "handles": "box",
+   "connect": false,
+   "edit": {
+    "field": "text",
+    "value": "Todo \u00b7 2",
+    "box": [
+     152,
+     208,
+     240,
+     25
+    ],
+    "font": "sans",
+    "weight": 600,
+    "size": 20,
+    "lh": 25,
+    "align": "start",
+    "wrap": "line",
+    "fill": "tone.neutral.text"
+   },
+   "frame": "E-10",
+   "author": "alpha",
+   "chip": {
+    "bg": "chip.0.bg",
+    "fg": "chip.0.fg",
+    "initials": "AL"
+   },
+   "locked": false,
+   "block": "E-10",
+   "part": "todo",
+   "container": {
+    "layout": "column",
+    "gap": 20,
+    "order": [
+     "E-12",
+     "E-13"
+    ]
+   },
+   "items": [
+    {
+     "k": "rect",
+     "x": 132,
+     "y": 192,
+     "w": 280,
+     "h": 280,
+     "r": 16,
+     "fill": "tone.neutral.zone",
+     "stroke": "tone.neutral.zone_stroke",
+     "sw": 1
+    },
+    {
+     "k": "text",
+     "lod": [
+      0.6,
+      null
+     ],
+     "x": 152,
+     "anchor": "start",
+     "font": "sans",
+     "weight": 600,
+     "size": 20,
+     "lh": 25,
+     "fill": "tone.neutral.text",
+     "box": [
+      152,
+      208,
+      240,
+      25
+     ],
+     "lines": [
+      {
+       "y": 229.5,
+       "t": "Todo \u00b7 2",
+       "w": 88.0
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "E-12",
+   "kind": "card",
+   "layer": "marks",
+   "z": 12,
+   "v": 3,
+   "bbox": [
+    152,
+    272,
+    392,
+    352
+   ],
+   "hit": {
+    "shape": "rect",
+    "box": [
+     152,
+     272,
+     240,
+     80
+    ]
+   },
+   "handles": "box",
+   "connect": true,
+   "edit": null,
+   "frame": "E-11",
+   "author": "alpha",
+   "chip": {
+    "bg": "chip.0.bg",
+    "fg": "chip.0.fg",
+    "initials": "AL"
+   },
+   "locked": false,
+   "block": "E-10",
+   "part": "c1",
+   "parts": [
+    {
+     "part": "title",
+     "hit": {
+      "shape": "rect",
+      "box": [
+       168,
+       284,
+       208,
+       25
+      ]
+     },
+     "edit": {
+      "field": "text",
+      "value": "Rotate API keys",
+      "box": [
+       168,
+       284,
+       208,
+       25
+      ],
+      "font": "sans",
+      "weight": 600,
+      "size": 20,
+      "lh": 25,
+      "align": "start",
+      "wrap": "box",
+      "fill": "base.ink",
+      "part": "title"
+     }
+    },
+    {
+     "part": "body",
+     "hit": {
+      "shape": "rect",
+      "box": [
+       168,
+       316,
+       208,
+       20
+      ]
+     },
+     "edit": {
+      "field": "text",
+      "value": "Before the beta",
+      "box": [
+       168,
+       316,
+       208,
+       20
+      ],
+      "font": "sans",
+      "weight": 400,
+      "size": 16,
+      "lh": 20,
+      "align": "start",
+      "wrap": "box",
+      "fill": "base.ink_muted",
+      "part": "body"
+     },
+     "lod": [
+      0.35,
+      null
+     ]
+    }
+   ],
+   "pin": "human",
+   "tip": "Rotate every key before launch",
+   "items": [
+    {
+     "k": "rect",
+     "x": 152,
+     "y": 272,
+     "w": 240,
+     "h": 80,
+     "r": 12,
+     "fill": "base.surface",
+     "stroke": "tone.neutral.zone_stroke",
+     "sw": 1,
+     "elev": 1
+    },
+    {
+     "k": "text",
+     "x": 168,
+     "anchor": "start",
+     "font": "sans",
+     "weight": 600,
+     "size": 20,
+     "lh": 25,
+     "fill": "base.ink",
+     "box": [
+      168,
+      284,
+      208,
+      25
+     ],
+     "lines": [
+      {
+       "y": 305.5,
+       "t": "Rotate API keys",
+       "w": 165.0
+      }
+     ]
+    },
+    {
+     "k": "text",
+     "lod": [
+      0.35,
+      null
+     ],
+     "x": 168,
+     "anchor": "start",
+     "font": "sans",
+     "weight": 400,
+     "size": 16,
+     "lh": 20,
+     "fill": "base.ink_muted",
+     "box": [
+      168,
+      316,
+      208,
+      20
+     ],
+     "lines": [
+      {
+       "y": 333.2,
+       "t": "Before the beta",
+       "w": 132.0
+      }
+     ]
+    },
+    {
+     "k": "rect",
+     "lod": [
+      0.15,
+      0.35
+     ],
+     "x": 168,
+     "y": 322,
+     "w": 132.0,
+     "h": 8,
+     "r": 4,
+     "fill": "base.grid",
+     "stroke": null
+    }
+   ]
+  },
+  {
+   "id": "E-13",
+   "kind": "card",
+   "layer": "marks",
+   "z": 13,
+   "v": 3,
+   "bbox": [
+    152,
+    372,
+    392,
+    452
+   ],
+   "hit": {
+    "shape": "rect",
+    "box": [
+     152,
+     372,
+     240,
+     80
+    ]
+   },
+   "handles": "box",
+   "connect": true,
+   "edit": null,
+   "frame": "E-11",
+   "author": "alpha",
+   "chip": {
+    "bg": "chip.0.bg",
+    "fg": "chip.0.fg",
+    "initials": "AL"
+   },
+   "locked": false,
+   "block": "E-10",
+   "part": "c2",
+   "parts": [
+    {
+     "part": "title",
+     "hit": {
+      "shape": "rect",
+      "box": [
+       168,
+       384,
+       208,
+       25
+      ]
+     },
+     "edit": {
+      "field": "text",
+      "value": "Landing page copy",
+      "box": [
+       168,
+       384,
+       208,
+       25
+      ],
+      "font": "sans",
+      "weight": 600,
+      "size": 20,
+      "lh": 25,
+      "align": "start",
+      "wrap": "box",
+      "fill": "base.ink",
+      "part": "title"
+     }
+    }
+   ],
+   "items": [
+    {
+     "k": "rect",
+     "x": 152,
+     "y": 372,
+     "w": 240,
+     "h": 80,
+     "r": 12,
+     "fill": "base.surface",
+     "stroke": "tone.neutral.zone_stroke",
+     "sw": 1,
+     "elev": 1
+    },
+    {
+     "k": "text",
+     "x": 168,
+     "anchor": "start",
+     "font": "sans",
+     "weight": 600,
+     "size": 20,
+     "lh": 25,
+     "fill": "base.ink",
+     "box": [
+      168,
+      384,
+      208,
+      25
+     ],
+     "lines": [
+      {
+       "y": 405.5,
+       "t": "Landing page copy",
+       "w": 187.0
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "E-14",
+   "kind": "section",
+   "layer": "zones",
+   "z": 14,
+   "v": 4,
+   "bbox": [
+    432,
+    192,
+    712,
+    372
+   ],
+   "hit": {
+    "shape": "frame",
+    "box": [
+     432,
+     192,
+     280,
+     180
+    ],
+    "band": 60
+   },
+   "handles": "box",
+   "connect": false,
+   "edit": {
+    "field": "text",
+    "value": "Done \u00b7 1",
+    "box": [
+     452,
+     208,
+     240,
+     25
+    ],
+    "font": "sans",
+    "weight": 600,
+    "size": 20,
+    "lh": 25,
+    "align": "start",
+    "wrap": "line",
+    "fill": "tone.neutral.text"
+   },
+   "frame": "E-10",
+   "author": "alpha",
+   "chip": {
+    "bg": "chip.0.bg",
+    "fg": "chip.0.fg",
+    "initials": "AL"
+   },
+   "locked": false,
+   "block": "E-10",
+   "part": "done",
+   "container": {
+    "layout": "column",
+    "gap": 20,
+    "order": [
+     "E-15"
+    ]
+   },
+   "items": [
+    {
+     "k": "rect",
+     "x": 432,
+     "y": 192,
+     "w": 280,
+     "h": 180,
+     "r": 16,
+     "fill": "tone.neutral.zone",
+     "stroke": "tone.neutral.zone_stroke",
+     "sw": 1
+    },
+    {
+     "k": "text",
+     "lod": [
+      0.6,
+      null
+     ],
+     "x": 452,
+     "anchor": "start",
+     "font": "sans",
+     "weight": 600,
+     "size": 20,
+     "lh": 25,
+     "fill": "tone.neutral.text",
+     "box": [
+      452,
+      208,
+      240,
+      25
+     ],
+     "lines": [
+      {
+       "y": 229.5,
+       "t": "Done \u00b7 1",
+       "w": 88.0
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "E-15",
+   "kind": "card",
+   "layer": "marks",
+   "z": 15,
+   "v": 3,
+   "bbox": [
+    452,
+    272,
+    692,
+    352
+   ],
+   "hit": {
+    "shape": "rect",
+    "box": [
+     452,
+     272,
+     240,
+     80
+    ]
+   },
+   "handles": "box",
+   "connect": true,
+   "edit": null,
+   "frame": "E-14",
+   "author": "alpha",
+   "chip": {
+    "bg": "chip.0.bg",
+    "fg": "chip.0.fg",
+    "initials": "AL"
+   },
+   "locked": false,
+   "block": "E-10",
+   "part": "c3",
+   "parts": [
+    {
+     "part": "title",
+     "hit": {
+      "shape": "rect",
+      "box": [
+       468,
+       284,
+       208,
+       25
+      ]
+     },
+     "edit": {
+      "field": "text",
+      "value": "Persona research",
+      "box": [
+       468,
+       284,
+       208,
+       25
+      ],
+      "font": "sans",
+      "weight": 600,
+      "size": 20,
+      "lh": 25,
+      "align": "start",
+      "wrap": "box",
+      "fill": "base.ink",
+      "part": "title"
+     }
+    }
+   ],
+   "items": [
+    {
+     "k": "rect",
+     "x": 452,
+     "y": 272,
+     "w": 240,
+     "h": 80,
+     "r": 12,
+     "fill": "base.surface",
+     "stroke": "tone.neutral.zone_stroke",
+     "sw": 1,
+     "elev": 1
+    },
+    {
+     "k": "text",
+     "x": 468,
+     "anchor": "start",
+     "font": "sans",
+     "weight": 600,
+     "size": 20,
+     "lh": 25,
+     "fill": "base.ink",
+     "box": [
+      468,
+      284,
+      208,
+      25
+     ],
+     "lines": [
+      {
+       "y": 305.5,
+       "t": "Persona research",
+       "w": 176.0
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "E-20",
+   "kind": "table",
+   "layer": "marks",
+   "z": 20,
+   "v": 7,
+   "bbox": [
+    100,
+    580,
+    500,
+    700
+   ],
+   "hit": {
+    "shape": "rect",
+    "box": [
+     100,
+     580,
+     400,
+     120
+    ]
+   },
+   "handles": "box",
+   "connect": false,
+   "edit": null,
+   "frame": null,
+   "author": "alpha",
+   "chip": {
+    "bg": "chip.0.bg",
+    "fg": "chip.0.fg",
+    "initials": "AL"
+   },
+   "locked": false,
+   "parts": [
+    {
+     "part": "h.c1",
+     "hit": {
+      "shape": "rect",
+      "box": [
+       100,
+       580,
+       200,
+       40
+      ]
+     },
+     "edit": {
+      "field": "text",
+      "value": "Risk",
+      "box": [
+       112,
+       588,
+       176,
+       24
+      ],
+      "font": "sans",
+      "weight": 600,
+      "size": 16,
+      "lh": 20,
+      "align": "start",
+      "wrap": "box",
+      "fill": "base.ink",
+      "part": "h.c1"
+     }
+    },
+    {
+     "part": "h.owner",
+     "hit": {
+      "shape": "rect",
+      "box": [
+       300,
+       580,
+       200,
+       40
+      ]
+     },
+     "edit": {
+      "field": "text",
+      "value": "Owner",
+      "box": [
+       312,
+       588,
+       176,
+       24
+      ],
+      "font": "sans",
+      "weight": 600,
+      "size": 16,
+      "lh": 20,
+      "align": "start",
+      "wrap": "box",
+      "fill": "base.ink",
+      "part": "h.owner"
+     }
+    },
+    {
+     "part": "r1.c1",
+     "hit": {
+      "shape": "rect",
+      "box": [
+       100,
+       620,
+       200,
+       40
+      ]
+     },
+     "edit": {
+      "field": "text",
+      "value": "Docs not ready",
+      "box": [
+       112,
+       628,
+       176,
+       24
+      ],
+      "font": "sans",
+      "weight": 400,
+      "size": 16,
+      "lh": 20,
+      "align": "start",
+      "wrap": "box",
+      "fill": "base.ink",
+      "part": "r1.c1"
+     },
+     "lod": [
+      0.35,
+      null
+     ]
+    },
+    {
+     "part": "r1.owner",
+     "hit": {
+      "shape": "rect",
+      "box": [
+       300,
+       620,
+       200,
+       40
+      ]
+     },
+     "edit": {
+      "field": "text",
+      "value": "writer",
+      "box": [
+       312,
+       628,
+       176,
+       24
+      ],
+      "font": "sans",
+      "weight": 400,
+      "size": 16,
+      "lh": 20,
+      "align": "start",
+      "wrap": "box",
+      "fill": "base.ink",
+      "part": "r1.owner"
+     },
+     "lod": [
+      0.35,
+      null
+     ]
+    },
+    {
+     "part": "r2.c1",
+     "hit": {
+      "shape": "rect",
+      "box": [
+       100,
+       660,
+       200,
+       40
+      ]
+     },
+     "edit": {
+      "field": "text",
+      "value": "Pricing unclear",
+      "box": [
+       112,
+       668,
+       176,
+       24
+      ],
+      "font": "sans",
+      "weight": 400,
+      "size": 16,
+      "lh": 20,
+      "align": "start",
+      "wrap": "box",
+      "fill": "base.ink",
+      "part": "r2.c1"
+     },
+     "lod": [
+      0.35,
+      null
+     ]
+    },
+    {
+     "part": "r2.owner",
+     "hit": {
+      "shape": "rect",
+      "box": [
+       300,
+       660,
+       200,
+       40
+      ]
+     },
+     "edit": {
+      "field": "text",
+      "value": "pm",
+      "box": [
+       312,
+       668,
+       176,
+       24
+      ],
+      "font": "sans",
+      "weight": 400,
+      "size": 16,
+      "lh": 20,
+      "align": "start",
+      "wrap": "box",
+      "fill": "base.ink",
+      "part": "r2.owner"
+     },
+     "lod": [
+      0.35,
+      null
+     ]
+    }
+   ],
+   "items": [
+    {
+     "k": "rect",
+     "x": 100,
+     "y": 580,
+     "w": 400,
+     "h": 120,
+     "r": 8,
+     "fill": "base.surface",
+     "stroke": "tone.neutral.zone_stroke",
+     "sw": 1
+    },
+    {
+     "k": "rect",
+     "x": 100,
+     "y": 580,
+     "w": 400,
+     "h": 40,
+     "r": 0,
+     "fill": "tone.neutral.zone",
+     "stroke": null
+    },
+    {
+     "k": "text",
+     "x": 112,
+     "anchor": "start",
+     "font": "sans",
+     "weight": 600,
+     "size": 16,
+     "lh": 20,
+     "fill": "base.ink",
+     "box": [
+      112,
+      588,
+      176,
+      24
+     ],
+     "lines": [
+      {
+       "y": 605.2,
+       "t": "Risk",
+       "w": 35.2
+      }
+     ]
+    },
+    {
+     "k": "text",
+     "x": 312,
+     "anchor": "start",
+     "font": "sans",
+     "weight": 600,
+     "size": 16,
+     "lh": 20,
+     "fill": "base.ink",
+     "box": [
+      312,
+      588,
+      176,
+      24
+     ],
+     "lines": [
+      {
+       "y": 605.2,
+       "t": "Owner",
+       "w": 44.0
+      }
+     ]
+    },
+    {
+     "k": "text",
+     "lod": [
+      0.35,
+      null
+     ],
+     "x": 112,
+     "anchor": "start",
+     "font": "sans",
+     "weight": 400,
+     "size": 16,
+     "lh": 20,
+     "fill": "base.ink",
+     "box": [
+      112,
+      628,
+      176,
+      24
+     ],
+     "lines": [
+      {
+       "y": 645.2,
+       "t": "Docs not ready",
+       "w": 123.2
+      }
+     ]
+    },
+    {
+     "k": "rect",
+     "lod": [
+      0.15,
+      0.35
+     ],
+     "x": 112,
+     "y": 634,
+     "w": 123.20000000000002,
+     "h": 8,
+     "r": 4,
+     "fill": "base.grid",
+     "stroke": null
+    },
+    {
+     "k": "text",
+     "lod": [
+      0.35,
+      null
+     ],
+     "x": 312,
+     "anchor": "start",
+     "font": "sans",
+     "weight": 400,
+     "size": 16,
+     "lh": 20,
+     "fill": "base.ink",
+     "box": [
+      312,
+      628,
+      176,
+      24
+     ],
+     "lines": [
+      {
+       "y": 645.2,
+       "t": "writer",
+       "w": 52.8
+      }
+     ]
+    },
+    {
+     "k": "rect",
+     "lod": [
+      0.15,
+      0.35
+     ],
+     "x": 312,
+     "y": 634,
+     "w": 52.800000000000004,
+     "h": 8,
+     "r": 4,
+     "fill": "base.grid",
+     "stroke": null
+    },
+    {
+     "k": "text",
+     "lod": [
+      0.35,
+      null
+     ],
+     "x": 112,
+     "anchor": "start",
+     "font": "sans",
+     "weight": 400,
+     "size": 16,
+     "lh": 20,
+     "fill": "base.ink",
+     "box": [
+      112,
+      668,
+      176,
+      24
+     ],
+     "lines": [
+      {
+       "y": 685.2,
+       "t": "Pricing unclear",
+       "w": 132.0
+      }
+     ]
+    },
+    {
+     "k": "rect",
+     "lod": [
+      0.15,
+      0.35
+     ],
+     "x": 112,
+     "y": 674,
+     "w": 132.0,
+     "h": 8,
+     "r": 4,
+     "fill": "base.grid",
+     "stroke": null
+    },
+    {
+     "k": "text",
+     "lod": [
+      0.35,
+      null
+     ],
+     "x": 312,
+     "anchor": "start",
+     "font": "sans",
+     "weight": 400,
+     "size": 16,
+     "lh": 20,
+     "fill": "base.ink",
+     "box": [
+      312,
+      668,
+      176,
+      24
+     ],
+     "lines": [
+      {
+       "y": 685.2,
+       "t": "pm",
+       "w": 17.6
+      }
+     ]
+    },
+    {
+     "k": "rect",
+     "lod": [
+      0.15,
+      0.35
+     ],
+     "x": 312,
+     "y": 674,
+     "w": 17.6,
+     "h": 8,
+     "r": 4,
+     "fill": "base.grid",
+     "stroke": null
+    },
+    {
+     "k": "line",
+     "points": [
+      [
+       300,
+       580
+      ],
+      [
+       300,
+       700
+      ]
+     ],
+     "stroke": "base.grid",
+     "sw": 1
+    }
+   ]
+  },
+  {
+   "id": "E-40",
+   "kind": "graph",
+   "layer": "zones",
+   "z": 40,
+   "v": 9,
+   "bbox": [
+    800,
+    60,
+    1200,
+    400
+   ],
+   "hit": {
+    "shape": "frame",
+    "box": [
+     800,
+     60,
+     400,
+     340
+    ],
+    "band": 60
+   },
+   "handles": "box",
+   "connect": false,
+   "edit": {
+    "field": "text",
+    "value": "Checkout flow",
+    "box": [
+     820,
+     76,
+     360,
+     25
+    ],
+    "font": "sans",
+    "weight": 600,
+    "size": 20,
+    "lh": 25,
+    "align": "start",
+    "wrap": "line",
+    "fill": "tone.neutral.text"
+   },
+   "frame": null,
+   "author": "alpha",
+   "chip": {
+    "bg": "chip.0.bg",
+    "fg": "chip.0.fg",
+    "initials": "AL"
+   },
+   "locked": false,
+   "items": [
+    {
+     "k": "rect",
+     "x": 800,
+     "y": 60,
+     "w": 400,
+     "h": 340,
+     "r": 16,
+     "fill": "tone.neutral.zone",
+     "stroke": "tone.neutral.zone_stroke",
+     "sw": 1
+    },
+    {
+     "k": "text",
+     "lod": [
+      0.6,
+      null
+     ],
+     "x": 820,
+     "anchor": "start",
+     "font": "sans",
+     "weight": 600,
+     "size": 20,
+     "lh": 25,
+     "fill": "tone.neutral.text",
+     "box": [
+      820,
+      76,
+      360,
+      25
+     ],
+     "lines": [
+      {
+       "y": 97.5,
+       "t": "Checkout flow",
+       "w": 143.0
+      }
+     ]
+    },
+    {
+     "k": "text",
+     "lod": [
+      null,
+      0.6
+     ],
+     "x": 800,
+     "anchor": "start",
+     "font": "sans",
+     "weight": 600,
+     "size": 20,
+     "lh": 25,
+     "base_ratio": 0.95,
+     "zoom": {
+      "min_px": 12,
+      "grow": "up",
+      "bottom": 60
+     },
+     "fill": "tone.neutral.text",
+     "box": [
+      800,
+      35,
+      143,
+      25
+     ],
+     "lines": [
+      {
+       "y": 56.5,
+       "t": "Checkout flow",
+       "w": 143.0
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "E-41",
+   "kind": "box",
+   "layer": "marks",
+   "z": 41,
+   "v": 8,
+   "bbox": [
+    840,
+    160,
+    1000,
+    220
+   ],
+   "hit": {
+    "shape": "rect",
+    "box": [
+     840,
+     160,
+     160,
+     60
+    ]
+   },
+   "handles": "box",
+   "connect": true,
+   "edit": {
+    "field": "text",
+    "value": "Checkout API",
+    "box": [
+     856,
+     178.0,
+     128,
+     25
+    ],
+    "font": "sans",
+    "weight": 500,
+    "size": 20,
+    "lh": 25,
+    "align": "center",
+    "wrap": "box",
+    "fill": "tone.info.text"
+   },
+   "frame": "E-40",
+   "author": "alpha",
+   "chip": {
+    "bg": "chip.0.bg",
+    "fg": "chip.0.fg",
+    "initials": "AL"
+   },
+   "locked": false,
+   "block": "E-40",
+   "part": "api",
+   "items": [
+    {
+     "k": "rect",
+     "x": 840,
+     "y": 160,
+     "w": 160,
+     "h": 60,
+     "r": 8,
+     "fill": "tone.info.fill",
+     "stroke": "tone.info.stroke",
+     "sw": 2
+    },
+    {
+     "k": "text",
+     "x": 920.0,
+     "anchor": "middle",
+     "font": "sans",
+     "weight": 500,
+     "size": 20,
+     "lh": 25,
+     "fill": "tone.info.text",
+     "box": [
+      856,
+      178.0,
+      128,
+      25
+     ],
+     "lines": [
+      {
+       "y": 199.5,
+       "t": "Checkout API",
+       "w": 132.0
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "E-42",
+   "kind": "box",
+   "layer": "marks",
+   "z": 42,
+   "v": 9,
+   "bbox": [
+    1000,
+    300,
+    1160,
+    360
+   ],
+   "hit": {
+    "shape": "rect",
+    "box": [
+     1000,
+     300,
+     160,
+     60
+    ]
+   },
+   "handles": "box",
+   "connect": true,
+   "edit": {
+    "field": "text",
+    "value": "Orders DB",
+    "box": [
+     1016,
+     318.0,
+     128,
+     25
+    ],
+    "font": "sans",
+    "weight": 500,
+    "size": 20,
+    "lh": 25,
+    "align": "center",
+    "wrap": "box",
+    "fill": "tone.info.text"
+   },
+   "frame": "E-40",
+   "author": "alpha",
+   "chip": {
+    "bg": "chip.0.bg",
+    "fg": "chip.0.fg",
+    "initials": "AL"
+   },
+   "locked": false,
+   "block": "E-40",
+   "part": "db",
+   "pin": "agent",
+   "tip": "Postgres 17, primary in eu-west",
+   "items": [
+    {
+     "k": "rect",
+     "x": 1000,
+     "y": 300,
+     "w": 160,
+     "h": 60,
+     "r": 8,
+     "fill": "tone.info.fill",
+     "stroke": "tone.info.stroke",
+     "sw": 2
+    },
+    {
+     "k": "text",
+     "x": 1080.0,
+     "anchor": "middle",
+     "font": "sans",
+     "weight": 500,
+     "size": 20,
+     "lh": 25,
+     "fill": "tone.info.text",
+     "box": [
+      1016,
+      318.0,
+      128,
+      25
+     ],
+     "lines": [
+      {
+       "y": 339.5,
+       "t": "Orders DB",
+       "w": 99.0
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "E-43",
+   "kind": "arrow",
+   "layer": "marks",
+   "z": 43,
+   "v": 9,
+   "bbox": [
+    920,
+    220,
+    1080,
+    330
+   ],
+   "hit": {
+    "shape": "line",
+    "points": [
+     [
+      920,
+      220
+     ],
+     [
+      920,
+      330
+     ],
+     [
+      1000,
+      330
+     ]
+    ],
+    "tol_px": 6
+   },
+   "handles": "ends",
+   "connect": false,
+   "edit": null,
+   "frame": "E-40",
+   "author": "alpha",
+   "chip": {
+    "bg": "chip.0.bg",
+    "fg": "chip.0.fg",
+    "initials": "AL"
+   },
+   "locked": false,
+   "block": "E-40",
+   "part": "e:api->db",
+   "items": [
+    {
+     "k": "arrow",
+     "d": "M920 220 L920 322 Q920 330 928 330 L1000 330",
+     "stroke": "base.line",
+     "sw": 2,
+     "heads": [
+      {
+       "at": "end",
+       "shape": "chevron",
+       "points": [
+        [
+         986,
+         323
+        ],
+        [
+         1000,
+         330
+        ],
+        [
+         986,
+         337
+        ]
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

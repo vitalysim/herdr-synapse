@@ -438,15 +438,21 @@ class KeysManifestSetupTests(unittest.TestCase):
         self.assertLessEqual(len(reference.splitlines()), 120)
         for needle in ("canvas_look", "canvas_draw", "canvas look", "canvas draw", "claim", "legend", "requests, never orders", "--since last"):
             self.assertIn(needle, reference, needle)
-        examples = re.findall(r"```json\n(.*?)```", reference, re.S)
+        # Phase 2 moved the long examples into canvas-blocks and canvas-diagrams: together they cover every layer.
+        guides = "".join((paths.skill_guides_dir() / "references" / name).read_text(encoding="utf-8")
+                         for name in ("canvas.md", "canvas-blocks.md", "canvas-diagrams.md"))
+        examples = re.findall(r"```json\n(.*?)```", guides, re.S)
         ops = []
         for block in examples:
-            chunks = [block] if block.lstrip().startswith('{"ops"') else block.strip().splitlines()
-            for chunk in chunks:
-                parsed = json.loads(chunk)
+            try:
+                chunks = [json.loads(block)]
+            except ValueError:
+                chunks = [json.loads(line) for line in block.strip().splitlines()]  # one op per line
+            for parsed in chunks:
                 ops.extend(parsed["ops"] if "ops" in parsed else [parsed])
         layers = {op["op"] for op in ops}
         self.assertTrue({"shape", "arrow", "frame", "pen", "comment", "svg", "graph", "mermaid", "chart", "viz"} <= layers, layers)
+        self.assertTrue({"section", "card", "sticky", "callout", "table", "kanban", "timeline", "mindmap", "place", "patch"} <= layers, layers)
         self.assertTrue(all(op.get("intent") for op in ops), "every example carries an intent")
         from herdr_team import canvas
 

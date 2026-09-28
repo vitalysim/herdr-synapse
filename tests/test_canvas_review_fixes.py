@@ -179,21 +179,27 @@ class ForceLayout(CanvasRig):
         self.assertLess(max(frame["w"], frame["h"]), 3000)
 
     def test_force_layout_runs_before_the_canvas_lock(self):
-        real = L.layout
+        # Phase 2: the graph block's ``prepare`` lays it out before canvas.lock is taken (1.3); arranging under the lock
+        # then takes the prepared result, so a big force layout never keeps a page write waiting.
+        from herdr_team import canvas_layouts
+
+        real = canvas_layouts.run
         held = []
 
-        def probe(nodes, edges, algorithm="layered", direction="down", **kw):
-            if algorithm == "force":
+        def probe(name, request):
+            if name == "force":
                 lock = C._canvas_lock(self.team)
                 free = lock.try_acquire()
                 if free:
                     lock.release()
                 held.append(not free)
-            return real(nodes, edges, algorithm, direction, **kw)
+            return real(name, request)
 
-        with mock.patch.object(L, "layout", probe):
+        with mock.patch.object(canvas_layouts, "run", probe):
             self.ok({"op": "graph", "nodes": ["a", "b", "c"], "edges": [["a", "b"]], "layout": "force", "at": "c0r0", "intent": "t"})
-        self.assertEqual(held, [False], "the force layout was computed while canvas.lock was free")
+        self.assertTrue(held, "the force layout ran")
+        self.assertFalse(held[0], "the force layout was first computed while canvas.lock was free")
+        self.assertEqual(held.count(True), 0, "nothing laid it out again under the lock")
 
 
 # --------------------------------------------------------------------------

@@ -1,18 +1,21 @@
 // The v2 board's keyboard (canvas-v2-phase1.md 4.3): one table from a key to a command. Board
 // runs the command; this file only decides which one. Nothing fires while a text field has focus.
+import { TOOLSET } from "./toolset.js";
 
-export const TOOL_KEYS = {
-  v: "select",
-  h: "hand",
-  r: "box",
-  o: "ellipse",
-  d: "diamond",
-  n: "note",
-  t: "text",
-  a: "arrow",
-  p: "pen",
-  f: "frame",
-};
+// Key -> tool: select (v) and hand (h), then each kind's tool key from the registry (toolset.js).
+export const TOOL_KEYS = TOOLSET.keys;
+
+// Esc with one block member selected selects its block (canvas-v2-phase2.md 6.3 W-g); an Esc on
+// the block an Esc just selected (`parented`), or on anything else, clears the selection.
+// escapeSelection(selection, entryOf, parented) -> {select: ids, parented: id | null}
+export function escapeSelection(selection, entryOf, parented = null) {
+  if (Array.isArray(selection) && selection.length === 1 && selection[0] !== parented) {
+    const entry = entryOf(selection[0]);
+    const parent = entry && typeof entry.block === "string" && entry.block !== entry.id ? entry.block : null;
+    if (parent && entryOf(parent)) return { select: [parent], parented: parent };
+  }
+  return { select: [], parented: null };
+}
 
 // Tools a read-only page keeps.
 export const READ_ONLY_TOOLS = new Set(["select", "hand"]);

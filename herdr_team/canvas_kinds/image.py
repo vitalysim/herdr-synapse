@@ -7,6 +7,9 @@ from herdr_team.canvas_kinds import Kind, OpSpec
 from herdr_team.canvas_kinds._common import MAX_SIZE, Element, bounds_text
 from herdr_team.canvas_kinds.svg import asset_emit
 
+#: Its place in the registration order (``canvas_kinds.DEFAULT_ORDER``).
+ORDER = 110
+
 #: A new image is at most this wide (its pixel size, shrunk) unless the op sets w/h.
 DEFAULT_MAX_W = 480.0
 

@@ -11,8 +11,11 @@ from typing import Any, Dict, List, Tuple
 
 from herdr_team import canvas_display as D
 from herdr_team import canvas_text
-from herdr_team.canvas_kinds import Kind
+from herdr_team.canvas_kinds import Kind, Tool
 from herdr_team.canvas_kinds._common import MAX_SIZE, Element, number, readback, round_int, style_of
+
+#: Its place in the registration order (``canvas_kinds.DEFAULT_ORDER``).
+ORDER = 20
 
 #: The widest a text sizes itself before it wraps.
 TEXT_MAX_W = 600
@@ -54,5 +57,6 @@ KINDS = (
     Kind(name="text", role="leaf", ops=("shape",), fields=("text", "w", "tone", "color", "font", "size"), fit="hug", page=True,
          subkind_of="shape", solid=True, cell=True, tone_group="text", handles="width", connectable=True, edit_limit="text", edit_required=True,
          measure=measure, readback=readback, emit=emit, initial=initial, resize=resize,
-         doc="free text; as wide as its longest line (up to 600), or wrapped at w"),
+         doc="free text; as wide as its longest line (up to 600), or wrapped at w",
+         tool=Tool(key="t", title="Text", glyph="T", gesture="text", order=50)),
 )

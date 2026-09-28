@@ -40,10 +40,14 @@ import {
   commandOf,
   createDisplayClient,
   createModel,
+  createOpQueue,
   createPendingPreviews,
   createUndoStack,
+  editTargetOf,
+  escapeSelection,
   ops as opsLib,
   panModeOf,
+  withoutPartText,
 } from "./interact/index.js";
 import "./interact/board.css";
 
@@ -114,6 +118,7 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
   const [viewport, setViewport] = useState({ w: 0, h: 0 });
   const [selection, setSelectionState] = useState([]);
   const [hover, setHover] = useState(null);
+  const [hoverPart, setHoverPart] = useState(null);
   const [hoverAt, setHoverAt] = useState(null);
   const [tool, setToolState] = useState("select");
   const [spaceHeld, setSpaceHeld] = useState(false);
@@ -141,6 +146,8 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
   const stills = useRef(new Set());
   const awaitEdit = useRef(null);
   const awaitSelect = useRef(null);
+  // The block an Esc selected from one of its members: the next Esc clears (W-g).
+  const parented = useRef(null);
   const undo = useMemo(() => createUndoStack(), []);
   const pending = useMemo(() => createPendingPreviews({ onChange: setPendingPreviews }), []);
   dlRef.current = dl;
@@ -154,12 +161,15 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
   const index = useMemo(() => createIndex(dl), [dl]);
   // What this page's own applied ops left each element at, until the list catches up (ops.versionOf).
   const ownVersions = useRef(new Map());
-  const ownVersionOf = useCallback((id) => ownVersions.current.get(id) ?? null, []);
+  const indexRef = useRef(index);
+  indexRef.current = index;
+  // The newest version the page knows of an element: its own op's, or the newest list's. A gesture
+  // keeps the model it started with, and the list may catch up while it runs (the own version is
+  // then dropped), so the list it started with is not enough (QA phase 1, V-3).
+  const ownVersionOf = useCallback((id) => opsLib.newestVersion(ownVersions.current, indexRef.current, id), []);
   const model = useMemo(() => createModel(dl, elementOf, { own: ownVersionOf }), [dl, elementOf, ownVersionOf]);
   const modelRef = useRef(model);
   modelRef.current = model;
-  const indexRef = useRef(index);
-  indexRef.current = index;
 
   const setSelection = useCallback((ids) => setSelectionState(Array.isArray(ids) ? [...new Set(ids)] : []), []);
   const setTool = useCallback(
@@ -257,7 +267,8 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
     if (want && live.has(want)) {
       awaitEdit.current = null;
       const entry = dl.entries.find((e) => e.id === want);
-      if (entry && entry.edit && !entry.locked && writable) setEditor({ id: want, spec: entry.edit, created: true });
+      const target = entry && !entry.locked && writable ? editTargetOf(entry, null, { created: true }) : null;
+      if (target) setEditor({ id: want, part: target.part, spec: target.spec, created: true });
     }
   }, [dl, viewport.w > 0]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -270,6 +281,8 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
 
   // -- sending ops -------------------------------------------------------------------------------
 
+  const opQueue = useMemo(() => createOpQueue({ post: (ops) => postJSON(teamPath(team, "ops"), { ops, atomic: false }) }), [team]);
+
   const sendOps = useCallback(
     async (list, { preview = null, editCreated = false, isUndo = false } = {}) => {
       const opsToSend = (list || []).filter(Boolean);
@@ -277,7 +290,8 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
       const key = pending.add(preview);
       let result;
       try {
-        result = await postJSON(teamPath(team, "ops"), { ops: opsToSend, atomic: false });
+        // Behind any POST still in flight, with if_version rebased over what those left (V-3).
+        result = await opQueue.send(opsToSend);
       } catch (err) {
         pending.drop(key);
         toast(err instanceof ApiError ? `${err.code}: ${err.message}` : String(err), "error");
@@ -301,20 +315,21 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
       if (applied.length) client.sync();
       return result;
     },
-    [writable, team, toast, undo, pending, client],
+    [writable, opQueue, toast, undo, pending, client],
   );
 
   // -- the editor ------------------------------------------------------------------------------
 
   const openEditor = useCallback(
-    (id) => {
+    (id, part = null) => {
       const entry = modelRef.current.entry(id);
-      if (!writable || !entry || !entry.edit) return false;
+      const target = writable ? editTargetOf(entry, part) : null;
+      if (!target) return false;
       if (entry.locked) {
         toast(`${id} is in a locked region; unlock it first`, "info");
         return false;
       }
-      setEditor({ id, spec: entry.edit, created: false });
+      setEditor({ id, part: target.part, spec: target.spec, created: false });
       return true;
     },
     [writable, toast],
@@ -341,7 +356,7 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
           toast(`${current.id} was deleted while you were editing it, so your text was not saved${shown.trim() ? `: “${shown}”` : ""}`, "warn");
           return;
         }
-        const op = opsLib.buildEdit(modelRef.current, current.id, text);
+        const op = current.part ? opsLib.buildEditPart(modelRef.current, current.id, current.part, text) : opsLib.buildEdit(modelRef.current, current.id, text);
         if (op) sendOps([op]);
       } else {
         const op = opsLib.buildText(text, current.at);
@@ -358,7 +373,9 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
     if (!editor || !editor.id || !dl) return null;
     const entry = dl.entries.find((e) => e.id === editor.id);
     if (!entry) return null;
-    // Hide the entry and redraw everything but its text, so the typing replaces only the label.
+    // Hide the entry and redraw everything but its text, so the typing replaces only the label (for
+    // a part, only the text inside the part's box).
+    if (editor.part) return { hide: [editor.id], ghost: withoutPartText(entry, editor.spec.box) };
     return { hide: [editor.id], ghost: (entry.items || []).filter((p) => p && p.k !== "text") };
   }, [editor, dl]);
 
@@ -383,10 +400,15 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
         case "hover":
           setHover(ev.hit || null);
           setHoverAt(ev.hit ? ev.screen : null);
+          setHoverPart((prev) => {
+            const next = writable && ev.hit && ev.part && ev.part.edit ? { id: ev.hit, part: ev.part.part } : null;
+            return prev && next && prev.id === next.id && prev.part === next.part ? prev : next;
+          });
           return;
         case "leave":
           setHover(null);
           setHoverAt(null);
+          setHoverPart(null);
           return;
         case "down": {
           if (editorRef.current) return; // the textarea's blur commits it first
@@ -427,6 +449,8 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
         case "dblclick": {
           if (!writable || editorRef.current) return;
           const entry = ev.hit ? modelRef.current.entry(ev.hit) : null;
+          // A part with an editor (a table cell, a card's title or body) edits just that part.
+          if (entry && ev.part && ev.part.edit && openEditor(entry.id, ev.part.part)) return;
           if (entry) openEditor(entry.id);
           else openNewText(ev.world);
           return;
@@ -486,8 +510,11 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
             setLivePreview(null);
           } else if (Date.now() - cancelledAt.current > 100) {
             // (an Esc that Surface already used to cancel a drag keeps the selection)
-            setSelection([]);
-            setToolState("select");
+            // One block member selected: Esc selects its block first, then clears (W-g).
+            const next = escapeSelection(sel, (id) => m.entry(id), parented.current);
+            parented.current = next.parented;
+            setSelection(next.select);
+            if (!next.parented) setToolState("select");
           }
           return;
         case "select_all":
@@ -594,6 +621,7 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
         setCamera: (next) => setCam(next),
         getRoot: () => rootRef.current,
         getViewport: () => fitViewport(viewportRef.current, panelOpenRef.current),
+        getSelection: () => selectionRef.current,
       }),
     [],
   );
@@ -705,6 +733,8 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
   }, [selection, elementOf, dl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const styled = selection.filter((id) => /^E-/.test(id) && model.entry(id) && !model.entry(id).locked);
+  const arrows = styled.filter((id) => opsLib.kindOf(model, id) === "arrow");
+  const arrowRoute = arrows.length ? (elementOf(arrows[0]) && elementOf(arrows[0]).style && elementOf(arrows[0]).style.route) || "straight" : null;
   const hoverEl = hover && hoverAt && !gesture.current ? elementOf(hover) : null;
   const editorColor = editor ? paintOf(dl, theme, editor.spec.fill) : null;
 
@@ -719,6 +749,7 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
           onViewport={setViewport}
           selection={selection}
           hover={hover}
+          hoverPart={hoverPart}
           preview={preview}
           panMode={panModeOf(tool, spaceHeld)}
           showChips={showChips}
@@ -733,8 +764,9 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
         >
           {editor ? (
             <TextEditor
-              key={editor.id || `new:${editor.at}`}
+              key={editor.id ? `${editor.id}:${editor.part || ""}` : `new:${editor.at}`}
               spec={editor.spec}
+              part={editor.part || null}
               camera={cam}
               color={editorColor}
               onCommit={commitEditor}
@@ -750,6 +782,11 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
           current={styleCurrent}
           swatch={(tone) => paintOf(dl, theme, `tone.${tone}.stroke`) || paintOf(dl, theme, `tone.${tone}.solid`) || "#888888"}
           onPick={(patch) => sendOps([opsLib.buildRestyle(model, styled, patch)])}
+          route={arrowRoute}
+          onRoute={(route) => sendOps([opsLib.buildRestyleRoute(model, arrows, route)])}
+          pins={opsLib.pinChoices(model, styled)}
+          onPin={() => sendOps([opsLib.buildPin(model, styled)])}
+          onUnpin={() => sendOps([opsLib.buildUnpin(model, styled)])}
         />
       ) : null}
       <div className="canvas-top-right v2-top-right">
@@ -772,7 +809,7 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
         <div className="hover-card" style={{ left: hoverAt[0] + 14, top: hoverAt[1] + 14 }}>
           <div className="hover-title">
             <AuthorChip scene={store.get()} name={hoverEl.author} theme={theme} />
-            {hoverEl.id} {hoverEl.type} · {who(hoverEl.author)}
+            {hoverEl.id} {(model.entry(hoverEl.id) && model.entry(hoverEl.id).kind) || hoverEl.type} · {who(hoverEl.author)}
           </div>
           {hoverEl.intent ? <div className="hover-intent">{hoverEl.intent}</div> : null}
           {hoverEl.type === "comment" ? <div className="hover-intent">“{hoverEl.text}”</div> : null}

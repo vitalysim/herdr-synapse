@@ -103,7 +103,7 @@ def _name(el: Dict[str, Any]) -> str:
 def _problem(code: str, ids: List[str], message: str, fix: Optional[Dict[str, Any]], reader: Optional[str], by_id: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
     if fix is not None:
         # Every operation carries an intent, so the fix applies as it stands (canvas draw --op, canvas_draw).
-        fix = dict(fix, intent="fix the layout: {} ({})".format(code.replace("_", " "), ", ".join(ids)))
+        fix = dict(fix, intent=fix.get("intent") or "fix the layout: {} ({})".format(code.replace("_", " "), ", ".join(ids)))
     return {"code": code, "ids": ids, "message": message, "fix": fix,
             "yours": bool(reader) and any((by_id.get(i) or {}).get("author") == reader for i in ids)}
 
@@ -245,6 +245,15 @@ def _frame_edges(marks: List[Dict[str, Any]], frames: List[Dict[str, Any]], read
                                              ("right", box[2] > outer[2]), ("bottom", box[3] > outer[3])) if past]
             w, h = _overlap(box, outer)
             mostly_in = w * h >= 0.5 * (box[2] - box[0]) * (box[3] - box[1])
+            if _joined_only(frame):
+                # A stack or a positional block takes members only on purpose (phase 2): move the mark off its zone.
+                boxes = [(str(o["id"]), box_of(o)) for o in marks + frames if o["id"] != el["id"]]
+                spot = free_spot(el, frame, boxes, None)
+                fix = {"op": "move", "id": el["id"], "to": [spot[0], spot[1]]} if spot else None
+                out.append(_problem("frame_edge", [el["id"], frame["id"]],
+                                    "{} lies on {} past its {} edge; move it off the {} (or put it in with place in)".format(
+                                        _name(el), _name(frame), " and ".join(sides), frame.get("block")), fix, reader, by_id))
+                break
             if mostly_in and "left" not in sides and "top" not in sides:
                 grow_w = int(math.ceil(max(outer[2], box[2] + FRAME_PAD) - outer[0]))
                 grow_h = int(math.ceil(max(outer[3], box[3] + FRAME_PAD) - outer[1]))
@@ -275,6 +284,17 @@ def _frame_edges(marks: List[Dict[str, Any]], frames: List[Dict[str, Any]], read
                                 _name(frame), _name(parent), " and ".join(sides), grow_w, grow_h),
                             {"op": "move", "id": parent["id"], "w": grow_w, "h": grow_h}, reader, by_id))
     return out
+
+
+def _joined_only(frame: Dict[str, Any]) -> bool:
+    """A block frame that takes members only on purpose: a stack (``row``/``column``/``grid``) or a positional block."""
+    if not frame.get("block"):
+        return False
+    settings = frame.get("settings") if isinstance(frame.get("settings"), dict) else {}
+    if settings.get("layout") in ("row", "column", "grid"):
+        return True
+    kind = _kinds.kind_of(frame)
+    return bool(kind is not None and kind.block is not None and kind.block.positional and kind.name != "section")
 
 
 def _segment_hits_box(p: Sequence[float], q: Sequence[float], box: Sequence[float]) -> bool:
@@ -316,10 +336,14 @@ def _arrows_through(arrows: List[Dict[str, Any]], solid: List[Dict[str, Any]], r
             if any(inner[0] < p[0] < inner[2] and inner[1] < p[1] < inner[3] for p in (points[0], points[-1])):
                 continue
             if any(_segment_hits_box(points[i], points[i + 1], inner) for i in range(len(points) - 1)):
+                # A bound arrow routes around what is in its way (phase 2, 3.4); a free one is moved by hand.
+                bound = bool(arrow.get("from") or arrow.get("to"))
+                fix = {"op": "restyle", "ids": [arrow["id"]], "route": "orthogonal", "intent": "route around {}".format(el["id"])} if bound else None
                 out.append(_problem("arrow_through", [arrow["id"], el["id"]],
-                                    "arrow {}{} passes through {}; route it around (points, or curve) or move {} out of its way".format(
-                                        arrow["id"], _label(arrow), _name(el), el["id"]),
-                                    None, reader, by_id))
+                                    "arrow {}{} passes through {}; {}".format(
+                                        arrow["id"], _label(arrow), _name(el),
+                                        "route it around it (the fix: route orthogonal)" if bound else "move it, or move {} out of its way".format(el["id"])),
+                                    fix, reader, by_id))
     return out
 
 
@@ -383,7 +407,7 @@ def _kind_checks(live: List[Dict[str, Any]], env: Dict[str, Any]) -> List[Proble
     """Each element's own kind checks (``Kind.checks``), made into full problems."""
     out: List[Problem] = []
     for el in live:
-        kind = _kinds.get(el.get("type"))
+        kind = _kinds.kind_of(el)
         for check in kind.checks if kind is not None else ():
             for found in check(el, env) or []:
                 ids = [str(i) for i in found.get("ids") or [el.get("id")]]

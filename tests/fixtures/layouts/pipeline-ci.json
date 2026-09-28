@@ -1,0 +1,99 @@
+{
+ "name": "pipeline-ci",
+ "kind": "pipeline",
+ "about": "a CI pipeline with retries",
+ "nodes": [
+  {
+   "id": "in",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "parse",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "check",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "plan",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "build",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "test",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "deploy",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "monitor",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "rollback",
+   "w": 160,
+   "h": 60
+  }
+ ],
+ "edges": [
+  [
+   "in",
+   "parse"
+  ],
+  [
+   "parse",
+   "check"
+  ],
+  [
+   "check",
+   "plan"
+  ],
+  [
+   "plan",
+   "build"
+  ],
+  [
+   "build",
+   "test"
+  ],
+  [
+   "test",
+   "deploy"
+  ],
+  [
+   "deploy",
+   "monitor"
+  ],
+  [
+   "monitor",
+   "rollback"
+  ],
+  [
+   "rollback",
+   "build"
+  ],
+  [
+   "test",
+   "plan"
+  ],
+  [
+   "check",
+   "in"
+  ]
+ ],
+ "phase1_crossings": 0
+}

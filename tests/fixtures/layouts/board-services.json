@@ -1,0 +1,130 @@
+{
+ "name": "board-services",
+ "kind": "board",
+ "about": "a service architecture",
+ "nodes": [
+  {
+   "id": "web",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "mobile",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "gw",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "auth",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "orders",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "pay",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "inventory",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "db",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "cache",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "queue",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "mailer",
+   "w": 160,
+   "h": 60
+  },
+  {
+   "id": "audit",
+   "w": 160,
+   "h": 60
+  }
+ ],
+ "edges": [
+  [
+   "web",
+   "gw"
+  ],
+  [
+   "mobile",
+   "gw"
+  ],
+  [
+   "gw",
+   "auth"
+  ],
+  [
+   "gw",
+   "orders"
+  ],
+  [
+   "gw",
+   "pay"
+  ],
+  [
+   "orders",
+   "inventory"
+  ],
+  [
+   "orders",
+   "db"
+  ],
+  [
+   "pay",
+   "db"
+  ],
+  [
+   "orders",
+   "queue"
+  ],
+  [
+   "queue",
+   "mailer"
+  ],
+  [
+   "auth",
+   "cache"
+  ],
+  [
+   "inventory",
+   "cache"
+  ],
+  [
+   "pay",
+   "audit"
+  ],
+  [
+   "auth",
+   "audit"
+  ],
+  [
+   "mailer",
+   "audit"
+  ]
+ ],
+ "phase1_crossings": 1
+}
