@@ -362,6 +362,7 @@ export function Surface({
   entered = null,
   onEnter,
   onOps,
+  screenOverlay = null,
   children,
 }) {
   const wrapRef = useRef(null);
@@ -884,6 +885,7 @@ export function Surface({
         </g>
       </svg>
       </div>
+      {screenOverlay ? <div className="sv2-screen">{screenOverlay}</div> : null}
       <div ref={glHostRef} className="sv2-gl-host" data-gl-host="" />
       {htmlSlotNodes.length ? (
         <div className="sv2-html" style={{ transform: `matrix(${view.scale}, 0, 0, ${view.scale}, ${-view.x * view.scale}, ${-view.y * view.scale})` }}>

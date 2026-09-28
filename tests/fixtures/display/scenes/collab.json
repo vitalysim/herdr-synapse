@@ -1,0 +1,797 @@
+{
+ "authors": {
+  "human": {
+   "agent": null,
+   "color": "#1e1e1e",
+   "index": -1,
+   "kind": "human"
+  },
+  "qa-drawer": {
+   "agent": "claude",
+   "color": "#1971c2",
+   "index": 0,
+   "kind": "member"
+  }
+ },
+ "batches": {
+  "B-1": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "human",
+   "first_seq": 1,
+   "last_seq": 8,
+   "undone": false
+  },
+  "B-2": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "qa-drawer",
+   "first_seq": 9,
+   "last_seq": 12,
+   "undone": false
+  },
+  "B-3": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "qa-drawer",
+   "first_seq": 13,
+   "last_seq": 13,
+   "undone": false
+  },
+  "B-4": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "qa-drawer",
+   "first_seq": 14,
+   "last_seq": 14,
+   "undone": false
+  },
+  "B-5": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "human",
+   "first_seq": 15,
+   "last_seq": 16,
+   "undone": false
+  },
+  "B-6": {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "human",
+   "first_seq": 17,
+   "last_seq": 19,
+   "undone": false
+  }
+ },
+ "checkpoints": [
+  {
+   "at": "2026-01-01T00:00:00.000Z",
+   "auto": false,
+   "by": "human",
+   "elements": 10,
+   "id": "V-1",
+   "label": "before review",
+   "version": 18
+  }
+ ],
+ "claims": [],
+ "counters": {
+  "B": 6,
+  "C": 2,
+  "E": 9,
+  "G": 0,
+  "K": 1,
+  "P": 2,
+  "V": 1,
+  "X": 2
+ },
+ "elements": [
+  {
+   "alias": "page",
+   "author": "human",
+   "author_kind": "human",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 1,
+   "frame": null,
+   "group": null,
+   "h": 380,
+   "id": "E-1",
+   "intent": "the operator's edit",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#f0f1f4",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#d9dce1",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Pricing page",
+   "type": "frame",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 1,
+   "w": 560,
+   "x": 0,
+   "y": 0,
+   "z": 1
+  },
+  {
+   "alias": "plans",
+   "author": "human",
+   "author_kind": "human",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 2,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Plans"
+    ],
+    "min": [
+     200,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 80,
+   "id": "E-2",
+   "intent": "the operator's edit",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Plans",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 2,
+   "w": 200,
+   "x": 40,
+   "y": 80,
+   "z": 2
+  },
+  {
+   "alias": "faq",
+   "author": "human",
+   "author_kind": "human",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 3,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "FAQ and help"
+    ],
+    "min": [
+     200,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": "E-1",
+   "group": null,
+   "h": 80,
+   "id": "E-3",
+   "intent": "the operator's edit",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "FAQ and help",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 15,
+   "w": 200,
+   "x": 320,
+   "y": 80,
+   "z": 3
+  },
+  {
+   "alias": "checkout",
+   "author": "human",
+   "author_kind": "human",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 4,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Checkout"
+    ],
+    "min": [
+     200,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 80,
+   "id": "E-4",
+   "intent": "the operator's edit",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#f1eefe",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#7d68d8",
+    "text": "#2f2468",
+    "tone": "accent",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Checkout",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 4,
+   "w": 200,
+   "x": 720,
+   "y": 40,
+   "z": 4
+  },
+  {
+   "alias": "legal",
+   "author": "human",
+   "author_kind": "human",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 5,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Legal copy"
+    ],
+    "min": [
+     180,
+     120
+    ],
+    "policy": "shrink",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 120,
+   "id": "E-5",
+   "intent": "the operator's edit",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#fff0a0",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#9e8000",
+    "text": "#4a3b05",
+    "tone": "idea",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Legal copy",
+   "type": "note",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 5,
+   "w": 180,
+   "x": 40,
+   "y": 480,
+   "z": 5
+  },
+  {
+   "alias": null,
+   "anchor": [
+    1,
+    0
+   ],
+   "author": "human",
+   "author_kind": "human",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 7,
+   "frame": null,
+   "group": null,
+   "h": 1,
+   "id": "C-1",
+   "intent": "the operator's edit",
+   "mentions": [],
+   "on": "E-4",
+   "point": [
+    920,
+    40
+   ],
+   "reply_to": null,
+   "resolved": false,
+   "resolved_by": null,
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Is this the final flow?",
+   "type": "comment",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 7,
+   "w": 1,
+   "x": 920,
+   "y": 40,
+   "z": 7
+  },
+  {
+   "alias": null,
+   "anchor": [
+    1,
+    0
+   ],
+   "author": "human",
+   "author_kind": "human",
+   "batch": "B-1",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 8,
+   "frame": null,
+   "group": null,
+   "h": 1,
+   "id": "C-2",
+   "intent": "the operator's edit",
+   "mentions": [
+    "qa-drawer"
+   ],
+   "on": null,
+   "point": [
+    600,
+    480
+   ],
+   "reply_to": null,
+   "resolved": false,
+   "resolved_by": null,
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "@drawer can this go?",
+   "type": "comment",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 16,
+   "w": 1,
+   "was_on": "E-6",
+   "x": 600,
+   "y": 480,
+   "z": 8
+  },
+  {
+   "alias": "visit",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-2",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 10,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Visit"
+    ],
+    "min": [
+     180,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 80,
+   "id": "E-7",
+   "intent": "the funnel's first step",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Visit",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 10,
+   "w": 180,
+   "x": 1560,
+   "y": 40,
+   "z": 9
+  },
+  {
+   "alias": "signup",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-2",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 11,
+   "fit": {
+    "estimated": false,
+    "lines": [
+     "Sign up"
+    ],
+    "min": [
+     180,
+     80
+    ],
+    "policy": "hug",
+    "size": 20,
+    "truncated": false
+   },
+   "frame": null,
+   "group": null,
+   "h": 80,
+   "id": "E-8",
+   "intent": "the funnel's second step",
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": "#ffffff",
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#80858f",
+    "text": "#1c2024",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "text": "Sign up",
+   "type": "box",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 11,
+   "w": 180,
+   "x": 1920,
+   "y": 40,
+   "z": 10
+  },
+  {
+   "alias": null,
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "batch": "B-2",
+   "client_id": null,
+   "created_at": "2026-01-01T00:00:00.000Z",
+   "created_seq": 12,
+   "curve": false,
+   "fit": {
+    "lines": [
+     "converts"
+    ],
+    "size": 16
+   },
+   "frame": null,
+   "from": "E-7",
+   "group": null,
+   "h": 1,
+   "head": "arrow",
+   "id": "E-9",
+   "intent": "how people move on",
+   "label_at": [
+    1830,
+    80
+   ],
+   "points": [
+    [
+     1744,
+     80
+    ],
+    [
+     1916,
+     80
+    ]
+   ],
+   "role": null,
+   "style": {
+    "dash": "solid",
+    "fill": null,
+    "font": "normal",
+    "opacity": 100,
+    "rough": 0,
+    "size": 20,
+    "stroke": "#6b7079",
+    "text": "#5b616b",
+    "tone": "neutral",
+    "variant": "soft",
+    "width": 2
+   },
+   "tail": "none",
+   "text": "converts",
+   "to": "E-8",
+   "type": "arrow",
+   "updated_at": "2026-01-01T00:00:00.000Z",
+   "updated_seq": 12,
+   "w": 172,
+   "x": 1744,
+   "y": 80,
+   "z": 11
+  }
+ ],
+ "freezes": [
+  {
+   "at": "2026-01-01T00:00:00.000Z",
+   "by": "human",
+   "id": "X-1",
+   "ids": null,
+   "kind": "freeze",
+   "label": "final legal copy",
+   "region": [
+    0,
+    440,
+    320,
+    640
+   ]
+  },
+  {
+   "at": "2026-01-01T00:00:00.000Z",
+   "by": "human",
+   "id": "X-2",
+   "ids": [
+    "E-1"
+   ],
+   "kind": "freeze",
+   "label": "approved layout",
+   "region": null
+  }
+ ],
+ "homes": {
+  "qa-drawer": [
+   0,
+   -1000,
+   800,
+   -400
+  ]
+ },
+ "legend": [],
+ "locks": [],
+ "proposals": [
+  {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "base": null,
+   "base_note": [],
+   "batch": "B-3",
+   "changes": [
+    {
+     "action": "update",
+     "id": "E-4",
+     "target": "element",
+     "value": {
+      "alias": "checkout",
+      "author": "human",
+      "author_kind": "human",
+      "batch": "B-1",
+      "client_id": null,
+      "created_at": "2026-01-01T00:00:00.000Z",
+      "created_seq": 4,
+      "fit": {
+       "estimated": false,
+       "lines": [
+        "Checkout"
+       ],
+       "min": [
+        200,
+        80
+       ],
+       "policy": "hug",
+       "size": 20,
+       "truncated": false
+      },
+      "frame": null,
+      "group": null,
+      "h": 80,
+      "id": "E-4",
+      "intent": "the operator's edit",
+      "role": null,
+      "style": {
+       "dash": "solid",
+       "fill": "#f1eefe",
+       "font": "normal",
+       "opacity": 100,
+       "rough": 0,
+       "size": 20,
+       "stroke": "#7d68d8",
+       "text": "#2f2468",
+       "tone": "accent",
+       "variant": "soft",
+       "width": 2
+      },
+      "text": "Checkout",
+      "type": "box",
+      "updated_at": "2026-01-01T00:00:00.000Z",
+      "updated_seq": 13,
+      "w": 200,
+      "x": 720,
+      "y": 320,
+      "z": 4
+     },
+     "was": 4
+    }
+   ],
+   "created": [],
+   "decided_at": null,
+   "decided_by": null,
+   "decided_seq": null,
+   "deleted": [],
+   "id": "P-1",
+   "intent": "line checkout up with the funnel",
+   "note": null,
+   "op": "move",
+   "reason": "human_made",
+   "reasons": [
+    "human_made"
+   ],
+   "seq": 13,
+   "status": "open",
+   "summary": [
+    "E-4 \"Checkout\" (the operator's): moved by c0r+14"
+   ],
+   "targets": [
+    "E-4"
+   ]
+  },
+  {
+   "at": "2026-01-01T00:00:00.000Z",
+   "author": "qa-drawer",
+   "author_kind": "member",
+   "base": null,
+   "base_note": [],
+   "batch": "B-4",
+   "changes": [
+    {
+     "action": "update",
+     "id": "E-3",
+     "target": "element",
+     "value": {
+      "alias": "faq",
+      "author": "human",
+      "author_kind": "human",
+      "batch": "B-1",
+      "client_id": null,
+      "created_at": "2026-01-01T00:00:00.000Z",
+      "created_seq": 3,
+      "fit": {
+       "estimated": false,
+       "lines": [
+        "FAQ"
+       ],
+       "min": [
+        200,
+        80
+       ],
+       "policy": "hug",
+       "size": 20,
+       "truncated": false
+      },
+      "frame": "E-1",
+      "group": null,
+      "h": 80,
+      "id": "E-3",
+      "intent": "the operator's edit",
+      "role": null,
+      "style": {
+       "dash": "solid",
+       "fill": "#ffffff",
+       "font": "normal",
+       "opacity": 100,
+       "rough": 0,
+       "size": 20,
+       "stroke": "#80858f",
+       "text": "#1c2024",
+       "tone": "neutral",
+       "variant": "soft",
+       "width": 2
+      },
+      "text": "FAQ",
+      "type": "box",
+      "updated_at": "2026-01-01T00:00:00.000Z",
+      "updated_seq": 14,
+      "w": 200,
+      "x": 320,
+      "y": 240,
+      "z": 3
+     },
+     "was": 3
+    }
+   ],
+   "created": [],
+   "decided_at": null,
+   "decided_by": null,
+   "decided_seq": null,
+   "deleted": [],
+   "id": "P-2",
+   "intent": "questions below the plans",
+   "note": null,
+   "op": "move",
+   "reason": "human_made",
+   "reasons": [
+    "human_made"
+   ],
+   "seq": 14,
+   "status": "open",
+   "summary": [
+    "E-3 \"FAQ\" (the operator's): moved by c0r+8"
+   ],
+   "targets": [
+    "E-3"
+   ]
+  }
+ ],
+ "settings": {
+  "collab": {
+   "frozen": "propose",
+   "human_edits": "propose"
+  }
+ },
+ "team": "qa",
+ "updated_at": "2026-01-01T00:00:00.000Z",
+ "v": 1,
+ "version": 19
+}

@@ -1,0 +1,89 @@
+{
+ "aliases": {
+  "mine": "E-3"
+ },
+ "applied": [
+  {
+   "alias": "mine",
+   "auto_claim": "K-1",
+   "geometry": [
+    {
+     "fit": {
+      "lines": 1,
+      "policy": "hug",
+      "size": 20
+     },
+     "h": 80,
+     "id": "E-3",
+     "w": 160,
+     "x": 800,
+     "y": 0
+    }
+   ],
+   "ids": [
+    "E-3"
+   ],
+   "index": 1,
+   "op": "shape"
+  }
+ ],
+ "atomic": false,
+ "batch": "B-2",
+ "check": {
+  "counts": {
+   "arrow_through": 0,
+   "label_truncated": 0,
+   "overlap": 0
+  },
+  "problems": [],
+  "region": [
+   600,
+   -200,
+   1160,
+   280
+  ]
+ },
+ "geometry": [
+  {
+   "fit": {
+    "lines": 1,
+    "policy": "hug",
+    "size": 20
+   },
+   "h": 80,
+   "id": "E-3",
+   "w": 160,
+   "x": 800,
+   "y": 0
+  }
+ ],
+ "notices": {
+  "canvas_changed": 2,
+  "canvas_sent": []
+ },
+ "operator": null,
+ "proposed": [
+  {
+   "base_note": [],
+   "created": [],
+   "index": 0,
+   "message": "E-1 is the operator's",
+   "op": "move",
+   "proposal": "P-1",
+   "reason": "human_made",
+   "reasons": [
+    "human_made"
+   ],
+   "summary": [
+    "E-1 \"Pricing\" (the operator's): moved by c+2r0"
+   ],
+   "targets": [
+    "E-1"
+   ]
+  }
+ ],
+ "refused": [],
+ "team": "qa",
+ "version": 4,
+ "warnings": []
+}

@@ -178,12 +178,18 @@
        "itemStyle": {
         "color": "chart.cat.0"
        },
+       "label": {
+        "formatter": "Search 5,400"
+       },
        "name": "Search"
       },
       {
        "depth": 0,
        "itemStyle": {
         "color": "chart.cat.1"
+       },
+       "label": {
+        "formatter": "Ads 2,100"
        },
        "name": "Ads"
       },
@@ -192,6 +198,9 @@
        "itemStyle": {
         "color": "chart.cat.2"
        },
+       "label": {
+        "formatter": "Signup 7,500"
+       },
        "name": "Signup"
       },
       {
@@ -199,12 +208,18 @@
        "itemStyle": {
         "color": "chart.cat.3"
        },
+       "label": {
+        "formatter": "Active 4,300"
+       },
        "name": "Active"
       },
       {
        "depth": 2,
        "itemStyle": {
         "color": "chart.cat.4"
+       },
+       "label": {
+        "formatter": "Churned 3,200"
        },
        "name": "Churned"
       }

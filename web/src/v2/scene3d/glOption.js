@@ -34,3 +34,24 @@ export function cornerLabels(option) {
   const formatter = (value, ...rest) => (Math.abs(Number(value) - min) <= tol ? "" : inner ? inner(value, ...rest) : String(value));
   return { ...option, zAxis3D: { ...z, axisLabel: { ...label, formatter } } };
 }
+
+/**
+ * A category axis's thinned labels (QA phase34 low: crowded labels met at the floor's near corner):
+ * the server thins them as its drawing does (every k-th shown, `axisLabel.interval` k − 1), but
+ * ECharts 6 always keeps an axis's last category label, and echarts-gl draws every label it is
+ * given, so the last one landed on its neighbour. Here the interval becomes a formatter that
+ * leaves the off-interval labels blank. A category axis with a formatter of its own is left alone.
+ */
+export function categoryLabels(option) {
+  let out = option;
+  for (const key of ["xAxis3D", "yAxis3D"]) {
+    const axis = out && out[key];
+    if (!axis || Array.isArray(axis) || typeof axis !== "object" || axis.type !== "category") continue;
+    const label = axis.axisLabel || {};
+    const every = Number(label.interval) + 1;
+    if (label.show === false || label.formatter != null || !Number.isInteger(every) || every < 2) continue;
+    const formatter = (value, index) => (Number(index) % every === 0 ? String(value) : "");
+    out = { ...out, [key]: { ...axis, axisLabel: { ...label, interval: 0, formatter } } };
+  }
+  return out;
+}

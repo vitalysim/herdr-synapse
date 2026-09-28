@@ -57,7 +57,8 @@ class Refit(CanvasRig):
     def test_authority_and_if_version(self):
         # T-M2
         mine = self.ok({"op": "shape", "kind": "box", "text": "mine", "at": [0, 0], "intent": "t"})["ids"][0]
-        self.assertEqual(self.refused({"op": "refit", "id": mine, "intent": "t"}, REVIEWER)["code"], "element_not_yours")
+        # Phase 5: a peer's refit that would change the mark is a proposal; this one has nothing to grow, so it does nothing.
+        self.assertEqual(self.apply([{"op": "refit", "id": mine, "intent": "t"}], REVIEWER)["applied"][0]["ids"], [])
         seq = self.el(mine)["updated_seq"]
         self.assertEqual(self.refused({"op": "refit", "id": mine, "if_version": seq + 1, "intent": "t"})["code"], "canvas_stale")
         self.ok({"op": "refit", "id": mine, "if_version": seq, "intent": "t"})

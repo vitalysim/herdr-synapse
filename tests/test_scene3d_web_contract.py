@@ -37,6 +37,11 @@ class SourceManifest(unittest.TestCase):
         self.assertEqual(sorted(js_list(self.source, "PRIMITIVES")), sorted(S.names()))
         self.assertEqual(js_list(self.source, "LOADERS"), S.loaders())
 
+    def test_contact_relations(self):
+        from herdr_team.canvas_scene3d import relations
+
+        self.assertEqual(sorted(js_list(self.source, "CONTACT")), sorted(rel.name for rel in relations.relations() if rel.contact))
+
     def test_gl_chart_modules(self):
         bundled = set(js_list(self.source, "GL_MODULES"))
         for chart in CC.types():

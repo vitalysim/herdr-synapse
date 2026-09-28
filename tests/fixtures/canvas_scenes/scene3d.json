@@ -28,10 +28,6 @@
      {
       "id": "base",
       "shape": "plane",
-      "size": [
-       8,
-       5
-      ],
       "tone": "neutral"
      },
      {
@@ -328,10 +324,6 @@
      {
       "id": "floor",
       "shape": "plane",
-      "size": [
-       9,
-       6
-      ],
       "thickness": 0.05
      },
      {

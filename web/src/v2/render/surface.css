@@ -84,6 +84,21 @@
   text-align: center;
 }
 
+/* The screen overlay (canvas-v2-phase5.md 12.1): screen-space drawing the parent positions from
+   the camera it is given (presence halos). Above the SVG world, under the GL host, the HTML slots
+   and the overlay; outside the zoomer, so a settling wheel zoom never scales it; never takes a
+   pointer event. */
+.sv2-screen {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.sv2-screen * {
+  pointer-events: none;
+}
+
 /* The GL host (canvas-v2-phase3-4.md WW-4): the shared 3D renderer's one canvas, over the SVG world
    and under the HTML slots. It never takes pointer events. */
 .sv2-gl-host {

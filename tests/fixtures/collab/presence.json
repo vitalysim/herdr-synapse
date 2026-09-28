@@ -1,0 +1,191 @@
+{
+ "about": "canvas v2 phase 5 presence (9.1, 9.3, I-5): POST /api/teams/<t>/presence takes post_body and answers post_answer; GET answers get_answer; the SSE event presence carries sse_data (no id:). A record is fresh while at + ttl_s > now and it is not away. The page posts at most 4 a second, a heartbeat every 10 s, away on hide (I-12).",
+ "get_answer": {
+  "at": "2026-09-21T14:13:21.000Z",
+  "entries": [
+   {
+    "at": "2026-09-21T14:13:20.000Z",
+    "away": false,
+    "cursor": [
+     760,
+     60
+    ],
+    "editing": "E-4",
+    "kind": "human",
+    "name": "human",
+    "page": "0123456789abcdef",
+    "selection": [
+     "E-4",
+     "E-7"
+    ],
+    "ttl_s": 30,
+    "v": 1,
+    "viewport": [
+     0,
+     0,
+     1400,
+     900
+    ]
+   },
+   {
+    "agent": "claude",
+    "at": "2026-09-21T14:13:20.000Z",
+    "ids": [
+     "E-7",
+     "E-8"
+    ],
+    "intent": "laying out the funnel",
+    "kind": "member",
+    "name": "qa-drawer",
+    "region": [
+     1600,
+     0,
+     2400,
+     400
+    ],
+    "status": "drawing",
+    "ttl_s": 90,
+    "v": 1,
+    "via": "auto"
+   }
+  ]
+ },
+ "human_record": {
+  "at": "2026-09-21T14:13:20.000Z",
+  "away": false,
+  "cursor": [
+   760,
+   60
+  ],
+  "editing": "E-4",
+  "kind": "human",
+  "name": "human",
+  "page": "0123456789abcdef",
+  "selection": [
+   "E-4",
+   "E-7"
+  ],
+  "ttl_s": 30,
+  "v": 1,
+  "viewport": [
+   0,
+   0,
+   1400,
+   900
+  ]
+ },
+ "limits": {
+  "focus_ttl_s": [
+   60,
+   3600
+  ],
+  "human_ttl_s": 30,
+  "look_ttl_s": 60,
+  "max_bytes": 4096,
+  "max_ids": 50,
+  "member_ttl_s": 90,
+  "posts_per_second": 8
+ },
+ "member_record": {
+  "agent": "claude",
+  "at": "2026-09-21T14:13:20.000Z",
+  "ids": [
+   "E-7",
+   "E-8"
+  ],
+  "intent": "laying out the funnel",
+  "kind": "member",
+  "name": "qa-drawer",
+  "region": [
+   1600,
+   0,
+   2400,
+   400
+  ],
+  "status": "drawing",
+  "ttl_s": 90,
+  "v": 1,
+  "via": "auto"
+ },
+ "post_answer": {
+  "ok": true,
+  "ttl_s": 30
+ },
+ "post_body": {
+  "away": false,
+  "cursor": [
+   760,
+   60
+  ],
+  "editing": "E-4",
+  "page": "0123456789abcdef",
+  "selection": [
+   "E-4",
+   "E-7"
+  ],
+  "viewport": [
+   0,
+   0,
+   1400,
+   900
+  ]
+ },
+ "sse_data": {
+  "at": "2026-09-21T14:13:21.000Z",
+  "entries": [
+   {
+    "at": "2026-09-21T14:13:20.000Z",
+    "away": false,
+    "cursor": [
+     760,
+     60
+    ],
+    "editing": "E-4",
+    "kind": "human",
+    "name": "human",
+    "page": "0123456789abcdef",
+    "selection": [
+     "E-4",
+     "E-7"
+    ],
+    "ttl_s": 30,
+    "v": 1,
+    "viewport": [
+     0,
+     0,
+     1400,
+     900
+    ]
+   },
+   {
+    "agent": "claude",
+    "at": "2026-09-21T14:13:20.000Z",
+    "ids": [
+     "E-7",
+     "E-8"
+    ],
+    "intent": "laying out the funnel",
+    "kind": "member",
+    "name": "qa-drawer",
+    "region": [
+     1600,
+     0,
+     2400,
+     400
+    ],
+    "status": "drawing",
+    "ttl_s": 90,
+    "v": 1,
+    "via": "auto"
+   }
+  ],
+  "team": "qa"
+ },
+ "statuses": [
+  "reading",
+  "drawing",
+  "waiting",
+  "blocked",
+  "idle"
+ ]
+}

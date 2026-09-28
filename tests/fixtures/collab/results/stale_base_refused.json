@@ -1,0 +1,45 @@
+{
+ "aliases": {},
+ "applied": [],
+ "atomic": false,
+ "base": 5,
+ "batch": null,
+ "notices": {
+  "canvas_changed": null,
+  "canvas_sent": []
+ },
+ "operator": null,
+ "proposed": [],
+ "refused": [
+  {
+   "code": "stale_base",
+   "details": {
+    "base": 5,
+    "changes": [
+     {
+      "by": "human",
+      "by_kind": "human",
+      "id": "E-3",
+      "lines": [
+       "text \"Mine\" → \"Mine, edited\""
+      ],
+      "seq": 6
+     }
+    ],
+    "current": {
+     "E-3": 6
+    },
+    "ids": [
+     "E-3"
+    ],
+    "reason": "stale_base"
+   },
+   "index": 0,
+   "message": "E-3 changed since v5: the operator text \"Mine\" → \"Mine, edited\" (v6); look again and redo",
+   "op": "move"
+  }
+ ],
+ "team": "qa",
+ "version": 6,
+ "warnings": []
+}

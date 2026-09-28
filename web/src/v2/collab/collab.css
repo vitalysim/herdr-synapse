@@ -1,0 +1,485 @@
+/* The v2 board's collaboration chrome (canvas-v2-phase5.md 12): presence halos, the review and
+   freeze cards, the review queue, the collaboration panel, notices and the confirm dialog. Colours
+   come from the page chrome variables (theme/tokens.js chromeVariables) and, for halos, from each
+   author's chip; nothing here uses a filter. */
+
+/* The side column: the side panel, then the collaboration panel under it, scrolling together. */
+.cv2-side {
+  position: absolute;
+  top: 52px;
+  right: 12px;
+  bottom: 60px;
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: auto;
+  z-index: 5;
+}
+
+.v2-board .cv2-side > .side-panel {
+  position: static;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  width: auto;
+  flex: none;
+  overflow: visible;
+}
+
+.cv2-panel .panel-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+}
+
+/* -- presence ------------------------------------------------------------------------------- */
+
+.cv2-halos,
+.cv2-halos-svg {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.cv2-halo-pill {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 300px;
+  height: 20px;
+  padding: 0 7px 0 2px;
+  box-sizing: border-box;
+  border: 1px solid;
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink);
+  font: 500 11px/1 var(--font-sans);
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.cv2-halo-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.cv2-halo-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cv2-operator-label {
+  position: absolute;
+  padding: 1px 5px;
+  border-radius: 4px;
+  /* see-through, so the text under her cursor still reads (QA phase 5 L10) */
+  background: color-mix(in srgb, var(--panel) 55%, transparent);
+  color: var(--muted);
+  font: 500 10px/1.4 var(--font-sans);
+  border: 1px solid var(--line);
+}
+
+/* -- cards ----------------------------------------------------------------------------------- */
+
+.cv2-card {
+  position: absolute;
+  z-index: 8;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.14);
+  font-size: 13px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.cv2-card.cv2-outdated {
+  border-color: var(--warn);
+}
+
+.cv2-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+}
+
+.cv2-card-head .close,
+.cv2-queue .close {
+  margin-left: auto;
+  border: none;
+  background: none;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 0.2em;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.cv2-card-intent {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.cv2-card-lines {
+  margin: 0;
+  padding: 0 0 0 1.1em;
+  color: var(--ink);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 180px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+
+.cv2-card-reason {
+  align-self: flex-start;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.cv2-card-note {
+  font-size: 12px;
+  color: var(--muted);
+  border-left: 2px solid var(--line);
+  padding-left: 6px;
+}
+
+.cv2-card-warn {
+  font-size: 12px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: var(--warn-soft);
+  color: var(--warn-ink);
+}
+
+.cv2-card-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.cv2-card-actions button,
+.cv2-queue button,
+.cv2-dialog button,
+.cv2-menu button,
+.cv2-segmented button {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.cv2-card-actions button:disabled,
+.cv2-queue button:disabled,
+.cv2-menu button:disabled,
+.cv2-segmented button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.cv2-card-actions .cv2-accept,
+.cv2-dialog .cv2-accept {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+.cv2-card-actions .cv2-reject {
+  color: var(--bad-ink);
+}
+
+.cv2-card-input input {
+  font: inherit;
+  font-size: 12px;
+}
+
+/* -- the review queue ------------------------------------------------------------------------ */
+
+.cv2-queue {
+  position: absolute;
+  z-index: 7;
+  left: 50%;
+  top: 60px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.v2-toolbar .v2-tool-sep {
+  width: 1px;
+  margin: 4px 3px;
+  background: var(--line);
+}
+
+.v2-toolbar .v2-review {
+  font-size: 12px;
+  padding: 0 8px;
+}
+
+.v2-toolbar .v2-review.has {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* -- the panel ------------------------------------------------------------------------------- */
+
+.cv2-proposal-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3em;
+  flex-wrap: wrap;
+}
+
+.cv2-proposal-open {
+  display: inline-flex;
+  align-items: center;
+}
+
+.cv2-proposal-line {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cv2-badge {
+  font-size: 10px;
+  padding: 0 6px;
+  border-radius: 999px;
+}
+
+.cv2-badge.warn {
+  background: var(--warn-soft);
+  color: var(--warn-ink);
+}
+
+.cv2-agent {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cv2-agent-name {
+  font-weight: 600;
+}
+
+.cv2-agent-intent {
+  font-size: 12px;
+  padding-left: 26px;
+  overflow-wrap: anywhere;
+}
+
+.cv2-status {
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.cv2-status-waiting,
+.cv2-status-blocked {
+  background: var(--warn-soft);
+  color: var(--warn-ink);
+}
+
+.cv2-status-idle,
+.cv2-status-reading {
+  background: var(--soft);
+  color: var(--muted);
+}
+
+.cv2-menu {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  margin-left: 26px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+  font-size: 12px;
+}
+
+.cv2-menu button {
+  text-align: left;
+}
+
+.cv2-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4em;
+}
+
+.cv2-row-main {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cv2-row-actions {
+  flex: none;
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+
+.cv2-glyph {
+  color: var(--accent);
+  margin-right: 0.3em;
+}
+
+.cv2-setting {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cv2-setting-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.cv2-segmented {
+  display: flex;
+}
+
+.cv2-segmented button {
+  flex: 1;
+  border-radius: 0;
+}
+
+.cv2-segmented button + button {
+  border-left: none;
+}
+
+.cv2-segmented button:first-child {
+  border-radius: 7px 0 0 7px;
+}
+
+.cv2-segmented button:last-child {
+  border-radius: 0 7px 7px 0;
+}
+
+.cv2-segmented button.on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* -- notices and the confirm dialog ---------------------------------------------------------- */
+
+.cv2-notices {
+  position: absolute;
+  z-index: 9;
+  left: 12px;
+  bottom: 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 420px;
+}
+
+.cv2-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  padding: 0.5em 0.8em;
+  border-radius: 8px;
+  background: var(--toast);
+  color: var(--on-toast);
+  font-size: 13px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+
+.cv2-notice button {
+  font: inherit;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.cv2-notice .cv2-notice-action {
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.cv2-notice .cv2-notice-close {
+  font-size: 16px;
+}
+
+.cv2-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.cv2-dialog {
+  width: 360px;
+  max-width: calc(100% - 32px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  font-size: 13px;
+}
+
+.cv2-dialog-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.cv2-dialog .cv2-card-actions {
+  justify-content: flex-end;
+}

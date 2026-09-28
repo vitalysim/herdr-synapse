@@ -23,6 +23,10 @@ from herdr_team import store, workdir
 
 SCENES = PLUGIN_ROOT / "tests" / "fixtures" / "canvas_scenes"
 WORKER = C.CanvasAuthor("alpha-worker", "member", "cli", True, agent="claude")
+#: A scene batch's ``as`` (canvas v2 phase 5) in this team: the member, a peer, a delegate (an operator grant), the operator.
+AUTHORS = {"drawer": WORKER, "peer": C.CanvasAuthor("alpha-reviewer", "member", "cli", True, agent="codex"),
+           "deputy": C.CanvasAuthor("alpha-reviewer", "member", "cli", True, agent="codex", operator=True),
+           "lead": C.CanvasAuthor("human", "human", "cli", True, operator=True)}
 
 
 def load_tool():
@@ -86,8 +90,8 @@ class GoldenScenes(unittest.TestCase):
                     art = workdir.paths_for(os.fspath(project), ts.team.name)["artifacts"]
                     for folder in scene["artifacts"]:
                         shutil.copytree(os.fspath(QA.ARTIFACTS_DIR / folder), os.fspath(art), dirs_exist_ok=True)
-                for batch in scene["batches"]:
-                    result = C.apply_ops(ts.layout, ts.team, batch, WORKER)
+                for batch, who, base in zip(scene["batches"], scene["as"], scene["bases"]):
+                    result = C.apply_ops(ts.layout, ts.team, batch, AUTHORS[who], base=base)
                     self.assertEqual(result["refused"], [], path.name)
                 elements = {el["id"]: el for el in C.load_scene(ts.team)["elements"]}
                 self.assertTrue(elements)

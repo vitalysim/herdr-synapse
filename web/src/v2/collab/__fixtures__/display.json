@@ -1,0 +1,493 @@
+{
+ "dl": 1,
+ "version": 14,
+ "generated": false,
+ "bbox": [
+  -40,
+  -40,
+  1200,
+  700
+ ],
+ "layers": [
+  "zones",
+  "marks",
+  "labels",
+  "overlays"
+ ],
+ "palettes": {
+  "light": {
+   "tone.neutral.fill": "#f0f0f3",
+   "tone.neutral.stroke": "#8b8d98",
+   "tone.accent.stroke": "#6e56cf",
+   "tone.warning.stroke": "#ffa057",
+   "tone.info.stroke": "#0090ff"
+  },
+  "dark": {
+   "tone.neutral.fill": "#212225",
+   "tone.neutral.stroke": "#696e77",
+   "tone.accent.stroke": "#9e8cfc",
+   "tone.warning.stroke": "#ffa057",
+   "tone.info.stroke": "#3b9eff"
+  }
+ },
+ "entries": [
+  {
+   "id": "E-1",
+   "kind": "box",
+   "layer": "marks",
+   "z": 1,
+   "v": 4,
+   "bbox": [
+    0,
+    0,
+    160,
+    80
+   ],
+   "hit": {
+    "shape": "rect",
+    "box": [
+     0,
+     0,
+     160,
+     80
+    ]
+   },
+   "handles": "box",
+   "connect": true,
+   "edit": null,
+   "frame": null,
+   "author": "human",
+   "chip": {
+    "bg": "chip.0.bg",
+    "fg": "chip.0.fg",
+    "initials": "OP"
+   },
+   "locked": false,
+   "items": [
+    {
+     "k": "rect",
+     "x": 0,
+     "y": 0,
+     "w": 160,
+     "h": 80,
+     "r": 8,
+     "fill": "tone.neutral.fill",
+     "stroke": "tone.neutral.stroke",
+     "sw": 2
+    }
+   ],
+   "pending": [
+    "P-3"
+   ]
+  },
+  {
+   "id": "E-2",
+   "kind": "box",
+   "layer": "marks",
+   "z": 2,
+   "v": 6,
+   "bbox": [
+    300,
+    0,
+    460,
+    80
+   ],
+   "hit": {
+    "shape": "rect",
+    "box": [
+     300,
+     0,
+     160,
+     80
+    ]
+   },
+   "handles": "box",
+   "connect": true,
+   "edit": null,
+   "frame": null,
+   "author": "drawer",
+   "chip": {
+    "bg": "chip.0.bg",
+    "fg": "chip.0.fg",
+    "initials": "DR"
+   },
+   "locked": false,
+   "items": [
+    {
+     "k": "rect",
+     "x": 300,
+     "y": 0,
+     "w": 160,
+     "h": 80,
+     "r": 8,
+     "fill": "tone.neutral.fill",
+     "stroke": "tone.neutral.stroke",
+     "sw": 2
+    }
+   ]
+  },
+  {
+   "id": "E-7",
+   "kind": "box",
+   "layer": "marks",
+   "z": 7,
+   "v": 8,
+   "bbox": [
+    600,
+    300,
+    760,
+    380
+   ],
+   "hit": {
+    "shape": "rect",
+    "box": [
+     600,
+     300,
+     160,
+     80
+    ]
+   },
+   "handles": "box",
+   "connect": true,
+   "edit": null,
+   "frame": null,
+   "author": "human",
+   "chip": {
+    "bg": "chip.0.bg",
+    "fg": "chip.0.fg",
+    "initials": "OP"
+   },
+   "locked": false,
+   "items": [
+    {
+     "k": "rect",
+     "x": 600,
+     "y": 300,
+     "w": 160,
+     "h": 80,
+     "r": 8,
+     "fill": "tone.neutral.fill",
+     "stroke": "tone.neutral.stroke",
+     "sw": 2
+    }
+   ],
+   "frozen": true
+  },
+  {
+   "id": "E-8",
+   "kind": "box",
+   "layer": "marks",
+   "z": 8,
+   "v": 9,
+   "bbox": [
+    820,
+    300,
+    980,
+    380
+   ],
+   "hit": {
+    "shape": "rect",
+    "box": [
+     820,
+     300,
+     160,
+     80
+    ]
+   },
+   "handles": "box",
+   "connect": true,
+   "edit": null,
+   "frame": null,
+   "author": "human",
+   "chip": {
+    "bg": "chip.0.bg",
+    "fg": "chip.0.fg",
+    "initials": "OP"
+   },
+   "locked": false,
+   "items": [
+    {
+     "k": "rect",
+     "x": 820,
+     "y": 300,
+     "w": 160,
+     "h": 80,
+     "r": 8,
+     "fill": "tone.neutral.fill",
+     "stroke": "tone.neutral.stroke",
+     "sw": 2
+    }
+   ],
+   "frozen": true
+  },
+  {
+   "id": "X-5",
+   "kind": "freeze",
+   "layer": "overlays",
+   "z": -3,
+   "v": 0,
+   "bbox": [
+    580,
+    280,
+    1000,
+    400
+   ],
+   "hit": {
+    "shape": "none"
+   },
+   "handles": "none",
+   "connect": false,
+   "edit": null,
+   "frame": null,
+   "author": "human",
+   "chip": {
+    "bg": "chip.human.bg",
+    "fg": "chip.human.fg",
+    "initials": "OP"
+   },
+   "locked": false,
+   "freeze": {
+    "region": [
+     580,
+     280,
+     1000,
+     400
+    ],
+    "ids": null,
+    "mode": "propose",
+    "label": "final layout"
+   },
+   "items": [
+    {
+     "k": "rect",
+     "x": 580,
+     "y": 280,
+     "w": 420,
+     "h": 120,
+     "fill": null,
+     "stroke": "tone.info.stroke",
+     "sw_px": 1.5,
+     "dash": [
+      6,
+      4
+     ]
+    }
+   ]
+  },
+  {
+   "id": "X-6",
+   "kind": "freeze",
+   "layer": "overlays",
+   "z": -3,
+   "v": 0,
+   "bbox": [
+    600,
+    300,
+    760,
+    380
+   ],
+   "hit": {
+    "shape": "none"
+   },
+   "handles": "none",
+   "connect": false,
+   "edit": null,
+   "frame": null,
+   "author": "human",
+   "chip": {
+    "bg": "chip.human.bg",
+    "fg": "chip.human.fg",
+    "initials": "OP"
+   },
+   "locked": false,
+   "freeze": {
+    "region": null,
+    "ids": [
+     "E-7"
+    ],
+    "mode": "propose",
+    "label": "keep"
+   },
+   "items": [
+    {
+     "k": "rect",
+     "x": 600,
+     "y": 300,
+     "w": 160,
+     "h": 80,
+     "fill": null,
+     "stroke": "tone.info.stroke",
+     "sw_px": 1.5,
+     "dash": [
+      6,
+      4
+     ]
+    }
+   ]
+  },
+  {
+   "id": "P-3",
+   "kind": "proposal",
+   "layer": "overlays",
+   "z": 1000003,
+   "v": 12,
+   "bbox": [
+    -6,
+    -6,
+    206,
+    86
+   ],
+   "hit": {
+    "shape": "rect",
+    "box": [
+     -6,
+     -6,
+     212,
+     92
+    ]
+   },
+   "handles": "none",
+   "connect": false,
+   "edit": null,
+   "frame": null,
+   "author": "drawer",
+   "chip": {
+    "bg": "chip.0.bg",
+    "fg": "chip.0.fg",
+    "initials": "DR"
+   },
+   "locked": false,
+   "proposal": {
+    "author": "drawer",
+    "intent": "align the price box with the flow",
+    "reason": "human_made",
+    "reasons": [
+     "human_made"
+    ],
+    "outdated": false,
+    "targets": [
+     "E-1"
+    ],
+    "created": [],
+    "deleted": [],
+    "batch": "B-9",
+    "summary": [
+     "E-1 \"Hello\" (the operator's): moved by c+2r0"
+    ],
+    "base_note": []
+   },
+   "items": [
+    {
+     "k": "rect",
+     "x": 40,
+     "y": 0,
+     "w": 160,
+     "h": 80,
+     "r": 8,
+     "fill": "tone.neutral.fill",
+     "stroke": "tone.neutral.stroke",
+     "sw": 2,
+     "op": 0.5
+    },
+    {
+     "k": "rect",
+     "x": -6,
+     "y": -6,
+     "w": 212,
+     "h": 92,
+     "r": 6,
+     "fill": null,
+     "stroke": "tone.accent.stroke",
+     "sw_px": 1.5,
+     "dash": [
+      6,
+      4
+     ]
+    }
+   ]
+  },
+  {
+   "id": "P-4",
+   "kind": "proposal",
+   "layer": "overlays",
+   "z": 1000004,
+   "v": 13,
+   "bbox": [
+    294,
+    114,
+    466,
+    206
+   ],
+   "hit": {
+    "shape": "rect",
+    "box": [
+     294,
+     114,
+     172,
+     92
+    ]
+   },
+   "handles": "none",
+   "connect": false,
+   "edit": null,
+   "frame": null,
+   "author": "peer",
+   "chip": {
+    "bg": "chip.0.bg",
+    "fg": "chip.0.fg",
+    "initials": "PE"
+   },
+   "locked": false,
+   "proposal": {
+    "author": "peer",
+    "intent": "align the price box with the flow",
+    "reason": "peer",
+    "reasons": [
+     "peer"
+    ],
+    "outdated": true,
+    "targets": [
+     "E-2"
+    ],
+    "created": [],
+    "deleted": [],
+    "batch": "B-9",
+    "summary": [
+     "E-2 \"World\" (drawer's): text \"World\" \u2192 \"Planet\""
+    ],
+    "base_note": [
+     "made against v10; you changed E-2 since"
+    ]
+   },
+   "items": [
+    {
+     "k": "rect",
+     "x": 340,
+     "y": 120,
+     "w": 120,
+     "h": 80,
+     "r": 8,
+     "fill": "tone.neutral.fill",
+     "stroke": "tone.neutral.stroke",
+     "sw": 2,
+     "op": 0.5
+    },
+    {
+     "k": "rect",
+     "x": 294,
+     "y": 114,
+     "w": 172,
+     "h": 92,
+     "r": 6,
+     "fill": null,
+     "stroke": "tone.warning.stroke",
+     "sw_px": 1.5,
+     "dash": [
+      6,
+      4
+     ]
+    }
+   ]
+  }
+ ]
+}

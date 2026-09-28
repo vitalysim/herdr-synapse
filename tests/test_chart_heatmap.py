@@ -18,6 +18,19 @@ class Heatmap(unittest.TestCase):
         self.assertEqual(series(found.option, "heatmap")[0]["encode"], {"x": "x", "y": "y", "value": "value"})
         self.assertGreaterEqual(kinds(drawing)["rect"], 168 + 9, "every cell and the ramp")
 
+    def test_the_ramp_ends_carry_their_values_on_both_pictures(self):
+        found, drawing = run(example("heatmap"))
+        vm = found.option["visualMap"]
+        self.assertEqual(vm["text"], ["1,232", "90"], "ECharts' text is [high, low]")
+        self.assertEqual(found.frame.extra["ramp_text"], ["90", "1,232"])
+        rx, ry, rw, rh = found.frame.extra["ramp"]
+        ends = {p["lines"][0]["t"]: p for p in drawing if p["k"] == "text" and p["lines"][0]["t"] in ("90", "1,232")}
+        self.assertEqual(set(ends), {"90", "1,232"})
+        # Low on the left of the bar, high on its right, as ECharts lays a horizontal visualMap's text out.
+        self.assertEqual((ends["90"]["anchor"], ends["1,232"]["anchor"]), ("end", "start"))
+        self.assertLess(vm["left"], rx)
+        self.assertEqual((vm["top"], vm["padding"], vm["textStyle"]["lineHeight"]), (round(ry, 2), 0, round(rh, 2)))
+
     def test_a_diverging_palette_centres_on_zero(self):
         rows = [{"a": a, "b": b, "v": v} for a, b, v in (("x", "p", -4), ("x", "q", 2), ("y", "p", 1), ("y", "q", 4))]
         found, drawing = run({"type": "heatmap", "rows": rows, "x": "a", "y": "b", "value": "v", "palette": "diverging"})

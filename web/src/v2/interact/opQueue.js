@@ -38,8 +38,17 @@ export function rebaseOps(list, changed) {
   return (list || []).map((op) => rebaseOp(op, changed));
 }
 
-// createOpQueue({ post }) -> { send(ops) -> Promise<result>, idle() -> boolean, depth() -> number }
-//   post(ops) -> Promise<result>: one POST /ops; its result is an /ops answer ({applied, version, ...}).
+// A batch's `base` (canvas-v2-phase5.md 3.1: the canvas version its author last read) rides along
+// unchanged. It is not moved up over the sends ahead: the author's own changes never make an op
+// stale, and the versions those sends report may include someone else's change the author has not
+// seen, which is exactly what `base` is there to say.
+export function baseOf(value) {
+  return Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+// createOpQueue({ post }) -> { send(ops, {base}) -> Promise<result>, idle() -> boolean, depth() -> number }
+//   post(ops, {base}) -> Promise<result>: one POST /ops; its result is an /ops answer ({applied,
+//   version, ...}). `base` is null when the send had none (or one that is not a version).
 // send runs `post` after every earlier send has settled, with its ops rebased over the versions the
 // sends that were waiting or in flight when it was queued left their targets at. A failed post
 // rejects its own send only; the queue carries on.
@@ -58,13 +67,14 @@ export function createOpQueue({ post }) {
     }
   }
 
-  function send(list) {
+  function send(list, { base = null } = {}) {
+    const at = baseOf(base);
     const changed = new Map();
     waiting.add(changed);
     depth += 1;
     const run = tail.then(async () => {
       waiting.delete(changed);
-      const result = await post(rebaseOps(list, changed));
+      const result = await post(rebaseOps(list, changed), { base: at });
       record(result);
       return result;
     });

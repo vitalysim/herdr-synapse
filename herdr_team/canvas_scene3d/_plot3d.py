@@ -136,10 +136,9 @@ class Plot3D:
             return
         anchor = "end" if axis == "x" else "start"
         pad = 0.06 * max(self.w, self.d)
-        points = [self.p((pos, 0.0, self.d + pad)) if axis == "x" else self.p((self.w + pad, 0.0, pos)) for pos, _t in labels]
+        points = self._edge_points([pos for pos, _t in labels], axis)
         lh = canvas_text.line_height(FONT)
-        spacing = min((abs(points[i + 1][1] - points[i][1]) for i in range(len(points) - 1)), default=lh * 2)
-        step = max(1, int(math.ceil((lh + 2.0) / max(spacing, 1e-6))))
+        step = self.edge_step([pos for pos, _t in labels], axis)
         room = LABEL_ROOM + 0.5 * max(0.0, self.slot[2] - 2 * LABEL_ROOM) / 2.0
         for index in range(0, len(labels), step):
             text = fit_label(labels[index][1], min(room, 110.0))
@@ -150,6 +149,19 @@ class Plot3D:
             end = self.p((self.w / 2.0, 0.0, self.d + pad * 4)) if axis == "x" else self.p((self.w + pad * 4, 0.0, self.d / 2.0))
             end = (end[0] - (18.0 if axis == "x" else -18.0), end[1] + lh)
             self._text(fit_label(title, 140.0), end, anchor, INK, FONT, 600)
+
+    def _edge_points(self, positions: Sequence[float], axis: str) -> List[P2]:
+        pad = 0.06 * max(self.w, self.d)
+        return [self.p((pos, 0.0, self.d + pad)) if axis == "x" else self.p((self.w + pad, 0.0, pos)) for pos in positions]
+
+    def edge_step(self, positions: Sequence[float], axis: str) -> int:
+        """Every how many tick labels along a floor edge are shown (1: all): the thinning ``edge_labels`` does, which the
+        page's echarts-gl option takes as its category axes' ``axisLabel.interval`` (QA phase34 low: crowded labels met
+        at the floor's near corner)."""
+        points = self._edge_points(positions, axis)
+        lh = canvas_text.line_height(FONT)
+        spacing = min((abs(points[i + 1][1] - points[i][1]) for i in range(len(points) - 1)), default=lh * 2)
+        return max(1, int(math.ceil((lh + 2.0) / max(spacing, 1e-6))))
 
     def value_labels(self, ticks: Sequence[Tuple[float, str]], title: str = "") -> None:
         """Value ticks up the left vertical edge (x = 0, z = D), with the axis title above it."""
@@ -266,11 +278,14 @@ def grid3d(size: Sequence[float], view: str = "iso") -> Dict[str, Any]:
 
 
 def axis3d(kind: str, name: str, data: Optional[Sequence[str]] = None, lo: Optional[float] = None, hi: Optional[float] = None,
-           step: Optional[float] = None, fmt_id: Optional[str] = None) -> Dict[str, Any]:
-    """An ``xAxis3D``/``yAxis3D``/``zAxis3D``: a category axis over ``data``, or a value axis with explicit bounds."""
+           step: Optional[float] = None, fmt_id: Optional[str] = None, every: Optional[int] = None) -> Dict[str, Any]:
+    """An ``xAxis3D``/``yAxis3D``/``zAxis3D``: a category axis over ``data`` (``every``: show every k-th label, as the
+    drawing thins them), or a value axis with explicit bounds."""
     out: Dict[str, Any] = {"type": kind, "name": name, "nameTextStyle": {"color": INK, "fontFamily": "$sans", "fontSize": FONT}}
     if kind == "category":
         out["data"] = list(data or [])
+        if every:
+            out["axisLabel"] = {"interval": max(0, int(every) - 1)}
     else:
         out.update(min=lo, max=hi, interval=step)
         if fmt_id:

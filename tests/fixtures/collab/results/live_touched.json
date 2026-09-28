@@ -1,0 +1,66 @@
+{
+ "aliases": {},
+ "applied": [
+  {
+   "ids": [
+    "E-7"
+   ],
+   "index": 0,
+   "op": "restyle"
+  }
+ ],
+ "atomic": false,
+ "batch": "B-22",
+ "check": {
+  "counts": {
+   "arrow_through": 0,
+   "label_truncated": 0,
+   "overlap": 0
+  },
+  "problems": [],
+  "region": [
+   -200,
+   1000,
+   360,
+   1480
+  ]
+ },
+ "geometry": [
+  {
+   "fit": {
+    "lines": 1,
+    "policy": "hug",
+    "size": 20
+   },
+   "h": 80,
+   "id": "E-7",
+   "w": 160,
+   "x": 0,
+   "y": 1200
+  }
+ ],
+ "notices": {
+  "canvas_changed": null,
+  "canvas_sent": []
+ },
+ "operator": {
+  "age_s": 20,
+  "at": "2026-09-21T14:13:28.000Z",
+  "editing": null,
+  "pointing_at": "E-2",
+  "selection": [
+   "E-3"
+  ],
+  "viewport": [
+   0,
+   0,
+   1200,
+   800
+  ]
+ },
+ "proposed": [],
+ "refused": [],
+ "team": "qa",
+ "version": 25,
+ "warnings": []
+}

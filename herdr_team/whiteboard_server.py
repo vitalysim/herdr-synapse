@@ -127,7 +127,7 @@ STILL_VIEW_RE = re.compile(r"^[a-z]{0,12}\Z")
 #: A still's name as the display list gives it: ``E-5-v40.png``, or ``E-5-v40-iso.png`` for a view.
 STILL_NAME_RE = re.compile(r"^(E-[1-9][0-9]{0,6})-v([0-9]{1,12})(?:-([a-z]{1,12}))?\.png\Z")
 ELEMENT_ID_RE = re.compile(r"^E-[1-9][0-9]{0,6}\Z")
-CANONICAL_ID_RE = re.compile(r"^(E|C|K|X|G|B)-[1-9][0-9]{0,6}\Z")
+CANONICAL_ID_RE = re.compile(r"^(E|C|K|X|G|B|P|V)-[1-9][0-9]{0,6}\Z")
 REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}\Z")
 TICKET_RE = re.compile(r"^[A-Za-z0-9_-]{20,128}\Z")
 VIZ_LIB_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
@@ -137,6 +137,11 @@ MAX_NOTE_CHARS = 1000
 MEASURE_INTERVAL_S = 2.0
 #: The engines ``?engine=`` may ask for; the ticket's redirect keeps a valid one (canvas v2 phase 1, 3.4).
 ENGINE_RE = re.compile(r"^(v1|v2)\Z")
+#: ``POST /presence`` (canvas v2 phase 5, 9.3): the body cap, and at most this many posts a second per page session.
+MAX_PRESENCE_BYTES = 4096
+PRESENCE_RATE = 8
+#: While any presence is fresh, a stream resends it at least this often, so TTL fades reach the page.
+PRESENCE_RESEND_S = 15.0
 
 #: ``HerdrTeamError.code`` -> HTTP status (contract 13.4). Anything else is 500 ``internal``.
 HTTP_STATUS = {
@@ -145,13 +150,14 @@ HTTP_STATUS = {
     "not_signed_in": 401,
     "whiteboard_off": 403, "viz_off": 403, "author_mismatch": 403, "author_unverified": 403, "operator_only": 403,
     "element_not_yours": 403, "read_only": 403, "bad_host": 403, "bad_origin": 403, "bad_csrf": 403, "path_refused": 403,
-    "canvas_locked": 403, "not_a_member": 403,
+    "canvas_locked": 403, "not_a_member": 403, "frozen": 403,
     "team_not_found": 404, "not_found": 404, "artifacts_unset": 404, "member_not_found": 404,
     "method_not_allowed": 405,
-    "canvas_stale": 409, "canvas_refused": 409, "alias_taken": 409,
+    "canvas_stale": 409, "canvas_refused": 409, "alias_taken": 409, "stale_base": 409, "element_busy": 409, "in_proposal": 409,
+    "proposal_outdated": 409,
     "canvas_limit": 413, "image_refused": 413, "body_too_large": 413,
     "unsupported_media_type": 415,
-    "canvas_rate": 429, "measure_rate": 429,
+    "canvas_rate": 429, "measure_rate": 429, "presence_rate": 429, "proposal_limit": 429,
     "canvas_busy": 503, "page_not_built": 503, "too_many_streams": 503,
 }
 
@@ -1198,9 +1204,12 @@ class _Handler(BaseHTTPRequestHandler):
             return self._send_json(200, {"text": cv.text_form(cv.load_scene(team), ids, reader="human")})
         if rest == "ops":
             self._need(method, "POST")
-            ops, atomic = cv.parse_batch(self._read_json())
-            result = cv.apply_ops(layout, team, ops, cv.page_author(bool(session["writable"])), atomic=atomic, doc=doc)
+            envelope = cv.parse_envelope(self._read_json())
+            result = cv.apply_ops(layout, team, envelope.ops, cv.page_author(bool(session["writable"])), atomic=envelope.atomic, doc=doc,
+                                  base=envelope.base)
             return self._send_json(200, result)
+        if rest == "presence":
+            return self._presence(method, team, session)
         if rest == "send":
             self._need(method, "POST")
             body = self._read_json()
@@ -1265,6 +1274,30 @@ class _Handler(BaseHTTPRequestHandler):
                 raise HerdrTeamError("not_found", "no such artifact", EXIT_REFUSED)
             return self._send_bytes(200, data, mime_type(Path(path).name), csp=ASSET_CSP)
         raise HerdrTeamError("not_found", "no such team route", EXIT_REFUSED)
+
+    # -- presence (canvas v2 phase 5, 9.3) ---------------------------------------------------
+
+    def _presence(self, method: str, team: TeamPaths, session: Dict[str, Any]) -> None:
+        """``GET`` the fresh presence records (read-only pages too); ``POST`` this page's own (writable sessions only: the
+        dispatch already refused a read-only one), at most ``PRESENCE_RATE`` a second."""
+        from herdr_team import canvas_presence
+
+        if method == "GET":
+            return self._send_json(200, canvas_presence.read_all(team, time.time()))
+        self._need(method, "POST")
+        now = time.monotonic()
+        recent = [t for t in session.get("presence_at") or [] if now - t < 1.0]
+        if len(recent) >= PRESENCE_RATE:
+            raise HerdrTeamError("presence_rate", "the page posts its presence at most {} times a second".format(PRESENCE_RATE), EXIT_REFUSED,
+                                 {"retry_after": 1})
+        session["presence_at"] = recent + [now]
+        raw = self._read_body(MAX_PRESENCE_BYTES)
+        try:
+            body = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
+            raise HerdrTeamError("usage", "the body is not JSON", EXIT_REFUSED)
+        canvas_presence.write_human(team, None, body, time.time())
+        return self._send_json(200, {"ok": True, "ttl_s": canvas_presence.HUMAN_TTL_S})
 
     # -- viz ----------------------------------------------------------------------------
 
@@ -1410,6 +1443,10 @@ class _Stream:
         self.sent_exports: Dict[str, float] = {}
         self.cards_key: Optional[str] = None
         self.failures: Dict[str, str] = {}
+        #: The presence directory's signature last sent, and when (canvas v2 phase 5, 9.3).
+        self.presence_sig: Optional[Tuple[Any, ...]] = None
+        self.presence_sent = 0.0
+        self.presence_fresh = False
 
     # -- output ----------------------------------------------------------------------
 
@@ -1504,6 +1541,22 @@ class _Stream:
             if now - at > 120.0:
                 del self.sent_exports[request_id]
 
+    def send_presence(self, force: bool = False) -> None:
+        """``presence`` (no ``id:``, so it never moves Last-Event-ID): when the directory changed, and at least every
+        ``PRESENCE_RESEND_S`` while any record is fresh, so the page sees TTLs run out."""
+        assert self.team is not None
+        from herdr_team import canvas_presence
+
+        sig = canvas_presence.signature(self.team)
+        now = time.monotonic()
+        if not force and sig == self.presence_sig and not (self.presence_fresh and now - self.presence_sent >= PRESENCE_RESEND_S):
+            return
+        doc = canvas_presence.read_all(self.team, time.time())
+        self.presence_sig = sig
+        self.presence_sent = now
+        self.presence_fresh = bool(doc["entries"])
+        self.send("presence", {"team": self.team.name, "at": doc["at"], "entries": doc["entries"]})
+
     def send_views(self) -> None:
         assert self.team is not None
         self.send("views", {"team": self.team.name, "views": _views().team_views(self.layout, self.team.name, api=self.server.api)})
@@ -1542,6 +1595,7 @@ class _Stream:
             else:
                 self.last = int(self.since)
                 self._guard("changes", self.send_changes)
+            self._guard("presence", lambda: self.send_presence(force=True))
         last_views = last_activity = time.monotonic()
         while True:
             if server.stop_event.wait(POLL_S):
@@ -1565,6 +1619,7 @@ class _Stream:
                     self._guard("changes", self.send_changes)
                 if self.writable:
                     self._guard("exports", self.send_exports)
+                self._guard("presence", self.send_presence)
                 if now - last_views >= VIEWS_MIN_S:
                     sig = self.view_sources()
                     if sig != views_sig:

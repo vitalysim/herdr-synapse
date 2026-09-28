@@ -1,0 +1,33 @@
+{
+ "aliases": {},
+ "applied": [],
+ "atomic": false,
+ "batch": null,
+ "notices": {
+  "canvas_changed": null,
+  "canvas_sent": []
+ },
+ "proposed": [],
+ "refused": [
+  {
+   "code": "proposal_outdated",
+   "details": {
+    "proposal": "P-1",
+    "targets": [
+     {
+      "id": "E-1",
+      "lines": [
+       "moved by c0r+1"
+      ]
+     }
+    ]
+   },
+   "index": 0,
+   "message": "P-1 is outdated: E-1: moved by c0r+1; reject it, or ask qa-drawer for a new one",
+   "op": "accept"
+  }
+ ],
+ "team": "qa",
+ "version": 13,
+ "warnings": []
+}

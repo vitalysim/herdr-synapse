@@ -14,7 +14,11 @@ page's adapter, and the human's edits come back as the same operations.
 Authority is set here from the verified origin, never by the operation:
 members change their own elements, the manager any agent's, the operator
 anything; unverified callers and hooks only read. The operator's locked
-regions refuse agent operations; claims are advisory and only warn.
+regions refuse agent operations. Since canvas v2 phase 5 every op of anyone
+but the operator in person then passes one review gate (``canvas_collab``):
+what would change her marks, a peer's work, another lane or a frozen area
+becomes a proposal she accepts or rejects, and a batch's ``base`` refuses an
+op on what she changed since. Presence lives in files (``canvas_presence``).
 
 Board records (``canvas_changed``, coalesced to one per author per minute,
 and ``canvas_sent`` for a comment's @mentions or the operator's "send to
@@ -52,7 +56,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Sequence, Set, Tuple
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Mapping, Optional, Sequence, Set, Tuple
 
 from herdr_team import canvas_check as _check
 from herdr_team import canvas_display as _display
@@ -132,8 +136,10 @@ RATE_WINDOW_S = 60.0
 #: The ops that act on any element rather than create one kind: ``canvas`` handles these itself. Every other op comes from
 #: the kind registry (``canvas_kinds``: each module's ``OPS``); ``OPS`` is theirs by ``order``, then these (phase 1, 2.4).
 CORE_OPS = ("claim", "release", "legend", "move", "restyle", "edit", "delete", "portrait", "resolve", "lock", "unlock", "undo", "refit",
-            "patch", "place", "pin", "unpin")
-ID_PATTERN = r"^(E|C|K|X|G|B)-([1-9][0-9]{0,6})\Z"
+            "patch", "place", "pin", "unpin", "accept", "reject", "withdraw", "freeze", "thaw", "settings", "checkpoint", "restore")
+#: Ids: elements (E), comments (C), claims (K), locks and freezes (X), legend entries (G), batches (B), and since canvas v2
+#: phase 5 proposals (P) and checkpoints (V).
+ID_PATTERN = r"^(E|C|K|X|G|B|P|V)-([1-9][0-9]{0,6})\Z"
 ALIAS_PATTERN = r"^[A-Za-z][A-Za-z0-9_.-]{0,63}\Z"
 CELL_PATTERN = r"^c(-?[0-9]{1,5})r(-?[0-9]{1,5})\Z"
 
@@ -204,6 +210,20 @@ def _blocks() -> Any:
     from herdr_team import canvas_blocks
 
     return canvas_blocks
+
+
+def _collab() -> Any:
+    """``canvas_collab``, the review gate, proposals, freezes, undo and checkpoints (it imports this module; imported late)."""
+    from herdr_team import canvas_collab
+
+    return canvas_collab
+
+
+def _presence() -> Any:
+    """``canvas_presence`` (imported late, like ``canvas_collab``)."""
+    from herdr_team import canvas_presence
+
+    return canvas_presence
 
 
 def _iso(ts: float) -> str:
@@ -425,7 +445,8 @@ def _expired(claim: Dict[str, Any], now: float) -> bool:
 class _State:
     """The scene in memory, keyed by id; ``fold`` applies one event (also used to rebuild from the log)."""
 
-    TARGETS = ("element", "claim", "lock", "legend", "home", "author")
+    #: ``proposal``, ``freeze``, ``setting`` and ``checkpoint`` are canvas v2 phase 5's (``canvas_collab``).
+    TARGETS = ("element", "claim", "lock", "legend", "home", "author", "proposal", "freeze", "setting", "checkpoint")
 
     def __init__(self, team_name: str) -> None:
         self.team = team_name
@@ -438,7 +459,12 @@ class _State:
         self.homes: Dict[str, List[int]] = {}
         self.authors: Dict[str, Dict[str, Any]] = {}
         self.batches: Dict[str, Dict[str, Any]] = {}
-        self.counters: Dict[str, int] = {prefix: 0 for prefix in "ECKXGB"}
+        #: Proposals (open, and the newest decided), freezes, the collaboration settings and checkpoints (phase 5).
+        self.proposals: Dict[str, Dict[str, Any]] = {}
+        self.freezes: Dict[str, Dict[str, Any]] = {}
+        self.settings: Dict[str, Dict[str, Any]] = {}
+        self.checkpoints: Dict[str, Dict[str, Any]] = {}
+        self.counters: Dict[str, int] = {prefix: 0 for prefix in "ECKXGBPV"}
         #: alias -> {author: element id}, for live elements
         self.aliases: Dict[str, Dict[str, str]] = {}
         self.max_z = 0
@@ -453,11 +479,12 @@ class _State:
         for el in scene.get("elements") or []:
             if isinstance(el, dict) and isinstance(el.get("id"), str):
                 state._set_element(el["id"], el)
-        for key, target in (("claims", state.claims), ("locks", state.locks), ("legend", state.legend)):
+        for key, target in (("claims", state.claims), ("locks", state.locks), ("legend", state.legend), ("proposals", state.proposals),
+                            ("freezes", state.freezes), ("checkpoints", state.checkpoints)):
             for item in scene.get(key) or []:
                 if isinstance(item, dict) and isinstance(item.get("id"), str):
                     target[item["id"]] = item
-        for key, target in (("homes", state.homes), ("authors", state.authors), ("batches", state.batches)):
+        for key, target in (("homes", state.homes), ("authors", state.authors), ("batches", state.batches), ("settings", state.settings)):
             raw = scene.get(key)
             if isinstance(raw, dict):
                 target.update(raw)
@@ -503,13 +530,25 @@ class _State:
         if target == "element":
             self._set_element(identifier, value if isinstance(value, dict) else None)
         else:
-            store_map = {"claim": self.claims, "lock": self.locks, "legend": self.legend,
-                         "home": self.homes, "author": self.authors}[target]
+            store_map = {"claim": self.claims, "lock": self.locks, "legend": self.legend, "home": self.homes, "author": self.authors,
+                         "proposal": self.proposals, "freeze": self.freezes, "setting": self.settings, "checkpoint": self.checkpoints}[target]
             if value is None:
                 store_map.pop(identifier, None)
             else:
                 store_map[identifier] = value
+        if target == "proposal" and isinstance(value, dict):
+            # The ids a proposal would create are reserved: a rejected one leaves a gap, never a collision (phase 5, 4.2).
+            for change in value.get("changes") or []:
+                if isinstance(change, dict):
+                    self._bump(change.get("id"))
+            self._prune_decided()
         self._bump(identifier)
+
+    def _prune_decided(self) -> None:
+        decided = sorted((p for p in self.proposals.values() if p.get("status") != "open"),
+                         key=lambda p: (int(p.get("decided_seq") or 0), _id_number(p.get("id"))))
+        for record in decided[: max(0, len(decided) - _collab().MAX_DECIDED_KEPT)]:
+            self.proposals.pop(str(record.get("id")), None)
 
     def fold(self, event: Dict[str, Any]) -> None:
         seq = int(event.get("seq") or 0)
@@ -523,6 +562,11 @@ class _State:
                         counters[prefix] = max(counters[prefix], int(carried[prefix]))
             fresh = _State(self.team)
             fresh.counters = counters
+            # A cleared canvas keeps its checkpoints (their files stay) and the collaboration settings (phase 5, 7).
+            for key, target in (("checkpoints", fresh.checkpoints), ("settings", fresh.settings)):
+                carried_map = event.get(key)
+                if isinstance(carried_map, dict):
+                    target.update({k: v for k, v in carried_map.items() if isinstance(v, dict)})
             self.__dict__.update(fresh.__dict__)
             self.version = max(self.version, seq)
             self.updated_at = ts
@@ -540,8 +584,15 @@ class _State:
             self.batches[batch] = entry
             self._bump(batch)
         undoes = event.get("undoes")
-        if isinstance(undoes, str) and undoes in self.batches:
-            self.batches[undoes] = dict(self.batches[undoes], undone=True)
+        left = event.get("undo_left") if isinstance(event.get("undo_left"), dict) else {}
+        for undone in ([undoes] if isinstance(undoes, str) else []) + [b for b in event.get("undoes_all") or [] if isinstance(b, str)]:
+            if undone in self.batches:
+                # What that undo left as it was (skipped, frozen, not the undoer's): an undo of it again tries those (phase 5).
+                keys = [list(k) for k in left.get(undone) or [] if isinstance(k, list) and len(k) == 2]
+                entry = dict(self.batches[undone], undone=True, left=keys)
+                if not keys:
+                    entry.pop("left")
+                self.batches[undone] = entry
         self.version = max(self.version, seq)
         self.updated_at = ts
 
@@ -568,7 +619,17 @@ class _State:
             "authors": dict(self.authors),
             "batches": dict(batches),
             "counters": dict(self.counters),
+            # Canvas v2 phase 5 (I-4): open proposals then the newest decided, freezes, the settings, checkpoints.
+            "proposals": self.scene_proposals(),
+            "freezes": sorted(self.freezes.values(), key=lambda item: _id_number(item.get("id"))),
+            "settings": {"collab": _collab().settings_of(self)},
+            "checkpoints": sorted(self.checkpoints.values(), key=lambda item: _id_number(item.get("id"))),
         }
+
+    def scene_proposals(self) -> List[Dict[str, Any]]:
+        by_number = sorted(self.proposals.values(), key=lambda item: _id_number(item.get("id")))
+        decided = [p for p in by_number if p.get("status") != "open"]
+        return [p for p in by_number if p.get("status") == "open"] + decided[-_collab().SCENE_DECIDED:]
 
 
 # --------------------------------------------------------------------------
@@ -1100,6 +1161,8 @@ class _Ctx:
         self.prepared: Dict[int, Any] = {}
         #: What a block kind's ``load`` read and computed before the lock, by op index (phases 3 and 4, 1.2).
         self.loaded: Dict[int, Any] = {}
+        #: The batch's collaboration state (``canvas_collab.Batch``, phase 5): None outside ``apply_ops``.
+        self.collab: Any = None
         self.begin(0, "")
 
     def begin(self, index: int, op_name: str) -> None:
@@ -1140,6 +1203,12 @@ class _Ctx:
         self.join: Optional[Tuple[str, Optional[int]]] = None
         #: Assets this op stores (``bctx.store_asset``): name -> bytes, written once the op applies (phases 3 and 4, 1.2).
         self.staged: Dict[str, bytes] = {}
+        #: Canvas v2 phase 5: the ids the op aimed at (its ``id``/``ids``), the checkpoint files it writes (None removes one),
+        #: what its applied entry adds (``undo``, ``restore``, ``auto_claim``), and its entry when it became a proposal.
+        self.aimed: Set[str] = set()
+        self.files: Dict[str, Optional[bytes]] = {}
+        self.entry_extra: Dict[str, Any] = {}
+        self.proposed: Optional[Dict[str, Any]] = None
 
     # ids, z, lookups ----------------------------------------------------
 
@@ -1166,7 +1235,15 @@ class _Ctx:
                 yield el
 
     def lookup(self, ref: Any, field: str) -> Dict[str, Any]:
-        el = _lookup_in(self.state, ref, self.author.name, field)
+        try:
+            el = _lookup_in(self.state, ref, self.author.name, field)
+        except HerdrTeamError as err:
+            held = _collab().held_refusal(self, ref) if err.code == "element_unknown" and self.collab is not None else None
+            if held is not None:
+                raise held
+            raise
+        if field in ("id", "ids"):
+            self.aimed.add(el["id"])
         current = self.el(el["id"])
         if current is None:
             raise _error("element_unknown", "{} was deleted by this operation".format(el["id"]), ref=ref, field=field)
@@ -2227,6 +2304,43 @@ def _pill_box(el: Dict[str, Any]) -> Optional[Tuple[float, float, float, float]]
     return px, py, px + pw, py + ph
 
 
+def _follow_comments(ctx: _Ctx) -> None:
+    """Comments stay on their element (canvas v2 phase 5, 8.2): whenever the op changed an element's box, every comment
+    ``on`` it takes the same place on the new box (its ``anchor``, derived from where it sat for a comment stored before
+    anchors). A comment moved on purpose keeps its new place, relative to its element. These are derived changes: they
+    never make an op a proposal."""
+    from herdr_team.canvas_kinds import comment as _comment
+
+    moved: Set[str] = set()
+    for eid, el in ctx.pending.items():
+        before = ctx.state.elements.get(eid)
+        if el is None or before is None or el.get("type") == "comment":
+            continue
+        if bounds(before) != bounds(el):
+            moved.add(eid)
+    placed = [eid for eid in ctx.aimed if isinstance((ctx.pending.get(eid) or {}).get("on"), str)
+              and (ctx.pending.get(eid) or {}).get("type") == "comment"]
+    if not moved and not placed:
+        return
+    for comment in [el for el in ctx.live() if el.get("type") == "comment" and isinstance(el.get("on"), str)]:
+        target = ctx.el(comment["on"])
+        if target is None:
+            continue
+        point = comment.get("point") if isinstance(comment.get("point"), list) and len(comment["point"]) >= 2 else [comment.get("x"), comment.get("y")]
+        if comment["id"] in placed:
+            anchor = _comment.anchor_for(point, bounds(target))
+            if anchor != comment.get("anchor"):
+                ctx.update(comment, anchor=anchor)
+            continue
+        if comment["on"] not in moved:
+            continue
+        anchor = comment.get("anchor") if _comment.valid_anchor(comment.get("anchor")) else \
+            _comment.anchor_for(point, bounds(ctx.state.elements[comment["on"]]))
+        where = _comment.anchored_point(anchor, bounds(target))
+        if where != [_r2(point[0]), _r2(point[1])] or comment.get("anchor") != anchor:
+            ctx.update(comment, point=where, x=_round(where[0]), y=_round(where[1]), anchor=anchor)
+
+
 def _settle_labels(ctx: _Ctx) -> None:
     """After each op: every labelled arrow the op touched, or whose label's reach meets a mark the op touched,
     gets its label's spot (``label_at``) and lines (``fit``) again; one still on its route and clear stays
@@ -2318,12 +2432,21 @@ CORE_OP_DOCS = {
     "restyle": "change the tone, variant, colour, size, font or dash of elements", "edit": "change an element's text",
     "delete": "delete elements (a frame with its children when asked)", "portrait": "your plan as a frame of steps in your home",
     "resolve": "resolve a comment", "lock": "the operator locks a region against agents", "unlock": "the operator lifts a lock",
-    "undo": "undo a batch (yours; the manager any agent's; the operator anything)",
+    "undo": "undo a batch, or every batch of one author since a version; it skips what someone else changed later and what a "
+            "freeze holds, and undoing it again retries what it left (force: the operator)",
     "refit": "size labels again from their minimum, under the fonts and the page's measurements (none named: all you may edit)",
     "patch": "add, update, remove or re-set items inside a block (a kanban's cards, a table's rows); it re-lays out",
     "place": "move elements as one group beside another, to a point, or into a container at an index",
     "pin": "hold elements where they are: no layout, growth or other author moves them",
     "unpin": "let go of pins (an agent cannot lift the operator's); the block re-lays out",
+    "accept": "the operator accepts a proposal: exactly what it showed lands (refused when it is outdated)",
+    "reject": "the operator rejects a proposal, with an optional note",
+    "withdraw": "take back your own open proposal",
+    "freeze": "the operator holds a region or elements as they are: others' changes there become proposals (or are refused)",
+    "thaw": "the operator lifts a freeze (id), or lets go of elements (ids)",
+    "settings": "the operator's collaboration settings: agents' changes to her marks (propose or live) and in frozen areas",
+    "checkpoint": "save the canvas as a named checkpoint (V-n), or remove one of yours",
+    "restore": "the operator restores a checkpoint as one batch (a checkpoint of now is saved first; comments stay)",
 }
 #: The fields of the core ops; a kind module's op takes ``_COMMON`` + its ``OpSpec.fields`` (+ placement, + style).
 CORE_FIELDS: Dict[str, Tuple[str, ...]] = {
@@ -2339,12 +2462,20 @@ CORE_FIELDS: Dict[str, Tuple[str, ...]] = {
     "resolve": _COMMON + ("id",),
     "lock": _COMMON + ("region", "label"),
     "unlock": _COMMON + ("id",),
-    "undo": _COMMON + ("batch",),
+    "undo": _COMMON + ("batch", "author", "since", "force"),
     "refit": _COMMON + ("id", "ids"),
     "patch": _COMMON + ("id", "add", "update", "remove", "set", "relayout"),
     "place": _COMMON + ("id", "ids", "right_of", "left_of", "below", "above", "in", "at", "gap", "align", "index"),
     "pin": _COMMON + ("id", "ids"),
     "unpin": _COMMON + ("id", "ids", "relayout"),
+    "accept": _COMMON + ("id", "note"),
+    "reject": _COMMON + ("id", "note"),
+    "withdraw": _COMMON + ("id",),
+    "freeze": _COMMON + ("region", "ids", "label"),
+    "thaw": _COMMON + ("id", "ids"),
+    "settings": _COMMON + ("human_edits", "frozen"),
+    "checkpoint": _COMMON + ("label", "remove"),
+    "restore": _COMMON + ("id",),
 }
 
 
@@ -2502,8 +2633,9 @@ def _op_claim(ctx: _Ctx, op: Dict[str, Any]) -> None:
     region = _region(op["region"], "region", ctx.lookup)
     label = _text(op.get("label"), "label", MAX_LABEL_CHARS, "MAX_LABEL_CHARS", one_line=True) or ctx.intent
     _check_locks(ctx, [region])
+    # The oldest automatic claim goes first, then the oldest explicit one (phase 5, 4.1).
     own = sorted((c for c in ctx.state.active_claims(ctx.now) if c.get("author") == ctx.author.name),
-                 key=lambda c: (str(c.get("at")), _id_number(c.get("id"))))
+                 key=lambda c: (not c.get("auto"), str(c.get("at")), _id_number(c.get("id"))))
     released = []
     while len(own) >= MAX_CLAIMS_PER_AUTHOR:
         oldest = own.pop(0)
@@ -2920,6 +3052,7 @@ def _unbind(ctx: _Ctx, elements: Iterable[Dict[str, Any]], gone: Optional[Set[st
             fields.update({key: None for key in ("from", "to") if dead(el.get(key))})
         if el.get("type") == "comment" and dead(el.get("on")):
             fields["on"] = None
+            fields["was_on"] = el.get("on")  # it keeps its point, and says where it was (phase 5, 8.3)
         if fields:
             ctx.update(ctx.el(el["id"]) or el, **fields)
 
@@ -3022,94 +3155,16 @@ def _op_unlock(ctx: _Ctx, op: Dict[str, Any]) -> None:
 
 
 def _op_undo(ctx: _Ctx, op: Dict[str, Any]) -> None:
-    bid = op.get("batch")
-    if not isinstance(bid, str) or not re.match(r"^B-[1-9][0-9]{0,6}\Z", bid.strip()):
-        raise _invalid("batch", "undo needs batch: a B- id")
-    bid = bid.strip()
-    entry = ctx.state.batches.get(bid)
-    if entry is None:
-        raise _error("element_unknown", "{} is not in the canvas history (too old, or cleared)".format(bid), ref=bid)
-    if entry.get("undone"):
-        raise _invalid("batch", "{} is already undone".format(bid))
-    events = _read_events(ctx.team)
-    mine = [e for e in events if e.get("batch") == bid]
-    if not mine:
-        raise _error("element_unknown", "{} is not in the canvas log (cleared)".format(bid), ref=bid)
-    by = mine[0].get("author") if isinstance(mine[0].get("author"), dict) else {}
-    agent_batch = by.get("kind") == KIND_MEMBER
-    allowed = (ctx.author.operator
-               or (ctx.author.is_member and agent_batch and by.get("name") == ctx.author.name)
-               or (ctx.author.is_member and ctx.author.manager and agent_batch))
-    if not allowed:
-        raise _error("operator_only", "undoing {} ({}'s batch) is for the manager (agents' batches) or the operator".format(bid, _who(by.get("name"), None)),
-                     batch=bid, author=by.get("name"))
-    first = min(int(e["seq"]) for e in mine)
-    touched: List[Tuple[str, str]] = []
-    for event in mine:
-        for change in event.get("changes") or []:
-            key = (change.get("target"), change.get("id"))
-            if key[0] in ("element", "claim", "legend") and isinstance(key[1], str) and key not in touched:
-                touched.append(key)  # type: ignore[arg-type]
-    before: Dict[Tuple[str, str], Optional[Dict[str, Any]]] = {key: None for key in touched}
-    for event in events:
-        if int(event["seq"]) >= first:
-            break
-        if event.get("op") == "clear":
-            before = {key: None for key in touched}
-            continue
-        for change in event.get("changes") or []:
-            key = (change.get("target"), change.get("id"))
-            if key in before:
-                before[key] = None if change.get("action") == "delete" else change.get("value")  # type: ignore[index]
-    boxes = []
-    restored: List[str] = []
-    dropped: Set[str] = set()
-    skipped: List[str] = []
-    for target, ident in touched:
-        value = before[(target, ident)]
-        if target == "element":
-            current = ctx.el(ident)
-            # Undo never crosses an authority boundary. A batch "touches" whatever it re-routed or
-            # re-framed (a peer's or the operator's bound arrow), and whatever changed later is written
-            # back too, so an element this author could not edit directly keeps its current state.
-            if (current is not None and not _may_edit(ctx.author, current)) or (value is not None and not _may_edit(ctx.author, value)):
-                skipped.append(ident)
-                continue
-            if current is not None:
-                boxes.append(bounds(current))
-            if value is None:
-                if current is not None:
-                    ctx.drop(ident)
-                    dropped.add(ident)
-                continue
-            new = dict(value, updated_seq=ctx.seq, updated_at=ctx.ts)
-            if new.get("alias"):
-                owner = (ctx.state.aliases.get(new["alias"]) or {}).get(str(new.get("author")))
-                if owner is not None and owner != ident and ctx.el(owner) is not None:
-                    new["alias"] = None
-            ctx.put(new)
-            boxes.append(bounds(new))
-            restored.append(ident)
-        else:
-            store_map = ctx.state.claims if target == "claim" else ctx.state.legend
-            current = store_map.get(ident)
-            if value is None:
-                if current is not None:
-                    ctx.other(target, "delete", ident, None)
-                    ctx.changed.append(ident)
-            elif not (target == "claim" and _expired(value, ctx.now)):
-                ctx.other(target, "update" if current is not None else "add", ident, value)
-                ctx.changed.append(ident)
-    # Nothing may point at what the undo deleted, and a restored element may name one deleted since.
-    if dropped:
-        _unbind(ctx, ctx.live(), dropped)
-    _unbind(ctx, [el for el in (ctx.el(ident) for ident in restored) if el is not None])
-    _check_locks(ctx, boxes)
-    _reroute_bound(ctx, restored, skip=restored)
-    if skipped:
-        ctx.warn("undo_skipped", "undo left {} as {} now: changing {} is for its editor".format(
-            _ids_text(skipped), "it is" if len(skipped) == 1 else "they are", "it" if len(skipped) == 1 else "them"), skipped)
-    ctx.extra["undoes"] = bid
+    """``undo {batch}`` or ``undo {author, since}`` (canvas v2 phase 5, 6): ``canvas_collab.op_undo``."""
+    _collab().op_undo(ctx, op)
+
+
+def _op_collab(name: str) -> Callable[[_Ctx, Dict[str, Any]], None]:
+    """A phase 5 core op handled by ``canvas_collab`` (``op_accept``, ``op_freeze`` ...)."""
+    def handler(ctx: _Ctx, op: Dict[str, Any]) -> None:
+        getattr(_collab(), "op_" + name)(ctx, op)
+    handler.__name__ = "_op_" + name
+    return handler
 
 
 #: The most elements one ``refit`` sizes again (the whole canvas when it names none: every element the author may edit).
@@ -3201,6 +3256,7 @@ CORE_HANDLERS: Dict[str, Callable[[_Ctx, Dict[str, Any]], None]] = {
     "lock": _op_lock, "unlock": _op_unlock, "undo": _op_undo, "refit": _op_refit,
     "patch": _op_patch, "place": _op_place, "pin": _op_pin, "unpin": _op_unpin,
 }
+CORE_HANDLERS.update({name: _op_collab(name) for name in ("accept", "reject", "withdraw", "freeze", "thaw", "settings", "checkpoint", "restore")})
 
 
 # --------------------------------------------------------------------------
@@ -3540,8 +3596,46 @@ def _check_batch(ops: Any) -> List[Dict[str, Any]]:
     return ops
 
 
+@dataclass(frozen=True)
+class Envelope:
+    """A parsed batch: its ops, whether it is atomic, and the version its author last read (``base``, phase 5 3.1)."""
+
+    ops: List[Dict[str, Any]]
+    atomic: bool
+    base: Any = None
+
+
+def parse_base(value: Any) -> Any:
+    """A batch's ``base``: None, a version number >= 0, or ``"last"`` (the author's look cursor)."""
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip() == "last":
+        return "last"
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
+    if _is_number(value) and not isinstance(value, bool) and int(value) == value and value >= 0:
+        return int(value)
+    raise _invalid("base", "base is the canvas version you last read (a number >= 0) or last")
+
+
+def parse_envelope(raw: Any) -> Envelope:
+    """``{"ops": [...], "atomic": bool, "base": N|"last"}`` or a bare list -> an ``Envelope``; shape and size checks only."""
+    if isinstance(raw, (bytes, bytearray)):
+        raw = raw.decode("utf-8", "replace")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError as err:
+            raise _invalid("ops", "the batch is not valid JSON ({})".format(err))
+        except RecursionError:
+            raise _invalid("ops", "the batch nests too deeply to read")
+    ops, atomic = parse_batch(raw)
+    return Envelope(ops, atomic, parse_base(raw.get("base")) if isinstance(raw, dict) else None)
+
+
 def parse_batch(raw: Any) -> Tuple[List[Dict[str, Any]], bool]:
-    """``{"ops": [...], "atomic": bool}`` or a bare list -> ``(ops, atomic)``; batch-shape and size checks only."""
+    """``{"ops": [...], "atomic": bool, "base": ...}`` or a bare list -> ``(ops, atomic)``; batch-shape and size checks only
+    (``parse_envelope`` also returns the ``base``)."""
     if isinstance(raw, (bytes, bytearray)):
         raw = raw.decode("utf-8", "replace")
     if isinstance(raw, str):
@@ -3555,10 +3649,11 @@ def parse_batch(raw: Any) -> Tuple[List[Dict[str, Any]], bool]:
         return _check_batch(raw), False
     if isinstance(raw, dict):
         for key in raw:
-            if key not in ("ops", "atomic"):
-                raise _invalid(str(key), "a batch is {\"ops\": [...], \"atomic\": false}")
+            if key not in ("ops", "atomic", "base"):
+                raise _invalid(str(key), "a batch is {\"ops\": [...], \"atomic\": false, \"base\": <version>}")
         if "ops" not in raw:
             raise _invalid("ops", "a batch is {\"ops\": [...], \"atomic\": false}")
+        parse_base(raw.get("base"))
         return _check_batch(raw["ops"]), _bool(raw.get("atomic"), "atomic", False)
     raise _invalid("ops", "a batch is {\"ops\": [...]} or a list of operations")
 
@@ -3616,28 +3711,66 @@ _OP_FAULTS = (TypeError, ValueError, KeyError, IndexError, RecursionError)
 
 
 def apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: CanvasAuthor, atomic: bool = False,
-              doc: Optional[Dict[str, Any]] = None, now: Optional[float] = None) -> Dict[str, Any]:
+              doc: Optional[Dict[str, Any]] = None, now: Optional[float] = None, base: Any = None) -> Dict[str, Any]:
     """Validate and apply a batch under ``canvas.lock``; the apply result (contract 7.2). Batch-level refusals raise.
 
-    Labels are measured under the team's browser corrections (``measure.json``, canvas v2 phase 1)."""
+    Labels are measured under the team's browser corrections (``measure.json``, canvas v2 phase 1). ``base`` is the
+    version the author last read (a number or ``"last"``, canvas v2 phase 5 3.1): an op aimed at what the operator changed
+    since is refused ``stale_base``, one aimed at what another agent changed applies with a warning."""
     with _corrected(team):
-        return _apply_ops(layout, team, ops, author, atomic, doc, now)
+        return _apply_ops(layout, team, ops, author, atomic, doc, now, base)
+
+
+def _run_op(ctx: _Ctx, handler: Callable[[_Ctx, Dict[str, Any]], None], op: Dict[str, Any]) -> None:
+    """One op's pipeline: the handler, the containers it changed arranged again, notes, labels and the comments on what it
+    moved. Every arrow the op reroutes shares one budget (QA phase 2, R2): a move that drags a hundred orthogonal arrows
+    along draws what is left straight, noted, instead of holding the lock. A graph routes its own edges under its own
+    budget, and a layout runs under its own."""
+    with _work_budget.running(_work_budget.Budget(work=OP_ROUTE_WORK, seconds=OP_ROUTE_SECONDS)):
+        handler(ctx, op)
+        _blocks().settle(ctx)  # containers whose members changed are arranged again (phase 2, 1.5)
+    _blocks().refresh_note(ctx)
+    _settle_labels(ctx)
+    _follow_comments(ctx)
+
+
+def _event_boxes(event: Dict[str, Any]) -> List[Tuple[float, float, float, float]]:
+    """The boxes an event's element changes (or its proposal's) leave: where its author was working, for presence."""
+    changes = list(event.get("changes") or [])
+    for change in list(changes):
+        if isinstance(change, dict) and change.get("target") == "proposal" and isinstance(change.get("value"), dict):
+            changes.extend(change["value"].get("changes") or [])
+    return [bounds(change["value"]) for change in changes
+            if isinstance(change, dict) and change.get("target") == "element" and isinstance(change.get("value"), dict)]
 
 
 def _apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: CanvasAuthor, atomic: bool,
-               doc: Optional[Dict[str, Any]], now: Optional[float]) -> Dict[str, Any]:
+               doc: Optional[Dict[str, Any]], now: Optional[float], base: Any = None) -> Dict[str, Any]:
     moment = time.time() if now is None else float(now)
     doc = doc if isinstance(doc, dict) else store.RosterStore(team).load()
     _features.require_on(layout.session, team, doc)
     _check_writer(author, doc, team)
     ops = _check_batch(ops)
+    base = parse_base(base)
+    collab = _collab()
     if author.is_member:
         _check_rate(team, author.name, len(ops), moment)
-    result: Dict[str, Any] = {"team": team.name, "version": 0, "batch": None, "atomic": bool(atomic), "applied": [], "refused": [],
-                              "aliases": {}, "warnings": [], "notices": {"canvas_changed": None, "canvas_sent": []}}
+    result: Dict[str, Any] = {"team": team.name, "version": 0, "batch": None, "atomic": bool(atomic), "applied": [], "proposed": [],
+                              "refused": [], "aliases": {}, "warnings": [], "notices": {"canvas_changed": None, "canvas_sent": []}}
     if not ops:
         result["version"] = current_version(team)
         return result
+    if base == "last":
+        base = cursor(team, author.name)
+    if base is not None:
+        result["base"] = base
+    # The operator's context (phase 5, 9.2): what she is looking at, has selected and is editing, for a member's batch.
+    human: Optional[Dict[str, Any]] = None
+    if author.is_member:
+        try:
+            human = _presence().operator(team, moment)
+        except (OSError, ValueError, HerdrTeamError):
+            human = None
     prepared = _blocks().prepare(ops)  # a block kind's own precomputation (a big layout, phase 2 1.3): never under canvas.lock
     loaded = _load_blocks(layout, team, doc, ops, author)  # artifact files a block reads (phases 3 and 4, 1.2): never under the lock
     _find_secret("")  # the secret patterns' module is imported lazily; the first batch in a process pays that here (QA phase34 L12)
@@ -3645,14 +3778,20 @@ def _apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: 
     lock.acquire()
     notice: Optional[Dict[str, Any]] = None
     mentions: List[Dict[str, Any]] = []
+    boxes: List[Tuple[float, float, float, float]] = []
+    first_intent = ""
     try:
         ensure_dir(_dir(team))
         state = _load_state(team)
         state.drop_expired(moment)
+        if isinstance(base, int) and base > state.version:
+            # A base the canvas never reached would turn the stale check off (QA phase 5 L7).
+            raise _invalid("base", "base v{} is newer than the canvas (v{}): send the version you last read".format(base, state.version))
         batch_id = "B-{}".format(state.counters.get("B", 0) + 1)
         ctx = _Ctx(layout, team, author, doc, state, moment, batch_id)
         ctx.prepared = prepared
         ctx.loaded = loaded
+        collab.begin_batch(ctx, author, base, human, len(ops))
         touched: List[str] = []
         events: List[Dict[str, Any]] = []
         lines: List[bytes] = []
@@ -3666,14 +3805,21 @@ def _apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: 
                 _check_fields(op, _FIELDS[name])
                 ctx.intent = _intent(op, author)
                 ctx.author_color()  # an author's first applied op registers its colour and home
-                # Every arrow the op reroutes shares one budget (QA phase 2, R2): a move that drags a hundred orthogonal
-                # arrows along draws what is left straight, noted, instead of holding the lock. A graph routes its own
-                # edges under its own budget, and a layout runs under its own.
-                with _work_budget.running(_work_budget.Budget(work=OP_ROUTE_WORK, seconds=OP_ROUTE_SECONDS)):
-                    handler(ctx, op)
-                    _blocks().settle(ctx)  # containers whose members changed are arranged again (phase 2, 1.5)
-                _blocks().refresh_note(ctx)
-                _settle_labels(ctx)
+                was_raised = False
+                try:
+                    _run_op(ctx, handler, op)
+                except HerdrTeamError as err:
+                    # An agent's op refused only for authority runs once more with raised authority: its result can only
+                    # become a proposal for the operator (phase 5, D2), never reach the canvas behind her back.
+                    if not collab.may_raise(ctx, name, err):
+                        raise
+                    ctx.begin(index, name)
+                    ctx.intent = _intent(op, author)
+                    ctx.author_color()
+                    with collab.raised(ctx):
+                        _run_op(ctx, handler, op)
+                    was_raised = True
+                collab.review_op(ctx, name, was_raised)  # the review gate: live, a proposal, or a refusal (phase 5, 2)
                 if ctx.live_delta() > 0 and len(state.elements) + ctx.live_delta() > MAX_ELEMENTS:
                     raise _too_big("ops", "MAX_ELEMENTS", MAX_ELEMENTS, "the canvas holds {} elements; the limit is {}".format(len(state.elements), MAX_ELEMENTS))
                 event = ctx.event(author)
@@ -3695,9 +3841,15 @@ def _apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: 
                 continue
             geometry = _sized(ctx)
             _write_staged(ctx)
+            collab.write_files(ctx)
             state.fold(event)
             events.append(event)
             lines.append(line)
+            boxes.extend(_event_boxes(event))
+            first_intent = first_intent or ctx.intent
+            if ctx.proposed is not None:
+                result["proposed"].append(ctx.proposed)
+                continue
             entry: Dict[str, Any] = {"index": index, "op": name, "ids": list(event["ids"])}
             if ctx.alias:
                 entry["alias"] = ctx.alias
@@ -3710,6 +3862,7 @@ def _apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: 
                 gist = _kinds.gist_of(state.elements.get(ctx.block_info.get("id")) or {}) if ctx.block_info.get("id") else []
                 if gist:
                     entry["gist"] = gist[:APPLY_GIST_LINES]
+            entry.update(ctx.entry_extra)
             touched.extend(i for i in event["ids"] if i not in touched)
             result["applied"].append(entry)
             result["warnings"].extend(ctx.warnings)
@@ -3734,6 +3887,7 @@ def _apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: 
             _check_rate(team, author.name, 0, moment, size)  # the log bytes are known only now; refusing here writes nothing
         if events:
             _append_events(team, events, lines)
+            collab.finish_files(ctx)
             _write_scene(team, state, moment)
             notice = _queue_notice(team, author, events, moment)
         if author.is_member:
@@ -3747,6 +3901,11 @@ def _apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: 
         seq = _post_mention(layout, team, doc, author, comment, result["version"], state)
         if seq is not None:
             result["notices"]["canvas_sent"].append(seq)
+    if author.is_member:
+        # What the operator is looking at (phase 5, 9.2), and where this member now works (its presence, best-effort).
+        result["operator"] = _presence().operator_view(human, list(state.elements.values()), moment)
+        if author.verified and boxes:
+            _presence().after_apply(team, author, result, boxes, first_intent, moment)
     return result
 
 
@@ -3825,7 +3984,7 @@ def _sized(ctx: _Ctx) -> List[Dict[str, Any]]:
 
 def check_applied(result: Dict[str, Any]) -> Dict[str, Any]:
     """``canvas_refused`` (exit 1, details = the result) when a non-empty batch applied nothing; else the result."""
-    if result.get("refused") and not result.get("applied"):
+    if result.get("refused") and not result.get("applied") and not result.get("proposed"):
         first = result["refused"][0]
         raise _error("canvas_refused", "nothing applied: op {} {}: {}".format(first["index"], first["code"], first["message"]), **result)
     return result
@@ -3836,11 +3995,12 @@ def check_applied(result: Dict[str, Any]) -> Dict[str, Any]:
 
 #: What change summaries call the things that are not element kinds (the kinds say their own ``noun``).
 _OTHER_NOUNS = {"comments": ("comment", "comments"), "claims": ("claim", "claims"), "legend": ("legend entry", "legend entries"),
-                "locks": ("lock", "locks")}
+                "locks": ("lock", "locks"), "checkpoints": ("checkpoint", "checkpoints"), "freezes": ("freeze", "freezes")}
 _VERB_COUNTS = {"move": "moved", "restyle": "restyled", "edit": "edited", "release": "released", "resolve": "resolved",
                 "undo": "undone", "unlock": "unlocked", "patch": "patched", "place": "moved", "pin": "pinned", "unpin": "unpinned"}
 _COUNT_TAIL = ("comments", "claims", "legend", "locks", "portrait", "moved", "restyled", "edited", "deleted", "released", "resolved", "undone",
-               "unlocked", "patched", "pinned", "unpinned")
+               "unlocked", "patched", "pinned", "unpinned", "proposed", "touched_human", "accepted", "rejected", "withdrawn", "freezes",
+               "thawed", "checkpoints", "restored", "settings")
 
 
 def _event_counts(event: Dict[str, Any]) -> Dict[str, int]:
@@ -3852,6 +4012,11 @@ def _event_counts(event: Dict[str, Any]) -> Dict[str, int]:
         if n:
             counts[key] = counts.get(key, 0) + n
 
+    if event.get("proposal"):
+        bump("proposed")  # a proposal never wakes anyone; it joins this line (phase 5, 1.2 guarantee 8)
+        return counts
+    if event.get("touched_human"):
+        bump("touched_human", len(event["touched_human"]))
     if op == "comment":
         bump("comments")
     elif op == "claim":
@@ -3866,7 +4031,12 @@ def _event_counts(event: Dict[str, Any]) -> Dict[str, int]:
     elif op == "delete":
         bump("deleted", sum(1 for c in changes if c.get("target") == "element" and c.get("action") == "delete"))
     elif op == "undo":
-        bump("undone")
+        bump("undone", len(event.get("undoes_all") or []) or 1)
+    elif op in ("accept", "reject", "withdraw", "thaw", "restore", "settings"):
+        bump({"accept": "accepted", "reject": "rejected", "withdraw": "withdrawn", "thaw": "thawed", "restore": "restored",
+              "settings": "settings"}[op])
+    elif op in ("freeze", "checkpoint"):
+        bump("freezes" if op == "freeze" else "checkpoints", sum(1 for c in changes if c.get("action") == "add" and c.get("target") in ("freeze", "checkpoint")))
     elif op in _VERB_COUNTS:
         # A moved frame counts its children and the arrows that followed: what readers will see changed.
         bump(_VERB_COUNTS[op], max(1, len(event.get("ids") or [])))
@@ -3879,8 +4049,15 @@ def _event_counts(event: Dict[str, Any]) -> Dict[str, int]:
     return counts
 
 
-def counts_text(counts: Dict[str, int]) -> str:
-    """``3 notes, 2 arrows, 1 pen stroke, moved 2``."""
+def _refs_text(ids: Sequence[Any], most: int = 5) -> str:
+    shown = [str(i) for i in ids if isinstance(i, str)]
+    return ", ".join(shown[:most]) + (" and {} more".format(len(shown) - most) if len(shown) > most else "")
+
+
+def counts_text(counts: Dict[str, int], refs: Optional[Mapping[str, Any]] = None) -> str:
+    """``3 notes, 2 arrows, 1 pen stroke, moved 2``; with ``refs`` (a notice's ``proposals`` and ``touched`` batches) the
+    proposal ids and the batch to undo, as phase 5 1.2 and 4.7 promise (QA phase 5 L12)."""
+    refs = refs or {}
     parts = []
     for key in _COUNT_ORDER + tuple(k for k in counts if k not in _COUNT_ORDER):
         n = counts.get(key, 0)
@@ -3893,6 +4070,14 @@ def counts_text(counts: Dict[str, int]) -> str:
             parts.append("updated its portrait")
         elif key == "undone":
             parts.append("undid {} {}".format(n, "batch" if n == 1 else "batches"))
+        elif key == "proposed":
+            pids = refs.get("proposals") or []
+            parts.append("proposed {} change{} for the operator to review{}".format(n, "" if n == 1 else "s", ": " + _refs_text(pids) if pids else ""))
+        elif key == "touched_human":
+            batches = refs.get("touched") or []
+            parts.append("changed {} of the operator's marks ({} to revert)".format(n, "undo " + _refs_text(batches) if batches else "undo the batch"))
+        elif key == "settings":
+            parts.append("changed the collaboration settings")
         else:
             parts.append("{} {}".format(key, n))
     return ", ".join(parts) or "small changes"
@@ -3905,8 +4090,13 @@ def _merge_pending(pending: Optional[Dict[str, Any]], summary: Dict[str, Any]) -
     for key, n in summary["counts"].items():
         counts[key] = int(counts.get(key, 0)) + int(n)
     batches = list(dict.fromkeys(list(pending.get("batches") or []) + summary["batches"]))[-50:]
-    return {"from": min(int(pending.get("from") or summary["from"]), summary["from"]),
-            "to": max(int(pending.get("to") or 0), summary["to"]), "counts": counts, "batches": batches}
+    merged = {"from": min(int(pending.get("from") or summary["from"]), summary["from"]),
+              "to": max(int(pending.get("to") or 0), summary["to"]), "counts": counts, "batches": batches}
+    for key in ("proposals", "touched"):
+        found = list(dict.fromkeys(list(pending.get(key) or []) + list(summary.get(key) or [])))[-50:]
+        if found:
+            merged[key] = found
+    return merged
 
 
 def _queue_notice(team: TeamPaths, author: CanvasAuthor, events: List[Dict[str, Any]], now: float) -> Optional[Dict[str, Any]]:
@@ -3915,8 +4105,14 @@ def _queue_notice(team: TeamPaths, author: CanvasAuthor, events: List[Dict[str, 
     for event in events:
         for key, n in _event_counts(event).items():
             counts[key] = counts.get(key, 0) + n
-    summary = {"from": int(events[0]["seq"]), "to": int(events[-1]["seq"]), "counts": counts,
-               "batches": list(dict.fromkeys(str(e.get("batch")) for e in events if e.get("batch")))}
+    summary: Dict[str, Any] = {"from": int(events[0]["seq"]), "to": int(events[-1]["seq"]), "counts": counts,
+                               "batches": list(dict.fromkeys(str(e.get("batch")) for e in events if e.get("batch")))}
+    proposals = [str(e["proposal"]) for e in events if isinstance(e.get("proposal"), str)]
+    touched = list(dict.fromkeys(str(e.get("batch")) for e in events if e.get("touched_human") and e.get("batch")))
+    if proposals:
+        summary["proposals"] = proposals
+    if touched:
+        summary["touched"] = touched
     doc = store.read_json(_file(team, NOTICES_FILE), default=None)
     authors = dict(doc.get("authors")) if isinstance(doc, dict) and isinstance(doc.get("authors"), dict) else {}
     entry = authors.get(author.name) if isinstance(authors.get(author.name), dict) else {}
@@ -3942,8 +4138,11 @@ def _post_changed(layout: Any, team: TeamPaths, doc: Dict[str, Any], notice: Dic
     first, last = int(notice["from"]), int(notice["to"])
     versions = "v{}".format(last) if first == last else "v{}–v{}".format(first, last)
     who = "the operator" if name == HUMAN else name
-    text = "{} drew on the canvas: {} ({}). Look: {} canvas look --since {}".format(who, counts_text(notice.get("counts") or {}), versions, CLI, first - 1)
+    text = "{} drew on the canvas: {} ({}). Look: {} canvas look --since {}".format(who, counts_text(notice.get("counts") or {}, notice), versions, CLI, first - 1)
     extra = {"canvas": {"author": name, "from": first, "to": last, "counts": dict(notice.get("counts") or {}), "batches": list(notice.get("batches") or [])}}
+    for key in ("proposals", "touched"):
+        if notice.get(key):
+            extra["canvas"][key] = list(notice[key])
     from herdr_team import roster as _roster
 
     try:
@@ -4148,7 +4347,7 @@ def describe(el: Dict[str, Any], reader: Optional[str] = None, full: bool = True
 
 
 def _tree_lines(elements: Sequence[Dict[str, Any]], reader: Optional[str], base: int = 1, scene: Optional[Sequence[Dict[str, Any]]] = None,
-                verbose: bool = False, stills: Optional[Set[str]] = None) -> List[str]:
+                verbose: bool = False, stills: Optional[Set[str]] = None, tags: Optional[Dict[str, str]] = None) -> List[str]:
     """Full lines with children indented under their frame (comments last). A block reads back as its spec, its members
     folded into it (phase 2, 5.3); an element in a container says where (`` in arch#1/2 (row)``, `` part c2 of work``);
     ``verbose`` (``look --full``) adds a block's part ids and a top-level element's neighbours. ``stills`` (the still
@@ -4180,6 +4379,8 @@ def _tree_lines(elements: Sequence[Dict[str, Any]], reader: Optional[str], base:
             return
         if blocks._is_root(el) and blocks.kind_of(el).name != "section":
             block = blocks.block_lines(everything, el, reader, verbose, stills=stills)
+            if block and tags and el["id"] in tags:
+                block = [block[0] + tags[el["id"]]] + list(block[1:])
             lines.extend("  " * depth + line for line in block)
             for child in children.get(el["id"], []):
                 walk(child, depth + 1)
@@ -4201,6 +4402,8 @@ def _tree_lines(elements: Sequence[Dict[str, Any]], reader: Optional[str], base:
                 line += ": " + " ".join(str(k.get("alias") or k["id"]) for k in kids[:20]) + (" …" if len(kids) > 20 else "")
         if verbose and el.get("frame") is None and el.get("type") != "comment":
             line += blocks.neighbours(el, everything)
+        if tags and el["id"] in tags:
+            line += tags[el["id"]]  # `` [frozen]``, `` [proposal P-3]`` (phase 5, 10.1)
         lines.append("  " * depth + line + tail)
         for child in children.get(el["id"], []):
             walk(child, depth + 1)
@@ -4314,7 +4517,30 @@ def summarize(event: Dict[str, Any], state: Optional[_State] = None) -> str:
         step = " (step {}/{})".format(info["current"], info["total"]) if info.get("current") else ""
         return "updated its portrait {}{}".format(frame, step)
     if op == "undo":
-        return "undid {}".format(event.get("undoes") or "a batch")
+        return "undid {}".format(event.get("undoes") or _ids_text(event.get("undoes_all") or []) or "a batch")
+    if event.get("proposal"):
+        record = next((c.get("value") for c in changes if c.get("target") == "proposal" and c.get("action") == "add"), None) or {}
+        what = _ids_text(record.get("targets") or []) or _ids_text(record.get("created") or [])
+        return "proposed {} ({} {})".format(event["proposal"], op, what).replace(" )", ")")
+    if op in ("accept", "reject", "withdraw"):
+        pid = event.get("accepts") or event.get("rejects") or event.get("withdraws") or "a proposal"
+        return "{} {}".format({"accept": "accepted", "reject": "rejected", "withdraw": "withdrew"}[str(op)], pid)
+    if op == "freeze":
+        record = next((c.get("value") for c in changes if c.get("target") == "freeze"), None) or {}
+        where = region_cells(record["region"]) if isinstance(record.get("region"), list) else _ids_text(record.get("ids") or [])
+        return "froze {} {} {}".format(record.get("id"), where, _q(record.get("label"), 60))
+    if op == "thaw":
+        return "thawed {}".format(_ids_text([c.get("id") for c in changes if c.get("target") == "freeze"]))
+    if op == "settings":
+        value = next((c.get("value") for c in changes if c.get("target") == "setting"), None) or {}
+        return "set the operator's marks to {} and frozen areas to {}".format(value.get("human_edits"), value.get("frozen"))
+    if op == "checkpoint":
+        record = next((c.get("value") for c in changes if c.get("target") == "checkpoint" and c.get("action") == "add"), None)
+        if record:
+            return "saved checkpoint {} {} (v{})".format(record.get("id"), _q(record.get("label"), 60), record.get("version"))
+        return "removed checkpoint {}".format(_ids_text([c.get("id") for c in changes if c.get("target") == "checkpoint"]))
+    if op == "restore":
+        return "restored {} ({} elements changed)".format(event.get("restores") or "a checkpoint", len(ids))
     verbs = {"release": "released", "move": "moved", "restyle": "restyled", "edit": "edited", "delete": "deleted",
              "resolve": "resolved", "unlock": "unlocked", "patch": "patched", "place": "placed", "pin": "pinned", "unpin": "unpinned"}
     return "{} {}".format(verbs.get(str(op), str(op)), _ids_text(ids)).strip()
@@ -4400,6 +4626,7 @@ def look_text(result: Dict[str, Any]) -> str:
     if locks:
         lines.append("locks: " + "; ".join("{} by {} {} {}".format(lock.get("id"), _lock_by(lock) if lock.get("by") != reader else "you",
                                                                    _q(lock.get("label"), 60), region_cells(lock.get("region") or [0, 0, 1, 1])) for lock in locks))
+    lines += _collab().look_lines(result)  # presence, proposals, decisions, freezes, settings, checkpoints (phase 5, 10.1)
     legend = result.get("legend") or []
     if legend:
         lines.append("legend: " + "; ".join("{} {} = {} ({})".format(g.get("id"), g.get("symbol"), _q(g.get("meaning"), 80), _who(g.get("author"), reader))
@@ -4411,18 +4638,19 @@ def look_text(result: Dict[str, Any]) -> str:
     scene_elements = result.get("_scene") or full
     verbose = bool(result.get("full"))
     stills = result.get("_stills")
+    tags = result.get("_tags") or {}
     if result.get("block_text"):
         lines.append(result["block_text"])
     elif region:
         lines.append("region {}:".format(result.get("region_cells") or region_cells(region)))
-        lines += _tree_lines(full, reader, scene=scene_elements, verbose=verbose, stills=stills) or ["  (nothing here)"]
+        lines += _tree_lines(full, reader, scene=scene_elements, verbose=verbose, stills=stills, tags=tags) or ["  (nothing here)"]
     elif result.get("level") == "full":
         lines.append("elements:")
-        lines += _tree_lines(full, reader, scene=scene_elements, verbose=verbose, stills=stills) or ["  (the canvas is empty)"]
+        lines += _tree_lines(full, reader, scene=scene_elements, verbose=verbose, stills=stills, tags=tags) or ["  (the canvas is empty)"]
     elsewhere = result.get("elsewhere") or []
     if elsewhere:
         lines.append("elsewhere:" if region else "elements (one line each):")
-        lines += ["  " + str(entry.get("line") or entry.get("id")) for entry in elsewhere]
+        lines += ["  " + str(entry.get("line") or entry.get("id")) + tags.get(str(entry.get("id")), "") for entry in elsewhere]
     clusters = result.get("clusters") or []
     if clusters:
         lines.append("nearby:" if region else "more:")
@@ -4435,6 +4663,9 @@ def look_text(result: Dict[str, Any]) -> str:
     if for_you:
         lines.append("for you:")
         lines += ["  " + describe(c, reader, full=True) for c in for_you]
+    if result.get("proposals_full") and result.get("proposals"):
+        lines.append("open proposals:")
+        lines += ["  " + line for line in _collab().proposals_full(result)]
     found = result.get("problems") or []
     if found:
         lines.append("problems ({}; each fix is an operation you can apply):".format(len(found)))
@@ -4507,13 +4738,14 @@ def _check_canvas(layout: Any, team: TeamPaths, reader: str, region: Any, around
 def look(layout: Any, team: TeamPaths, reader: str, region: Any = None, around: Optional[str] = None, since: Any = None,
          image: bool = False, grid: bool = False, exact: bool = False, advance: bool = True,
          doc: Optional[Dict[str, Any]] = None, theme: str = "light", block: Optional[str] = None, full: bool = False,
-         view: Optional[str] = None) -> Dict[str, Any]:
+         view: Optional[str] = None, proposals: bool = False, author: Optional[CanvasAuthor] = None) -> Dict[str, Any]:
     """What ``reader`` sees (contract 8.1 and 8.2): the three-level listing, changes, claims, legend, and an optional image
     (drawn in ``theme``, ``light`` or ``dark``). ``block`` prints one block's whole spec, one item per line; ``full`` adds
     part ids, neighbours and details (phase 2, 5.3). ``view`` draws the image's 3D scenes in that still view (``iso``,
-    ``front``, ``top``; phases 3 and 4, 1.4)."""
+    ``front``, ``top``; phases 3 and 4, 1.4). ``region="operator"`` looks at the operator's viewport; ``proposals`` prints
+    every open proposal in full; ``author`` (a verified member) records the look as its ``reading`` presence (phase 5)."""
     with _corrected(team):
-        return _look(layout, team, reader, region, around, since, image, grid, exact, advance, doc, theme, block, full, view)
+        return _look(layout, team, reader, region, around, since, image, grid, exact, advance, doc, theme, block, full, view, proposals, author)
 
 
 #: The still views ``look --image --view`` takes: every view a kind declares (the registry's, so a new kind needs no edit).
@@ -4528,7 +4760,8 @@ def still_views() -> List[str]:
 
 def _look(layout: Any, team: TeamPaths, reader: str, region: Any, around: Optional[str], since: Any, image: bool, grid: bool,
           exact: bool, advance: bool, doc: Optional[Dict[str, Any]], theme: str, block: Optional[str] = None,
-          full_detail: bool = False, still_view: Optional[str] = None) -> Dict[str, Any]:
+          full_detail: bool = False, still_view: Optional[str] = None, show_proposals: bool = False,
+          author: Optional[CanvasAuthor] = None) -> Dict[str, Any]:
     if still_view is not None and still_view not in still_views():
         raise _error("usage", "view is one of: {}".format(", ".join(still_views()) or "(no kind has still views)"), view=still_view)
     doc = doc if isinstance(doc, dict) else store.RosterStore(team).load()
@@ -4540,12 +4773,25 @@ def _look(layout: Any, team: TeamPaths, reader: str, region: Any, around: Option
     state = _load_state(team)
     state.drop_expired(now)
     scene = state.to_scene(now)
-    elements = scene["elements"]
+    collab, presence = _collab(), _presence()
+    answered = collab.answered(scene["elements"])
+    elements = [dict(el, answered=True) if el["id"] in answered else el for el in scene["elements"]]
+    try:
+        present = presence.read_all(team, now)["entries"]
+    except (OSError, ValueError, HerdrTeamError):
+        present = []
+    human = max((d for d in present if d.get("kind") == "human"), key=lambda d: _parse_iso(d.get("at")) or 0.0, default=None)
 
     def lookup(ref: str, field: str) -> Dict[str, Any]:
         return _lookup_in(state, ref, reader, field)
 
     box: Optional[List[int]] = None
+    if isinstance(region, str) and region.strip() == "operator":
+        if around is not None:
+            raise _error("usage", "use --region or --around, not both")
+        if human is None or not isinstance(human.get("viewport"), list):
+            raise _error("usage", "the operator has no page open right now; look without --region operator")
+        region = list(human["viewport"])
     if around is not None:
         x0, y0, x1, y1 = bounds(lookup(around, "around"))
         box = [_round(x0 - AROUND_MARGIN), _round(y0 - AROUND_MARGIN), _round(x1 + AROUND_MARGIN), _round(y1 + AROUND_MARGIN)]
@@ -4577,8 +4823,9 @@ def _look(layout: Any, team: TeamPaths, reader: str, region: Any, around: Option
     since_version: Optional[int] = None
     changes: List[Dict[str, Any]] = []
     complete, reset = True, False
+    seen = cursor(team, reader)
     if since is not None:
-        since_version = cursor(team, reader) if since == "last" else _since_value(since)
+        since_version = seen if since == "last" else _since_value(since)
         got = changes_since(team, since_version)
         changes = [_change_entry(event, state) for event in got["events"]]
         complete, reset = got["complete"], got["reset"]
@@ -4594,6 +4841,21 @@ def _look(layout: Any, team: TeamPaths, reader: str, region: Any, around: Option
         "blocks": {el["id"]: blocks.spec_of(elements, el) for el in full if blocks._is_root(el)},
         "full": bool(full_detail), "_scene": elements,
     }
+    # Collaboration (phase 5, 10.1): who is here, open proposals, the reader's decided ones, freezes, settings, checkpoints.
+    by_id = {el["id"]: el for el in scene["elements"]}
+    result["presence"] = {"operator": presence.operator_view(human, scene["elements"], now),
+                          "members": [d for d in present if d.get("kind") == "member"]}
+    result["proposals"] = [dict(p, outdated=bool(collab.outdated_of(p, by_id))) for p in collab.open_proposals(state)]
+    result["decided"] = sorted((p for p in state.proposals.values() if p.get("author") == reader and p.get("status") != "open"
+                                and int(p.get("decided_seq") or 0) > seen), key=lambda p: int(p.get("decided_seq") or 0))
+    result["freezes"] = scene["freezes"]
+    result["settings"] = scene["settings"]["collab"]
+    result["checkpoints"] = scene["checkpoints"][-5:]
+    result["proposals_full"] = bool(show_proposals)
+    result["_tags"] = collab.tags(scene)
+    result["_by_id"] = by_id
+    result["_now"] = now
+    result["_team"] = team
     # What a kind reads back as in words (phases 3 and 4, 1.6): its gist, and the facts it adds under its own key.
     gists: Dict[str, List[str]] = {}
     stills = _stills(team)
@@ -4636,10 +4898,16 @@ def _look(layout: Any, team: TeamPaths, reader: str, region: Any, around: Option
             result["svg"] = rendered["svg"]
             result["image_error"] = result["image_error"] or rendered["image_error"]
     result["text"] = look_text(result)
-    result.pop("_scene", None)
-    result.pop("_stills", None)
+    for key in ("_scene", "_stills", "_tags", "_by_id", "_now", "_team"):
+        result.pop(key, None)
     if advance:
         advance_cursor(team, reader, state.version)
+    if author is not None and author.is_member and author.verified and author.name == reader:
+        try:
+            # A look at the whole board is reading without a place: no halo around everything (QA phase 5 L8).
+            presence.write_member(team, author, status="reading", region=box, ttl_s=presence.LOOK_TTL_S, via="look", now=now)
+        except (OSError, ValueError, HerdrTeamError) as err:
+            _log.debug("presence not written for %s: %s", reader, err)
     return result
 
 
@@ -4694,12 +4962,42 @@ def _geometry_text(entry: Dict[str, Any]) -> str:
 
 def apply_text(result: Dict[str, Any]) -> str:
     """The human text of an apply result: ``v44 · B-12 · applied 6, refused 1`` then one line per op."""
-    lines = ["v{} · {} · applied {}, refused {}".format(result.get("version"), result.get("batch") or "no batch",
-                                                       len(result.get("applied") or []), len(result.get("refused") or []))]
-    for entry in result.get("applied") or []:
+    proposed = result.get("proposed") or []
+    lines = ["v{} · {} · applied {}, {}refused {}".format(result.get("version"), result.get("batch") or "no batch", len(result.get("applied") or []),
+                                                          "proposed {}, ".format(len(proposed)) if proposed else "", len(result.get("refused") or []))]
+    operator = result.get("operator")
+    if isinstance(operator, dict):
+        lines.append(_collab().operator_line(operator))
+    entries = sorted([(e.get("index") or 0, "applied", e) for e in result.get("applied") or []] +
+                     [(e.get("index") or 0, "proposed", e) for e in proposed], key=lambda item: (item[0], item[1]))
+    for _index, how, entry in entries:
+        if how == "proposed":
+            why = entry.get("message") or entry.get("reason") or "it is not yours"
+            lines.append("#{} {} → proposal {}: {}; it waits for the operator (look shows the outcome)".format(
+                entry.get("index"), entry.get("op"), entry.get("proposal"), why))
+            lines += ["   " + str(line) for line in (entry.get("summary") or [])[:3]]
+            if entry.get("base_note"):
+                lines.append("   made against v{}; the operator changed since: {}".format(result.get("base"), "; ".join(entry["base_note"])))
+            continue
         alias = " ({})".format(entry["alias"]) if entry.get("alias") else ""
-        lines.append("#{} {} {}{}{}".format(entry.get("index"), entry.get("op"), _ids_text(entry.get("ids") or []) or "-", alias,
-                                          _geometry_text(entry)))
+        extra = ""
+        if entry.get("auto_claim"):
+            extra += " · claimed {}".format(entry["auto_claim"])
+        undo = entry.get("undo") if isinstance(entry.get("undo"), dict) else None
+        if undo:
+            extra += " · {} of {} reverted".format(undo.get("restored"), undo.get("of"))
+            if undo.get("withdrew"):
+                extra += " · withdrew {}".format(_ids_text(undo["withdrew"]))
+        settings = entry.get("settings") if isinstance(entry.get("settings"), dict) else None
+        if settings:
+            # Not "#0 settings -" (QA phase 5 L15): what the settings are now.
+            extra += " · human edits: {} · frozen: {}".format(settings.get("human_edits"), settings.get("frozen"))
+        restore = entry.get("restore") if isinstance(entry.get("restore"), dict) else None
+        if restore:
+            extra += " · restored {}: {} added, {} changed, {} deleted".format(restore.get("from"), restore.get("added"), restore.get("changed"),
+                                                                              restore.get("deleted"))
+        lines.append("#{} {} {}{}{}{}".format(entry.get("index"), entry.get("op"), _ids_text(entry.get("ids") or []) or "-", alias,
+                                            _geometry_text(entry), extra))
         block = entry.get("block") if isinstance(entry.get("block"), dict) else None
         if block and block.get("kind"):
             # The block's result (phase 2, 5.2): what it is now, what moved, the pins nobody may move.
@@ -4844,13 +5142,27 @@ def _changed_ids(team: TeamPaths, since: int) -> Optional[Tuple[int, Set[str]]]:
     for event in got["events"]:
         for change in event.get("changes") or []:
             target = change.get("target") if isinstance(change, dict) else None
-            if target in ("lock", "author"):
-                return None
+            if target in ("lock", "author", "proposal", "freeze", "setting"):
+                return None  # a proposal, freeze or setting changes what other entries say (phase 5): the whole list
             if target in ("element", "claim") and isinstance(change.get("id"), str):
                 ids.add(change["id"])
         if len(ids) > MAX_DELTA_IDS:
             return None
     return int(got["version"]), ids
+
+
+def _related(entries: Sequence[Dict[str, Any]], ids: Set[str]) -> Set[str]:
+    """The proposal and freeze entries an element change redraws (phase 5): a proposal aimed at it may now be outdated,
+    and an id freeze's outline follows its elements."""
+    found: Set[str] = set()
+    for item in entries:
+        if item.get("kind") == "proposal" and isinstance(item.get("proposal"), dict):
+            record = item["proposal"]
+            if ids & set(record.get("targets") or []) or ids & set(record.get("deleted") or []):
+                found.add(item["id"])
+        elif item.get("kind") == "freeze" and isinstance(item.get("freeze"), dict) and ids & set(item["freeze"].get("ids") or []):
+            found.add(item["id"])
+    return found
 
 
 def _patched(team: TeamPaths, doc: Dict[str, Any], table: Dict[str, float], token: str) -> Optional[Dict[str, Any]]:
@@ -4859,6 +5171,7 @@ def _patched(team: TeamPaths, doc: Dict[str, Any], table: Dict[str, float], toke
     if found is None:
         return None
     version, ids = found
+    ids = ids | _related(doc["entries"], ids)
     scene = load_scene(team)
     with _ctext.corrected(table, token):
         fresh = {e["id"]: e for e in _display.entries(scene, ids, stills=_stills(team))}
@@ -4878,6 +5191,7 @@ def display_delta(team: TeamPaths, since: int) -> Dict[str, Any]:
     if found is None:
         return dict(doc, since=since, full=True)
     _version, ids = found
+    ids = ids | _related(doc["entries"], ids)
     upserts = [e for e in doc["entries"] if e["id"] in ids]
     live = {e["id"] for e in upserts}
     return {"dl": _display.DL_VERSION, "version": doc["version"], "since": since, "full": False, "bbox": doc["bbox"],
@@ -5343,6 +5657,13 @@ def clear(layout: Any, team: TeamPaths, by: str) -> Dict[str, Any]:
     lock = _canvas_lock(team)
     with lock:
         state = _load_state(team)
+        now = time.time()
+        # An automatic checkpoint of what is cleared (phase 5, 7): checkpoints/ stays, and the cleared canvas keeps the records.
+        counters = dict(state.counters)
+        checkpoints = dict(state.checkpoints)
+        if state.elements:
+            checkpoints = _collab().clear_checkpoint(team, state, now)
+            counters["V"] = max(_id_number(vid) for vid in checkpoints)
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         archive = _dir(team) / ARCHIVE_DIR / stamp
         suffix = 1
@@ -5354,11 +5675,14 @@ def clear(layout: Any, team: TeamPaths, by: str) -> Dict[str, Any]:
             source = _dir(team) / name
             if os.path.lexists(source):
                 os.replace(source, archive / name)
-        now = time.time()
+        if checkpoints:
+            _collab().keep_checkpoint_assets(team, checkpoints, archive / ASSETS_DIR)
         human = by == HUMAN
         event = {"v": SCHEMA, "seq": state.version + 1, "ts": _iso(now), "batch": None,
                  "author": {"name": by, "kind": KIND_HUMAN if human else KIND_MEMBER, "agent": None, "via": "cli", "verified": True},
-                 "op": "clear", "index": 0, "intent": "cleared the canvas", "ids": [], "changes": [], "counters": dict(state.counters)}
+                 "op": "clear", "index": 0, "intent": "cleared the canvas", "ids": [], "changes": [], "counters": counters}
+        if checkpoints or state.settings:
+            event.update(checkpoints=checkpoints, settings=dict(state.settings))
         _append_events(team, [event])
         state.fold(event)
         _write_scene(team, state, now)

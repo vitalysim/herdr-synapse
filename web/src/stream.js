@@ -3,7 +3,7 @@
 // every 5 s instead and retries the stream now and then.
 import { getJSON, teamPath } from "./api.js";
 
-const EVENTS = ["hello", "scene", "ops", "state", "views", "activity", "export_request", "bye"];
+const EVENTS = ["hello", "scene", "ops", "state", "views", "activity", "export_request", "presence", "bye"];
 const POLL_MS = 5000;
 const RETRY_STREAM_EVERY = 6;
 

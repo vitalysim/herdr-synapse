@@ -1,0 +1,62 @@
+{
+ "aliases": {},
+ "applied": [],
+ "atomic": false,
+ "batch": "B-8",
+ "check": null,
+ "geometry": [],
+ "notices": {
+  "canvas_changed": null,
+  "canvas_sent": []
+ },
+ "operator": {
+  "age_s": 2,
+  "at": "2026-09-21T14:13:28.000Z",
+  "editing": null,
+  "pointing_at": "E-2",
+  "selection": [
+   "E-3"
+  ],
+  "viewport": [
+   0,
+   0,
+   1200,
+   800
+  ]
+ },
+ "proposed": [
+  {
+   "base_note": [],
+   "created": [
+    "E-5"
+   ],
+   "index": 0,
+   "message": "it goes on the operator's E-1",
+   "op": "shape",
+   "proposal": "P-2",
+   "reason": "human_made",
+   "reasons": [
+    "human_made"
+   ],
+   "summary": [
+    "E-5 \"On yours\": added box \"On yours\" in c1r1"
+   ],
+   "targets": []
+  }
+ ],
+ "refused": [
+  {
+   "code": "in_proposal",
+   "details": {
+    "proposal": "P-2",
+    "ref": "held"
+   },
+   "index": 1,
+   "message": "held is in proposal P-2, not on the canvas yet; put what depends on it in the same op, or wait for the operator",
+   "op": "arrow"
+  }
+ ],
+ "team": "qa",
+ "version": 10,
+ "warnings": []
+}

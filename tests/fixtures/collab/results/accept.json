@@ -1,0 +1,86 @@
+{
+ "aliases": {
+  "held": "E-5"
+ },
+ "applied": [
+  {
+   "geometry": [
+    {
+     "fit": {
+      "lines": 1,
+      "policy": "hug",
+      "size": 20
+     },
+     "h": 80,
+     "id": "E-5",
+     "w": 160,
+     "x": 20,
+     "y": 20
+    }
+   ],
+   "ids": [
+    "E-5"
+   ],
+   "index": 0,
+   "op": "accept"
+  }
+ ],
+ "atomic": false,
+ "batch": "B-11",
+ "check": {
+  "counts": {
+   "arrow_through": 0,
+   "label_truncated": 0,
+   "overlap": 1
+  },
+  "problems": [
+   {
+    "code": "overlap",
+    "fix": {
+     "id": "E-5",
+     "intent": "fix the layout: overlap (E-5, E-1)",
+     "op": "move",
+     "to": [
+      180,
+      20
+     ]
+    },
+    "ids": [
+     "E-5",
+     "E-1"
+    ],
+    "message": "E-5 box \"On yours\" overlaps E-1 box \"Pricing\" by 140x80; move E-5 to a free spot",
+    "yours": true
+   }
+  ],
+  "region": [
+   -180,
+   -180,
+   380,
+   300
+  ]
+ },
+ "geometry": [
+  {
+   "fit": {
+    "lines": 1,
+    "policy": "hug",
+    "size": 20
+   },
+   "h": 80,
+   "id": "E-5",
+   "w": 160,
+   "x": 20,
+   "y": 20
+  }
+ ],
+ "notices": {
+  "canvas_changed": null,
+  "canvas_sent": []
+ },
+ "proposed": [],
+ "refused": [],
+ "team": "qa",
+ "version": 14,
+ "warnings": []
+}

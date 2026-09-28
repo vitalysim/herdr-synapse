@@ -119,8 +119,9 @@ class Upsert(BlockRig):
 
     def test_another_members_block_is_not_theirs(self):
         self.ok(KANBAN)
-        refused = self.refused({"op": "patch", "id": self.by_alias("work")["id"], "add": {"cards": ["x"]}, "intent": "t"}, author=REVIEWER)
-        self.assertEqual(refused["code"], "element_not_yours")
+        # Phase 5 (D11): a peer's patch of another member's block is a proposal for the operator (it was refused).
+        proposed = self.proposed({"op": "patch", "id": self.by_alias("work")["id"], "add": {"cards": ["x"]}, "intent": "t"}, author=REVIEWER)
+        self.assertEqual(proposed["reason"], "peer")
 
 
 class Patch(BlockRig):

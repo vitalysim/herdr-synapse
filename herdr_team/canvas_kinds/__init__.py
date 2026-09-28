@@ -45,8 +45,8 @@ from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Seque
 
 #: The version of the ``Kind`` contract itself; bumped when a hook's signature changes (2: ops, drawing, editing;
 #: 3: blocks, stored-as kinds, arrangements, reroutes and inline parts, canvas v2 phase 2; 4: still views, gists and
-#: per-view drawings of browser-drawn kinds, canvas v2 phases 3 and 4).
-API_VERSION = 4
+#: per-view drawings of browser-drawn kinds, canvas v2 phases 3 and 4; 5: ``OpSpec.proposable``, canvas v2 phase 5).
+API_VERSION = 5
 
 #: The outlines layout knows how to test exactly (arrow label placement, making room). Anything
 #: else is its bounding box.
@@ -106,6 +106,9 @@ class OpSpec:
     doc: str = ""
     #: Its fragment of the MCP op table, e.g. ``card {title, body, tone}``.
     mcp: str = ""
+    #: What it does to someone else's marks goes through the review gate (canvas v2 phase 5, ``canvas_collab``): it may
+    #: become a proposal the operator accepts. False keeps it always live (a comment is a request, never a change).
+    proposable: bool = True
 
 
 @dataclass(frozen=True)

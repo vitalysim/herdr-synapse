@@ -1,0 +1,67 @@
+{
+ "aliases": {},
+ "applied": [
+  {
+   "auto_claim": "K-2",
+   "geometry": [
+    {
+     "fit": {
+      "lines": 1,
+      "policy": "shrink",
+      "size": 20
+     },
+     "h": 120,
+     "id": "E-4",
+     "w": 180,
+     "x": 1600,
+     "y": 0
+    }
+   ],
+   "ids": [
+    "E-4"
+   ],
+   "index": 0,
+   "op": "shape"
+  }
+ ],
+ "atomic": false,
+ "batch": "B-3",
+ "check": {
+  "counts": {
+   "arrow_through": 0,
+   "label_truncated": 0,
+   "overlap": 0
+  },
+  "problems": [],
+  "region": [
+   1400,
+   -200,
+   1980,
+   320
+  ]
+ },
+ "geometry": [
+  {
+   "fit": {
+    "lines": 1,
+    "policy": "shrink",
+    "size": 20
+   },
+   "h": 120,
+   "id": "E-4",
+   "w": 180,
+   "x": 1600,
+   "y": 0
+  }
+ ],
+ "notices": {
+  "canvas_changed": null,
+  "canvas_sent": []
+ },
+ "operator": null,
+ "proposed": [],
+ "refused": [],
+ "team": "qa",
+ "version": 5,
+ "warnings": []
+}

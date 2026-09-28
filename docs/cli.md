@@ -2197,9 +2197,9 @@ Identity as for `post`; members write only as verified members of their own
 team; unverified callers, hooks and startup processes can read only.
 
 ```
-canvas look [--region R | --around ID] [--since N|last] [--image] [--grid] [--exact] [--theme light|dark] [--block REF] [--full] [--view VIEW]
+canvas look [--region R|operator | --around ID] [--since N|last] [--image] [--grid] [--exact] [--theme light|dark] [--block REF] [--full] [--view VIEW] [--proposals]
 canvas check [--region R | --around ID] [--mine]
-canvas draw [--file PATH|-] [--op JSON]... [--atomic]
+canvas draw [--file PATH|-] [--op JSON]... [--atomic] [--base N|last]
 canvas comment AT TEXT [--mention NAME]... [--reply-to C-n] [--intent TEXT]
 canvas claim REGION LABEL [--intent TEXT]
 canvas release [K-n]
@@ -2207,8 +2207,17 @@ canvas legend SYMBOL MEANING [--intent TEXT] | canvas legend --remove G-n
 canvas portrait (--from-todo | --step TEXT... [--current N]) [--title TEXT]
 canvas changes [--since N|last]
 canvas resolve C-n
-canvas undo B-n
+canvas undo B-n [--force] | canvas undo --author NAME [--since N] [--force]
 canvas refit [--ids E-1,E-2]
+canvas withdraw P-n
+canvas checkpoint LABEL | canvas checkpoint --remove V-n
+canvas focus [REGION|ID] [--intent TEXT] [--status S] [--ttl SECONDS] | canvas focus --clear
+canvas accept P-n [--note TEXT]              (the operator)
+canvas reject P-n [--note TEXT]              (the operator)
+canvas freeze REGION | --ids E-1,E-2 [--label TEXT]   (the operator)
+canvas thaw X-n | --ids E-1,E-2              (the operator)
+canvas restore V-n                           (the operator)
+canvas settings [--human-edits propose|live] [--frozen propose|refuse]   (the operator; no flags prints them)
 canvas lock REGION [--label TEXT]            (operator)
 canvas unlock X-n                            (operator)
 canvas send ID... --to NAME [--note TEXT]    (operator)
@@ -2235,12 +2244,14 @@ section, a kanban column) to join its layout at `index` (phase 2; `in` with
 `place in`, a drop), never by where something lands.
 
 **Ids.** `E-n` elements (frames too), `C-n` comments, `K-n` claims, `X-n`
-locks, `G-n` legend entries, `B-n` batches, per team, never reused. An op's
+locks and freezes, `G-n` legend entries, `B-n` batches, and since canvas v2
+phase 5 `P-n` proposals and `V-n` checkpoints, per team, never reused (the ids
+a proposal would create are reserved when it is made). An op's
 `id` is an alias scoped to its author (`^[A-Za-z][A-Za-z0-9_.-]{0,63}$`, not
 `X-9` shaped); references resolve canonical id, then the author's own alias,
 then an alias exactly one other author uses.
 
-**Operations** (a batch is `{"ops":[…],"atomic":false}` or a list; every op
+**Operations** (a batch is `{"ops":[…],"atomic":false,"base":N}` or a list; every op
 has `op` and a one-line `intent`, required from agents; text is cleaned like a
 post, and secrets or marker text refuse):
 
@@ -2264,19 +2275,28 @@ post, and secrets or marker text refuse):
 | `portrait` | the author's plan as a frame of steps in its home | self |
 | `resolve` | close a comment | its author, a mentioned member, manager, operator |
 | `lock` / `unlock` | an operator region lock | operator |
-| `undo` | restore what a batch touched; an element the undoer could not edit directly now (the operator's arrow the batch re-routed) is left as it is, with an `undo_skipped` warning | its author; manager for agents' batches; operator |
+| `undo` | `batch`, or every not-undone batch of one `author` after `since` (its own undo batches aside), newest first: write back what they touched, skipping every element someone outside them changed later (`undo_skipped`, and the result's `undo: {batches, restored, of, skipped}`) and anything the undoer may not edit; `force` (the operator in person) writes back anyway | its author; the manager or a delegate for agents' batches; the operator in person for anything |
 | `refit` | size labels again (`ids`, or every element the author may edit); a block root named in `ids` is rebuilt from its own spec | editor |
 | `section`, `card`, `sticky`, `callout`, `heading`, `badge`, `icon` | content blocks (phase 2): a titled zone that lays out what joins it (`layout` row, column, grid or free, `gap`, `padding`, `align` incl. `stretch`, `cols`, `grid "CxR"`, `children` or `region`); a card (`title`, `body` with `- ` bullets, `icon`, `badges`, `owner`, `status`, `detail`, `size` s/m/l, `tone`, `variant`); a sticky (`text`, `tone`, `size`); a callout (`kind` note/tip/important/warning/danger/decision/question, `title`, `body`, `icon`); a heading (`text`, `level` 1-3); a badge (`text`, `tone`, `variant`, `icon`, `size`); an icon (`name`, `size`, `tone`, `label`; `canvas icons --search`) | writer |
 | `table`, `kanban`, `timeline` | structured blocks: `columns` and `rows` held inline, every cell a part; `columns` of `cards` (a card is `<board>.c<n>`); `events` on a dated or ordinal axis. The same op with the same `id` updates the block in place (items match by id, then by text) | writer |
 | `patch` | inside a block (`id`): `add`, `update`, `remove` (by key) and `set` (settings), `relayout` incremental or full; a key that names no item refuses `part_unknown` with the nearest keys; `if_version` is the block's version (its root's `updated_seq`, which every member change bumps) | editor |
 | `place` | `id` or `ids` as one group: `right_of`, `left_of`, `below`, `above` (with `gap`, `align` start/center/end), `at`, or `in` a container at `index`; a member of a positional block (a graph, a timeline) placed or dragged is pinned where it went, one in a stack is reordered | editor |
 | `pin` / `unpin` | hold elements where they are (`pin: {"by": "human"\|"agent", "who"}`): no layout, growth push-out or other author moves them. An agent never moves, resizes, deletes or unpins a person's pin (`pin_held`), nor a container holding one; `unpin` re-lays out the block | editor |
+| `accept` / `reject` | decide a proposal (`id`, `note`): accept replays exactly what it showed (refused `proposal_outdated` when a target changed since); reject leaves the canvas as it is | the operator in person |
+| `withdraw` | take an open proposal back (`id`) | its author; the operator |
+| `freeze` / `thaw` | hold a `region` or elements (`ids`, and what they hold) as they are, with a `label`; `thaw` an `id`, or let go of `ids` | the operator in person |
+| `settings` | `human_edits` (`propose`, the default, or `live`: agents' changes to the operator's marks apply, marked `touched_human`) and `frozen` (`propose`, the default, or `refuse`) | the operator in person |
+| `checkpoint` | save the elements as `V-n` (`label`; 3 named each, 30 for the operator, 10 automatic), or `remove` one | writer (remove: its author, the operator) |
+| `restore` | an automatic checkpoint of now, then the difference to `V-n` as one op (comments stay; claims, locks, freezes, proposals and settings are untouched); undo it like any batch | the operator in person |
 
 Writer: a verified member, the operator, or a delegate. Editor: the element's
 author, the manager for any agent's element, the operator for anything; the
-human's elements are the operator's alone. Operations inside an operator lock
-refuse `canvas_locked`; inside another author's claim they apply with a
-`inside_claim` warning; overlapping text gets an `overlap` warning, and an
+human's elements are the operator's alone. Since canvas v2 phase 5 an agent's
+op that would change the operator's marks, a peer's, land in a peer's lane
+(claims and home) or in a frozen area becomes a proposal instead (see
+**Collaboration** below). Operations inside an operator lock
+refuse `canvas_locked`; inside another author's claim a manager's or a
+delegate's apply with an `inside_claim` warning; overlapping text gets an `overlap` warning, and an
 element that crosses a frame's edge a `frame_edge` warning. `inside` a
 frame (on a new element or a `move`) makes the element its child; the frame
 grows to fit only for its editor and never into a lock, so placing something
@@ -2299,6 +2319,32 @@ a deliberate `move`), so a later point on where it was asked to be is a point
 on it, in the same batch or a later one. A collision the op itself asked for
 is left to `check`. An unlabelled shape drawn over labelled ones goes under
 them, so its fill never hides their text.
+
+**Collaboration** (canvas v2 phase 5; `docs/collaboration.md`). The operator
+in person leads: the collaboration layer never refuses her, and only she
+accepts, rejects, freezes, thaws, restores, changes the settings or forces an
+undo (`operator_only` for anyone else, delegates too). Every other author's
+proposable op (the edit ops and every kind's create op; comments are always
+live) runs, then a review gate decides: live, a **proposal**, or a refusal.
+A proposal (`P-n`) keeps nothing on the canvas; the result lists it under
+`proposed: [{index, op, proposal, reason, reasons, message, targets, created,
+summary, base_note}]` and the text says `#1 move → proposal P-3: E-4 is the
+operator's; it waits for the operator`. Reasons, in rule order:
+`frozen`, `human_made` (the operator's marks, or a new mark on or in them),
+`peer` (a peer's marks), `foreign_lane` (a plain member's new mark in another
+author's claim or home). Refusals: `element_busy` (the element the operator is
+editing now; retry after 5 s), `frozen` (under `frozen: refuse`),
+`stale_base` (an op aimed at what the operator changed after the batch's
+`base`; what another agent changed only warns `stale_base`), `in_proposal` (a
+later op naming what only a proposal of this batch holds), `proposal_limit`
+(20 open per author, 200 in all). A live op renews its author's claim it works
+in once half its time is gone, and a plain member's new marks in free space
+claim it (`auto: true`; the applied entry says `auto_claim: K-n`). A comment on
+an element follows it (`anchor`) and keeps its point, with `was_on`, when the
+element goes. A member's result carries `operator: {viewport, selection,
+editing, pointing_at, age_s}` (null when no page of hers is fresh), and a
+member's draw and look write its presence (`focus` sets it on purpose).
+Proposals never wake anyone; they join the author's `canvas_changed` line.
 
 **Blocks** (phase 2). A block op builds a finished, laid-out result; every
 apply result then carries, per op, `block` (`{id, kind, box, version, moved,
@@ -2587,9 +2633,11 @@ The JSON API lives under `/api/`: `session`, `teams`, and per team
 `/api/teams/<t>/` `scene`, `changes?since=N`, `display[?since=N]`, `measure`
 (POST), `ops` (POST), `send` (POST),
 `uploads` (POST, PNG or JPEG), `stills/<id>?v=N[&view=V]` (POST; `view` one of the element kind's still views, `iso`, `front` or `top` for a 3D scene), `exports/<id>`
-(POST), `assets/<name>`, `artifact?path=`, `text?ids=E-1,C-2`, `views`; plus
+(POST), `assets/<name>`, `artifact?path=`, `text?ids=E-1,C-2`, `views`, `presence`
+(GET, and POST from a writable page); plus
 `/api/activity?team=` and the event stream `/api/stream?team=&since=` (`hello`,
-`scene`, `ops`, `state`, `views`, `activity`, `export_request`, `bye`).
+`scene`, `ops`, `presence`, `state`, `views`, `activity`, `export_request`, `bye`).
+`POST /ops` takes the batch envelope with `base` (canvas v2 phase 5).
 Errors are `{"code","message",…}` with these statuses:
 
 `GET display` (canvas v2 phase 1) answers the team's display list
@@ -2619,17 +2667,30 @@ JSON `{"accepted","ignored":[{"i","why"}],"refit","batch","version"}`.
 The page opened with `?engine=v2` (and a ticket link with `&engine=v2`, whose
 redirect keeps it) is the display-list renderer; without it the Excalidraw page.
 
+`POST presence` (canvas v2 phase 5, writable pages only) is the operator's page
+telling agents where she is: `{"page": "<16 hex>", "viewport": [x0,y0,x1,y1],
+"selection": [ids], "editing": id|null, "cursor": [x,y], "away": bool}` (every
+key but `page` optional, at most 4 KB, at most 8 a second per page: `429
+presence_rate`, `retry_after`), stored as `whiteboard/presence/human-<page>.json`
+for 30 s; JSON `{"ok": true, "ttl_s": 30}`. `GET presence` (read-only pages
+too) answers `{"at", "entries": [...]}`, the fresh records of her pages and of
+members (`whiteboard/presence/<name>.json`, written by their draws, looks and
+`canvas focus`). The stream sends `presence` (the same, plus `team`; no `id:`)
+after `scene` or `changes` at start, whenever the directory changes, and at
+least every 15 s while any record is fresh. Presence is never authority: it can
+only refuse an agent's op on what she is editing now (`element_busy`).
+
 | Status | Codes |
 | --- | --- |
 | 400 | `usage`, `op_invalid`, `element_unknown`, `svg_refused`, `chart_refused`, `mention_unknown`, `secret_detected`, `echo_rejected` |
 | 401 | `not_signed_in` |
-| 403 | `whiteboard_off`, `viz_off`, `read_only`, `author_mismatch`, `author_unverified`, `operator_only`, `element_not_yours`, `canvas_locked`, `path_refused`, `not_a_member`, `bad_host`, `bad_origin`, `bad_csrf` |
+| 403 | `whiteboard_off`, `viz_off`, `read_only`, `author_mismatch`, `author_unverified`, `operator_only`, `element_not_yours`, `canvas_locked`, `frozen`, `path_refused`, `not_a_member`, `bad_host`, `bad_origin`, `bad_csrf` |
 | 404 | `team_not_found`, `member_not_found`, `artifacts_unset`, `not_found` |
 | 405 | `method_not_allowed` |
-| 409 | `canvas_stale`, `canvas_refused`, `alias_taken` |
+| 409 | `canvas_stale`, `canvas_refused`, `alias_taken`, `stale_base`, `element_busy`, `in_proposal`, `proposal_outdated` |
 | 413 | `canvas_limit`, `image_refused`, `body_too_large` (bodies over 6 MB) |
 | 415 | `unsupported_media_type` |
-| 429 | `canvas_rate`, `measure_rate` |
+| 429 | `canvas_rate`, `measure_rate`, `presence_rate`, `proposal_limit` |
 | 503 | `canvas_busy`, `page_not_built`, `too_many_streams` (more than 8) |
 | 500 | anything else, as `internal`, logged without a traceback to the page |
 

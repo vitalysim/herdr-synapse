@@ -49,12 +49,14 @@ export async function getBlob(path) {
   return res.blob();
 }
 
-export async function postJSON(path, body) {
+// `keepalive` lets a small post outlive the page (presence's "away" on pagehide).
+export async function postJSON(path, body, { keepalive = false } = {}) {
   const res = await fetch(path, {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json", Accept: "application/json", "X-Synapse-CSRF": csrfToken },
     body: JSON.stringify(body),
+    ...(keepalive ? { keepalive: true } : {}),
   });
   return parse(res);
 }

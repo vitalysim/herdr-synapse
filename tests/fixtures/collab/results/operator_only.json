@@ -1,0 +1,38 @@
+{
+ "aliases": {},
+ "applied": [],
+ "atomic": false,
+ "batch": null,
+ "notices": {
+  "canvas_changed": null,
+  "canvas_sent": []
+ },
+ "operator": {
+  "age_s": 7,
+  "at": "2026-09-21T14:13:28.000Z",
+  "editing": null,
+  "pointing_at": "E-2",
+  "selection": [
+   "E-3"
+  ],
+  "viewport": [
+   0,
+   0,
+   1200,
+   800
+  ]
+ },
+ "proposed": [],
+ "refused": [
+  {
+   "code": "operator_only",
+   "details": {},
+   "index": 0,
+   "message": "accepting a proposal is for the operator in person; a delegate, the manager and members may ask (a comment or a proposal)",
+   "op": "accept"
+  }
+ ],
+ "team": "qa",
+ "version": 13,
+ "warnings": []
+}

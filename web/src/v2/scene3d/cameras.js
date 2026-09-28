@@ -100,9 +100,13 @@ export function safeBounds(bounds) {
  *
  * An orthographic view fits `points` (the objects' box corners, as the server projections fit
  * theirs, canvas_scene3d._project.View.fit) when given, else the corners of `bounds`, and centres
- * on what it fits unless the spec names a target.
+ * on what it fits unless the spec names a target. `room` is the share of the view's height kept
+ * free above what it fits, for the labels over the objects (the server's `top_room`): the view is
+ * taller by it and what it fits sits centred below it (`room` on the framing; makeCamera and
+ * fitAspect keep it).
  */
-export function frame(bounds, spec, aspect, centreOf = null, points = null) {
+export function frame(bounds, spec, aspect, centreOf = null, points = null, room = 0) {
+  const r = Number.isFinite(room) ? Math.max(0, Math.min(0.45, room)) : 0;
   const b = safeBounds(bounds);
   let target = [(b[0] + b[3]) / 2, (b[1] + b[4]) / 2, (b[2] + b[5]) / 2];
   let aimed = false;
@@ -146,7 +150,7 @@ export function frame(bounds, spec, aspect, centreOf = null, points = null) {
       let need = 0;
       for (const c of points) {
         const d = sub(c, target);
-        const lateral = Math.max(Math.abs(dot(d, right)) / tanH, Math.abs(dot(d, camUp)) / tanV) * (1 + MARGIN * 2);
+        const lateral = Math.max(Math.abs(dot(d, right)) / tanH, Math.abs(dot(d, camUp)) / (tanV * (1 - 2 * r))) * (1 + MARGIN * 2);
         need = Math.max(need, dot(d, dir) + lateral);
       }
       if (need > 0) fit = need;
@@ -184,15 +188,25 @@ export function frame(bounds, spec, aspect, centreOf = null, points = null) {
     hh = (y1 - y0) / 2;
   }
   hw = (Math.max(hw, 1e-3) * (1 + MARGIN * 2)) / spec.zoom;
-  hh = (Math.max(hh, 1e-3) * (1 + MARGIN * 2)) / spec.zoom;
-  // `fit` is the content's own half size; `half` widens it to the aspect (fitAspect starts again
-  // from `fit`, so a framing made for one aspect fits another as tightly).
+  hh = (Math.max(hh, 1e-3) * (1 + MARGIN * 2)) / spec.zoom / (1 - r);
+  // `fit` is the content's own half size (with the room); `half` widens it to the aspect
+  // (fitAspect starts again from `fit`, so a framing made for one aspect fits another as tightly).
   const fit = [hw, hh];
   if (hw / hh > a) hh = hw / a;
   else hw = hh * a;
   const dist = radius * 4 + 1;
   const eye = [target[0] + dir[0] * dist, target[1] + dir[1] * dist, target[2] + dir[2] * dist];
-  return { projection: "ortho", eye, target, up: camUp, half: [hw, hh], fit, near: 0.01, far: dist + radius * 4 + 1 };
+  return { projection: "ortho", eye, target, up: camUp, half: [hw, hh], fit, room: r, near: 0.01, far: dist + radius * 4 + 1 };
+}
+
+// An orthographic camera's window around its target: `room` of its height kept above what it
+// frames, so the target sits `room` of a half height below the middle.
+function setWindow(cam, hw, hh, room = 0) {
+  const r = Number.isFinite(room) ? room : 0;
+  cam.left = -hw;
+  cam.right = hw;
+  cam.top = hh * (1 + r);
+  cam.bottom = -hh * (1 - r);
 }
 
 /** A three.js camera for a framing (made new, or `camera` updated in place when it is the right type). */
@@ -204,10 +218,7 @@ export function makeCamera(f, camera = null) {
     if (Number.isFinite(f.aspect) && f.aspect > 0) cam.aspect = f.aspect;
   } else {
     if (!cam || !cam.isOrthographicCamera) cam = new OrthographicCamera(-1, 1, 1, -1, f.near, f.far);
-    cam.left = -f.half[0];
-    cam.right = f.half[0];
-    cam.top = f.half[1];
-    cam.bottom = -f.half[1];
+    setWindow(cam, f.half[0], f.half[1], f.room);
     cam.zoom = 1;
   }
   cam.near = f.near;
@@ -230,10 +241,7 @@ export function fitAspect(camera, f, aspect) {
     let [hw, hh] = f.fit || f.half;
     if (hw / hh > a) hh = hw / a;
     else hw = hh * a;
-    camera.left = -hw;
-    camera.right = hw;
-    camera.top = hh;
-    camera.bottom = -hh;
+    setWindow(camera, hw, hh, f.room);
   }
   camera.updateProjectionMatrix();
 }

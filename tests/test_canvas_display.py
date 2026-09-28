@@ -171,7 +171,23 @@ class Determinism(unittest.TestCase):
         # The goldens hold on every Python the suite runs on (3.9 and current): the op engine is deterministic.
         for name in ("house", "arrow-labels"):
             fresh = D.golden_scene(PLUGIN_ROOT / "tests" / "fixtures" / "canvas_scenes" / (name + ".json"))
-            self.assertEqual(json.loads(json.dumps(fresh, sort_keys=True)), golden_scene(name), name)
+            self.assertEqual(without_phase5(json.loads(json.dumps(fresh, sort_keys=True))), without_phase5(golden_scene(name)), name)
+
+    def test_phase5_adds_only_empty_keys_to_the_older_scenes(self):
+        # G5: the scene keys canvas v2 phase 5 adds are empty (or the defaults) on every scene written before it.
+        for name in ("house", "arrow-labels"):
+            fresh = D.golden_scene(PLUGIN_ROOT / "tests" / "fixtures" / "canvas_scenes" / (name + ".json"))
+            self.assertEqual((fresh["proposals"], fresh["freezes"], fresh["checkpoints"]), ([], [], []), name)
+            self.assertEqual(fresh["settings"], {"collab": {"human_edits": "propose", "frozen": "propose"}}, name)
+            self.assertEqual((fresh["counters"]["P"], fresh["counters"]["V"]), (0, 0), name)
+
+
+def without_phase5(scene):
+    """A scene without what canvas v2 phase 5 adds: its empty collaboration keys, the P and V counters, and the K counter
+    (the member's drawing now claims its area automatically; the goldens drop claims, which expire)."""
+    out = {key: value for key, value in scene.items() if key not in ("proposals", "freezes", "checkpoints", "settings")}
+    out["counters"] = {key: value for key, value in (scene.get("counters") or {}).items() if key not in ("P", "V", "K")}
+    return out
 
 
 class Colour(unittest.TestCase):
@@ -319,3 +335,45 @@ class FrameTitles(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Phase5Entries(unittest.TestCase):
+    """Canvas v2 phase 5 (4.6, 5.2, I-3): the proposal and freeze entries, ``frozen`` and ``pending``, and ``validate``."""
+
+    def golden(self):
+        return json.loads((GOLDENS / "collab.json").read_text(encoding="utf-8"))
+
+    def test_the_collab_golden_holds_every_new_entry_and_validates(self):
+        doc = self.golden()
+        self.assertEqual(D.validate(doc), [])
+        kinds = [e["kind"] for e in doc["entries"]]
+        self.assertEqual((kinds.count("proposal"), kinds.count("freeze")), (2, 2))
+        outdated = [e["proposal"]["outdated"] for e in doc["entries"] if e["kind"] == "proposal"]
+        self.assertEqual(sorted(outdated), [False, True])
+        self.assertTrue(any(e.get("frozen") for e in doc["entries"]))
+        self.assertTrue(any(e.get("pending") for e in doc["entries"]))
+
+    def test_validate_names_what_is_wrong(self):
+        doc = self.golden()
+        entries = {e["kind"]: e for e in doc["entries"]}
+        cases = (
+            (dict(entries["proposal"], proposal={"author": "x"}), "proposal is {"),
+            (dict(entries["proposal"], id="E-99"), "a proposal's id is P-n"),
+            (dict(entries["freeze"], freeze={"region": None, "ids": None, "mode": "propose"}), "freeze is {region | ids"),
+            (dict(entries["freeze"], freeze=dict(entries["freeze"]["freeze"], mode="maybe")), "freeze is {region | ids"),
+            (dict(entries["box"], frozen="yes"), "frozen is true when present"),
+            (dict(entries["box"], pending=["E-1"]), "pending is a list of P- ids"),
+            (dict(entries["box"], proposal={}), "only a proposal entry has proposal"),
+        )
+        for broken, message in cases:
+            with self.subTest(message=message):
+                found = D.validate(dict(doc, entries=[broken]))
+                self.assertTrue(any(message in problem for problem in found), found)
+
+    def test_older_scenes_carry_none_of_it(self):
+        for name in SCENES:
+            if name == "collab":
+                continue
+            doc = json.loads((GOLDENS / (name + ".json")).read_text(encoding="utf-8"))
+            with self.subTest(scene=name):
+                self.assertFalse(any(e["kind"] in ("proposal", "freeze") or "frozen" in e or "pending" in e for e in doc["entries"]))

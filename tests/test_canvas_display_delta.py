@@ -45,6 +45,7 @@ class Deltas(CanvasRig):
                     {"op": "delete", "id": c, "intent": "t"}, {"op": "shape", "kind": "note", "text": "new", "at": [0, 600], "intent": "t"}])
         delta = C.display_delta(self.team, before["version"])
         self.assertFalse(delta["full"])
+        # The four boxes, one per batch, share one automatic claim (QA phase 5 L8), so the note's new claim releases none.
         self.assertEqual(delta["removes"], [c])
         self.assertIn(a, [e["id"] for e in delta["upserts"]])
         fresh = D.display_list(C.load_scene(self.team), stills=set())
@@ -127,7 +128,7 @@ class DisplayRoute(RouteCase):
         self.assertEqual(response.status, 200)
         self.assertEqual(response.header("cache-control"), "no-store")
         doc = response.json()
-        self.assertEqual((doc["dl"], len(doc["entries"])), (1, 2))
+        self.assertEqual((doc["dl"], len(doc["entries"])), (1, 3))  # the box, the pin, and the member's automatic claim (phase 5)
         C.apply_ops(self.layout, self.ts.team, [{"op": "move", "id": self.box, "by": [0, 40], "intent": "t"}], WORKER)
         delta = self.get("/api/teams/alpha/display?since={}".format(doc["version"])).json()
         self.assertEqual((delta["full"], [e["id"] for e in delta["upserts"]]), (False, [self.box]))

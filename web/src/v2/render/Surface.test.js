@@ -346,3 +346,26 @@ describe("QA hook", () => {
     expect(window.__synapseV2).toBeUndefined();
   });
 });
+
+describe("screen overlay (canvas-v2-phase5.md 12.1)", () => {
+  test("drawn above the SVG world, outside the zoomer, under the GL host and the HTML overlay; never takes a pointer", () => {
+    const { node } = mount({ screenOverlay: React.createElement("div", { className: "probe" }, "halo") });
+    const surface = node.querySelector(".sv2-surface");
+    const layer = surface.querySelector(":scope > .sv2-screen");
+    expect(layer).not.toBeNull();
+    expect(layer.querySelector(".probe").textContent).toBe("halo");
+    const order = [...surface.children].map((el) => el.className);
+    expect(order.indexOf("sv2-zoomer")).toBeLessThan(order.indexOf("sv2-screen"));
+    expect(order.indexOf("sv2-screen")).toBeLessThan(order.indexOf("sv2-gl-host"));
+    expect(order.indexOf("sv2-screen")).toBeLessThan(order.indexOf("sv2-overlay"));
+    expect(node.querySelector(".sv2-zoomer .probe")).toBeNull();
+    const css = fs.readFileSync(path.resolve(import.meta.dirname, "surface.css"), "utf8");
+    expect(css).toMatch(/\.sv2-screen \{[^}]*pointer-events: none;/);
+    expect(css).toMatch(/\.sv2-screen \* \{[^}]*pointer-events: none;/);
+  });
+
+  test("absent when not given", () => {
+    const { node } = mount({});
+    expect(node.querySelector(".sv2-screen")).toBeNull();
+  });
+});

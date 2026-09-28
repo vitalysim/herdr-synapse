@@ -1,0 +1,119 @@
+{
+ "team": "qa",
+ "at": "2026-09-28T10:00:00Z",
+ "entries": [
+  {
+   "v": 1,
+   "name": "drawer",
+   "kind": "member",
+   "agent": "claude",
+   "at": "2026-09-28T10:00:00Z",
+   "ttl_s": 90,
+   "status": "drawing",
+   "region": [
+    280,
+    -20,
+    480,
+    100
+   ],
+   "ids": [
+    "E-2"
+   ],
+   "intent": "laying out the pricing table",
+   "via": "auto"
+  },
+  {
+   "v": 1,
+   "name": "peer",
+   "kind": "member",
+   "agent": "codex",
+   "at": "2026-09-28T09:59:50Z",
+   "ttl_s": 60,
+   "status": "waiting",
+   "region": null,
+   "ids": [
+    "E-2",
+    "E-1"
+   ],
+   "intent": "needs the numbers",
+   "via": "focus"
+  },
+  {
+   "v": 1,
+   "name": "stale",
+   "kind": "member",
+   "agent": "codex",
+   "at": "2026-09-28T09:50:00Z",
+   "ttl_s": 60,
+   "status": "drawing",
+   "region": [
+    0,
+    0,
+    10,
+    10
+   ],
+   "ids": [],
+   "intent": "",
+   "via": "auto"
+  },
+  {
+   "v": 1,
+   "name": "human",
+   "kind": "human",
+   "page": "3f9a0c1b2d4e5f60",
+   "at": "2026-09-28T09:59:58Z",
+   "ttl_s": 30,
+   "viewport": [
+    0,
+    0,
+    800,
+    600
+   ],
+   "selection": [
+    "E-1"
+   ],
+   "editing": null,
+   "cursor": [
+    100,
+    50
+   ],
+   "away": false
+  },
+  {
+   "v": 1,
+   "name": "human",
+   "kind": "human",
+   "page": "00112233445566aa",
+   "at": "2026-09-28T09:59:58Z",
+   "ttl_s": 30,
+   "viewport": [
+    0,
+    0,
+    400,
+    300
+   ],
+   "selection": [],
+   "editing": null,
+   "cursor": null,
+   "away": false
+  },
+  {
+   "v": 1,
+   "name": "human",
+   "kind": "human",
+   "page": "ffffffffffffffff",
+   "at": "2026-09-28T09:59:58Z",
+   "ttl_s": 30,
+   "viewport": [
+    0,
+    0,
+    400,
+    300
+   ],
+   "selection": [],
+   "editing": null,
+   "cursor": null,
+   "away": true
+  }
+ ]
+}

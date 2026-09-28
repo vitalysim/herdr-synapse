@@ -1,0 +1,45 @@
+{
+ "aliases": {},
+ "applied": [],
+ "atomic": false,
+ "batch": null,
+ "notices": {
+  "canvas_changed": null,
+  "canvas_sent": []
+ },
+ "operator": {
+  "age_s": 1,
+  "at": "2026-09-21T14:13:27.000Z",
+  "editing": "E-3",
+  "pointing_at": "E-2",
+  "selection": [
+   "E-2"
+  ],
+  "viewport": [
+   0,
+   0,
+   1200,
+   800
+  ]
+ },
+ "proposed": [],
+ "refused": [
+  {
+   "code": "element_busy",
+   "details": {
+    "id": "E-3",
+    "ids": [
+     "E-3"
+    ],
+    "reason": "busy",
+    "retry_after_s": 5
+   },
+   "index": 0,
+   "message": "E-3 is being edited by the operator right now; try again in a few seconds",
+   "op": "edit"
+  }
+ ],
+ "team": "qa",
+ "version": 8,
+ "warnings": []
+}

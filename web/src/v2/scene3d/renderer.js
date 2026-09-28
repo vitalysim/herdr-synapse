@@ -201,8 +201,9 @@ class SceneRenderer {
     const b = this.built(reg, reg.palette, reg.theme);
     const base = cameraSpec(b.spec, { preset: "orbit", projection: "persp", zoom: 1 });
     const start = cameraSpec(b.spec.preset === "orbit" ? b.spec : { ...base, az: b.spec.az, el: b.spec.el }, { projection: "persp" });
-    const f = frame(b.framed, start, reg.rect ? reg.rect.width / Math.max(1, reg.rect.height) : 1, b.centreOf, b.fitPoints);
-    const f1 = frame(b.framed, { ...start, zoom: 1 }, 1, b.centreOf, b.fitPoints);
+    const room = b.roomFor(reg.box ? reg.box[1] : 0);
+    const f = frame(b.framed, start, reg.rect ? reg.rect.width / Math.max(1, reg.rect.height) : 1, b.centreOf, b.fitPoints, room);
+    const f1 = frame(b.framed, { ...start, zoom: 1 }, 1, b.centreOf, b.fitPoints, room);
     const camera = makeCamera(f);
     const controls = new OrbitControls(camera, surface || reg.el);
     controls.target.set(...f.target);
@@ -316,7 +317,7 @@ class SceneRenderer {
       if (reg.orbit) {
         camera.aspect = aspect;
         camera.updateProjectionMatrix();
-      } else b.fit(aspect);
+      } else b.fit(aspect, reg.box ? reg.box[1] : null);
       // Labels are 12 units of the board (they zoom with it, like every other label); under 5 px on
       // screen they are hidden.
       const labelPx = labelSizePx() * (vh / Math.max(1, reg.box ? reg.box[1] : vh));
@@ -365,7 +366,7 @@ class SceneRenderer {
     try {
       const b = this.built(reg, reg.stillPalette || reg.palette, "light");
       const spec = cameraSpec({ preset: job.view });
-      const f = frame(b.framed, spec, reg.box[0] / Math.max(1, reg.box[1]), b.centreOf, b.fitPoints);
+      const f = frame(b.framed, spec, reg.box[0] / Math.max(1, reg.box[1]), b.centreOf, b.fitPoints, b.roomFor(reg.box[1]));
       const camera = makeCamera(f);
       b.proxyModels(false);
       for (const sprite of b.labels) sprite.visible = true;

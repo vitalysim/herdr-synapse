@@ -53,6 +53,8 @@ class Sketch:
         self.default_intent = default_intent
         self.ops: List[Dict[str, Any]] = []
         self.atomic = False
+        #: The canvas version the batch is made against (a number, or "last": your look cursor); None sends no base.
+        self.base: Optional[Any] = None
         tag = "".join(random.choice(string.ascii_lowercase + string.digits) for _ in range(4))
         self.prefix = prefix if prefix is not None else "s{}.".format(tag)
         self._count = 0
@@ -226,6 +228,8 @@ class Sketch:
         body: Dict[str, Any] = {"ops": list(self.ops)}
         if self.atomic:
             body["atomic"] = True
+        if self.base is not None:
+            body["base"] = self.base
         return body
 
     def to_json(self) -> str:

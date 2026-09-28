@@ -150,10 +150,11 @@ class F7OthersContainers(Base):
         self.ok({"op": "section", "id": "osec", "title": "Operator section", "layout": "row", "at": [0, 0], "intent": "t"}, OPERATOR)
         self.ok({"op": "card", "id": "oc", "title": "Operator card", "in": "osec", "intent": "t"}, OPERATOR)
         before = {k: self.root("osec")[k] for k in ("x", "y", "w", "h")}
-        refused = self.refused({"op": "card", "title": "Agent card", "body": "text " * 100, "in": "osec", "intent": "t"})
-        self.assertEqual(refused["code"], "element_not_yours")
+        # Phase 5: adding to the operator's section is a proposal for her now (it was refused); the section is unchanged.
+        proposed = self.proposed({"op": "card", "title": "Agent card", "body": "text " * 100, "in": "osec", "intent": "t"})
+        self.assertEqual(proposed["reason"], "human_made")
         mine = self.ok({"op": "card", "title": "Agent card", "at": [2000, 0], "intent": "t"})["ids"][0]
-        self.assertEqual(self.refused({"op": "place", "id": mine, "in": "osec", "intent": "t"})["code"], "element_not_yours")
+        self.assertEqual(self.proposed({"op": "place", "id": mine, "in": "osec", "intent": "t"})["reason"], "human_made")
         self.assertEqual({k: self.root("osec")[k] for k in ("x", "y", "w", "h")}, before)
 
     def test_the_operator_may_still_add_an_agents_card(self):

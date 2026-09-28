@@ -59,9 +59,11 @@ class Create(Scene):
         self.assertEqual([l["id"] for l in el["links"]], ["lb->api", "api->db", "api->cache"])
         self.assertEqual((el["w"], el["h"]), (640, 420))
         solved = self.solved()
-        self.assertEqual(solved["bounds"], [-4.0, 0.0, -2.5, 4.0, 2.22, 2.5])
+        self.assertEqual(solved["bounds"], [-4.2, 0.0, -1.2, 2.6, 2.22, 1.2])
         self.assertEqual(solved["objects"]["db"]["rel"], "on base, right_of api (gap 1.00)")
-        self.assertEqual(applied["gist"][:2], ["base plane 8×5 (ground)", 'lb box 1.2×0.4×1.2 "Load balancer" on base, at (−3.0, 0.0)'])
+        # The floor has no size: it fits what stands on it (x −3.6…2.0, z −0.6…0.6) with a 0.6 margin.
+        self.assertEqual(solved["objects"]["base"]["ext"], [6.8, 0.02, 2.4])
+        self.assertEqual(applied["gist"][:2], ["base plane 6.8×2.4 fitted (ground)", 'lb box 1.2×0.4×1.2 "Load balancer" on base, at (−3.0, 0.0)'])
 
     def test_refusals_name_the_field(self):
         cases = [({"objects": []}, "objects"),
@@ -204,9 +206,9 @@ class Readback(Scene):
         el = M.solved_element(M.TOPOLOGY)
         el.update(id="E-60", updated_seq=7, x=800, y=480)
         self.assertEqual(K.readback(el, False), 'E-60 scene3d topo "Prod topology" [800,480 640x420] 7 objects, 3 links · camera iso · '
-                                                'bounds 8.0×2.2×5.0 m')
+                                                'bounds 6.8×2.2×2.4 m')
         self.assertEqual(K.gist(el, False), [
-            "base plane 8×5 (ground)",
+            "base plane 6.8×2.4 fitted (ground)",
             'lb box 1.2×0.4×1.2 "Load balancer" on base, at (−3.0, 0.0)',
             'api group row of 2 (api1, api2) "API pool" on base, right_of lb (gap 0.30)',
             'db cylinder r0.6 h1.4 "Postgres" on base, right_of api (gap 1.00)',
@@ -255,7 +257,7 @@ class Readback(Scene):
         found = C.look(self.layout, self.team, "alpha-worker")
         eid = self.element()["id"]
         text = C.look_text(found)
-        self.assertIn("7 objects, 3 links · camera iso · bounds 8.0×2.2×5.0 m", text)
+        self.assertIn("7 objects, 3 links · camera iso · bounds 6.8×2.2×2.4 m", text)
         self.assertIn('    db cylinder r0.6 h1.4 "Postgres" on base, right_of api (gap 1.00)', text)
         self.assertIn("    stills iso ✗ front ✗ top ✗", found["text"], "look knows which stills the page posted (QA phase34 M3)")
         el = self.element()
@@ -265,9 +267,9 @@ class Readback(Scene):
         self.assertEqual(again["gist"][eid][-1], "stills iso ✓ front ✗ top ✗")
         self.assertNotIn("_stills", again)
         self.assertNotIn('"objects"', text, "gist first: the spec only with look --block")
-        self.assertEqual(found["gist"][eid][0], "base plane 8×5 (ground)")
+        self.assertEqual(found["gist"][eid][0], "base plane 6.8×2.4 fitted (ground)")
         facts = found["scene3d"][eid]
-        self.assertEqual(facts["bounds"], [-4.0, 0.0, -2.5, 4.0, 2.22, 2.5])
+        self.assertEqual(facts["bounds"], [-4.2, 0.0, -1.2, 2.6, 2.22, 1.2])
         self.assertEqual(next(o for o in facts["objects"] if o["id"] == "cache")["rel"], "above api (gap 0.30)")
         self.assertEqual(facts["conflicts"], [])
         json.dumps(facts)

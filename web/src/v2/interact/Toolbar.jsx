@@ -1,12 +1,16 @@
 // The board's tool bar (writable pages) and view controls (every page). Its buttons are the
-// page's select and hand tools, then each kind's tool from the registry (toolset.js).
+// page's select and hand tools, then each kind's tool from the registry (toolset.js), then the
+// operator's collaboration buttons (canvas-v2-phase5.md 12.5): Freeze (the selection, or arms the
+// freeze region tool) and Review (n), the open proposals' queue.
 import React from "react";
 import { TOOLSET } from "./toolset.js";
 
 // [id, title, key, glyph] per button, in tool bar order.
 export const TOOL_BUTTONS = TOOLSET.all.map((t) => [t.id, t.title, t.key.toUpperCase(), t.glyph]);
 
-export default function Toolbar({ tool, onTool, writable }) {
+export const FREEZE_TOOL = "freeze";
+
+export default function Toolbar({ tool, onTool, writable, onFreeze = null, review = null }) {
   if (!writable) return null;
   return (
     <div className="v2-toolbar" role="toolbar" aria-label="Tools">
@@ -25,6 +29,33 @@ export default function Toolbar({ tool, onTool, writable }) {
           <kbd>{key}</kbd>
         </button>
       ))}
+      {onFreeze || review ? <span className="v2-tool-sep" aria-hidden="true" /> : null}
+      {onFreeze ? (
+        <button
+          type="button"
+          data-tool={FREEZE_TOOL}
+          className={tool === FREEZE_TOOL ? "v2-tool on" : "v2-tool"}
+          title="Freeze the selection, or drag over an area to freeze it"
+          aria-label="Freeze"
+          aria-pressed={tool === FREEZE_TOOL}
+          onClick={onFreeze}
+        >
+          <span aria-hidden="true">❄</span>
+        </button>
+      ) : null}
+      {review ? (
+        <button
+          type="button"
+          data-review={review.count}
+          className={`v2-tool v2-review${review.open ? " on" : ""}${review.count ? " has" : ""}`}
+          title="Review the agents' proposals ([ and ] step through them)"
+          aria-label={`Review (${review.count})`}
+          aria-pressed={Boolean(review.open)}
+          onClick={review.onToggle}
+        >
+          Review ({review.count})
+        </button>
+      ) : null}
     </div>
   );
 }

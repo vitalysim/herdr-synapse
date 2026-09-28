@@ -274,10 +274,12 @@ class Budget(unittest.TestCase):
             _project._clear_cache()
             colds.append(_timed(lambda: _project.project(el, "iso", (0, 0, 1200, 800))))
             warms.append(_timed(lambda: _project.project(el, "iso", (0, 0, 1200, 800))))
-        self.assertLess(min(colds), 0.06, "cold {:.1f} ms".format(min(colds) * 1000))
-        # The budget is 2 ms warm (a cache hit is one JSON parse: about 1.7 ms here on 3.14 and 3.9); the bound leaves room
-        # for a loaded machine.
-        self.assertLess(min(warms), 0.003, "warm {:.2f} ms".format(min(warms) * 1000))
+        # Wall-clock bounds are regression guards, not the budget: the budget is about 50 ms cold and 2 ms warm (a cache hit is
+        # one JSON parse), but a loaded machine ran cold at 86 ms on 3.9 (load average 48, 2026-09-28), so the bounds leave room
+        # while still catching the uncached re-projection (hundreds of ms) and a cache that stops hitting (warm near cold).
+        self.assertLess(min(colds), 0.15, "cold {:.1f} ms".format(min(colds) * 1000))
+        self.assertLess(min(warms), 0.01, "warm {:.2f} ms".format(min(warms) * 1000))
+        self.assertLess(min(warms) * 5, min(colds), "a warm projection is a cache hit, far cheaper than a cold one")
 
 
 def _timed(fn):

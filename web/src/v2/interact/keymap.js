@@ -34,7 +34,8 @@ export function isTyping(target) {
 
 // commandOf(event, {writable, editing}) -> {command, ...args} | null
 //   tool {tool}, cancel, edit, select_all, fit, zoom {factor}, delete, nudge {key, far}, undo,
-//   pan_start, pan_end.
+//   pan_start, pan_end, review_prev and review_next ([ and ]: Board acts on them only while the
+//   review queue is open, canvas-v2-phase5.md 12.3).
 export function commandOf(event, { writable = true } = {}) {
   if (!event || isTyping(event.target)) return null;
   const key = event.key;
@@ -58,6 +59,8 @@ export function commandOf(event, { writable = true } = {}) {
   if (key === "ArrowLeft" || key === "ArrowRight" || key === "ArrowUp" || key === "ArrowDown") {
     return writable ? { command: "nudge", key, far: Boolean(event.shiftKey) } : null;
   }
+  if (key === "[") return { command: "review_prev" };
+  if (key === "]") return { command: "review_next" };
   const tool = TOOL_KEYS[String(key).toLowerCase()];
   if (tool && !event.shiftKey && (writable || READ_ONLY_TOOLS.has(tool))) return { command: "tool", tool };
   return null;

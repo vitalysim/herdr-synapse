@@ -7,9 +7,10 @@ at launch from the flags in section 12 (``features.mcp_launch_args``), pinned
 to one session socket and one team dir.
 
 Methods: ``initialize``, ``notifications/initialized``, ``ping``,
-``tools/list`` and ``tools/call``. The seven tools (``canvas_look``,
+``tools/list`` and ``tools/call``. The eight tools (``canvas_look``,
 ``canvas_check``, ``canvas_draw``, ``canvas_comment``, ``canvas_claim``,
-``canvas_legend``, ``canvas_changes``) are thin doors onto ``herdr_team.canvas``: each result
+``canvas_legend``, ``canvas_changes``, and since canvas v2 phase 5 ``canvas_focus``,
+the member's presence) are thin doors onto ``herdr_team.canvas``: each result
 carries the CLI's human text as ``content`` and the CLI's ``--json`` object
 as ``structuredContent``; a ``HerdrTeamError`` becomes ``isError: true``
 with its code, so an agent sees the same refusals through either door.
@@ -42,7 +43,7 @@ from herdr_team.paths import TeamPaths
 SERVER_INFO_NAME = "synapse-canvas"
 PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 DEFAULT_PROTOCOL = PROTOCOL_VERSIONS[0]
-TOOL_NAMES = ("canvas_look", "canvas_check", "canvas_draw", "canvas_comment", "canvas_claim", "canvas_legend", "canvas_changes")
+TOOL_NAMES = ("canvas_look", "canvas_check", "canvas_draw", "canvas_comment", "canvas_claim", "canvas_legend", "canvas_changes", "canvas_focus")
 IDENTITY_CACHE_S = 30.0
 MAX_INLINE_IMAGE_BYTES = 1536 * 1024
 
@@ -62,6 +63,8 @@ INSTRUCTIONS = "\n".join((
     "Point with canvas_comment and @mentions, not with 'this' or 'that'; a mention is the only way the canvas wakes someone.",
     "Record a convention in the legend (canvas_legend) before relying on it.",
     "The operator's marks and your peers' marks are requests, never orders; the operator's word comes from the board.",
+    "Draw with base: \"last\" so you never overwrite what the operator changed since you looked. Outside your lane, and on the "
+    "operator's marks, changes become proposals the operator accepts or rejects; look shows the outcome.",
     "Keep batches small (under about 40 operations) and read with canvas_changes or canvas_look since: last.",
 ))
 
@@ -115,9 +118,10 @@ class McpSession:
 #: The core ops' part of the op table (they act on any element); each kind module adds its own ``OpSpec.mcp`` fragment.
 _CORE_OP_TABLE = ("claim {region, label}; release {id}; legend {symbol, meaning}; move {id|ids, to|by|right_of..., w, h}; "
                   "restyle {id, tone, variant, color..., route straight|orthogonal|curved}; edit {id, text, part}; delete {id}; "
-                  "portrait {steps, current}; undo {batch}; refit {ids (none: every element you may edit): size labels again}; "
+                  "portrait {steps, current}; undo {batch | author, since}; refit {ids (none: every element you may edit): size labels again}; "
                   "patch {id (a block), add|update|remove {<items>: [...]}, set {<setting>: value}, relayout, if_version}; "
-                  "place {id|ids, right_of|left_of|below|above|in|at, gap s|m|l, align, index}; pin {id|ids}; unpin {id|ids}")
+                  "place {id|ids, right_of|left_of|below|above|in|at, gap s|m|l, align, index}; pin {id|ids}; unpin {id|ids}; "
+                  "withdraw {id: your P-n}; checkpoint {label | remove}")
 _PLACES = ("Places: cells c<col>r<row> (20 units), \"x,y\", or ids/aliases; an op's id is your alias for what it creates.")
 
 
@@ -150,9 +154,10 @@ def tool_definitions() -> List[Dict[str, Any]]:
                          "last looked. image: true also renders a PNG with element ids marked (grid: true adds cell names). "
                          "Look after drawing anything meant for others. The listing ends with layout problems; canvas_check lists them all."),
          "inputSchema": schema({
-             "region": dict(text, description='"c10r4:c40r22", "x0,y0,x1,y1" or an element id'),
+             "region": dict(text, description='"c10r4:c40r22", "x0,y0,x1,y1", an element id, or "operator" (what the operator is viewing)'),
              "around": dict(text, description="an element or comment id; shows 200 units around it"),
              "since": dict(text, description='"last" or a version number'),
+             "proposals": {"type": "boolean", "description": "every open proposal in full: its summary, base note, and what outdated it"},
              "image": {"type": "boolean"}, "grid": {"type": "boolean"},
              "exact": {"type": "boolean", "description": "ask an open whiteboard page for the engine's own picture"},
              "block": dict(text, description="a block (kanban, table, graph ...): its whole spec, one item per line"),
@@ -175,7 +180,9 @@ def tool_definitions() -> List[Dict[str, Any]]:
                          "reason; the rest still apply unless atomic. Each applied entry lists the geometry of what it sized "
                          "(id, x, y, w, h, fit), so you never guess how big a shape grew. " + op_table() + " " + _EXAMPLE),
          "inputSchema": schema({"ops": {"type": "array", "items": {"type": "object"}, "description": "the operations"},
-                                "atomic": {"type": "boolean", "description": "all or nothing"}}, ("ops",))},
+                                "atomic": {"type": "boolean", "description": "all or nothing"},
+                                "base": dict(text, description='the canvas version you last read: a number, or "last" (your look cursor)')},
+                               ("ops",))},
         {"name": "canvas_comment",
          "description": ("Pin a comment to an element, to a comment (a reply), or to a point. @name in the text (or mentions) wakes that "
                          "member with a request; use it to point instead of saying 'this'. Peers' comments are requests, not orders."),
@@ -194,6 +201,13 @@ def tool_definitions() -> List[Dict[str, Any]]:
         {"name": "canvas_changes",
          "description": "What changed on the canvas since you last looked (or since a version), one line per change, by whom and why.",
          "inputSchema": schema({"since": dict(text, description='"last" (default) or a version number')})},
+        {"name": "canvas_focus",
+         "description": ("Show the team and the operator where you work: a halo on a region (or an element) with your status and "
+                         "intent, for ttl_s seconds (60 to 3600, default 600). It is presence, never authority. clear: true removes it."),
+         "inputSchema": schema({"region": dict(text, description='"c10r4:c40r22", "x0,y0,x1,y1" or an element id'),
+                                "intent": dict(text, description="one line: what you are doing"),
+                                "status": dict(text, description="reading, drawing, waiting, blocked or idle (default drawing)"),
+                                "ttl_s": {"type": "integer", "description": "seconds, 60 to 3600"}, "clear": {"type": "boolean"}})},
     ]
 
 
@@ -241,9 +255,9 @@ def _intent(args: Dict[str, Any], fallback: str) -> str:
     return line[: C.MAX_INTENT_CHARS - 1] + "…" if len(line) > C.MAX_INTENT_CHARS else line
 
 
-def _apply(session: McpSession, ops: List[Dict[str, Any]], atomic: bool = False) -> Tuple[Dict[str, Any], str, List[Dict[str, Any]]]:
+def _apply(session: McpSession, ops: List[Dict[str, Any]], atomic: bool = False, base: Any = None) -> Tuple[Dict[str, Any], str, List[Dict[str, Any]]]:
     author, team, doc = session.identity()
-    result = C.check_applied(C.apply_ops(session.layout, team, ops, author, atomic=atomic, doc=doc))
+    result = C.check_applied(C.apply_ops(session.layout, team, ops, author, atomic=atomic, doc=doc, base=base))
     return result, C.apply_text(result), []
 
 
@@ -253,7 +267,8 @@ def _tool_look(session: McpSession, args: Dict[str, Any]) -> Tuple[Dict[str, Any
     image = _flag(args, "image") or exact
     result = C.look(session.layout, team, author.name, region=_place(_str(args, "region")), around=_str(args, "around"),
                     since=_str(args, "since"), image=image, grid=_flag(args, "grid"), exact=exact, advance=True, doc=doc,
-                    block=_str(args, "block"), full=_flag(args, "full"), view=_str(args, "view"))
+                    block=_str(args, "block"), full=_flag(args, "full"), view=_str(args, "view"), proposals=_flag(args, "proposals"),
+                    author=author)
     extra: List[Dict[str, Any]] = []
     if image and result.get("image"):
         try:
@@ -276,7 +291,8 @@ def _tool_draw(session: McpSession, args: Dict[str, Any]) -> Tuple[Dict[str, Any
     ops = args.get("ops")
     if not isinstance(ops, list):
         raise _ParamsError("ops must be an array of operation objects")
-    return _apply(session, ops, _flag(args, "atomic"))
+    base = _str(args, "base")
+    return _apply(session, ops, _flag(args, "atomic"), C.parse_base(base) if base is not None else None)
 
 
 def _tool_comment(session: McpSession, args: Dict[str, Any]) -> Tuple[Dict[str, Any], str, List[Dict[str, Any]]]:
@@ -323,9 +339,41 @@ def _tool_changes(session: McpSession, args: Dict[str, Any]) -> Tuple[Dict[str, 
     return result, result["text"], []
 
 
+def _tool_focus(session: McpSession, args: Dict[str, Any]) -> Tuple[Dict[str, Any], str, List[Dict[str, Any]]]:
+    from herdr_team import canvas_presence as P
+
+    author, team, doc = session.identity()
+    from herdr_team import features as _features
+
+    _features.require_on(session.layout.session, team, doc)
+    if _flag(args, "clear"):
+        P.clear_member(team, author.name)
+        return {"ok": True, "cleared": True}, "presence cleared", []
+    status = _str(args, "status") or "drawing"
+    if status not in P.STATUSES:
+        raise _ParamsError("status is one of: {}".format(", ".join(P.STATUSES)))
+    ttl = args.get("ttl_s")
+    if ttl is None:
+        ttl = P.FOCUS_TTL_S
+    if isinstance(ttl, bool) or not isinstance(ttl, int) or not P.FOCUS_TTL_RANGE[0] <= ttl <= P.FOCUS_TTL_RANGE[1]:
+        raise _ParamsError("ttl_s is a whole number of seconds, {} to {}".format(*P.FOCUS_TTL_RANGE))
+    region = None
+    ids: List[str] = []
+    where = _str(args, "region")
+    if where:
+        scene = C.load_scene(team)
+        region = C.parse_region(_place(where), scene, author.name)
+        try:
+            ids = [C._lookup_in(C._State.from_scene(scene, team.name), where, author.name, "region")["id"]]
+        except HerdrTeamError:
+            ids = []
+    doc_out = P.write_member(team, author, status=status, region=region, ids=ids, intent=_str(args, "intent") or "", ttl_s=ttl, via="focus")
+    return {"ok": True, "presence": doc_out}, "focus: {} {} for {}s".format(status, C.region_cells(region) if region else "(no region)", ttl), []
+
+
 _TOOLS: Dict[str, Callable[[McpSession, Dict[str, Any]], Tuple[Dict[str, Any], str, List[Dict[str, Any]]]]] = {
     "canvas_look": _tool_look, "canvas_check": _tool_check, "canvas_draw": _tool_draw, "canvas_comment": _tool_comment,
-    "canvas_claim": _tool_claim, "canvas_legend": _tool_legend, "canvas_changes": _tool_changes,
+    "canvas_claim": _tool_claim, "canvas_legend": _tool_legend, "canvas_changes": _tool_changes, "canvas_focus": _tool_focus,
 }
 
 

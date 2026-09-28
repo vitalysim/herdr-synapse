@@ -37,7 +37,7 @@ class Undo(CanvasRig):
         moved = self.apply([{"op": "move", "id": "E-1", "by": [0, 100], "intent": "t"}])
         self.assertIn("E-3", moved["applied"][0]["ids"], "the operator's bound arrow re-routed with the move")
         self.ok({"op": "edit", "id": "E-3", "text": "OPERATOR: DO NOT SHIP"}, OPERATOR)
-        self.assertEqual(self.refused({"op": "edit", "id": "E-3", "text": "x", "intent": "t"})["code"], "element_not_yours")
+        self.assertEqual(self.proposed({"op": "edit", "id": "E-3", "text": "x", "intent": "t"})["reason"], "human_made")  # phase 5
         result = self.apply([{"op": "undo", "batch": moved["batch"], "intent": "take it back"}])
         self.assertEqual(result["refused"], [])
         self.assertEqual((self.el("E-1")["x"], self.el("E-1")["y"]), (0, 0), "the worker's own element is restored")
@@ -50,6 +50,7 @@ class Undo(CanvasRig):
     def test_undo_unbinds_what_pointed_at_the_elements_it_deletes(self):
         first = self.apply([{"op": "frame", "title": "F", "at": "c0r0", "w": 400, "h": 300, "intent": "t"},
                             {"op": "shape", "text": "src", "at": "c40r0", "intent": "t"}])
+        self.ok({"op": "release", "intent": "t"})  # its automatic claim (phase 5), so the reviewer's marks there are live
         self.apply([{"op": "shape", "text": "in", "inside": "E-1", "w": 100, "h": 40, "intent": "t"},
                     {"op": "arrow", "from": "E-2", "to": "E-3", "intent": "t"},
                     {"op": "comment", "at": "E-2", "text": "why?", "intent": "t"}], REVIEWER)
@@ -63,7 +64,10 @@ class Undo(CanvasRig):
         arrow = self.el("E-4")
         self.assertEqual((arrow["from"], arrow["to"], arrow["points"]), (None, "E-3", points), "the end unbinds and keeps its points")
         self.assertIsNone(self.el("C-1")["on"])
-        self.assertNotIn("E-2", C.look_text(C.look(self.layout, self.team, "alpha-worker")))
+        self.assertEqual(self.el("C-1")["was_on"], "E-2", "an orphaned comment says where it was (phase 5, 8.3)")
+        text = C.look_text(C.look(self.layout, self.team, "alpha-worker"))
+        self.assertIn("(was on E-2, deleted)", text)
+        self.assertNotIn("  E-2 ", text)
 
 
 # --------------------------------------------------------------------------
@@ -73,11 +77,11 @@ class Undo(CanvasRig):
 class FramesAndMoves(CanvasRig):
     def test_placing_inside_someone_elses_frame_never_grows_it(self):
         frame = self.ok({"op": "frame", "title": "ops", "at": "c0r0", "w": 200, "h": 120}, OPERATOR)["ids"][0]
-        refusal = self.refused({"op": "shape", "w": 400, "h": 400, "inside": frame, "intent": "t"})
-        self.assertEqual(refusal["code"], "element_not_yours")
+        # Phase 5: an agent's mark in the operator's frame is a proposal for her (a big one was refused, a small one live).
+        self.assertEqual(self.proposed({"op": "shape", "w": 400, "h": 400, "inside": frame, "intent": "t"})["reason"], "human_made")
         self.assertEqual((self.el(frame)["w"], self.el(frame)["h"]), (200, 120))
-        small = self.ok({"op": "shape", "w": 100, "h": 40, "inside": frame, "intent": "t"})["ids"][0]
-        self.assertEqual(self.el(small)["frame"], frame, "what fits still joins the frame")
+        small = self.proposed({"op": "shape", "w": 100, "h": 40, "inside": frame, "intent": "t"})
+        self.assertEqual(small["reason"], "human_made")
         self.assertEqual((self.el(frame)["w"], self.el(frame)["h"]), (200, 120))
         self.ok({"op": "shape", "w": 400, "h": 400, "inside": frame}, OPERATOR)
         self.assertGreater(self.el(frame)["w"], 200, "the frame's editor may grow it")

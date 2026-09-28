@@ -16,6 +16,7 @@ from support import FAKE_AGENTS, TempState, whiteboard_on
 from test_cmd_roster import env_no_daemon, json_out, live_api, run_cli
 
 from herdr_team import canvas as C
+from herdr_team import canvas_presence as P
 from herdr_team import canvas_render as R
 from herdr_team import canvas_text as X
 from herdr_team import canvas_theme as T
@@ -69,6 +70,12 @@ class CanvasRig(unittest.TestCase):
         result = self.apply([op], author, **kw)
         self.assertEqual(result["applied"], [], "expected a refusal")
         return result["refused"][0]
+
+    def proposed(self, op, author=WORKER, **kw):
+        """Canvas v2 phase 5: the op became a proposal for the operator (nothing applied, nothing refused)."""
+        result = self.apply([op], author, **kw)
+        self.assertEqual((result["applied"], result["refused"]), ([], []), "expected a proposal")
+        return result["proposed"][0]
 
     def scene(self):
         return C.load_scene(self.team)
@@ -176,12 +183,17 @@ class SwitchesAndAuthority(CanvasRig):
     def test_editors(self):
         mine = self.ok({"op": "shape", "text": "worker's", "at": "c0r0", "intent": "t"})["ids"][0]
         theirs = self.ok({"op": "shape", "text": "operator's", "at": "c20r0"}, OPERATOR)["ids"][0]
-        refusal = self.refused({"op": "move", "id": mine, "by": [20, 0], "intent": "t"}, REVIEWER)
-        self.assertEqual(refusal["code"], "element_not_yours")
+        # Phase 5 (D11, D2): a peer's edit of another member's mark, and the manager's of the operator's, are proposals now
+        # (they were refused element_not_yours); nothing changes on the canvas until the operator accepts.
+        proposed = self.apply([{"op": "move", "id": mine, "by": [20, 0], "intent": "t"}], REVIEWER)
+        self.assertEqual((proposed["applied"], proposed["proposed"][0]["reason"]), ([], "peer"))
+        self.assertEqual(self.el(mine)["x"], 0)
         self.make_manager("alpha-reviewer")
         manager = C.CanvasAuthor("alpha-reviewer", "member", "cli", True, manager=True)
         self.ok({"op": "move", "id": mine, "by": [20, 0], "intent": "tidy"}, manager)
-        self.assertEqual(self.refused({"op": "delete", "id": theirs, "intent": "t"}, manager)["code"], "element_not_yours")
+        proposed = self.apply([{"op": "delete", "id": theirs, "intent": "t"}], manager)
+        self.assertEqual((proposed["applied"], proposed["proposed"][0]["reason"]), ([], "human_made"))
+        self.assertIn(theirs, [e["id"] for e in self.scene()["elements"]])
         self.ok({"op": "restyle", "id": mine, "color": "red"}, OPERATOR)
         # A named colour is read as its tone (0.22): red is danger.
         self.assertEqual((self.el(mine)["style"]["stroke"], self.el(mine)["style"]["tone"]), (T.resolve("danger")["stroke"], "danger"))
@@ -390,7 +402,8 @@ class Operations(CanvasRig):
         self.ok({"op": "move", "id": frame["id"], "by": [100, 0], "intent": "t"})
         self.assertEqual((self.el(a)["x"], self.el(b)["x"]), (100, 300), "moving a frame moves its children")
         theirs = self.ok({"op": "shape", "text": "c", "at": "c0r20", "intent": "t"}, REVIEWER)["ids"][0]
-        self.assertEqual(self.refused({"op": "frame", "children": [theirs], "intent": "t"})["code"], "element_not_yours")
+        # Framing a peer's mark changes it: a proposal for the operator since phase 5 (it was refused element_not_yours).
+        self.assertEqual(self.apply([{"op": "frame", "children": [theirs], "intent": "t"}])["proposed"][0]["reason"], "peer")
         region = self.el(self.ok({"op": "frame", "title": "area", "region": [-100, 380, 400, 600], "intent": "t"}, OPERATOR)["ids"][0])
         self.assertEqual(self.el(theirs)["frame"], region["id"], "a region frame adopts what lies wholly inside")
 
@@ -548,9 +561,14 @@ class Operations(CanvasRig):
         fourth = self.ok({"op": "claim", "region": "c60r0:c70r10", "label": "four", "intent": "t"}, now=now + 3)
         self.assertEqual(fourth["ids"], ["K-4", first[0]], "the oldest claim is released in the same event")
         self.assertEqual([c["id"] for c in self.scene()["claims"]], ["K-2", "K-3", "K-4"])
+        # Phase 5 (4.1): a plain member's new mark in another's claim is a proposal; the manager's applies with a warning.
         result = self.apply([{"op": "shape", "text": "inside", "at": "c21r1", "intent": "t"}], REVIEWER, now=now + 4)
+        self.assertEqual((result["applied"], result["proposed"][0]["reason"]), ([], "foreign_lane"))
+        self.make_manager("alpha-reviewer")
+        manager = C.CanvasAuthor("alpha-reviewer", "member", "cli", True, manager=True)
+        result = self.apply([{"op": "shape", "text": "inside", "at": "c21r1", "intent": "t"}], manager, now=now + 4)
         self.assertEqual(result["warnings"][0]["code"], "inside_claim")
-        self.assertEqual(result["warnings"][0]["message"], "E-1 is inside K-2 claimed by alpha-worker: two")
+        self.assertEqual(result["warnings"][0]["message"], "E-2 is inside K-2 claimed by alpha-worker: two")  # E-1 is the proposal's, reserved
         self.assertEqual(self.refused({"op": "release", "id": "K-2", "intent": "t"}, REVIEWER, now=now + 5)["code"], "element_not_yours")
         self.ok({"op": "release", "id": "K-2", "intent": "t"}, now=now + 5)
         self.ok({"op": "release", "id": "K-3"}, OPERATOR, now=now + 5)
@@ -570,7 +588,7 @@ class Operations(CanvasRig):
         self.assertEqual(self.refused({"op": "claim", "region": "c5r5:c8r8", "label": "x", "intent": "t"})["code"], "canvas_locked")
         self.ok({"op": "shape", "text": "mine", "at": "c1r1"}, OPERATOR)
         self.ok({"op": "unlock", "id": lock}, OPERATOR)
-        self.ok({"op": "shape", "text": "x", "at": "c1r1", "intent": "t"})
+        self.ok({"op": "shape", "text": "x", "at": "c10r6", "intent": "t"})  # beside the operator's mark (on it would be a proposal)
 
     def test_legend(self):
         self.drivers()
@@ -609,7 +627,7 @@ class Operations(CanvasRig):
         self.ok({"op": "move", "id": "price", "by": [0, 100], "intent": "t"})
         mover = self.apply([{"op": "move", "id": "price", "by": [40, 0], "intent": "t"}, {"op": "shape", "text": "extra", "at": "c0r40", "intent": "t"}])
         batch = mover["batch"]
-        self.assertEqual(self.refused({"op": "undo", "batch": batch, "intent": "t"}, REVIEWER)["code"], "operator_only")
+        self.assertEqual(self.refused({"op": "undo", "batch": batch, "intent": "t"}, REVIEWER)["code"], "element_not_yours")
         undone = self.ok({"op": "undo", "batch": batch, "intent": "take it back"})
         self.assertEqual((self.el("E-2")["x"], self.el("E-2")["y"]), (220, 220))
         self.assertNotIn("E-5", [e["id"] for e in self.scene()["elements"]])
@@ -617,8 +635,15 @@ class Operations(CanvasRig):
         self.assertTrue(self.scene()["batches"][batch]["undone"])
         self.assertEqual(self.refused({"op": "undo", "batch": batch, "intent": "t"})["code"], "op_invalid")
         self.make_manager("alpha-reviewer")
-        self.ok({"op": "undo", "batch": first["batch"], "intent": "t"}, C.CanvasAuthor("alpha-reviewer", "member", "cli", True, manager=True))
-        self.assertEqual([e["id"] for e in self.scene()["elements"]], [])
+        # Phase 5 (6.2): undo skips what someone outside the undone batches changed later (it used to write it back). The
+        # note and its arrow were moved later by their author's own batches, so they stay; the frame and the other note go.
+        # "N of M" counts the marks, not the auto-claim that came with them (QA phase 5 L3).
+        manager_undo = self.apply([{"op": "undo", "batch": first["batch"], "intent": "t"}],
+                                  C.CanvasAuthor("alpha-reviewer", "member", "cli", True, manager=True))
+        self.assertEqual([e["id"] for e in self.scene()["elements"]], ["E-2", "E-4"])
+        self.assertEqual(manager_undo["applied"][0]["undo"]["skipped"][0], {"id": "E-2", "by": "alpha-worker", "seq": 5})
+        self.assertTrue(manager_undo["warnings"][0]["message"].startswith("2 of 4 reverted; E-2 edited by alpha-worker later (v5) and 1 more"),
+                        manager_undo["warnings"])
         human = self.apply([{"op": "shape", "at": "c0r0"}], OPERATOR)["batch"]
         self.assertEqual(self.refused({"op": "undo", "batch": human, "intent": "t"}, C.CanvasAuthor("alpha-reviewer", "member", "cli", True, manager=True))["code"], "operator_only")
         self.ok({"op": "undo", "batch": human}, OPERATOR)
@@ -661,7 +686,7 @@ class EventsAndScene(CanvasRig):
         event = json.loads(F.whiteboard_dir(self.team).joinpath("events.jsonl").read_text().splitlines()[0])
         self.assertEqual(list(event), ["v", "seq", "ts", "batch", "author", "op", "index", "intent", "ids", "changes"])
         self.assertEqual(event["author"], {"name": "alpha-worker", "kind": "member", "agent": "claude", "via": "cli", "verified": True})
-        self.assertEqual([c["target"] for c in event["changes"]], ["home", "author", "element"])
+        self.assertEqual([c["target"] for c in event["changes"]], ["home", "author", "element", "claim"])  # the automatic claim (phase 5)
 
     def test_changes_since(self):
         self.drivers()
@@ -682,7 +707,7 @@ class EventsAndScene(CanvasRig):
         self.assertTrue(C.changes_since(self.team, 3)["reset"])
         new = self.ok({"op": "shape", "at": "c0r0", "intent": "t"})
         self.assertEqual(new["ids"], ["E-5"], "ids survive a clear")
-        self.assertEqual(C.summary(self.team), {"version": 6, "elements": 1, "comments_open": 0, "claims_active": 0,
+        self.assertEqual(C.summary(self.team), {"version": 6, "elements": 1, "comments_open": 0, "claims_active": 1,
                                                 "updated_at": self.scene()["updated_at"]})
         self.assertTrue(C.purge(self.team))
         self.assertFalse(F.whiteboard_dir(self.team).exists())
@@ -757,9 +782,11 @@ class Look(CanvasRig):
         self.ok({"op": "legend", "symbol": "red cross", "meaning": "I disagree", "intent": "t"}, REVIEWER)
         self.ok({"op": "lock", "region": "c0r40:c20r50", "label": "hands off"}, OPERATOR)
         self.ok({"op": "shape", "text": "Pricing page", "at": [900, 40]}, OPERATOR)
+        P.clear_member(self.team, "alpha-worker")  # the worker's presence (phase 5) has its own tests; this listing is about the rest
         result = C.look(self.layout, self.team, "alpha-reviewer", region="c10r4:c40r22", since=0)
         self.assertEqual(result["text"], "\n".join([
             "canvas of alpha · v8 · 6 elements · you are alpha-reviewer",
+            'claims: K-1 alpha-worker "group the drivers" c9r3:c41r23 (5m left)',  # the drivers' automatic claim (phase 5)
             'locks: X-1 by the operator "hands off" c0r40:c20r50',
             'legend: G-1 red cross = "I disagree" (you)',
             "changes since v0 (8):",
@@ -952,7 +979,8 @@ class Cli(CanvasRig):
         with mock.patch.object(sys, "stdin", io.StringIO(json.dumps([{"op": "shape", "text": "C", "at": "c0r10", "intent": "t"}]))):
             code, out, err = run_cli(["canvas", "draw", "--file", "-"], env_no_daemon(self.ts, HERDR_PANE_ID="w2:p2"), self.api)
         self.assertEqual(code, 0, err)
-        self.assertEqual(out, "v3 · B-2 · applied 1, refused 0\n#0 shape E-3 → 160x80 (hug, 1 line)\ncheck: clean\n")
+        # C goes just below A and B: it grows their automatic claim rather than making a new one (QA phase 5 L8).
+        self.assertEqual(out, "v3 · B-2 · applied 1, refused 0\n#0 shape E-3 → 160x80 (hug, 1 line) · claimed K-1\ncheck: clean\n")
         code, _payload, err = self.worker("canvas", "draw", "--op", '{"op": "shape", "text": "no intent"}')
         self.assertEqual((code, err["code"]), (1, "canvas_refused"))
         self.assertEqual(err["refused"][0]["details"]["field"], "intent")
@@ -970,11 +998,11 @@ class Cli(CanvasRig):
         comment = self.el("C-1")
         self.assertEqual((comment["intent"], comment["mentions"]), ("@alpha-worker why?", ["human", "alpha-worker"]))
         code, payload, err = self.worker("canvas", "claim", "[0, 0, 100, 100]", "working here")
-        self.assertEqual((code, payload["applied"][0]["ids"]), (0, ["K-1"]), err)
+        self.assertEqual((code, payload["applied"][0]["ids"]), (0, ["K-2"]), err)  # K-1 is the drivers' automatic claim (phase 5)
         code, payload, err = self.worker("canvas", "legend", "red cross", "I disagree")
         self.assertEqual(code, 0, err)
         code, payload, err = self.worker("canvas", "release")
-        self.assertEqual((code, payload["applied"][0]["ids"]), (0, ["K-1"]), err)
+        self.assertEqual((code, payload["applied"][0]["ids"]), (0, ["K-1", "K-2"]), err)
         code, payload, err = self.worker("canvas", "changes")
         self.assertEqual((code, payload["since"]), (0, 0), err)
 
@@ -1031,7 +1059,7 @@ class Cli(CanvasRig):
         replies = [json.loads(line) for line in out.splitlines()]
         self.assertEqual([r["id"] for r in replies], [1, 2])
         self.assertEqual(replies[0]["result"]["protocolVersion"], "2025-03-26")
-        self.assertEqual(len(replies[1]["result"]["tools"]), 7)
+        self.assertEqual(len(replies[1]["result"]["tools"]), 8)  # canvas_focus since phase 5
 
 
 # --------------------------------------------------------------------------

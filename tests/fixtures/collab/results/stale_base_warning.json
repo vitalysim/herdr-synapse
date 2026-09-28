@@ -1,0 +1,64 @@
+{
+ "aliases": {
+  "mine": "E-3"
+ },
+ "applied": [
+  {
+   "ids": [
+    "E-3"
+   ],
+   "index": 0,
+   "op": "move"
+  }
+ ],
+ "atomic": false,
+ "base": 6,
+ "batch": "B-6",
+ "check": {
+  "counts": {
+   "arrow_through": 0,
+   "label_truncated": 0,
+   "overlap": 0
+  },
+  "problems": [],
+  "region": [
+   600,
+   -180,
+   1160,
+   300
+  ]
+ },
+ "geometry": [
+  {
+   "fit": {
+    "lines": 1,
+    "policy": "hug",
+    "size": 20
+   },
+   "h": 80,
+   "id": "E-3",
+   "w": 160,
+   "x": 800,
+   "y": 20
+  }
+ ],
+ "notices": {
+  "canvas_changed": null,
+  "canvas_sent": []
+ },
+ "operator": null,
+ "proposed": [],
+ "refused": [],
+ "team": "qa",
+ "version": 8,
+ "warnings": [
+  {
+   "code": "stale_base",
+   "ids": [
+    "E-3"
+   ],
+   "index": 0,
+   "message": "E-3 changed since v6 by qa-deputy (v7): tone neutral → info; color #80858f → #3f84d8; fill #ffffff → #e8f2fe"
+  }
+ ]
+}

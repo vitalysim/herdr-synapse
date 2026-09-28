@@ -248,6 +248,44 @@ class Layouts(unittest.TestCase):
         self.assertEqual(err.code, "relation_cycle")
 
 
+class Floors(unittest.TestCase):
+    """A plane with no ``size`` fits what stands on it (QA phase34: objects crammed in a corner of an oversized floor)."""
+
+    def test_a_floor_covers_what_rests_on_it_with_a_margin_centred_under_it(self):
+        found = solve({"id": "f", "shape": "plane"}, {"id": "a", "shape": "box", "size": [2, 1, 1], "on": "f", "at": [-3, 0]},
+                      {"id": "b", "shape": "box", "size": [1, 1, 1], "on": "f", "right_of": "a", "gap": 1})
+        # Footprint x −4…0 (4 wide), z −0.5…0.5 (1 deep); margin max(0.1 × 4, 0.25 × 1) = 0.4.
+        self.assertEqual(found["objects"]["f"]["ext"], [4.8, 0.02, 1.8])
+        self.assertEqual(box(found, "f"), [-4.4, 0.0, -0.9, 0.4, 0.02, 0.9])
+        self.assertEqual(pos(found, "a"), [-3.0, 0.02, 0.0], "what stands on it stays where it was placed")
+        self.assertEqual(found["bounds"][0], -4.4)
+        self.assertEqual(solve({"id": "f", "shape": "plane", "size": "fit"}, {"id": "a", "shape": "box", "on": "f"})["objects"]["f"]["ext"],
+                         [1.5, 0.02, 1.5])
+
+    def test_what_is_placed_against_a_rider_counts_and_what_is_beside_the_floor_does_not(self):
+        found = solve({"id": "f", "shape": "plane"}, {"id": "a", "shape": "box", "on": "f"},
+                      {"id": "up", "shape": "sphere", "radius": 0.5, "above": "a", "at": [0, -2]},
+                      {"id": "g", "shape": "group", "on": "f", "behind": "a"}, {"id": "g1", "shape": "box", "in": "g"},
+                      {"id": "near", "shape": "box", "right_of": "f", "gap": 1})
+        f = box(found, "f")
+        for ident in ("a", "up", "g1"):
+            b = box(found, ident)
+            self.assertTrue(f[0] < b[0] and b[3] < f[3] and f[2] < b[2] and b[5] < f[5], ident)
+        self.assertGreater(box(found, "near")[0], f[3] - 1e-9, "beside it, not on it")
+
+    def test_a_given_size_is_kept_and_a_bare_floor_keeps_the_default(self):
+        self.assertEqual(solve({"id": "f", "shape": "plane", "size": [8, 5]}, {"id": "a", "shape": "box", "on": "f"})["objects"]["f"]["ext"],
+                         [8.0, 0.02, 5.0])
+        self.assertEqual(solve({"id": "f", "shape": "plane"})["objects"]["f"]["ext"], [4.0, 0.02, 4.0])
+
+    def test_a_floor_on_a_floor_is_fitted_first(self):
+        found = solve({"id": "big", "shape": "plane"}, {"id": "top", "shape": "plane", "on": "big", "at": [2, 0]},
+                      {"id": "a", "shape": "box", "size": [2, 1, 2], "on": "top"}, {"id": "b", "shape": "box", "on": "big", "at": [-2, 0]})
+        top, big = box(found, "top"), box(found, "big")
+        self.assertEqual(found["objects"]["top"]["ext"], [3.0, 0.02, 3.0])
+        self.assertTrue(big[0] < top[0] and top[3] < big[3], (big, top))
+
+
 class Links(unittest.TestCase):
     def test_links_run_between_the_facing_sides(self):
         s = solve({"id": "a", "shape": "box"}, {"id": "b", "shape": "box", "right_of": "a", "gap": 1}, links=["a -> b: SQL"])

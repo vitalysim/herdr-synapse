@@ -295,7 +295,8 @@ const chartsPart = closureOf(/^echartsCore-/, firstLoad);
 const scenePart = closureOf(/^renderer-/, firstLoad);
 const glPart = closureOf(/^glCharts-/, new Set([...firstLoad, ...chartsPart]));
 const table = [
-  ["v2 first load (the entry and the Board, static imports)", sum([...firstLoad]), 115.2 * 1024],
+  // Raised from 115.2 KB for Phase 5 collaboration (presence, proposals, freeze), which the page needs on load (2026-09-28).
+  ["v2 first load (the entry and the Board, static imports)", sum([...firstLoad]), 121.6 * 1024],
   ["charts (echarts core, SVGRenderer, chart modules)", sum([...chartsPart]), 280 * 1024],
   ["scene3d (three subset, GLTFLoader, OrbitControls, renderer)", sum([...scenePart]), 190 * 1024],
   ["glcharts (CanvasRenderer, echarts-gl subset, claygl; after charts)", sum([...glPart]), 330 * 1024],

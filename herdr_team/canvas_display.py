@@ -724,13 +724,27 @@ def environment(scene: Mapping[str, Any], reader: Optional[str] = None, stills: 
 
 def entries(scene: Mapping[str, Any], ids: Optional[Iterable[str]] = None, *, reader: Optional[str] = None,
             env: Optional[Env] = None, stills: Optional[Set[str]] = None) -> List[Dict[str, Any]]:
-    """The entries of the given ids (``K-``/``X-`` ids are claims and locks), or of everything, in render order."""
+    """The entries of the given ids (``K-`` ids are claims, ``X-`` locks and then freezes, ``P-`` proposals), or of
+    everything, in render order. Canvas v2 phase 5: an element a freeze covers says ``frozen: true``, one an open
+    proposal aims at says ``pending: [P-n]``, and each freeze and open proposal is an overlay entry (``canvas_collab``)."""
     env = env if env is not None else environment(scene, reader, stills)
     wanted = set(ids) if ids is not None else None
     out: List[Dict[str, Any]] = []
+    collab = None
+    frozen: Dict[str, str] = {}
+    pending: Dict[str, List[str]] = {}
+    if scene.get("freezes") or any(isinstance(p, dict) and p.get("status") == "open" for p in scene.get("proposals") or []):
+        from herdr_team import canvas_collab as collab  # imports canvas, which imports this module: late on purpose
+
+        frozen, pending = collab.element_flags(scene)
     for el in scene.get("elements") or []:
         if isinstance(el, dict) and (wanted is None or el.get("id") in wanted):
-            out.append(entry(el, env))
+            found = entry(el, env)
+            if found["id"] in frozen:
+                found["frozen"] = True
+            if found["id"] in pending:
+                found["pending"] = list(pending[found["id"]])
+            out.append(found)
     for lock in scene.get("locks") or []:
         if isinstance(lock, dict) and (wanted is None or lock.get("id") in wanted):
             found = _lock_entry(lock, env)
@@ -741,6 +755,8 @@ def entries(scene: Mapping[str, Any], ids: Optional[Iterable[str]] = None, *, re
             found = _claim_entry(claim, env)
             if found is not None:
                 out.append(found)
+    if collab is not None:
+        out.extend(collab.display_entries(scene, env, wanted))
     out.sort(key=order_key)
     return out
 
@@ -956,6 +972,26 @@ def _check_extras(item: Mapping[str, Any], where: str, out: List[str]) -> None:
             out.append("{}: container is {{layout, gap, order}}".format(where))
     if "tip" in item and (not isinstance(item["tip"], str) or len(item["tip"]) > TIP_MAX):
         out.append("{}: tip is a string of at most {} characters".format(where, TIP_MAX))
+    # Canvas v2 phase 5 (4.6, 5.2): what a freeze covers, what proposals aim at, and the proposal and freeze entries.
+    if "frozen" in item and item["frozen"] is not True:
+        out.append("{}: frozen is true when present".format(where))
+    if "pending" in item and (not isinstance(item["pending"], list) or not item["pending"]
+                              or not all(isinstance(p, str) and p.startswith("P-") for p in item["pending"])):
+        out.append("{}: pending is a list of P- ids".format(where))
+    if item.get("kind") == "proposal":
+        found = item.get("proposal")
+        if not isinstance(found, dict) or not isinstance(found.get("author"), str) or not isinstance(found.get("outdated"), bool) \
+                or not all(isinstance(found.get(key), list) for key in ("targets", "created", "deleted", "summary", "base_note", "reasons")):
+            out.append("{}: proposal is {{author, intent, reason, reasons, outdated, targets, created, deleted, batch, summary, base_note}}".format(where))
+        if not str(item.get("id") or "").startswith("P-"):
+            out.append("{}: a proposal's id is P-n".format(where))
+    elif "proposal" in item:
+        out.append("{}: only a proposal entry has proposal".format(where))
+    if item.get("kind") == "freeze":
+        found = item.get("freeze")
+        if not isinstance(found, dict) or found.get("mode") not in ("propose", "refuse") or \
+                (found.get("region") is None) == (found.get("ids") is None):
+            out.append("{}: freeze is {{region | ids, label, mode}}".format(where))
 
 
 def validate(doc: Any) -> List[str]:
@@ -1036,6 +1072,16 @@ def normalize_scene(scene: Dict[str, Any]) -> Dict[str, Any]:
     out["elements"] = [dict(el, created_at=_EPOCH, updated_at=_EPOCH) for el in scene.get("elements") or []]
     out["batches"] = {key: dict(value, at=_EPOCH) for key, value in (scene.get("batches") or {}).items()}
     out["claims"] = []
+    # Canvas v2 phase 5: proposals (and the element values they hold), freezes and checkpoints carry clock times too.
+    if scene.get("proposals"):
+        out["proposals"] = [dict(p, at=_EPOCH, decided_at=_EPOCH if p.get("decided_at") else None,
+                                 changes=[dict(c, value=dict(c["value"], created_at=_EPOCH, updated_at=_EPOCH) if isinstance(c.get("value"), dict)
+                                               else c.get("value")) for c in p.get("changes") or []])
+                            if "changes" in p else dict(p, at=_EPOCH, decided_at=_EPOCH if p.get("decided_at") else None)
+                            for p in scene["proposals"]]
+    for key in ("freezes", "checkpoints"):
+        if scene.get(key):
+            out[key] = [dict(item, at=_EPOCH) for item in scene[key]]
     return out
 
 

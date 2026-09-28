@@ -57,6 +57,10 @@ def describe_object(obj: Mapping[str, Any], scene: Mapping[str, Any]) -> str:
 
         names = ", ".join(member(o) for o in kids[:6]) + (", …" if len(kids) > 6 else "")
         return "group {} of {} ({})".format(obj.get("layout") or "row", len(kids), names)
+    entry = ((scene.get("solved") or {}).get("objects") or {}).get(obj.get("id"))
+    if prim.hugs is not None and isinstance(entry, dict) and entry.get("ext") and prim.hugs(dict(obj)):
+        # The size it came to, which its params cannot say.
+        return "{} {}×{} fitted".format(prim.name, _shapes.g(entry["ext"][0]), _shapes.g(entry["ext"][2]))
     try:
         return prim.describe(obj)
     except Exception:  # noqa: BLE001 - readback never raises on a malformed stored object

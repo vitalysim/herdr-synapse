@@ -107,6 +107,10 @@ class Primitive:
     describe: Callable[[Dict[str, Any]], str] = lambda params: ""
     #: May hold children (``in``): its extent is the union of its children after its layout.
     container: bool = False
+    #: ``params -> bool``: it sizes itself to what stands on it (a floor with no ``size``): after the solve, its width and
+    #: depth cover the footprint of everything resting on it, directly or through what rests on that, with a margin, and
+    #: it is centred under them (``_solver``).
+    hugs: Optional[Callable[[Dict[str, Any]], bool]] = None
     #: Reads a file (glTF); its ``Model`` gives the extent.
     loader: Optional[Loader] = None
     order: int = 100

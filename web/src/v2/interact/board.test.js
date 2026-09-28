@@ -5,12 +5,14 @@
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import fs from "node:fs";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createBus } from "../../bus.js";
 import { createSceneStore } from "../../sceneStore.js";
 
 const surface = { props: null };
-const calls = { get: [], post: [], bytes: [] };
+const calls = { get: [], post: [], bytes: [], presence: [] };
 let displayDoc = null;
 let opsAnswer = null;
 
@@ -18,7 +20,7 @@ vi.mock("../render/index.js", async (importOriginal) => {
   const real = await importOriginal();
   function FakeSurface(props) {
     surface.props = props;
-    return React.createElement("div", { "data-testid": "surface" }, props.children);
+    return React.createElement("div", { "data-testid": "surface" }, props.screenOverlay || null, props.children);
   }
   return { ...real, Surface: FakeSurface, installQAHook: () => () => {}, verifyText: async () => [] };
 });
@@ -28,10 +30,19 @@ vi.mock("../../api.js", async (importOriginal) => {
   return {
     ...real,
     getJSON: vi.fn(async (path) => {
+      // Presence (canvas-v2-phase5.md 9.3) is its own route; these tests follow the display list.
+      if (path.endsWith("/presence")) {
+        calls.presence.push(["GET", path]);
+        return { at: null, entries: [] };
+      }
       calls.get.push(path);
       return displayDoc;
     }),
     postJSON: vi.fn(async (path, body) => {
+      if (path.endsWith("/presence")) {
+        calls.presence.push(["POST", path, body]);
+        return { ok: true, ttl_s: 30 };
+      }
       calls.post.push([path, body]);
       return opsAnswer ? opsAnswer(body) : { version: displayDoc.version + 1, batch: "B-1", applied: [{ index: 0, op: body.ops?.[0]?.op, ids: ["E-9"] }], refused: [], warnings: [] };
     }),
@@ -65,16 +76,17 @@ async function mount({ writable }) {
   const store = createSceneStore();
   store.replace({ version: 5, elements: [{ id: "E-1", type: "box", x: 0, y: 0, w: 160, h: 80, updated_seq: 4, author: "human" }, { id: "E-2", type: "box", x: 300, y: 0, w: 160, h: 80, updated_seq: 5, author: "alpha" }] });
   const toast = vi.fn();
+  const bus = createBus();
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
   await act(async () => {
-    root.render(React.createElement(Board, { team: "t", teamRow: { name: "t", viz: false, members: [] }, writable, store, bus: createBus(), visible: true, toast, theme: "light", onFallback: vi.fn() }));
+    root.render(React.createElement(Board, { team: "t", teamRow: { name: "t", viz: false, members: [] }, writable, store, bus, visible: true, toast, theme: "light", onFallback: vi.fn() }));
   });
   await act(async () => {
     surface.props.onViewport({ w: 800, h: 600 });
   });
-  return { store, toast };
+  return { store, toast, bus };
 }
 
 const send = async (ev) => act(async () => surface.props.onPointer(ev));
@@ -87,6 +99,7 @@ beforeEach(() => {
   calls.get.length = 0;
   calls.post.length = 0;
   calls.bytes.length = 0;
+  calls.presence.length = 0;
   opsAnswer = null;
   displayDoc = { dl: 1, version: 5, bbox: [-40, -40, 500, 120], layers: ["zones", "marks", "labels", "overlays"], palettes: { light: { "tone.neutral.text": "#111111" }, dark: {} }, entries };
 });
@@ -141,7 +154,8 @@ describe("Board", () => {
     await send(pointer("up", 50, 30));
     expect(calls.post).toHaveLength(1);
     expect(calls.post[0][0]).toBe("/api/teams/t/ops");
-    expect(calls.post[0][1]).toEqual({ ops: [{ op: "move", ids: ["E-1"], by: [40, 20], if_version: 4 }], atomic: false });
+    // base: the list's version the drag was made from (canvas-v2-phase5.md 3.1).
+    expect(calls.post[0][1]).toEqual({ ops: [{ op: "move", ids: ["E-1"], by: [40, 20], if_version: 4 }], atomic: false, base: 5 });
     // The preview holds until the display list reaches the op's version.
     expect(surface.props.preview.move).toEqual({ ids: ["E-1"], by: [40, 20] });
   });
@@ -390,3 +404,164 @@ describe("Board, phase 2", () => {
     expect(calls.post).toEqual([]);
   });
 });
+
+// canvas-v2-phase5.md 12: the collaboration layer wired into the board.
+describe("Board, collaboration (phase 5)", () => {
+  const COLLAB = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, "../collab/__fixtures__/display.json"), "utf8"));
+  const withCollab = () => {
+    displayDoc = { ...displayDoc, version: 14, entries: [...entries, ...COLLAB.entries.filter((e) => /^(P|X)-/.test(e.id))] };
+  };
+  const button = (text) => [...container.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith(text)) || null;
+  const opsPosts = () => calls.post.filter(([p]) => p.endsWith("/ops"));
+
+  it("a click on a proposal's ghost opens its card and starts no gesture; Esc closes it; Delete sends nothing", async () => {
+    withCollab();
+    await mount({ writable: true });
+    await send(pointer("down", 50, 40, { hit: "P-3" }));
+    await send(pointer("move", 120, 90));
+    await send(pointer("up", 120, 90));
+    expect(surface.props.selection).toEqual(["P-3"]);
+    expect(container.querySelector('.cv2-review[data-proposal="P-3"]')).not.toBeNull();
+    expect(surface.props.preview).toBeNull();
+    await key("Delete");
+    await key("ArrowLeft");
+    expect(opsPosts()).toEqual([]);
+    await key("Escape");
+    expect(container.querySelector(".cv2-review")).toBeNull();
+  });
+
+  it("Accept sends accept {id}; the card's buttons are the operator's", async () => {
+    withCollab();
+    const { toast } = await mount({ writable: true });
+    opsAnswer = () => ({ version: 15, batch: "B-20", applied: [{ index: 0, op: "accept", ids: ["E-1"] }], refused: [], warnings: [] });
+    await send(pointer("down", 50, 40, { hit: "P-3" }));
+    await act(async () => button("Accept").click());
+    expect(opsPosts()[0][1].ops).toEqual([{ op: "accept", id: "P-3" }]);
+    expect(toast).toHaveBeenCalledWith("P-3 accepted", "ok");
+  });
+
+  it("read-only: the card has no Accept, and the page never posts presence", async () => {
+    withCollab();
+    await mount({ writable: false });
+    await send(pointer("down", 50, 40, { hit: "P-3" }));
+    expect(container.querySelector(".cv2-review")).not.toBeNull();
+    expect(button("Accept")).toBeNull();
+    await send(pointer("hover", 70, 40, { hit: null }));
+    expect(calls.presence.filter(([m]) => m === "POST")).toEqual([]);
+    expect(calls.post).toEqual([]);
+  });
+
+  it("Freeze: the selection becomes freeze {ids}; with nothing selected it arms the region tool", async () => {
+    withCollab();
+    await mount({ writable: true });
+    await send(pointer("down", 10, 10, { hit: "E-1" }));
+    await send(pointer("up", 10, 10, { hit: "E-1" }));
+    await act(async () => container.querySelector('[data-tool="freeze"]').click());
+    expect(opsPosts()[0][1].ops).toEqual([{ op: "freeze", ids: ["E-1"] }]);
+    await key("Escape");
+    await key("Escape");
+    expect(surface.props.selection).toEqual([]);
+    await act(async () => container.querySelector('[data-tool="freeze"]').click());
+    expect(container.querySelector(".v2-board").getAttribute("data-tool")).toBe("freeze");
+    await send(pointer("down", 20, 20));
+    await send(pointer("move", 200, 140));
+    await send(pointer("up", 200, 140));
+    expect(opsPosts()[1][1].ops).toEqual([{ op: "freeze", region: [20, 20, 200, 140] }]);
+    expect(container.querySelector(".v2-board").getAttribute("data-tool")).toBe("select");
+  });
+
+  it("Review (n) opens the queue at the oldest proposal; ] steps to the next", async () => {
+    withCollab();
+    await mount({ writable: true });
+    const review = container.querySelector(".v2-review");
+    expect(review.textContent).toBe("Review (2)");
+    await act(async () => review.click());
+    expect(container.querySelector(".cv2-queue").textContent).toContain("Review 1 of 2");
+    expect(container.querySelector('.cv2-review[data-proposal="P-3"]')).not.toBeNull();
+    await key("]");
+    expect(container.querySelector('.cv2-review[data-proposal="P-4"]')).not.toBeNull();
+    expect(container.querySelector(".cv2-queue").textContent).toContain("Review 2 of 2");
+    // Outdated: Accept is disabled.
+    expect(button("Accept").disabled).toBe(true);
+  });
+
+  it("an agent's live change to the operator's marks earns a notice whose Revert undoes that batch", async () => {
+    const { store } = await mount({ writable: true });
+    // (A whole list: this fake server answers every GET with the same document.)
+    displayDoc = { ...displayDoc, version: 6 };
+    await act(async () => store.applyEvents([{ seq: 6, op: "move", batch: "B-40", author: { name: "alpha", kind: "member" }, touched_human: ["E-1"], changes: [] }]));
+    const notice = container.querySelector('.cv2-notice[data-notice="touched"]');
+    expect(notice.textContent).toContain("alpha changed your E-1");
+    await act(async () => notice.querySelector(".cv2-notice-action").click());
+    expect(opsPosts().at(-1)[1].ops).toEqual([{ op: "undo", batch: "B-40" }]);
+    expect(container.querySelector(".cv2-notice")).toBeNull();
+  });
+
+  it("a writable page posts its presence; halos come from the presence event", async () => {
+    vi.setSystemTime(Date.parse("2026-09-28T10:00:00Z"));
+    const { bus } = await mount({ writable: true });
+    await send(pointer("down", 10, 10, { hit: "E-1" }));
+    await send(pointer("up", 10, 10, { hit: "E-1" }));
+    await act(async () => new Promise((r) => setTimeout(r, 300)));
+    const posted = calls.presence.filter(([m]) => m === "POST");
+    expect(posted.length).toBeGreaterThan(0);
+    expect(posted.at(-1)[2].selection).toEqual(["E-1"]);
+    expect(posted.at(-1)[2].page).toMatch(/^[0-9a-f]{16}$/);
+    await act(async () => bus.emit("presence", { team: "t", at: "2026-09-28T10:00:00Z", entries: [{ v: 1, name: "alpha", kind: "member", at: new Date().toISOString(), ttl_s: 60, status: "drawing", region: [0, 0, 100, 100], ids: [], intent: "pricing" }] }));
+    expect(container.querySelectorAll(".cv2-halo")).toHaveLength(1);
+    expect(container.querySelector(".cv2-halo-text").textContent).toBe("alpha · drawing · pricing");
+    vi.useRealTimers();
+  });
+
+  it("a drag's base is the list it began on, even when the list moves on during the drag (C10)", async () => {
+    const { store } = await mount({ writable: true });
+    await send(pointer("down", 10, 10, { hit: "E-1" }));
+    await send(pointer("move", 30, 10));
+    displayDoc = { ...displayDoc, version: 6, entries: entries.map((e) => (e.id === "E-2" ? { ...e, v: 6 } : e)) };
+    await act(async () => store.applyEvents([{ seq: 6, op: "move", batch: "B-9", author: { name: "alpha", kind: "member" }, changes: [] }]));
+    expect(surface.props.dl.version).toBe(6);
+    await send(pointer("move", 50, 30));
+    await send(pointer("up", 50, 30));
+    expect(opsPosts()[0][1].base).toBe(5);
+    await key("ArrowRight");
+    expect(opsPosts()[1][1].base).toBe(6);
+  });
+
+  it("a stale_base warning on the page's own result shows as an info toast (12.5)", async () => {
+    const { toast } = await mount({ writable: true });
+    opsAnswer = (body) => ({ version: 7, batch: "B-3", applied: [{ index: 0, op: "move", ids: body.ops[0].ids }], refused: [], warnings: [{ code: "stale_base", message: "E-1 changed since v5 by alpha (v6): moved by c0r+1", index: 0 }] });
+    await send(pointer("down", 10, 10, { hit: "E-1" }));
+    await send(pointer("move", 50, 30));
+    await send(pointer("up", 50, 30));
+    expect(toast).toHaveBeenCalledWith("E-1 changed since v5 by alpha (v6): moved by c0r+1", "info");
+  });
+
+  it("a freeze's outline opens its card from empty space; over a frozen element the element takes the press", async () => {
+    const freeze = { id: "X-6", kind: "freeze", layer: "overlays", z: -3, v: 0, bbox: [-4, -4, 164, 84], hit: { shape: "frame", box: [-4, -4, 168, 88], band: 12 }, handles: "none", connect: false, edit: null, frame: null, author: "human", locked: false, freeze: { region: null, ids: ["E-1"], label: "keep", mode: "propose" }, items: [] };
+    displayDoc = { ...displayDoc, entries: [...entries, freeze] };
+    await mount({ writable: true });
+    await send(pointer("down", -10, 40, { hit: "X-6" }));
+    await send(pointer("up", -10, 40, { hit: "X-6" }));
+    expect(container.querySelector('.cv2-freeze-card[data-freeze="X-6"]')).not.toBeNull();
+    expect(container.querySelector(".cv2-freeze-card").textContent).toContain("keep");
+    await key("Escape");
+    expect(container.querySelector(".cv2-freeze-card")).toBeNull();
+    await send(pointer("down", 2, 40, { hit: "X-6" }));
+    await send(pointer("move", 42, 60));
+    await send(pointer("up", 42, 60));
+    expect(container.querySelector(".cv2-freeze-card")).toBeNull();
+    expect(opsPosts()[0][1].ops).toEqual([{ op: "move", ids: ["E-1"], by: [40, 20], if_version: 4 }]);
+  });
+
+  it("an undo's result says what it skipped", async () => {
+    const { toast } = await mount({ writable: true });
+    await send(pointer("down", 10, 10, { hit: "E-1" }));
+    await send(pointer("move", 50, 30));
+    await send(pointer("up", 50, 30));
+    opsAnswer = () => ({ version: 7, batch: "B-2", applied: [{ index: 0, op: "undo", undo: { batches: ["B-1"], restored: 0, of: 1, skipped: [{ id: "E-1", by: "alpha", seq: 6 }] } }], refused: [], warnings: [{ code: "undo_skipped", message: "0 of 1 reverted; E-1 edited by alpha later" }] });
+    await key("z", { metaKey: true });
+    expect(toast).toHaveBeenCalledWith("0 of 1 reverted; E-1 edited by alpha later", "warn");
+    expect(toast.mock.calls.filter(([, tone]) => tone === "info").map(([t]) => t)).not.toContain("0 of 1 reverted; E-1 edited by alpha later");
+  });
+});
+

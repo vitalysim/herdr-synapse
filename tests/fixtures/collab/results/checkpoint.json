@@ -1,0 +1,25 @@
+{
+ "aliases": {},
+ "applied": [
+  {
+   "ids": [
+    "V-1"
+   ],
+   "index": 0,
+   "op": "checkpoint"
+  }
+ ],
+ "atomic": false,
+ "batch": "B-16",
+ "check": null,
+ "geometry": [],
+ "notices": {
+  "canvas_changed": null,
+  "canvas_sent": []
+ },
+ "proposed": [],
+ "refused": [],
+ "team": "qa",
+ "version": 19,
+ "warnings": []
+}

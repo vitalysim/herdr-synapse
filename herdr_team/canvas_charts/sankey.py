@@ -201,21 +201,31 @@ def draw(spec: Dict[str, Any], model: Dict[str, Any], frame: Frame, slot: Tuple[
             d = "M {} C {} {} {} L {} C {} {} {} Z".format(pen.pt(sx, sy), pen.pt(mid, sy), pen.pt(mid, ty), pen.pt(tx, ty), pen.pt(tx, ty + tt),
                                                          pen.pt(mid, ty + tt), pen.pt(mid, sy + st), pen.pt(sx, sy + st))
         pen.path(d, paints.get(link["from"], "chart.cat.0"), None, None, 0.35)
-    columns = max((int(n["depth"]) for n in model.get("nodes") or []), default=0)
     for node in model.get("nodes") or []:
         x, y, w, h = found["boxes"][node["name"]]
         pen.rect(x, y, w, h, paints.get(node["name"], "chart.cat.0"), r=1)
-        text = "{} {}".format(node["name"], G.num(float(node["value"] or 0.0), dict(spec), "value"))
+        text = _node_text(spec, node, w, vertical)
         if vertical:
-            if w >= FR.text_w(text) + 4:
-                pen.text(text, x + w / 2.0, y + h + FR.LH / 2.0 + 2, "middle", "chart.ink")
-            else:
-                pen.text(FR.fit_text(node["name"], max(24.0, w + NODE_GAP - 2)), x + w / 2.0, y + h + FR.LH / 2.0 + 2, "middle", "chart.ink")
-        elif int(node["depth"]) == columns and columns > 0:
-            pen.text(FR.fit_text(text, LABEL_ROOM - 6), x + w + 4, y + h / 2.0, "start", "chart.ink")
+            pen.text(text, x + w / 2.0, y + h + FR.LH / 2.0 + 2, "middle", "chart.ink")
         else:
-            pen.text(FR.fit_text(text, LABEL_ROOM - 6), x + w + 4, y + h / 2.0, "start", "chart.ink")
+            pen.text(text, x + w + 4, y + h / 2.0, "start", "chart.ink")
     return pen.items
+
+
+def _node_text(spec: Mapping[str, Any], node: Mapping[str, Any], width: float, vertical: bool) -> str:
+    """A node's label, its name and value ("checkout 1.2k"), as both pictures write it: beside the node, cut to the label
+    room; under it in a vertical sankey, the name alone (cut to the node's column) when the whole does not fit."""
+    text = "{} {}".format(node["name"], G.num(float(node["value"] or 0.0), dict(spec), "value"))
+    if not vertical:
+        return FR.fit_text(text, LABEL_ROOM - 6)
+    if width >= FR.text_w(text) + 4:
+        return text
+    return FR.fit_text(node["name"], max(24.0, width + NODE_GAP - 2))
+
+
+def _template(text: str) -> Optional[str]:
+    """``text`` as an ECharts label formatter template that draws it as it is (None when it holds a template's braces)."""
+    return None if "{" in text or "}" in text else text
 
 
 def doc(spec: Dict[str, Any], table: _data.Table, model: Dict[str, Any]) -> Dict[str, Any]:
@@ -229,16 +239,28 @@ def option(spec: Dict[str, Any], model: Dict[str, Any], frame: Frame, gist: Sequ
     vertical = spec.get("orient") == "vertical"
     label_room = 0.0 if vertical else min(LABEL_ROOM, pw * 0.22)
     out.update(tooltip=O.tooltip("item"), legend={"show": False})
+    paints = _paint_of(spec, model)
+    found = placement(spec, model, frame.plot)
     out["series"] = [{"type": "sankey", "left": round(px, 2), "top": round(py, 2), "width": round(pw - label_room, 2), "height": round(ph, 2),
                       "orient": "vertical" if vertical else "horizontal", "nodeWidth": NODE_W, "nodeGap": NODE_GAP, "nodeAlign": "justify",
                       "layoutIterations": 0, "draggable": False, "links": {"$doc": "links"},
                       # The nodes (80 at most) travel in the option, each with its paint: a highlight changes them.
-                      "data": [{"name": n["name"], "depth": n["depth"], "itemStyle": {"color": _paint_of(spec, model)[n["name"]]}}
-                               for n in model.get("nodes") or []],
+                      "data": [_node_item(spec, n, paints, found, vertical) for n in model.get("nodes") or []],
                       "lineStyle": {"color": "source", "opacity": 0.35, "curveness": 0.5},
                       "label": {"show": True, "position": "bottom" if vertical else "right", "color": "chart.ink", "fontFamily": "$sans",
                                 "fontSize": FR.FONT}}]
     return out
+
+
+def _node_item(spec: Mapping[str, Any], node: Mapping[str, Any], paints: Mapping[str, str], found: Mapping[str, Any],
+               vertical: bool) -> Dict[str, Any]:
+    """One node of the option: its paint, and its label with its value, as the drawing writes it (QA phase34 low)."""
+    item: Dict[str, Any] = {"name": node["name"], "depth": node["depth"], "itemStyle": {"color": paints[node["name"]]}}
+    box = found["boxes"].get(node["name"])
+    template = _template(_node_text(spec, node, float(box[2]) if box else 0.0, vertical))
+    if template is not None:
+        item["label"] = {"formatter": template}
+    return item
 
 
 def stats(spec: Dict[str, Any], table: _data.Table, model: Dict[str, Any]) -> Dict[str, Any]:

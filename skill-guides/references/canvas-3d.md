@@ -25,7 +25,7 @@ or a glTF model; flat boxes and arrows read better as a `graph`.
 |---|---|
 | `box` | `size [w, h, d]` (1, 1, 1) |
 | `sphere` · `cone` · `cylinder` | `radius` (0.5); `height` (1) for cone and cylinder |
-| `plane` | `size [w, d]` (4, 4), `thickness` (0.02): a floor, a table top |
+| `plane` | `size [w, d]`, `thickness` (0.02): a floor, a table top; no size fits what is on it |
 | `text3d` | `text`, `height` (0.3) |
 | `arrow3d` | `from`, `to` (object ids or `[x, y, z]`) |
 | `group` | `layout` (row, stack, grid, ring, free), `gap`, `cols`, `radius` |
@@ -81,7 +81,7 @@ fit `inside`, or still overlapping), `scene3d_floating` (a `pos` in the air),
 ```json
 {"op": "scene3d", "id": "topo", "intent": "the prod topology in 3D", "title": "Prod topology",
  "objects": [
-  {"id": "base", "shape": "plane", "size": [8, 5], "tone": "neutral"},
+  {"id": "base", "shape": "plane", "tone": "neutral"},
   {"id": "lb", "shape": "box", "size": [1.2, 0.4, 1.2], "tone": "info", "label": "Load balancer", "on": "base", "at": [-3, 0]},
   {"id": "api", "shape": "group", "layout": "row", "gap": 0.3, "on": "base", "right_of": "lb", "label": "API pool"},
   {"id": "api1", "shape": "box", "size": [0.8, 1.2, 0.8], "tone": "accent", "in": "api"},

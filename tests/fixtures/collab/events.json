@@ -1,0 +1,1214 @@
+{
+ "about": "canvas v2 phase 5 events the page's store folds (I-6, I-7): the change targets proposal, freeze, setting and checkpoint, and the event fields proposal, accepts, rejects, withdraws, undoes_all, touched_human and restores. The v1 page skips targets it does not know.",
+ "events": [
+  {
+   "author": {
+    "agent": "claude",
+    "kind": "member",
+    "name": "qa-drawer",
+    "verified": true,
+    "via": "cli"
+   },
+   "batch": "B-2",
+   "changes": [
+    {
+     "action": "add",
+     "id": "qa-drawer",
+     "target": "home",
+     "value": [
+      0,
+      -1000,
+      800,
+      -400
+     ]
+    },
+    {
+     "action": "add",
+     "id": "qa-drawer",
+     "target": "author",
+     "value": {
+      "agent": "claude",
+      "color": "#1971c2",
+      "index": 0,
+      "kind": "member"
+     }
+    },
+    {
+     "action": "add",
+     "id": "P-1",
+     "target": "proposal",
+     "value": {
+      "at": "2026-09-21T14:13:22.000Z",
+      "author": "qa-drawer",
+      "author_kind": "member",
+      "base": null,
+      "base_note": [],
+      "batch": "B-2",
+      "changes": [
+       {
+        "action": "update",
+        "id": "E-1",
+        "target": "element",
+        "value": {
+         "alias": "pricing",
+         "author": "human",
+         "author_kind": "human",
+         "batch": "B-1",
+         "client_id": null,
+         "created_at": "2026-09-21T14:13:21.000Z",
+         "created_seq": 1,
+         "fit": {
+          "estimated": false,
+          "lines": [
+           "Pricing"
+          ],
+          "min": [
+           160,
+           80
+          ],
+          "policy": "hug",
+          "size": 20,
+          "truncated": false
+         },
+         "frame": null,
+         "group": null,
+         "h": 80,
+         "id": "E-1",
+         "intent": "the operator's edit",
+         "role": null,
+         "style": {
+          "dash": "solid",
+          "fill": "#ffffff",
+          "font": "normal",
+          "opacity": 100,
+          "rough": 0,
+          "size": 20,
+          "stroke": "#80858f",
+          "text": "#1c2024",
+          "tone": "neutral",
+          "variant": "soft",
+          "width": 2
+         },
+         "text": "Pricing",
+         "type": "box",
+         "updated_at": "2026-09-21T14:13:22.000Z",
+         "updated_seq": 3,
+         "w": 160,
+         "x": 40,
+         "y": 0,
+         "z": 1
+        },
+        "was": 1
+       }
+      ],
+      "created": [],
+      "decided_at": null,
+      "decided_by": null,
+      "decided_seq": null,
+      "deleted": [],
+      "id": "P-1",
+      "intent": "align the price box",
+      "note": null,
+      "op": "move",
+      "reason": "human_made",
+      "reasons": [
+       "human_made"
+      ],
+      "seq": 3,
+      "status": "open",
+      "summary": [
+       "E-1 \"Pricing\" (the operator's): moved by c+2r0"
+      ],
+      "targets": [
+       "E-1"
+      ]
+     }
+    }
+   ],
+   "ids": [],
+   "index": 0,
+   "intent": "align the price box",
+   "op": "move",
+   "proposal": "P-1",
+   "seq": 3,
+   "ts": "2026-09-21T14:13:22.000Z",
+   "v": 1
+  },
+  {
+   "author": {
+    "agent": "claude",
+    "kind": "member",
+    "name": "qa-drawer",
+    "verified": true,
+    "via": "cli"
+   },
+   "batch": "B-8",
+   "changes": [
+    {
+     "action": "add",
+     "id": "P-2",
+     "target": "proposal",
+     "value": {
+      "at": "2026-09-21T14:13:30.000Z",
+      "author": "qa-drawer",
+      "author_kind": "member",
+      "base": null,
+      "base_note": [],
+      "batch": "B-8",
+      "changes": [
+       {
+        "action": "add",
+        "id": "E-5",
+        "target": "element",
+        "value": {
+         "alias": "held",
+         "author": "qa-drawer",
+         "author_kind": "member",
+         "batch": "B-8",
+         "client_id": null,
+         "created_at": "2026-09-21T14:13:30.000Z",
+         "created_seq": 10,
+         "fit": {
+          "estimated": false,
+          "lines": [
+           "On yours"
+          ],
+          "min": [
+           160,
+           80
+          ],
+          "policy": "hug",
+          "size": 20,
+          "truncated": false
+         },
+         "frame": null,
+         "group": null,
+         "h": 80,
+         "id": "E-5",
+         "intent": "t",
+         "role": null,
+         "style": {
+          "dash": "solid",
+          "fill": "#ffffff",
+          "font": "normal",
+          "opacity": 100,
+          "rough": 0,
+          "size": 20,
+          "stroke": "#80858f",
+          "text": "#1c2024",
+          "tone": "neutral",
+          "variant": "soft",
+          "width": 2
+         },
+         "text": "On yours",
+         "type": "box",
+         "updated_at": "2026-09-21T14:13:30.000Z",
+         "updated_seq": 10,
+         "w": 160,
+         "x": 20,
+         "y": 20,
+         "z": 5
+        },
+        "was": null
+       }
+      ],
+      "created": [
+       "E-5"
+      ],
+      "decided_at": null,
+      "decided_by": null,
+      "decided_seq": null,
+      "deleted": [],
+      "id": "P-2",
+      "intent": "t",
+      "note": null,
+      "op": "shape",
+      "reason": "human_made",
+      "reasons": [
+       "human_made"
+      ],
+      "seq": 10,
+      "status": "open",
+      "summary": [
+       "E-5 \"On yours\": added box \"On yours\" in c1r1"
+      ],
+      "targets": []
+     }
+    }
+   ],
+   "ids": [],
+   "index": 0,
+   "intent": "t",
+   "op": "shape",
+   "proposal": "P-2",
+   "seq": 10,
+   "ts": "2026-09-21T14:13:30.000Z",
+   "v": 1
+  },
+  {
+   "author": {
+    "agent": null,
+    "kind": "human",
+    "name": "human",
+    "verified": true,
+    "via": "cli"
+   },
+   "batch": "B-9",
+   "changes": [
+    {
+     "action": "add",
+     "id": "X-1",
+     "target": "freeze",
+     "value": {
+      "at": "2026-09-21T14:13:31.000Z",
+      "by": "human",
+      "id": "X-1",
+      "ids": [
+       "E-2"
+      ],
+      "kind": "freeze",
+      "label": "final",
+      "region": null
+     }
+    }
+   ],
+   "ids": [
+    "X-1"
+   ],
+   "index": 0,
+   "intent": "the operator's edit",
+   "op": "freeze",
+   "seq": 11,
+   "ts": "2026-09-21T14:13:31.000Z",
+   "v": 1
+  },
+  {
+   "author": {
+    "agent": null,
+    "kind": "human",
+    "name": "human",
+    "verified": true,
+    "via": "cli"
+   },
+   "batch": "B-9",
+   "changes": [
+    {
+     "action": "update",
+     "id": "collab",
+     "target": "setting",
+     "value": {
+      "frozen": "refuse",
+      "human_edits": "propose"
+     }
+    }
+   ],
+   "ids": [],
+   "index": 1,
+   "intent": "the operator's edit",
+   "op": "settings",
+   "seq": 12,
+   "ts": "2026-09-21T14:13:31.000Z",
+   "v": 1
+  },
+  {
+   "accepts": "P-2",
+   "author": {
+    "agent": null,
+    "kind": "human",
+    "name": "human",
+    "verified": true,
+    "via": "cli"
+   },
+   "batch": "B-11",
+   "changes": [
+    {
+     "action": "add",
+     "id": "E-5",
+     "target": "element",
+     "value": {
+      "accepted": "P-2",
+      "alias": "held",
+      "author": "qa-drawer",
+      "author_kind": "member",
+      "batch": "B-8",
+      "client_id": null,
+      "created_at": "2026-09-21T14:13:30.000Z",
+      "created_seq": 10,
+      "fit": {
+       "estimated": false,
+       "lines": [
+        "On yours"
+       ],
+       "min": [
+        160,
+        80
+       ],
+       "policy": "hug",
+       "size": 20,
+       "truncated": false
+      },
+      "frame": null,
+      "group": null,
+      "h": 80,
+      "id": "E-5",
+      "intent": "t",
+      "role": null,
+      "style": {
+       "dash": "solid",
+       "fill": "#ffffff",
+       "font": "normal",
+       "opacity": 100,
+       "rough": 0,
+       "size": 20,
+       "stroke": "#80858f",
+       "text": "#1c2024",
+       "tone": "neutral",
+       "variant": "soft",
+       "width": 2
+      },
+      "text": "On yours",
+      "type": "box",
+      "updated_at": "2026-09-21T14:13:36.000Z",
+      "updated_seq": 14,
+      "w": 160,
+      "x": 20,
+      "y": 20,
+      "z": 5
+     }
+    },
+    {
+     "action": "update",
+     "id": "P-2",
+     "target": "proposal",
+     "value": {
+      "at": "2026-09-21T14:13:30.000Z",
+      "author": "qa-drawer",
+      "author_kind": "member",
+      "base": null,
+      "base_note": [],
+      "batch": "B-8",
+      "created": [
+       "E-5"
+      ],
+      "decided_at": "2026-09-21T14:13:36.000Z",
+      "decided_by": "human",
+      "decided_seq": 14,
+      "deleted": [],
+      "id": "P-2",
+      "intent": "t",
+      "note": "fine",
+      "op": "shape",
+      "reason": "human_made",
+      "reasons": [
+       "human_made"
+      ],
+      "seq": 10,
+      "status": "accepted",
+      "summary": [
+       "E-5 \"On yours\": added box \"On yours\" in c1r1"
+      ],
+      "targets": []
+     }
+    }
+   ],
+   "ids": [
+    "E-5"
+   ],
+   "index": 0,
+   "intent": "the operator's edit",
+   "op": "accept",
+   "seq": 14,
+   "ts": "2026-09-21T14:13:36.000Z",
+   "v": 1
+  },
+  {
+   "author": {
+    "agent": null,
+    "kind": "human",
+    "name": "human",
+    "verified": true,
+    "via": "cli"
+   },
+   "batch": "B-15",
+   "changes": [
+    {
+     "action": "delete",
+     "id": "E-4",
+     "target": "element",
+     "value": null
+    },
+    {
+     "action": "delete",
+     "id": "K-2",
+     "target": "claim",
+     "value": null
+    },
+    {
+     "action": "delete",
+     "id": "K-1",
+     "target": "claim",
+     "value": null
+    },
+    {
+     "action": "update",
+     "id": "P-1",
+     "target": "proposal",
+     "value": {
+      "at": "2026-09-21T14:13:22.000Z",
+      "author": "qa-drawer",
+      "author_kind": "member",
+      "base": null,
+      "base_note": [],
+      "batch": "B-2",
+      "created": [],
+      "decided_at": "2026-09-21T14:13:40.000Z",
+      "decided_by": "human",
+      "decided_seq": 18,
+      "deleted": [],
+      "id": "P-1",
+      "intent": "align the price box",
+      "note": "undone with B-2",
+      "op": "move",
+      "reason": "human_made",
+      "reasons": [
+       "human_made"
+      ],
+      "seq": 3,
+      "status": "withdrawn",
+      "summary": [
+       "E-1 \"Pricing\" (the operator's): moved by c+2r0"
+      ],
+      "targets": [
+       "E-1"
+      ]
+     }
+    }
+   ],
+   "ids": [
+    "E-4",
+    "K-2",
+    "K-1"
+   ],
+   "index": 0,
+   "intent": "revert mine",
+   "op": "undo",
+   "seq": 18,
+   "ts": "2026-09-21T14:13:40.000Z",
+   "undo_left": {
+    "B-12": [
+     [
+      "element",
+      "E-3"
+     ]
+    ],
+    "B-13": [
+     [
+      "element",
+      "E-3"
+     ]
+    ],
+    "B-2": [
+     [
+      "element",
+      "E-3"
+     ]
+    ],
+    "B-6": [
+     [
+      "element",
+      "E-3"
+     ]
+    ],
+    "B-7": [
+     [
+      "element",
+      "E-3"
+     ]
+    ]
+   },
+   "undoes_all": [
+    "B-13",
+    "B-12",
+    "B-8",
+    "B-7",
+    "B-6",
+    "B-3",
+    "B-2"
+   ],
+   "v": 1
+  },
+  {
+   "author": {
+    "agent": null,
+    "kind": "human",
+    "name": "human",
+    "verified": true,
+    "via": "cli"
+   },
+   "batch": "B-16",
+   "changes": [
+    {
+     "action": "add",
+     "id": "V-1",
+     "target": "checkpoint",
+     "value": {
+      "at": "2026-09-21T14:13:41.000Z",
+      "auto": false,
+      "by": "human",
+      "elements": 4,
+      "id": "V-1",
+      "label": "before the rework",
+      "version": 18
+     }
+    }
+   ],
+   "ids": [
+    "V-1"
+   ],
+   "index": 0,
+   "intent": "the operator's edit",
+   "op": "checkpoint",
+   "seq": 19,
+   "ts": "2026-09-21T14:13:41.000Z",
+   "v": 1
+  },
+  {
+   "author": {
+    "agent": null,
+    "kind": "human",
+    "name": "human",
+    "verified": true,
+    "via": "cli"
+   },
+   "batch": "B-18",
+   "changes": [
+    {
+     "action": "delete",
+     "id": "E-6",
+     "target": "element",
+     "value": null
+    },
+    {
+     "action": "add",
+     "id": "V-2",
+     "target": "checkpoint",
+     "value": {
+      "at": "2026-09-21T14:13:43.000Z",
+      "auto": true,
+      "by": "human",
+      "elements": 5,
+      "id": "V-2",
+      "label": "before B-18 (restore V-1)",
+      "version": 20
+     }
+    }
+   ],
+   "ids": [
+    "E-6"
+   ],
+   "index": 0,
+   "intent": "the operator's edit",
+   "op": "restore",
+   "restores": "V-1",
+   "seq": 21,
+   "ts": "2026-09-21T14:13:43.000Z",
+   "v": 1
+  },
+  {
+   "author": {
+    "agent": "codex",
+    "kind": "member",
+    "name": "qa-peer",
+    "verified": true,
+    "via": "cli"
+   },
+   "batch": "B-20",
+   "changes": [
+    {
+     "action": "add",
+     "id": "qa-peer",
+     "target": "home",
+     "value": [
+      2000,
+      -1000,
+      2800,
+      -400
+     ]
+    },
+    {
+     "action": "add",
+     "id": "qa-peer",
+     "target": "author",
+     "value": {
+      "agent": "codex",
+      "color": "#9c36b5",
+      "index": 2,
+      "kind": "member"
+     }
+    },
+    {
+     "action": "add",
+     "id": "P-3",
+     "target": "proposal",
+     "value": {
+      "at": "2026-09-21T14:13:45.000Z",
+      "author": "qa-peer",
+      "author_kind": "member",
+      "base": null,
+      "base_note": [],
+      "batch": "B-20",
+      "changes": [
+       {
+        "action": "update",
+        "id": "E-1",
+        "target": "element",
+        "value": {
+         "alias": "pricing",
+         "author": "human",
+         "author_kind": "human",
+         "batch": "B-1",
+         "client_id": null,
+         "created_at": "2026-09-21T14:13:21.000Z",
+         "created_seq": 1,
+         "fit": {
+          "estimated": false,
+          "lines": [
+           "Pricing"
+          ],
+          "min": [
+           160,
+           80
+          ],
+          "policy": "hug",
+          "size": 20,
+          "truncated": false
+         },
+         "frame": null,
+         "group": null,
+         "h": 80,
+         "id": "E-1",
+         "intent": "the operator's edit",
+         "role": null,
+         "style": {
+          "dash": "solid",
+          "fill": "#ffffff",
+          "font": "normal",
+          "opacity": 100,
+          "rough": 0,
+          "size": 20,
+          "stroke": "#80858f",
+          "text": "#1c2024",
+          "tone": "neutral",
+          "variant": "soft",
+          "width": 2
+         },
+         "text": "Pricing",
+         "type": "box",
+         "updated_at": "2026-09-21T14:13:45.000Z",
+         "updated_seq": 23,
+         "w": 160,
+         "x": 0,
+         "y": 60,
+         "z": 1
+        },
+        "was": 13
+       }
+      ],
+      "created": [],
+      "decided_at": null,
+      "decided_by": null,
+      "decided_seq": null,
+      "deleted": [],
+      "id": "P-3",
+      "intent": "t",
+      "note": null,
+      "op": "move",
+      "reason": "human_made",
+      "reasons": [
+       "human_made"
+      ],
+      "seq": 23,
+      "status": "open",
+      "summary": [
+       "E-1 \"Pricing\" (the operator's): moved by c0r+2"
+      ],
+      "targets": [
+       "E-1"
+      ]
+     }
+    }
+   ],
+   "ids": [],
+   "index": 0,
+   "intent": "t",
+   "op": "move",
+   "proposal": "P-3",
+   "seq": 23,
+   "ts": "2026-09-21T14:13:45.000Z",
+   "v": 1
+  },
+  {
+   "author": {
+    "agent": null,
+    "kind": "human",
+    "name": "human",
+    "verified": true,
+    "via": "cli"
+   },
+   "batch": "B-21",
+   "changes": [
+    {
+     "action": "update",
+     "id": "collab",
+     "target": "setting",
+     "value": {
+      "frozen": "refuse",
+      "human_edits": "live"
+     }
+    }
+   ],
+   "ids": [],
+   "index": 0,
+   "intent": "the operator's edit",
+   "op": "settings",
+   "seq": 24,
+   "ts": "2026-09-21T14:13:47.000Z",
+   "v": 1
+  },
+  {
+   "author": {
+    "agent": "claude",
+    "kind": "member",
+    "name": "qa-drawer",
+    "verified": true,
+    "via": "cli"
+   },
+   "batch": "B-22",
+   "changes": [
+    {
+     "action": "update",
+     "id": "E-7",
+     "target": "element",
+     "value": {
+      "alias": null,
+      "author": "human",
+      "author_kind": "human",
+      "batch": "B-19",
+      "client_id": null,
+      "created_at": "2026-09-21T14:13:44.000Z",
+      "created_seq": 22,
+      "fit": {
+       "estimated": false,
+       "lines": [
+        "Terms"
+       ],
+       "min": [
+        160,
+        80
+       ],
+       "policy": "hug",
+       "size": 20,
+       "truncated": false
+      },
+      "frame": null,
+      "group": null,
+      "h": 80,
+      "id": "E-7",
+      "intent": "the operator's edit",
+      "role": null,
+      "style": {
+       "dash": "solid",
+       "fill": "#e8f2fe",
+       "font": "normal",
+       "opacity": 100,
+       "rough": 0,
+       "size": 20,
+       "stroke": "#3f84d8",
+       "text": "#0b3a6e",
+       "tone": "info",
+       "variant": "soft",
+       "width": 2
+      },
+      "text": "Terms",
+      "type": "box",
+      "updated_at": "2026-09-21T14:13:48.000Z",
+      "updated_seq": 25,
+      "w": 160,
+      "x": 0,
+      "y": 1200,
+      "z": 6
+     }
+    }
+   ],
+   "ids": [
+    "E-7"
+   ],
+   "index": 0,
+   "intent": "a calmer tone",
+   "op": "restyle",
+   "seq": 25,
+   "touched_human": [
+    "E-7"
+   ],
+   "ts": "2026-09-21T14:13:48.000Z",
+   "v": 1
+  },
+  {
+   "author": {
+    "agent": null,
+    "kind": "human",
+    "name": "human",
+    "verified": true,
+    "via": "cli"
+   },
+   "batch": "B-23",
+   "changes": [
+    {
+     "action": "delete",
+     "id": "X-1",
+     "target": "freeze",
+     "value": null
+    }
+   ],
+   "ids": [
+    "X-1"
+   ],
+   "index": 0,
+   "intent": "the operator's edit",
+   "op": "thaw",
+   "seq": 26,
+   "ts": "2026-09-21T14:13:49.000Z",
+   "v": 1
+  },
+  {
+   "author": {
+    "agent": "claude",
+    "kind": "member",
+    "name": "qa-drawer",
+    "verified": true,
+    "via": "cli"
+   },
+   "batch": "B-25",
+   "changes": [
+    {
+     "action": "add",
+     "id": "P-4",
+     "target": "proposal",
+     "value": {
+      "at": "2026-09-21T14:13:51.000Z",
+      "author": "qa-drawer",
+      "author_kind": "member",
+      "base": null,
+      "base_note": [],
+      "batch": "B-25",
+      "changes": [
+       {
+        "action": "update",
+        "id": "E-8",
+        "target": "element",
+        "value": {
+         "alias": null,
+         "author": "qa-peer",
+         "author_kind": "member",
+         "batch": "B-24",
+         "client_id": null,
+         "created_at": "2026-09-21T14:13:50.000Z",
+         "created_seq": 27,
+         "fit": {
+          "estimated": false,
+          "lines": [
+           "Peer's"
+          ],
+          "min": [
+           160,
+           80
+          ],
+          "policy": "hug",
+          "size": 20,
+          "truncated": false
+         },
+         "frame": null,
+         "group": null,
+         "h": 80,
+         "id": "E-8",
+         "intent": "t",
+         "role": null,
+         "style": {
+          "dash": "solid",
+          "fill": "#ffffff",
+          "font": "normal",
+          "opacity": 100,
+          "rough": 0,
+          "size": 20,
+          "stroke": "#80858f",
+          "text": "#1c2024",
+          "tone": "neutral",
+          "variant": "soft",
+          "width": 2
+         },
+         "text": "Peer's",
+         "type": "box",
+         "updated_at": "2026-09-21T14:13:51.000Z",
+         "updated_seq": 28,
+         "w": 160,
+         "x": 3200,
+         "y": 20,
+         "z": 7
+        },
+        "was": 27
+       }
+      ],
+      "created": [],
+      "decided_at": null,
+      "decided_by": null,
+      "decided_seq": null,
+      "deleted": [],
+      "id": "P-4",
+      "intent": "t",
+      "note": null,
+      "op": "move",
+      "reason": "peer",
+      "reasons": [
+       "peer"
+      ],
+      "seq": 28,
+      "status": "open",
+      "summary": [
+       "E-8 \"Peer's\" (qa-peer's): moved by c0r+1"
+      ],
+      "targets": [
+       "E-8"
+      ]
+     }
+    }
+   ],
+   "ids": [],
+   "index": 0,
+   "intent": "t",
+   "op": "move",
+   "proposal": "P-4",
+   "seq": 28,
+   "ts": "2026-09-21T14:13:51.000Z",
+   "v": 1
+  },
+  {
+   "author": {
+    "agent": null,
+    "kind": "human",
+    "name": "human",
+    "verified": true,
+    "via": "cli"
+   },
+   "batch": "B-26",
+   "changes": [
+    {
+     "action": "update",
+     "id": "P-4",
+     "target": "proposal",
+     "value": {
+      "at": "2026-09-21T14:13:51.000Z",
+      "author": "qa-drawer",
+      "author_kind": "member",
+      "base": null,
+      "base_note": [],
+      "batch": "B-25",
+      "created": [],
+      "decided_at": "2026-09-21T14:13:52.000Z",
+      "decided_by": "human",
+      "decided_seq": 29,
+      "deleted": [],
+      "id": "P-4",
+      "intent": "t",
+      "note": "leave beta's work",
+      "op": "move",
+      "reason": "peer",
+      "reasons": [
+       "peer"
+      ],
+      "seq": 28,
+      "status": "rejected",
+      "summary": [
+       "E-8 \"Peer's\" (qa-peer's): moved by c0r+1"
+      ],
+      "targets": [
+       "E-8"
+      ]
+     }
+    }
+   ],
+   "ids": [],
+   "index": 0,
+   "intent": "the operator's edit",
+   "op": "reject",
+   "rejects": "P-4",
+   "seq": 29,
+   "ts": "2026-09-21T14:13:52.000Z",
+   "v": 1
+  },
+  {
+   "author": {
+    "agent": "claude",
+    "kind": "member",
+    "name": "qa-drawer",
+    "verified": true,
+    "via": "cli"
+   },
+   "batch": "B-27",
+   "changes": [
+    {
+     "action": "add",
+     "id": "P-5",
+     "target": "proposal",
+     "value": {
+      "at": "2026-09-21T14:13:53.000Z",
+      "author": "qa-drawer",
+      "author_kind": "member",
+      "base": null,
+      "base_note": [],
+      "batch": "B-27",
+      "changes": [
+       {
+        "action": "update",
+        "id": "E-8",
+        "target": "element",
+        "value": {
+         "alias": null,
+         "author": "qa-peer",
+         "author_kind": "member",
+         "batch": "B-24",
+         "client_id": null,
+         "created_at": "2026-09-21T14:13:50.000Z",
+         "created_seq": 27,
+         "fit": {
+          "estimated": false,
+          "lines": [
+           "Peer's"
+          ],
+          "min": [
+           160,
+           80
+          ],
+          "policy": "hug",
+          "size": 20,
+          "truncated": false
+         },
+         "frame": null,
+         "group": null,
+         "h": 80,
+         "id": "E-8",
+         "intent": "t",
+         "role": null,
+         "style": {
+          "dash": "solid",
+          "fill": "#ffffff",
+          "font": "normal",
+          "opacity": 100,
+          "rough": 0,
+          "size": 20,
+          "stroke": "#80858f",
+          "text": "#1c2024",
+          "tone": "neutral",
+          "variant": "soft",
+          "width": 2
+         },
+         "text": "Peer's",
+         "type": "box",
+         "updated_at": "2026-09-21T14:13:53.000Z",
+         "updated_seq": 30,
+         "w": 160,
+         "x": 3200,
+         "y": 40,
+         "z": 7
+        },
+        "was": 27
+       }
+      ],
+      "created": [],
+      "decided_at": null,
+      "decided_by": null,
+      "decided_seq": null,
+      "deleted": [],
+      "id": "P-5",
+      "intent": "t",
+      "note": null,
+      "op": "move",
+      "reason": "peer",
+      "reasons": [
+       "peer"
+      ],
+      "seq": 30,
+      "status": "open",
+      "summary": [
+       "E-8 \"Peer's\" (qa-peer's): moved by c0r+2"
+      ],
+      "targets": [
+       "E-8"
+      ]
+     }
+    }
+   ],
+   "ids": [],
+   "index": 0,
+   "intent": "t",
+   "op": "move",
+   "proposal": "P-5",
+   "seq": 30,
+   "ts": "2026-09-21T14:13:53.000Z",
+   "v": 1
+  },
+  {
+   "author": {
+    "agent": "claude",
+    "kind": "member",
+    "name": "qa-drawer",
+    "verified": true,
+    "via": "cli"
+   },
+   "batch": "B-28",
+   "changes": [
+    {
+     "action": "update",
+     "id": "P-5",
+     "target": "proposal",
+     "value": {
+      "at": "2026-09-21T14:13:53.000Z",
+      "author": "qa-drawer",
+      "author_kind": "member",
+      "base": null,
+      "base_note": [],
+      "batch": "B-27",
+      "created": [],
+      "decided_at": "2026-09-21T14:13:54.000Z",
+      "decided_by": "qa-drawer",
+      "decided_seq": 31,
+      "deleted": [],
+      "id": "P-5",
+      "intent": "t",
+      "note": null,
+      "op": "move",
+      "reason": "peer",
+      "reasons": [
+       "peer"
+      ],
+      "seq": 30,
+      "status": "withdrawn",
+      "summary": [
+       "E-8 \"Peer's\" (qa-peer's): moved by c0r+2"
+      ],
+      "targets": [
+       "E-8"
+      ]
+     }
+    }
+   ],
+   "ids": [],
+   "index": 0,
+   "intent": "not needed",
+   "op": "withdraw",
+   "seq": 31,
+   "ts": "2026-09-21T14:13:54.000Z",
+   "v": 1,
+   "withdraws": "P-5"
+  }
+ ]
+}

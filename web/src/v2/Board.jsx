@@ -7,6 +7,11 @@
 // preview of a gesture or of an op in flight, which clears when the list reaches the op's
 // version. A read-only page syncs and selects but never sends anything.
 //
+// Collaboration (canvas-v2-phase5.md 12) is one hook, useCollab (collab/): presence halos in the
+// Surface's screen overlay, proposal and freeze cards, the review queue, the collaboration panel
+// under the side panel, and Revert notices. Every batch this page sends carries `base`, the
+// version of the list it was made from; the operator is never refused on it, only warned.
+//
 // Takes the same props as CanvasTab (App renders one or the other), plus onFallback(reason),
 // which sends this page back to the classic canvas when it cannot draw what the server serves.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -20,6 +25,7 @@ import {
   camera as cameraMath,
   createIndex,
   enterableSlotAt,
+  hitTest,
   installQAHook,
   isSupported,
   queryRect,
@@ -35,6 +41,7 @@ import {
   TextEditor,
   Toolbar,
   ViewControls,
+  FREEZE_TOOL,
   answerExport,
   beginGesture,
   combinePreviews,
@@ -51,6 +58,8 @@ import {
   withoutPartText,
 } from "./interact/index.js";
 import "./interact/board.css";
+import { beginFreezeRegion, beneath, collabOps, resultLines, useCollab, withoutOverlays } from "./collab/index.js";
+import "./collab/collab.css";
 
 const MEASURE_MAX_LINES = 200;
 const FONT_METRICS_SHA = typeof __SYNAPSE_FONT_METRICS_SHA__ === "string" ? __SYNAPSE_FONT_METRICS_SHA__ : "";
@@ -288,17 +297,22 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
 
   // -- sending ops -------------------------------------------------------------------------------
 
-  const opQueue = useMemo(() => createOpQueue({ post: (ops) => postJSON(teamPath(team, "ops"), { ops, atomic: false }) }), [team]);
+  const opQueue = useMemo(
+    () => createOpQueue({ post: (ops, { base } = {}) => postJSON(teamPath(team, "ops"), base === null || base === undefined ? { ops, atomic: false } : { ops, atomic: false, base }) }),
+    [team],
+  );
 
   const sendOps = useCallback(
-    async (list, { preview = null, editCreated = false, isUndo = false } = {}) => {
+    async (list, { preview = null, editCreated = false, isUndo = false, base = undefined } = {}) => {
       const opsToSend = (list || []).filter(Boolean);
       if (!writable || !opsToSend.length) return null;
       const key = pending.add(preview);
       let result;
       try {
         // Behind any POST still in flight, with if_version rebased over what those left (V-3).
-        result = await opQueue.send(opsToSend);
+        // `base`: the list this change was made from (the server warns the operator of what
+        // someone else changed since; it never refuses her on it).
+        result = await opQueue.send(opsToSend, { base: base !== undefined ? base : dlRef.current ? dlRef.current.version : null });
       } catch (err) {
         pending.drop(key);
         toast(err instanceof ApiError ? `${err.code}: ${err.message}` : String(err), "error");
@@ -313,7 +327,15 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
       if (!applied.length) pending.drop(key);
       else pending.settle(key, result.version, dlRef.current ? dlRef.current.version || 0 : 0);
       if (refused.length) toast(refusalText(refused), "warn");
-      for (const warning of (result.warnings || []).slice(0, 1)) toast(warning.message, "info");
+      const lines = resultLines(result, { undoSummary: (u) => collabOps.undoSummary(u, who), restoreSummary: collabOps.restoreSummary });
+      for (const line of lines) toast(line.text, line.tone);
+      // An undo's skips are in its summary line already. What someone else changed since the list
+      // this change was made from (stale_base, canvas-v2-phase5.md 12.5) always gets its own toast;
+      // of the rest, the first.
+      const warnings = (result.warnings || []).filter((w) => w && !(lines.length && w.code === "undo_skipped"));
+      const stale = warnings.filter((w) => w.code === "stale_base");
+      if (stale.length) toast(`${stale[0].message}${stale.length > 1 ? ` (and ${stale.length - 1} more)` : ""}`, "info");
+      for (const warning of warnings.filter((w) => w.code !== "stale_base").slice(0, 1)) toast(warning.message, "info");
       const created = applied[0] && applied[0].ids && applied[0].ids[0];
       if (created && editCreated) {
         awaitEdit.current = created;
@@ -324,6 +346,32 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
     },
     [writable, opQueue, toast, undo, pending, client],
   );
+
+  // -- collaboration (canvas-v2-phase5.md 12) ----------------------------------------------------
+
+  const fitView = useMemo(() => fitViewport(viewport, panelOpen), [viewport, panelOpen]);
+  const collab = useCollab({
+    team,
+    writable,
+    store,
+    dl,
+    bus,
+    toast,
+    sendOps,
+    camera: cam,
+    setCamera: setCam,
+    viewport,
+    fitView,
+    selection,
+    setSelection,
+    editingId: editor && editor.id ? editor.id : null,
+    theme,
+    visible,
+    rootRef,
+    elementOf,
+  });
+  const collabRef = useRef(collab);
+  collabRef.current = collab;
 
   // -- the editor ------------------------------------------------------------------------------
 
@@ -388,14 +436,16 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
 
   // -- pointer -----------------------------------------------------------------------------------
 
+  // `base` is the list's version when the gesture began: what the operator was looking at when she
+  // made the change (a drag can outlast someone else's edit to what it moves).
   const applyOutcome = useCallback(
-    (outcome, usedTool) => {
+    (outcome, usedTool, base = undefined) => {
       if (!outcome) return;
       if (outcome.select) setSelection(outcome.select);
       if (outcome.toast) toast(outcome.toast, "info");
       if (outcome.editNewText) openNewText(outcome.editNewText);
-      if (outcome.ops && outcome.ops.length) sendOps(outcome.ops, { preview: outcome.preview, editCreated: outcome.editCreated });
-      if (ONE_SHOT.has(usedTool)) setToolState("select");
+      if (outcome.ops && outcome.ops.length) sendOps(outcome.ops, { preview: outcome.preview, editCreated: outcome.editCreated, base });
+      if (ONE_SHOT.has(usedTool) || usedTool === FREEZE_TOOL) setToolState("select");
     },
     [setSelection, toast, openNewText, sendOps],
   );
@@ -403,8 +453,15 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
   const onPointer = useCallback(
     (ev) => {
       if (!ev) return;
+      // A freeze's outline hugs what it freezes: over an element, the element is what the pointer
+      // is on (its hover, its double-click); the outline keeps the empty space around it.
+      if ((ev.type === "hover" || ev.type === "dblclick") && ev.hit && /^X-/.test(ev.hit) && modelRef.current.entry(ev.hit)?.kind === "freeze") {
+        const below = hitTest(indexRef.current, ev.world, ev.scale, { skip: [ev.hit] });
+        if (below && !/^(P|X)-/.test(below)) ev = { ...ev, hit: below };
+      }
       switch (ev.type) {
         case "hover":
+          collabRef.current.onCursor(ev.world);
           setHover(ev.hit || null);
           setHoverAt(ev.hit ? ev.screen : null);
           setHoverPart((prev) => {
@@ -422,6 +479,20 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
           // A press outside the entered slot (the slot keeps its own presses) leaves it.
           if (enteredRef.current) setEntered(null);
           const usedTool = toolRef.current;
+          // A proposal's ghost or a freeze's outline opens its card; neither is ever moved or resized:
+          // a press they do not take goes to what lies beneath them.
+          const hitBelow = (e, skip) => hitTest(indexRef.current, e.world, e.scale, { skip });
+          if (collabRef.current.onDown(ev, usedTool, hitBelow)) {
+            gesture.current = null;
+            setHoverAt(null);
+            return;
+          }
+          ev = beneath(ev, dlRef.current, hitBelow);
+          if (usedTool === FREEZE_TOOL) {
+            const g = writable && ev.button === 0 ? beginFreezeRegion(ev) : null;
+            gesture.current = g ? { g, tool: usedTool, base: dlRef.current ? dlRef.current.version : null } : null;
+            return;
+          }
           const g = beginGesture(usedTool, ev, {
             model: modelRef.current,
             selection: selectionRef.current,
@@ -429,11 +500,12 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
             query: (rect) => queryRect(indexRef.current, rect, { mode: "contain" }),
             setSelection,
           });
-          gesture.current = g ? { g, tool: usedTool } : null;
+          gesture.current = g ? { g, tool: usedTool, base: dlRef.current ? dlRef.current.version : null } : null;
           setHoverAt(null);
           return;
         }
         case "move": {
+          collabRef.current.onCursor(ev.world);
           const current = gesture.current;
           if (!current) return;
           const preview = current.g.update(ev);
@@ -444,7 +516,7 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
           const current = gesture.current;
           gesture.current = null;
           setLivePreview(null);
-          if (current) applyOutcome(current.g.finish(ev), current.tool);
+          if (current) applyOutcome(current.g.finish(ev), current.tool, current.base);
           return;
         }
         case "cancel": {
@@ -514,7 +586,8 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
         if (cmd.command === "pan_end") setSpaceHeld(false);
         return;
       }
-      const sel = selectionRef.current;
+      // Proposals and freezes can be selected (to open their cards) but are never an op's target.
+      const sel = withoutOverlays(selectionRef.current);
       const m = modelRef.current;
       switch (cmd.command) {
         case "pan_start":
@@ -528,6 +601,7 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
           setTool(cmd.tool);
           return;
         case "cancel":
+          if (event.type === "keydown" && !gesture.current && collabRef.current.onEscape()) return;
           if (gesture.current) {
             gesture.current.g.cancel();
             gesture.current = null;
@@ -578,6 +652,12 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
         case "redo":
           event.preventDefault();
           toast(NO_REDO, "info");
+          return;
+        case "review_prev":
+        case "review_next":
+          if (collabRef.current.review.at === null) return;
+          event.preventDefault();
+          collabRef.current.review.step(cmd.command === "review_next" ? 1 : -1);
           return;
         default:
       }
@@ -697,7 +777,7 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
       }
     },
     lock: async (label) => {
-      const box = unionBox(selection.map((id) => model.entry(id)));
+      const box = unionBox(withoutOverlays(selection).map((id) => model.entry(id)));
       if (!box) return toast("select the area to lock first", "info");
       const pad = 20;
       await sendOps([{ op: "lock", region: [box[0] - pad, box[1] - pad, box[2] + pad, box[3] + pad].map(Math.round), label: label || "hands off" }]);
@@ -794,7 +874,9 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
           entered={entered}
           onEnter={setEntered}
           onOps={writable ? onSlotOps : null}
+          screenOverlay={collab.overlays.screen}
         >
+          {collab.overlays.cards}
           {editor ? (
             <TextEditor
               key={editor.id ? `${editor.id}:${editor.part || ""}` : `new:${editor.at}`}
@@ -808,7 +890,16 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
           ) : null}
         </Surface>
       </div>
-      <Toolbar tool={tool} onTool={setTool} writable={writable} />
+      <Toolbar
+        tool={tool}
+        onTool={setTool}
+        writable={writable}
+        onFreeze={() => {
+          if (tool === FREEZE_TOOL) setTool("select");
+          else if (!collab.freezeSelection()) setTool(FREEZE_TOOL);
+        }}
+        review={{ count: collab.review.count, open: collab.review.at !== null, onToggle: collab.review.toggle }}
+      />
       {writable ? (
         <StyleBar
           count={styled.length}
@@ -849,18 +940,22 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
         </div>
       ) : null}
       {panelOpen ? (
-        <SidePanel
-          team={team}
-          teamRow={teamRow}
-          writable={writable}
-          store={store}
-          selection={selection}
-          hidden={hidden}
-          theme={theme}
-          actions={actions}
-          onClose={() => setPanelOpen(false)}
-        />
+        <div className="cv2-side">
+          <SidePanel
+            team={team}
+            teamRow={teamRow}
+            writable={writable}
+            store={store}
+            selection={withoutOverlays(selection)}
+            hidden={hidden}
+            theme={theme}
+            actions={actions}
+            onClose={() => setPanelOpen(false)}
+          />
+          {collab.overlays.panel}
+        </div>
       ) : null}
+      {collab.overlays.chrome}
     </div>
   );
 }

@@ -1,0 +1,59 @@
+{
+ "aliases": {},
+ "applied": [
+  {
+   "ids": [
+    "E-4",
+    "K-2",
+    "K-1"
+   ],
+   "index": 0,
+   "op": "undo",
+   "undo": {
+    "batches": [
+     "B-13",
+     "B-12",
+     "B-8",
+     "B-7",
+     "B-6",
+     "B-3",
+     "B-2"
+    ],
+    "of": 2,
+    "restored": 1,
+    "skipped": [
+     {
+      "by": "human",
+      "id": "E-3",
+      "seq": 17
+     }
+    ],
+    "withdrew": [
+     "P-1"
+    ]
+   }
+  }
+ ],
+ "atomic": false,
+ "batch": "B-15",
+ "check": null,
+ "geometry": [],
+ "notices": {
+  "canvas_changed": null,
+  "canvas_sent": []
+ },
+ "proposed": [],
+ "refused": [],
+ "team": "qa",
+ "version": 18,
+ "warnings": [
+  {
+   "code": "undo_skipped",
+   "ids": [
+    "E-3"
+   ],
+   "index": 0,
+   "message": "1 of 2 reverted; E-3 edited by the operator later (v17): force it with \"force\": true (the operator)"
+  }
+ ]
+}

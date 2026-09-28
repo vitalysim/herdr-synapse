@@ -1,0 +1,31 @@
+{
+ "aliases": {},
+ "applied": [
+  {
+   "ids": [
+    "E-6"
+   ],
+   "index": 0,
+   "op": "restore",
+   "restore": {
+    "added": 0,
+    "changed": 0,
+    "deleted": 1,
+    "from": "V-1"
+   }
+  }
+ ],
+ "atomic": false,
+ "batch": "B-18",
+ "check": null,
+ "geometry": [],
+ "notices": {
+  "canvas_changed": null,
+  "canvas_sent": []
+ },
+ "proposed": [],
+ "refused": [],
+ "team": "qa",
+ "version": 21,
+ "warnings": []
+}

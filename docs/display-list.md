@@ -45,7 +45,7 @@ move text, and never compute geometry.
 
 ## Entry
 
-One per element, claim (`K-n`) or lock (`X-n`).
+One per element, claim (`K-n`), lock (`X-n`), and since phase 5 freeze (`X-n`) and open proposal (`P-n`).
 
 ```json
 {"id": "E-4", "kind": "box", "layer": "marks", "z": 7, "v": 12,
@@ -77,6 +77,44 @@ One per element, claim (`K-n`) or lock (`X-n`).
 | `block`, `part` | Optional, together: a block member's root id and its item id (`c2`). |
 | `container` | Optional: a stack container's `{"layout": "row" \| "column" \| "grid", "gap": n, "order": [ids]}`, the page's drop hint. The index a drop takes is `tests/fixtures/display/stack-drop-vectors.json`'s rule. |
 | `tip` | Optional: the element's `detail`, cut to 500 characters, for a tooltip. |
+| `frozen` | Optional (phase 5): `true` when a freeze covers the element (an id freeze's elements and what they hold, or a region freeze's). |
+| `pending` | Optional (phase 5): the open proposals (`["P-3"]`) aimed at the element; the page may mark it. |
+
+### Proposals and freezes (canvas v2 phase 5)
+
+An open proposal (`P-n`) is an entry of kind `proposal` in `overlays`, at `z`
+1,000,000 plus its number, drawn by Python so the agent's picture and the page
+show the same ghost (`canvas_collab.proposal_entry`):
+
+```json
+{"id": "P-3", "kind": "proposal", "layer": "overlays", "z": 1000003, "v": 412,
+ "bbox": [..], "hit": {"shape": "rect", "box": [..]}, "handles": "none", "connect": false, "edit": null,
+ "frame": null, "author": "alpha", "chip": {"bg": "chip.0.bg", "fg": "chip.0.fg", "initials": "AL"}, "locked": false,
+ "proposal": {"author": "alpha", "intent": "…", "reason": "human_made", "reasons": ["human_made"], "outdated": false,
+              "targets": ["E-4"], "created": [], "deleted": [], "batch": "B-40", "summary": ["…"], "base_note": []},
+ "items": [Primitive, ...]}
+```
+
+Its `items` are, in order: each proposed element's own items at half its
+opacity (`op`; a browser-drawn slot becomes its drawing, or a dashed box); a
+dashed `tone.accent.stroke` line from each moved element's old centre to its
+new one; a dashed `tone.danger.stroke` box over each element it deletes; an
+outline around it all (`tone.warning.stroke` when outdated, else
+`tone.accent.stroke`); and a label pill above the outline's top-left in the
+author's chip colours, "P-3 · alpha suggests: <intent>" (with " (outdated)"),
+from scale 0.35 up. `outdated` is computed when the list is made: a target
+changed or went since the proposal was made, or a new element's container went.
+A decided proposal is not in the list (a delta removes it).
+
+A freeze (`X-n`, sharing the counter with locks) is an entry of kind `freeze`
+in `overlays` at `z` -3: a dashed `tone.info.stroke` rect over its region, or
+around the current union of its elements' boxes (it follows them), and the
+label "X-6 frozen: <label>" below it. Its `hit` is `{"shape": "frame", "box",
+"band": 12}` (the rim only), and it carries `"freeze": {"region" | "ids",
+"label", "mode": "propose" | "refuse"}` (`mode` is the team's `frozen` setting).
+
+A delta redraws a proposal whose target changed and an id freeze whose element
+changed; a change to a proposal, a freeze or the settings sends the whole list.
 
 ## Primitives
 

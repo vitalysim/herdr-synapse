@@ -47,4 +47,10 @@ describe("keymap", () => {
     expect(commandOf(key("0", { metaKey: true }), ro)).toEqual({ command: "fit" });
     expect(commandOf(key("Escape"), ro)).toEqual({ command: "cancel" });
   });
+  it("[ and ] step through the review queue (canvas-v2-phase5.md 12.3), on any page", () => {
+    expect(commandOf(key("["))).toEqual({ command: "review_prev" });
+    expect(commandOf(key("]"), { writable: false })).toEqual({ command: "review_next" });
+    expect(commandOf(key("[", { metaKey: true }))).toBeNull();
+    expect(commandOf(key("]", { target: { tagName: "INPUT", type: "text" } }))).toBeNull();
+  });
 });

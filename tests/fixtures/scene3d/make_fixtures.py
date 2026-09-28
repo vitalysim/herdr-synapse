@@ -177,7 +177,7 @@ def committed() -> Dict[Path, bytes]:
 REPO = FIXTURES.parent.parent
 TOPOLOGY = {"op": "scene3d", "id": "topo", "intent": "the prod topology in 3D", "title": "Prod topology", "units": "m", "camera": "iso",
             "lights": "studio", "ground": True, "labels": "auto",
-            "objects": [{"id": "base", "shape": "plane", "size": [8, 5], "tone": "neutral"},
+            "objects": [{"id": "base", "shape": "plane", "tone": "neutral"},
                         {"id": "lb", "shape": "box", "size": [1.2, 0.4, 1.2], "tone": "info", "label": "Load balancer", "on": "base", "at": [-3, 0]},
                         {"id": "api", "shape": "group", "layout": "row", "gap": 0.3, "on": "base", "right_of": "lb", "label": "API pool"},
                         {"id": "api1", "shape": "box", "size": [0.8, 1.2, 0.8], "tone": "accent", "in": "api"},
@@ -207,7 +207,7 @@ HUB = {"op": "scene3d", "id": "hub", "intent": "event bus consumers", "title": "
                    {"id": "d", "shape": "cone", "radius": 0.35, "height": 0.7, "tone": "danger", "label": "fraud", "around": "bus"}],
        "links": [{"from": "a", "to": "bus"}, {"from": "b", "to": "bus"}, {"from": "c", "to": "bus"}, {"from": "d", "to": "bus", "label": "alerts"}]}
 SHAPES = {"op": "scene3d", "id": "shapes", "intent": "every primitive once", "title": "Every primitive", "labels": "all",
-          "objects": [{"id": "floor", "shape": "plane", "size": [9, 6], "thickness": 0.05},
+          "objects": [{"id": "floor", "shape": "plane", "thickness": 0.05},
                       {"id": "turned", "shape": "box", "size": [1.6, 0.5, 0.8], "rotate": 30, "tone": "info", "on": "floor", "at": [-3, -1.5]},
                       {"id": "ball", "shape": "sphere", "radius": 0.4, "tone": "warning", "on": "floor", "at": [-1, -1.5]},
                       {"id": "tank", "shape": "cylinder", "radius": 0.5, "height": 1.2, "tone": "success", "on": "floor", "at": [1, -1.5]},

@@ -14,7 +14,15 @@ const EMPTY = Object.freeze({
   authors: {},
   batches: {},
   counters: {},
+  // Phase 5 (canvas-v2-phase5.md I-4); the classic canvas never reads them.
+  proposals: [],
+  freezes: [],
+  checkpoints: [],
+  settings: {},
 });
+
+// The decided proposals the store keeps beside the open ones (the scene carries the 20 newest).
+const DECIDED_KEPT = 20;
 
 function listPut(list, id, value) {
   const at = list.findIndex((item) => item && item.id === id);
@@ -42,8 +50,13 @@ export function foldEvents(scene, events) {
     homes: { ...scene.homes },
     authors: { ...scene.authors },
     batches: { ...scene.batches },
+    proposals: (scene.proposals || []).slice(),
+    freezes: (scene.freezes || []).slice(),
+    checkpoints: (scene.checkpoints || []).slice(),
+    settings: { ...(scene.settings || {}) },
   };
   let resort = false;
+  let decided = false;
   for (const event of events) {
     if (!event || typeof event !== "object") continue;
     for (const change of event.changes || []) {
@@ -65,7 +78,21 @@ export function foldEvents(scene, events) {
       } else if (target === "author") {
         if (value === null) delete next.authors[id];
         else next.authors[id] = value;
+      } else if (target === "proposal") {
+        listPut(next.proposals, id, value);
+        decided = true;
+      } else if (target === "freeze") {
+        listPut(next.freezes, id, value);
+      } else if (target === "checkpoint") {
+        listPut(next.checkpoints, id, value);
+      } else if (target === "setting") {
+        if (value === null) delete next.settings[id];
+        else next.settings[id] = value;
       }
+    }
+    // An undo marks what it undid (one batch, or several for undo {author}).
+    for (const undone of [event.undoes, ...(Array.isArray(event.undoes_all) ? event.undoes_all : [])]) {
+      if (typeof undone === "string" && next.batches[undone]) next.batches[undone] = { ...next.batches[undone], undone: true };
     }
     if (event.batch) {
       const current = next.batches[event.batch];
@@ -81,6 +108,13 @@ export function foldEvents(scene, events) {
     next.updated_at = event.ts ?? next.updated_at;
   }
   if (resort) sortByZ(next.elements);
+  if (decided) {
+    const closed = next.proposals.filter((p) => p && p.status !== "open");
+    if (closed.length > DECIDED_KEPT) {
+      const drop = new Set(closed.slice(0, closed.length - DECIDED_KEPT).map((p) => p.id));
+      next.proposals = next.proposals.filter((p) => !drop.has(p.id));
+    }
+  }
   return next;
 }
 

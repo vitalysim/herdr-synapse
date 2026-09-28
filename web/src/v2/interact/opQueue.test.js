@@ -162,4 +162,33 @@ describe("createOpQueue", () => {
     expect(calls).toBe(2);
     expect(queue.idle()).toBe(true);
   });
+
+  // canvas-v2-phase5.md 3.1: a batch's base is the version its author last read. It rides through
+  // the queue unchanged, even when the ops ahead land and its if_version is moved up over them:
+  // the author's own changes never make an op stale, and what those sends report may include a
+  // change by someone else that the author has not seen.
+  test("base is carried through the queue, not moved up over the sends ahead", async () => {
+    const server = fakeServer();
+    const seen = [];
+    const queue = createOpQueue({
+      post: (ops, opts) => {
+        seen.push(opts);
+        return server.post(ops);
+      },
+    });
+    const first = queue.send([move("E-6", 40, 9)], { base: 9 });
+    const second = queue.send([move("E-6", 20, 9)], { base: 9 });
+    const third = queue.send([move("E-7", 20, 9)]);
+    const fourth = queue.send([move("E-7", 20, 9)], { base: "last" });
+    await server.release();
+    await first;
+    await server.release();
+    await second;
+    await server.release();
+    await third;
+    await server.release();
+    await fourth;
+    expect(server.posts[1][0].if_version).toBe(10); // rebased over the first
+    expect(seen.map((o) => o.base)).toEqual([9, 9, null, null]);
+  });
 });

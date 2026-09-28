@@ -108,13 +108,13 @@ big block reads best with `--region <block>` (zoomed out, bodies are bars).
 
 ## Working together
 
-- `look --since last` shows what changed since you last looked. Drawing puts
-  one line per author per minute on the board and never wakes anyone.
-- A claim lasts five minutes; stay out of another member's claim unless asked.
-- The operator may lock a region (your operations there are refused), undo
-  any batch, resolve comments and hide an author's marks.
-- `canvas portrait --from-todo` (or `--step "..." --current N`) keeps a small
-  frame of your plan in your home area, where the operator follows it.
+- `look --since last` shows what changed and the `operator:` line (what she
+  views, selects, edits); draw with `--base last` so you never overwrite her.
+- Your lane is your claims and home; outside it, and on the operator's marks,
+  changes become proposals she accepts or rejects (`look` shows the outcome).
+- The operator may lock or freeze a region, undo any batch and restore a
+  checkpoint; `canvas portrait --from-todo` keeps your plan in your home.
+- Proposals, freezes, focus, reverts, checkpoints: `--reference canvas-collab`.
 - Authorship is set by Synapse; nothing you draw can pass as the operator's.
 - `whiteboard_off` or `viz_off` means the operator switched that off: post
   text instead, and do not work around it.

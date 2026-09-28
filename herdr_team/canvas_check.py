@@ -394,14 +394,43 @@ def _arrows_through(arrows: List[Dict[str, Any]], solid: List[Dict[str, Any]], r
     return out
 
 
+def _gap(box: Sequence[float], other: Sequence[float]) -> float:
+    return max(0.0, max(other[0] - box[2], box[0] - other[2])) + max(0.0, max(other[1] - box[3], box[1] - other[3]))
+
+
 def _strays(marks: List[Dict[str, Any]], reader: Optional[str], by_id: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
     if len(marks) < STRAY_MIN_MARKS:
         return []
     boxes = [(el, box_of(el)) for el in marks]
+    # A mark with another within STRAY_GAP is not a stray, and that other meets its box grown by STRAY_GAP: look only in the
+    # grid cells that box covers (a 2,000-mark board was 4 million pairs; QA phase 5 L13). Marks too big for the grid are
+    # always looked at. Only a stray pays for its exact nearest distance.
+    cell = STRAY_GAP
+    grid: Dict[Tuple[int, int], List[int]] = {}
+    big: List[int] = []
+
+    def cells(box: Sequence[float]) -> Optional[List[Tuple[int, int]]]:
+        i0, i1 = int(math.floor(box[0] / cell)), int(math.floor(box[2] / cell))
+        j0, j1 = int(math.floor(box[1] / cell)), int(math.floor(box[3] / cell))
+        if (i1 - i0 + 1) * (j1 - j0 + 1) > 64:
+            return None
+        return [(i, j) for i in range(i0, i1 + 1) for j in range(j0, j1 + 1)]
+
+    for index, (_el, box) in enumerate(boxes):
+        found = cells(box)
+        if found is None:
+            big.append(index)
+            continue
+        for key in found:
+            grid.setdefault(key, []).append(index)
     out = []
-    for el, box in boxes:
-        nearest = min((max(0.0, max(other[0] - box[2], box[0] - other[2])) + max(0.0, max(other[1] - box[3], box[1] - other[3]))
-                       for o, other in boxes if o is not el), default=0.0)
+    for index, (el, box) in enumerate(boxes):
+        reach = (box[0] - STRAY_GAP, box[1] - STRAY_GAP, box[2] + STRAY_GAP, box[3] + STRAY_GAP)
+        keys = cells(reach)
+        near = big + ([i for key in keys for i in grid.get(key, ())] if keys is not None else range(len(boxes)))
+        if any(i != index and _gap(box, boxes[i][1]) <= STRAY_GAP for i in near):
+            continue
+        nearest = min((_gap(box, other) for o, other in boxes if o is not el), default=0.0)
         if nearest > STRAY_GAP:
             out.append(_problem("stray", [el["id"]],
                                 "{} is {} units from everything else; move it next to what it belongs with".format(_name(el), int(nearest)),

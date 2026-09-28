@@ -22,9 +22,11 @@
    direction, away from the reference, by the overlap plus the gap, and the
    push is a note (``cache overlapped api by 0.20 m; moved up 0.30``). After
    3 pushes it stays, with the conflict ``unresolved_overlap``.
-5. **Links** become segments between the points where the line between two
+5. **Floors.** A top-level plane with no ``size`` (a primitive whose ``hugs``
+   says so) is sized to what rests on it, with a margin, and centred under it.
+6. **Links** become segments between the points where the line between two
    boxes' centres leaves each box.
-6. Every number is snapped to 1e-4 (``_vec.snap``), so 3.9 and 3.14 agree.
+7. Every number is snapped to 1e-4 (``_vec.snap``), so 3.9 and 3.14 agree.
 
 The result (``Solved``) is a plain dict; ``compact`` and ``expand`` convert it
 to and from the element's stored form (``docs/scene3d.md``).
@@ -32,6 +34,7 @@ to and from the element's stored form (``docs/scene3d.md``).
 from __future__ import annotations
 
 import heapq
+import math
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from herdr_team import canvas_scene3d as S
@@ -42,6 +45,9 @@ from herdr_team.canvas_scene3d.relations import Placing, Relation
 MAX_PUSHES = 3
 #: A group's default spacing between its children.
 GROUP_GAP = 0.2
+#: The margin a floor that fits what stands on it keeps around their footprint: the larger of these shares of its longer
+#: and its shorter side.
+HUG_MARGIN = (0.1, 0.25)
 #: What a push reads as, by axis and sign.
 _WORDS = {(0, 1): "right", (0, -1): "left", (1, 1): "up", (1, -1): "down", (2, 1): "forward", (2, -1): "back"}
 SOLVED_VERSION = 1
@@ -446,6 +452,56 @@ def _solve_group(scene: _Scene, gid: str) -> None:
     scene.ext[gid] = tuple(max(0.001, v) for v in V.box_size(union))  # type: ignore[assignment]
 
 
+def _riders(scene: _Scene, ident: str) -> List[str]:
+    """The top-level objects resting on ``ident`` (a contact relation, ``on`` or ``inside``, naming it) and, through them,
+    everything placed against those (``cache`` above ``api``, ``replica`` behind ``db``): what a floor under them covers.
+    Something merely beside ``ident`` (``right_of`` it) is not on it."""
+    members: List[str] = []
+    found = {ident}
+    grew = True
+    while grew:
+        grew = False
+        for other in scene.order:
+            obj = scene.obj[other]
+            if other in found or obj.get("in") is not None or scene.is_arrow(other):
+                continue
+            for rel in relations.of(obj):
+                ref = scene.ancestor_in(str(obj[rel.name]), None) if str(obj[rel.name]) in scene.obj else None
+                if ref is not None and ((ref == ident and rel.contact) or (ref != ident and ref in found)):
+                    found.add(other)
+                    members.append(other)
+                    grew = True
+                    break
+    return members
+
+
+def _hug(scene: _Scene) -> None:
+    """Size each top-level, unturned object whose primitive ``hugs`` to what rests on it (3.3, QA phase34 composition: a
+    floor declared far larger than its content left it crammed in a corner): its width and depth cover their footprint
+    with ``HUG_MARGIN``, rounded up to 0.1, centred under them. A floor on a floor is fitted first. Nothing rests on it:
+    it keeps its primitive's size."""
+    todo = []
+    for ident in scene.order:
+        prim = scene.prim[ident]
+        obj = scene.obj[ident]
+        if prim is None or prim.hugs is None or obj.get("in") is not None or any(abs(v) > 1e-9 for v in scene.rot[ident]):
+            continue
+        if prim.hugs(obj):
+            riders = _riders(scene, ident)
+            if riders:
+                todo.append((len(riders), scene.index[ident], ident, riders))
+    for _n, _i, ident, riders in sorted(todo):
+        boxes = [box for other in riders for _id, box in scene.leaves(other, scene.local[other])]
+        if not boxes:
+            continue
+        union = V.union(boxes)
+        span = sorted((union[3] - union[0], union[5] - union[2]))
+        margin = max(HUG_MARGIN[0] * span[1], HUG_MARGIN[1] * span[0], 0.05)
+        size = [min(S.MAX_SIZE, math.ceil(round((union[k + 3] - union[k] + 2 * margin) * 10.0, 6)) / 10.0) for k in (0, 2)]
+        scene.ext[ident] = (size[0], scene.ext[ident][1], size[1])
+        scene.local[ident] = ((union[0] + union[3]) / 2.0, scene.local[ident][1], (union[2] + union[5]) / 2.0)
+
+
 def _world(scene: _Scene, ident: str) -> V.Vec:
     if ident in scene.world:
         return scene.world[ident]
@@ -471,6 +527,7 @@ def solve(objects: Sequence[Mapping[str, Any]], links: Sequence[Mapping[str, Any
     for ident in scene.order:
         scene.rot.setdefault(ident, [0.0, 0.0, 0.0])
     _solve_scope(scene, scene.children.get(None, []), None, [])
+    _hug(scene)
     out_objects: Dict[str, Dict[str, Any]] = {}
     leaf_boxes: List[Box] = []
     for ident in scene.order:

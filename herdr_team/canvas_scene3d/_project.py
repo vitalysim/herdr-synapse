@@ -28,8 +28,8 @@ the still views (``iso``, ``front``, ``top``), as display-list primitives inside
    under its object (just under its outline where the label spans it, not
    under its bounding box), then beside it on a leader line (right, then left). A spot
    that covers no other object (what holds the labelled one up aside), leader
-   included, wins over one that does. A label that meets another label
-   everywhere is dropped from the picture (``labels: all`` keeps it) and
+   included, wins over one that does; with none, the spot that covers the least
+   of them. A label that meets another label everywhere is dropped from the picture (``labels: all`` keeps it) and
    reported for ``scene3d_labels``.
 6. **Ground.** A grid in ``base.grid`` under everything, over the bounds'
    footprint.
@@ -271,6 +271,9 @@ def _solid(obj: Mapping[str, Any], entry: Mapping[str, Any], view: View, index: 
     prim = S.get(obj.get("shape")) or S.get("box")
     if prim is None or prim.container or obj.get("shape") == "arrow3d":
         return None
+    if prim.hugs is not None and prim.hugs(dict(obj)) and entry.get("ext"):
+        # A floor fitted to what stands on it is the size the solver gave it, not its params' (``_solver._hug``).
+        obj = dict(obj, size=[float(entry["ext"][0]), float(entry["ext"][2])])
     box = tuple(entry["aabb"])
     corners = [view.p(c) for c in V.corners(box)]
     rect = (min(c[0] for c in corners), min(c[1] for c in corners), max(c[0] for c in corners), max(c[1] for c in corners))
@@ -352,8 +355,9 @@ def _place_label(text: str, anchor: P2, placed: List[Sequence[float]], box: Sequ
                  corners: Sequence[P2] = ()) -> Tuple[Optional[Tuple[float, float, float, float]], Optional[Tuple[P2, P2]], bool]:
     """Where a label goes (3.8 point 5): above its object, moved up in steps (with a line back once it is well clear),
     then under it, then beside it on a leader, right then left (``outline``: the object's ``x0, y0, x1, y1`` on the
-    picture; ``corners``, its projected corners, put the spots under it just under its outline). A spot clear of ``avoid`` (every other object but what holds this one up), leader line included, is
-    preferred; only other labels and the box's edge rule a spot out. None when every spot meets another label
+    picture; ``corners``, its projected corners, put the spots under it just under its outline). A spot clear of
+    ``avoid`` (every other object but what holds this one up), leader line included, is preferred, else the one that covers
+    the least of them; only other labels and the box's edge rule a spot out. None when every spot meets another label
     (``keep``: the first spot anyway, and the last value says it is crowded)."""
     bx0, by0, bx1, by1 = box[0], box[1], box[0] + box[2], box[1] + box[3]
 
@@ -371,12 +375,33 @@ def _place_label(text: str, anchor: P2, placed: List[Sequence[float]], box: Sequ
              max(r[3] for r, _l in spots) + 1)
     placed = [other for other in placed if _rects_meet(reach, other)]
     avoid = [other for other in avoid if _rects_meet(reach, other)]
-    for strict in ((True, False) if avoid else (False,)):
-        for rect, leader in spots:
-            if inside(rect) and not any(_rects_meet(rect, other) for other in placed) and not (strict and not clear(rect, leader)):
+    free = []
+    for rect, leader in spots:
+        if inside(rect) and not any(_rects_meet(rect, other) for other in placed):
+            if clear(rect, leader):
                 return rect, leader, False
+            free.append((rect, leader))
+    if free:
+        # No spot clears every other object: the one that covers the least of them (the first such, on a tie), so a label
+        # crowded in among objects still sits mostly off the others (QA phase34 N1).
+        rect, leader = min(free, key=lambda spot: _covered(spot[0], spot[1], avoid))
+        return rect, leader, False
     first = spots[0][0]
     return (first if keep else None), None, keep
+
+
+def _covered(rect: Sequence[float], leader: Optional[Tuple[P2, P2]], avoid: Sequence[Sequence[float]]) -> float:
+    """How much of other objects a label at ``rect`` covers: the area it shares with each, and a quarter of its own area for
+    each one its leader line crosses."""
+    area = 0.0
+    for other in avoid:
+        w = min(rect[2], other[2]) - max(rect[0], other[0])
+        h = min(rect[3], other[3]) - max(rect[1], other[1])
+        if w > 0 and h > 0:
+            area += w * h
+        if leader is not None and _segment_meets(leader[0], leader[1], other):
+            area += 0.25 * (rect[2] - rect[0]) * (rect[3] - rect[1])
+    return area
 
 
 def _segment_meets(a: P2, b: P2, rect: Sequence[float], inset: float = 2.0) -> bool:

@@ -53,7 +53,7 @@ Neither `canvas_scene3d` nor its modules import `canvas` or `canvas_kinds`: file
 | `sphere` | `radius` (0.5) | `2r` each way | a circle |
 | `cylinder` | `radius` (0.5), `height` (1), `segments` (24, page only) | `2r, h, 2r` | its hull (two half ellipses and their tangents), and its cap when seen |
 | `cone` | `radius` (0.5), `height` (1) | `2r, h, 2r` | the base ellipse and the tangents from the apex |
-| `plane` | `size [w, d]` (4, 4), `thickness` (0.02) | `w, t, d` | a thin box |
+| `plane` | `size [w, d]`, or none (`"fit"`) to fit what stands on it; `thickness` (0.02) | `w, t, d` (4 × 4 while solving a fitted one) | a thin box |
 | `text3d` | `text`, `height` (0.3), `billboard` (true) | the text's measured width at that height | text at its centre |
 | `arrow3d` | `from`, `to` (ids or points), `radius` (0.04), `head` (0.15) | the segment's box | an arrow with a head |
 | `group` | `layout` (row), `gap` (0.2), `cols`, `radius` | the union of its children | its children |
@@ -98,8 +98,12 @@ An object's position is the centre of its footprint at its base. `R` is the refe
    with `overlap: true`: a hit is pushed along the relation's direction (`around`: outward; `on`/`inside`: +x) by the
    overlap and the gap, and noted (`c overlapped b by 1.00 m; moved right 1.30`). After three pushes it stays, with the
    conflict `unresolved_overlap`.
-6. Links run between the points where the line between two boxes' centres leaves each box.
-7. Every number is snapped to 1e-4, so Python 3.9 and 3.14 write the same scene.
+6. Fitted floors (a primitive whose `hugs(params)` says so: a `plane` with no `size`), top-level and unturned: its width
+   and depth cover the footprint of what rests on it (`on`, `inside`) and of what is placed against those, plus a margin
+   (the larger of 10 % of the footprint's longer side and 25 % of its shorter), rounded up to 0.1 and centred under
+   them; a floor on a floor is fitted first. Nothing on it: 4 × 4. Readback says `plane 7.1×4.5 fitted`.
+7. Links run between the points where the line between two boxes' centres leaves each box.
+8. Every number is snapped to 1e-4, so Python 3.9 and 3.14 write the same scene.
 
 The whole solve of 150 objects takes about 45 ms. It runs in `Block.load`, before the canvas lock (with the glTF
 reads), and again under the lock only when the op the lock sees differs from what was loaded (a patch).
@@ -109,7 +113,7 @@ reads), and again under the lock only when the op the lock sees differs from wha
 ```json
 {"type": "scene3d", "kv": 1, "text": "Prod topology", "alias": "topo", "x": 0, "y": 0, "w": 640, "h": 420,
  "settings": {"units": "m", "camera": "iso", "lights": "studio", "ground": true, "labels": "auto"},
- "objects": [{"id": "base", "shape": "plane", "size": [8, 5], "tone": "neutral"}, "..."],
+ "objects": [{"id": "base", "shape": "plane", "tone": "neutral"}, "..."],
  "links": [{"id": "lb->api", "from": "lb", "to": "api"}, "..."],
  "solved": {"v": 1, "bounds": [-4, 0, -2.5, 4, 2.22, 2.5],
             "objects": [["base", [0, 0, 0], [0, 0, 0], [8, 0.02, 5], null, ""],

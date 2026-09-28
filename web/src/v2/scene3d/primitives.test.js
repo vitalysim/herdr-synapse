@@ -56,6 +56,16 @@ describe("primitives", () => {
     }
   });
 
+  test("a plane with no size (or fit) takes the size the server fitted it to", () => {
+    const def = primitiveOf("plane");
+    for (const size of [undefined, "fit"]) {
+      const { size: got } = boundsOf(def.build({ id: "f", shape: "plane", size }, { ext: [7.1, 0.02, 4.5] }, ctx()));
+      [7.1, 0.02, 4.5].forEach((v, i) => expect(got[i]).toBeCloseTo(v, 4));
+    }
+    const { size: given } = boundsOf(def.build({ id: "f", shape: "plane", size: [8, 5] }, { ext: [7.1, 0.02, 4.5] }, ctx()));
+    expect(given[0]).toBeCloseTo(8, 4);
+  });
+
   test("text3d takes its width from the solved extent (Python measured it) and its height", () => {
     const def = primitiveOf("text3d");
     const { size, min } = boundsOf(def.build({ id: "t", shape: "text3d", text: "payload 1.2 kg", height: 0.08 }, { ext: [0.6, 0.08, 0.01] }, ctx()));

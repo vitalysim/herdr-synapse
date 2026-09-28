@@ -21,6 +21,20 @@ A scene is a golden scene name (``tests/fixtures/canvas_scenes``), a scene file,
 the operator so no rate limit applies). ``--writable`` opens the page as the
 operator in person (it may draw); without it the page is read-only.
 
+While it serves, the rig reads commands on stdin, one JSON object per line, and
+answers each with one JSON line on stdout (canvas v2 phase 5, I-9), so a test can
+act as other agents while a person uses the page. ``as`` is ``drawer`` (the
+scene's member), ``peer`` (a second member), ``deputy`` (a member with an
+operator grant) or ``lead`` (the operator in person over the CLI path)::
+
+    {"as": "drawer", "ops": [...], "base": 12}        -> {"result": <apply result>}
+    {"as": "peer", "focus": {"region": "c0r0:c20r10", "intent": "...", "status": "drawing", "ttl_s": 60}}  -> {"ok": true}
+    {"as": "drawer", "look": {"region": "operator", "since": "last", "proposals": true}}  -> {"look": <look JSON>}
+    {"settings": {"human_edits": "live"}}              -> {"result": <apply result>}   (as the lead)
+    {"human": {"page": "0123456789abcdef", "viewport": [0, 0, 800, 600], "selection": ["E-1"]}}  -> {"ok": true}
+
+A refusal answers ``{"error": {"code", "message", ...}}``. Closing stdin stops the rig.
+
 Stdlib only; it imports ``herdr_team`` and ``canvas_qa`` from this checkout.
 """
 from __future__ import annotations
@@ -69,18 +83,69 @@ def build(qa: Q.QaTeam, scene: str) -> None:
             C.check_applied(C.apply_ops(qa.layout, qa.team, batch, operator))
         return
     [path] = Q.scene_files([scene])
-    result = Q.apply_scene(qa, Q.load_scene_file(path))
+    doc = Q.load_scene_file(path)
+    result = Q.apply_scene(qa, doc)
     if result["refused"]:
         raise SystemExit("scene {}: {} op(s) refused: {}".format(scene, len(result["refused"]), result["refused"][:3]))
+    Q.apply_presence(qa, doc)
 
 
-def _wait_for_stdin_eof(done: threading.Event) -> None:
+def command(qa: Q.QaTeam, message: Any) -> Dict[str, Any]:
+    """One control command (I-9): apply ops, focus, look or settings as one of the rig's authors; the answer object."""
+    import time
+
+    from herdr_team import canvas_presence as P
+    from herdr_team.errors import HerdrTeamError
+
+    if not isinstance(message, dict):
+        return {"error": {"code": "usage", "message": "a command is one JSON object"}}
     try:
-        while sys.stdin.read(4096):
-            pass
+        if "human" in message:
+            P.write_human(qa.team, None, message["human"], time.time())
+            return {"ok": True}
+        if "settings" in message:
+            op = dict(message["settings"] or {}, op="settings")
+            return {"result": C.apply_ops(qa.layout, qa.team, [op], qa.author_for("lead"))}
+        author = qa.author_for(message.get("as"))
+        if "ops" in message:
+            return {"result": C.apply_ops(qa.layout, qa.team, list(message["ops"] or []), author, base=message.get("base"),
+                                          atomic=bool(message.get("atomic")))}
+        if "focus" in message:
+            focus = message["focus"] or {}
+            region = C.parse_region(focus["region"], C.load_scene(qa.team), author.name) if focus.get("region") is not None else None
+            P.write_member(qa.team, author, status=focus.get("status") or "drawing", region=region, ids=focus.get("ids") or (),
+                           intent=focus.get("intent") or "", ttl_s=int(focus.get("ttl_s") or P.FOCUS_TTL_S), via="focus")
+            return {"ok": True}
+        if "look" in message:
+            look = message["look"] or {}
+            found = C.look(qa.layout, qa.team, author.name, region=look.get("region"), since=look.get("since"),
+                           proposals=bool(look.get("proposals")), author=author, advance=bool(look.get("advance", True)))
+            return {"look": found}
+        return {"error": {"code": "usage", "message": "a command has ops, focus, look, settings or human"}}
+    except HerdrTeamError as err:
+        return {"error": err.to_json()}
+    except (KeyError, TypeError, ValueError) as err:
+        return {"error": {"code": "usage", "message": "{}: {}".format(type(err).__name__, err)}}
+
+
+def _control(qa: Q.QaTeam, done: threading.Event) -> None:
+    """Read commands on stdin until it closes, answering each with one line (I-9)."""
+    try:
+        for line in sys.stdin:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                message = json.loads(line)
+            except ValueError:
+                answer: Dict[str, Any] = {"error": {"code": "usage", "message": "not JSON"}}
+            else:
+                answer = command(qa, message)
+            print(json.dumps(answer, ensure_ascii=False, default=str), flush=True)
     except (OSError, ValueError):
         return
-    done.set()
+    finally:
+        done.set()
 
 
 def serve(qa: Q.QaTeam, engine: str, writable: bool, seconds: float, out: Path, dist: Optional[Path] = None) -> int:
@@ -101,7 +166,7 @@ def serve(qa: Q.QaTeam, engine: str, writable: bool, seconds: float, out: Path, 
         print(json.dumps({"url": url, "team": Q.TEAM, "port": port, "dir": os.fspath(out)}), flush=True)
         done = threading.Event()
         if not sys.stdin.isatty():
-            threading.Thread(target=_wait_for_stdin_eof, args=(done,), daemon=True).start()
+            threading.Thread(target=_control, args=(qa, done), daemon=True).start()
         try:
             done.wait(seconds)
         except KeyboardInterrupt:

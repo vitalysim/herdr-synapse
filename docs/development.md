@@ -40,6 +40,9 @@ herdr_team/
   canvas_text.py         the text engine: measure with the bundled fonts' metrics, wrap, fit policies (hug, shrink, scale_shape, clamp, keep)
   canvas_theme.py        tones and variants resolved from canvas_tokens.json (the design tokens); writes assets/canvas/tokens.json
   canvas_fontgen.py      stdlib TrueType reader that writes assets/fonts/font-metrics.json
+  canvas_collab.py       collaboration (canvas v2 phase 5, docs/collaboration.md): the review gate and its rule registry,
+                         proposals, accept/reject/withdraw, freezes, settings, per-author undo, checkpoints, the ghosts
+  canvas_presence.py     presence files under whiteboard/presence/ (members' focus, the operator's pages), never in the log
   canvas_mcp.py          the stdio MCP server (`canvas mcp`) injected at launch for members Synapse starts
   sketch.py              standalone, stdlib-only batch builder for agents (`canvas helper`)
   whiteboard_server.py   the loopback page server: tickets, cookie, CSP, JSON API, SSE, sealed viz frames
@@ -90,6 +93,7 @@ python3 -m herdr_team.canvas_display --check-goldens    # display-list goldens (
 python3 -m herdr_team.canvas_charts._sanitize --check   # the raw ECharts allow table and hostile corpus (--write after a change)
 python3 -m herdr_team.canvas_charts._fixtures --check   # the chart option and format fixtures the page tests read
 python3 -m herdr_team.canvas_icons --check          # the vendored Lucide icons match their checksums
+python3 -m herdr_team.canvas_collab --check-fixtures    # tests/fixtures/collab (results, presence, display, diff vectors) the page reads
 python3 tools/canvas_rig.py house --engine v2 --writable  # serve one scene on loopback for a browser or a CDP test
 ./bin/herdr-synapse --version
 ./bin/herdr-synapse --skill
@@ -156,6 +160,19 @@ regressions. `readback` round trip:
 `tests/test_canvas_block_one_module.py` loads `tests/fixtures/kind_checklist.py`
 and proves it. Layouts and routers are registries of their own, one module
 each: see `docs/layout-engine.md`.
+
+Collaboration (canvas v2 phase 5, `docs/collaboration.md`) is
+`canvas_collab`: every op an agent applies runs as before, then one review gate
+(`canvas_collab.gate`, over the rules in `register_rule` order) says whether
+its element changes go live, become a proposal (`P-n`, a ghost only the
+operator accepts), or are refused. Adding a rule is one function and one
+`register_rule` call, plus rows in `tests/fixtures/collab/matrix.json` (the
+authority matrix `tests/test_canvas_collab_matrix.py` runs); a rule dropped in
+from `tests/fixtures/collab_rule_pinned.py` proves it. After changing what a
+result, a ghost or presence looks like, run
+`python3 -m herdr_team.canvas_collab --write-fixtures` (the page's tests read
+`tests/fixtures/collab/`). `tools/canvas_rig.py` takes JSON commands on stdin
+(as `drawer`, `peer`, `deputy` or `lead`) so page tests can act as agents.
 
 Icons come from `assets/icons/` (Lucide in the Iconify format, vendored
 unmodified; `assets/icons/README.md` has the source, checksums and how to
@@ -258,7 +275,7 @@ owner's 17 agents. Until milestone M10:
   teams/<team>/ team.json team.lock board.seq board.jsonl charter.md archive/ cursors/ payloads/
                 briefings/ notifier/{ledger.jsonl,state.json,jobs/} mute.json audit.jsonl
                 whiteboard/{canvas.lock,events.jsonl,scene.json,cursors/,assets/,stills/,renders/,exports/,
-                            notices.json,rate.json,mcp.json,archive/}
+                            notices.json,rate.json,mcp.json,archive/,presence/,checkpoints/}
   _archive/<team>-<ts>/
 <config_dir>/plugins/config/herdr-synapse/{state-dir, allowed-sockets}
 ```
@@ -269,6 +286,15 @@ pointer file → `${XDG_STATE_HOME:-$HOME/.local/state}/<app>/plugins/herdr-syna
 
 ## Status
 
+- 2026-09-28, canvas v2 phase 5 (collaboration, `docs/collaboration.md`), server side: the review gate and its rule
+  registry (`canvas_collab`), proposals with accept, reject and withdraw, base and stale edits, lanes with sliding and
+  automatic claims, freezes and the collaboration settings, per-author undo with skips, checkpoints and restore, anchored
+  comments, presence files with `POST`/`GET /presence` and the SSE `presence` event (`canvas_presence`), the readback in
+  `look` and every result, the CLI and MCP commands, the `canvas-collab` reference, the `collab` golden scene, and the
+  fixtures the page reads (`tests/fixtures/collab/`). The authority matrix is 512 rows. Behaviour changes: undo skips
+  what someone else changed later (`force` restores the old overwrite), an agent's change to the operator's or a peer's
+  marks is a proposal where it was refused, a member's drawing in free space claims its area, and delegates no longer
+  change the operator's marks live nor undo her batches.
 - 2026-09-27, 0.22.0 in progress (canvas v2 foundation and Phase 0; contract
   `.local/prd/canvas-v2-architecture.md`, design `canvas-v2-design.md`, QA
   `canvas-v2-qa.md`). Python side: bundled Inter 4.1 and Geist Mono 1.7.2

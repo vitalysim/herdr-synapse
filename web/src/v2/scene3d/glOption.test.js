@@ -1,6 +1,6 @@
 // The surface grid order echarts-gl needs and the corner label it leaves out (glOption.js).
 import { describe, expect, test } from "vitest";
-import { cornerLabels, surfaceGrid } from "./glOption.js";
+import { categoryLabels, cornerLabels, surfaceGrid } from "./glOption.js";
 
 describe("surfaceGrid", () => {
   test("points with x outer become rows of increasing x, one per y, with their dataShape", () => {
@@ -34,6 +34,26 @@ describe("cornerLabels (QA phase34 L7)", () => {
   test("an axis with no numeric min, a string formatter or hidden labels is left alone", () => {
     for (const option of [{}, { zAxis3D: { max: 3 } }, { zAxis3D: { min: 0, axisLabel: { formatter: "{value}" } } }, { zAxis3D: { min: 0, axisLabel: { show: false } } }]) {
       expect(cornerLabels(option)).toBe(option);
+    }
+  });
+});
+
+describe("categoryLabels (QA phase34 low)", () => {
+  test("a thinned category axis shows every k-th label and blanks the rest, the last one included", () => {
+    const hours = ["8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19"];
+    const option = { xAxis3D: { type: "category", data: hours, axisLabel: { interval: 1 } }, yAxis3D: { type: "category", data: ["Mon", "Tue"], axisLabel: { interval: 0 } } };
+    const out = categoryLabels(option);
+    const f = out.xAxis3D.axisLabel.formatter;
+    expect(out.xAxis3D.axisLabel.interval).toBe(0);
+    expect(hours.map((h, i) => f(h, i)).filter(Boolean)).toEqual(["8", "10", "12", "14", "16", "18"]);
+    expect(out.yAxis3D).toBe(option.yAxis3D);
+    expect(option.xAxis3D.axisLabel).toEqual({ interval: 1 });
+  });
+
+  test("a value axis, an axis with its own formatter or hidden labels is left alone", () => {
+    for (const option of [{}, { xAxis3D: { type: "value", axisLabel: { interval: 1 } } }, { xAxis3D: { type: "category", axisLabel: { interval: 1, formatter: "{value}" } } },
+      { yAxis3D: { type: "category", axisLabel: { interval: 2, show: false } } }]) {
+      expect(categoryLabels(option)).toBe(option);
     }
   });
 });

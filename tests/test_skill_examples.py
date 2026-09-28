@@ -46,7 +46,7 @@ class GuideExamples(CanvasRig):
                 if op.get("if_version") is not None:
                     target = next(e for e in self.scene()["elements"] if e.get("alias") == op["id"])
                     op["if_version"] = target["updated_seq"]
-            result = self.apply(ops, WORKER)
+            result = self.apply(ops, WORKER, base=doc.get("base") if isinstance(doc, dict) and "ops" in doc else None)
             with self.subTest(example=where):
                 self.assertEqual(result["refused"], [], where)
                 self.assertEqual(len(result["applied"]), len(ops), where)
@@ -64,3 +64,5 @@ class GuideExamples(CanvasRig):
         self.assertIn("--reference canvas-diagrams", text)
         self.assertIn("--reference canvas-charts", text)
         self.assertIn("canvas-3d", text)
+        self.assertIn("--reference canvas-collab", text)  # canvas v2 phase 5
+        self.assertIn("canvas-collab.md", GUIDES)

@@ -338,7 +338,10 @@ async function p8SemanticZoom(b) {
   const far = await zoomTo(0.1);
   // Only top-level containers (and level-1 headings, which follow the title rule) name themselves.
   const topLevel = new Set((dl.entries || []).filter((e) => !e.frame && ((e.hit && e.hit.shape === "frame") || e.kind === "heading")).map((e) => e.id));
-  const stray = Object.entries(far).filter(([id, lines]) => lines.length && !topLevel.has(id));
+  // Overlays (a claim's or a lock's label, drawn at a fixed screen size) are not nested content: an
+  // agent's drawing in free space claims it (canvas-v2-phase5.md D4).
+  const overlays = new Set((dl.entries || []).filter((e) => e.layer === "overlays").map((e) => e.id));
+  const stray = Object.entries(far).filter(([id, lines]) => lines.length && !topLevel.has(id) && !overlays.has(id));
   assert(!stray.length, `at 0.1 nested entries still draw text: ${JSON.stringify(stray.slice(0, 4))}`);
   const containers = new Set((dl.entries || []).filter((e) => !e.frame && e.hit && e.hit.shape === "frame").map((e) => e.id));
   const named = Object.entries(far).filter(([id, lines]) => lines.length && containers.has(id)).length;

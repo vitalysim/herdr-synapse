@@ -1295,12 +1295,20 @@ Every op also takes `op`, `intent` (required from agents) and `if_version`. Ops 
 | `resolve` | `id` | resolve a comment |
 | `lock` | `region`, `label` | the operator locks a region against agents |
 | `unlock` | `id` | the operator lifts a lock |
-| `undo` | `batch` | undo a batch (yours; the manager any agent's; the operator anything) |
+| `undo` | `batch`, `author`, `since`, `force` | undo a batch, or every batch of one author since a version; it skips what someone else changed later and what a freeze holds, and undoing it again retries what it left (force: the operator) |
 | `refit` | `id`, `ids` | size labels again from their minimum, under the fonts and the page's measurements (none named: all you may edit) |
 | `patch` | `id`, `add`, `update`, `remove`, `set`, `relayout` | add, update, remove or re-set items inside a block (a kanban's cards, a table's rows); it re-lays out |
 | `place` | `id`, `ids`, `right_of`, `left_of`, `below`, `above`, `in`, `at`, `gap`, `align`, `index` | move elements as one group beside another, to a point, or into a container at an index |
 | `pin` | `id`, `ids` | hold elements where they are: no layout, growth or other author moves them |
 | `unpin` | `id`, `ids`, `relayout` | let go of pins (an agent cannot lift the operator's); the block re-lays out |
+| `accept` | `id`, `note` | the operator accepts a proposal: exactly what it showed lands (refused when it is outdated) |
+| `reject` | `id`, `note` | the operator rejects a proposal, with an optional note |
+| `withdraw` | `id` | take back your own open proposal |
+| `freeze` | `region`, `ids`, `label` | the operator holds a region or elements as they are: others' changes there become proposals (or are refused) |
+| `thaw` | `id`, `ids` | the operator lifts a freeze (id), or lets go of elements (ids) |
+| `settings` | `human_edits`, `frozen` | the operator's collaboration settings: agents' changes to her marks (propose or live) and in frozen areas |
+| `checkpoint` | `label`, `remove` | save the canvas as a named checkpoint (V-n), or remove one of yours |
+| `restore` | `id` | the operator restores a checkpoint as one batch (a checkpoint of now is saved first; comments stay) |
 <!-- END GENERATED: canvas-ops -->
 
 ## Maintaining this reference

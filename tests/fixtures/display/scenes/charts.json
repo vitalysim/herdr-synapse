@@ -3068,10 +3068,14 @@
     ],
     "extra": {
      "ramp": [
-      36.95,
-      300,
+      58.42,
+      308,
       220,
       10
+     ],
+     "ramp_text": [
+      "90",
+      "1,232"
      ]
     },
     "font": 12,
@@ -3419,13 +3423,20 @@
      "max": 1232,
      "min": 90,
      "orient": "horizontal",
+     "padding": 0,
      "show": true,
+     "text": [
+      "1,232",
+      "90"
+     ],
+     "textGap": 6.0,
      "textStyle": {
       "color": "chart.muted",
       "fontFamily": "$sans",
-      "fontSize": 12
+      "fontSize": 12,
+      "lineHeight": 10.0
      },
-     "top": 300.0,
+     "top": 308.0,
      "type": "continuous"
     },
     "xAxis": {
@@ -5295,12 +5306,18 @@
         "itemStyle": {
          "color": "chart.cat.0"
         },
+        "label": {
+         "formatter": "Search 5,400"
+        },
         "name": "Search"
        },
        {
         "depth": 0,
         "itemStyle": {
          "color": "chart.cat.1"
+        },
+        "label": {
+         "formatter": "Ads 2,100"
         },
         "name": "Ads"
        },
@@ -5309,6 +5326,9 @@
         "itemStyle": {
          "color": "chart.cat.2"
         },
+        "label": {
+         "formatter": "Signup 7,500"
+        },
         "name": "Signup"
        },
        {
@@ -5316,12 +5336,18 @@
         "itemStyle": {
          "color": "chart.cat.3"
         },
+        "label": {
+         "formatter": "Active 4,300"
+        },
         "name": "Active"
        },
        {
         "depth": 2,
         "itemStyle": {
          "color": "chart.cat.4"
+        },
+        "label": {
+         "formatter": "Churned 3,200"
         },
         "name": "Churned"
        }

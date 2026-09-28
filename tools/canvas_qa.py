@@ -84,6 +84,11 @@ ARTIFACTS_DIR = REPO / "tests" / "fixtures" / "canvas_artifacts"
 OUT_DIR = REPO / ".local" / "qa" / "canvas"
 TEAM = "qa"
 MEMBER = "qa-drawer"
+#: Canvas v2 phase 5: a second member, and a member holding an operator grant (a delegate), for multi-author scenes.
+PEER = "qa-peer"
+DEPUTY = "qa-deputy"
+#: Who a scene batch's ``as`` names: the drawer (the default), the peer, the deputy, or the lead (the operator in person).
+AUTHOR_KEYS = ("drawer", "peer", "deputy", "lead")
 
 #: Kinds whose ``text`` is drawn inside their outline: every kind whose label its own ``measure`` fits, from the
 #: registry, so a new labelled kind is probed with no edit here (QA phase 1, V-2). Arrows carry a label pill at their
@@ -249,7 +254,8 @@ def _median(values: List[int]) -> int:
 
 
 class QaTeam:
-    """A temporary state root with one team (``qa``) whose canvas is on; one member draws.
+    """A temporary state root with one team (``qa``) whose canvas is on; one member draws (``author``), and for multi-author
+    scenes (canvas v2 phase 5) a peer, a deputy with an operator grant, and the lead (``authors``).
 
     The environment is built from scratch (like ``tests/support.TempState``), so no call can
     reach the real socket, HOME or state root.
@@ -280,15 +286,34 @@ class QaTeam:
                   "joined_at": "2026-09-27T10:00:00Z", "last_seen_at": None, "briefed_at": None, "briefing_seq": None,
                   "charter_seq_acked": None, "brief": None}
         human = {"name": "human", "role": "operator", "kind": "human", "terminal_id": None, "status": "active"}
+        others = [dict(member, name=name, role=role, kind=kind, terminal_id="term_" + role, pane_id="w1:p{}".format(n), label="team:qa/" + role)
+                  for n, (name, role, kind) in enumerate(((PEER, "peer", "codex"), (DEPUTY, "deputy", "claude")), start=2)]
         store.write_json(self.team.team_json, {
             "schema": 1, "team": TEAM, "created_at": "2026-09-27T10:00:00Z", "socket": self.env["HERDR_SOCKET_PATH"],
             "state_dir": os.fspath(state_root), "naming": "prefixed", "revision": 1,
             "charter": {"seq": 1, "text": "Canvas QA.", "refs": [], "updated_at": "2026-09-27T10:00:00Z", "updated_by": "human"},
-            "members": [member, human]})
+            "members": [member] + others + [human]})
         features.set_layer(self.session, True, "human", "cli")
         features.set_team(self.team, enabled=True, by="human", via="cli")
         self.layout = paths.resolve_layout(self.env)
         self.author = C.CanvasAuthor(MEMBER, C.KIND_MEMBER, "cli", True, agent="claude", team=TEAM)
+        self.authors: Dict[str, Any] = {
+            "drawer": self.author,
+            "peer": C.CanvasAuthor(PEER, C.KIND_MEMBER, "cli", True, agent="codex", team=TEAM),
+            "deputy": C.CanvasAuthor(DEPUTY, C.KIND_MEMBER, "cli", True, agent="claude", operator=True, team=TEAM),
+            "lead": C.CanvasAuthor(C.HUMAN, C.KIND_HUMAN, "cli", True, operator=True),
+        }
+
+    def author_for(self, key: Optional[str]) -> Any:
+        """``drawer`` (the default), ``peer``, ``deputy`` or ``lead``, or a member's full name."""
+        if not key:
+            return self.author
+        for found in self.authors.values():
+            if key == found.name:
+                return found
+        if key not in self.authors:
+            raise ValueError("no QA author called {} (one of {})".format(key, ", ".join(AUTHOR_KEYS)))
+        return self.authors[key]
 
     def seed_artifacts(self, folders: Sequence[str]) -> Path:
         """Give the team a project folder and copy each ``tests/fixtures/canvas_artifacts/<folder>`` into its ``artifacts/``
@@ -331,8 +356,26 @@ def load_scene_file(path: Path) -> Dict[str, Any]:
     batches = doc.get("batches")
     if batches is None:
         batches = [doc.get("ops")]
-    if not isinstance(batches, list) or not batches or not all(isinstance(b, list) and b for b in batches):
+    if not isinstance(batches, list) or not batches:
         raise ValueError("{}: a scene needs ops (a non-empty list) or batches (a list of them)".format(path))
+    # A batch is a list of ops (drawn by the member), or since canvas v2 phase 5 {"as": drawer|peer|deputy|lead, "ops", "base"?}.
+    authors: List[str] = []
+    bases: List[Any] = []
+    plain: List[List[Dict[str, Any]]] = []
+    for batch in batches:
+        if isinstance(batch, dict):
+            if any(key not in ("as", "ops", "base") for key in batch) or batch.get("as", "drawer") not in AUTHOR_KEYS:
+                raise ValueError("{}: a batch object is {{\"as\": {}, \"ops\": [...], \"base\"?}}".format(path, "|".join(AUTHOR_KEYS)))
+            authors.append(str(batch.get("as") or "drawer"))
+            bases.append(batch.get("base"))
+            batch = batch.get("ops")
+        else:
+            authors.append("drawer")
+            bases.append(None)
+        if not isinstance(batch, list) or not batch:
+            raise ValueError("{}: a scene needs ops (a non-empty list) or batches (a list of them)".format(path))
+        plain.append(batch)
+    batches = plain
     exempt = doc.get("page_line_exempt") or {}
     if not isinstance(exempt, dict):
         raise ValueError("{}: page_line_exempt maps element ids to the reason their page lines may differ".format(path))
@@ -345,8 +388,8 @@ def load_scene_file(path: Path) -> Dict[str, Any]:
     if not isinstance(gates, dict) or any(key not in ("strict",) for key in gates):
         raise ValueError("{}: gates is {{\"strict\": true}} (a Phase 2 scene also gates arrow_through, stray and arrow-label collisions)".format(path))
     return {"name": str(doc.get("name") or Path(path).stem), "about": str(doc.get("about") or ""), "batches": batches,
-            "file": os.fspath(path), "page_line_exempt": {str(k): str(v) for k, v in exempt.items()}, "gates": dict(gates),
-            "artifacts": list(artifacts)}
+            "as": authors, "bases": bases, "file": os.fspath(path), "page_line_exempt": {str(k): str(v) for k, v in exempt.items()},
+            "gates": dict(gates), "artifacts": list(artifacts), "presence": doc.get("presence") or []}
 
 
 def scene_files(targets: Sequence[str]) -> List[Path]:
@@ -366,22 +409,53 @@ def scene_files(targets: Sequence[str]) -> List[Path]:
 
 
 def apply_scene(qa: QaTeam, scene: Dict[str, Any]) -> Dict[str, Any]:
-    """Apply every batch as the member (after copying the scene's artifacts in); op counts, refusals and warning codes."""
+    """Apply every batch as its author (the member unless a batch says ``as``; after copying the scene's artifacts in); op
+    counts, refusals, proposals and warning codes."""
     if scene.get("artifacts"):
         qa.seed_artifacts(scene["artifacts"])
-    ops = applied = 0
+    ops = applied = proposed = 0
     refused: List[Dict[str, Any]] = []
     warnings: Dict[str, int] = {}
+    authors = scene.get("as") or ["drawer"] * len(scene["batches"])
+    bases = scene.get("bases") or [None] * len(scene["batches"])
     for number, batch in enumerate(scene["batches"]):
-        result = C.apply_ops(qa.layout, qa.team, batch, qa.author)
+        result = C.apply_ops(qa.layout, qa.team, batch, qa.author_for(authors[number]), base=bases[number])
         ops += len(batch)
         applied += len(result.get("applied") or [])
+        proposed += len(result.get("proposed") or [])
         for item in result.get("refused") or []:
             refused.append({"batch": number, "index": item.get("index"), "code": item.get("code"), "message": item.get("message")})
         for warning in result.get("warnings") or []:
             code = str(warning.get("code") if isinstance(warning, dict) else warning)
             warnings[code] = warnings.get(code, 0) + 1
-    return {"ops": ops, "applied": applied, "refused": refused, "warnings": warnings}
+    out = {"ops": ops, "applied": applied, "refused": refused, "warnings": warnings}
+    if proposed:
+        out["proposed"] = proposed
+        out["applied"] = applied + proposed  # a proposal is a success (phase 5): the scene applied as its author meant
+    return out
+
+
+def apply_presence(qa: QaTeam, scene: Dict[str, Any], now: Optional[float] = None) -> int:
+    """Write a scene's ``presence`` entries (canvas v2 phase 5): ``{"as": drawer|peer|deputy, "focus": {region, intent,
+    status, ttl_s}}`` for a member, ``{"human": {page, viewport, selection, editing, cursor}}`` for the operator's page.
+    Presence is never part of a golden: it is written only for readers (``look``, the rig's page), with the clock now."""
+    from herdr_team import canvas_presence as P
+
+    moment = time.time() if now is None else float(now)
+    written = 0
+    for item in scene.get("presence") or []:
+        if not isinstance(item, dict):
+            raise ValueError("a scene's presence entry is {as, focus} or {human}")
+        if "human" in item:
+            P.write_human(qa.team, None, item["human"], moment)
+        else:
+            author = qa.author_for(item.get("as"))
+            focus = item.get("focus") or {}
+            region = C.parse_region(focus["region"], C.load_scene(qa.team), author.name) if focus.get("region") is not None else None
+            P.write_member(qa.team, author, status=focus.get("status") or "drawing", region=region, intent=focus.get("intent") or "",
+                           ttl_s=int(focus.get("ttl_s") or P.FOCUS_TTL_S), via="focus", now=moment)
+        written += 1
+    return written
 
 
 # --------------------------------------------------------------------------
@@ -702,7 +776,10 @@ def evaluate(scene_doc: Dict[str, Any], out: Path, scale: float = PROBE_SCALE, t
     report: Dict[str, Any] = {"scene": name, "file": scene_doc["file"], "themes": themes, "strict": strict}
     with QaTeam() as qa:
         report.update(apply_scene(qa, scene_doc))
+        if scene_doc.get("presence"):
+            apply_presence(qa, scene_doc)
         scene = C.load_scene(qa.team)
+        report["look_collab"] = look_findings(qa, scene_doc, scene)
         live = [e for e in scene.get("elements") or [] if isinstance(e, dict) and not e.get("deleted")]
         report["elements"] = len(live)
         problems = C.check(qa.layout, qa.team, MEMBER)["problems"]
@@ -764,6 +841,7 @@ def evaluate(scene_doc: Dict[str, Any], out: Path, scale: float = PROBE_SCALE, t
             if engine == "v2":
                 report["page_filters"] = list(getattr(browser, "filters", []) or [])
                 report["page_hooks"] = hook_findings(getattr(browser, "hooks", None) or {}, chart_frame_texts(live))
+                report["page_collab"] = collab_findings(getattr(browser, "hooks", None) or {}, collab_expected(qa))
         if page_lines is not None:
             report["page_lines"] = compare_lines(report["lines"], page_lines, scene_doc.get("page_line_exempt"))
         if serve > 0:
@@ -889,6 +967,61 @@ def hook_findings(hooks: Dict[str, Any], frame_texts: Optional[Dict[str, List[st
     return out
 
 
+def collab_expected(qa: QaTeam) -> Dict[str, int]:
+    """What the page's ``collab()`` hook must count on this board (I-8): the display list's proposals, outdated ones and
+    frozen entries, and one halo per fresh member presence."""
+    from herdr_team import canvas_presence
+
+    entries = C.display(qa.team)["entries"]
+    members = [d for d in canvas_presence.read_all(qa.team, time.time())["entries"] if d.get("kind") == "member"]
+    return {"proposals": sum(1 for e in entries if e.get("kind") == "proposal"),
+            "outdated": sum(1 for e in entries if e.get("kind") == "proposal" and (e.get("proposal") or {}).get("outdated")),
+            "frozen": sum(1 for e in entries if e.get("frozen")), "halos": len(members)}
+
+
+def collab_findings(hooks: Dict[str, Any], expected: Dict[str, int]) -> Dict[str, Any]:
+    """The v2 page's ``collab()`` counts (canvas v2 phase 5, I-8) against the display list, per theme. A page built before
+    the hook reports ``absent``."""
+    out: Dict[str, Any] = {"problems": [], "expected": expected}
+    seen = False
+    for theme, found in sorted(hooks.items()):
+        counts = found.get("collab") if isinstance(found, dict) else None
+        if not isinstance(counts, dict):
+            continue
+        seen = True
+        out[theme] = counts
+        for key, want in sorted(expected.items()):
+            if key in counts and counts[key] != want:
+                out["problems"].append("collab {} {} drawn, {} in the display list ({})".format(key, counts[key], want, theme))
+    if not seen:
+        out["absent"] = True
+    return out
+
+
+def look_findings(qa: QaTeam, scene_doc: Dict[str, Any], scene: Dict[str, Any]) -> Dict[str, Any]:
+    """G7: ``look`` as the drawer says what the collaboration state is: the operator and the peers present, the open
+    proposals, the drawer's decided ones, freezes, settings and checkpoints, and the element tags (canvas v2 phase 5)."""
+    if not (scene.get("proposals") or scene.get("freezes") or scene.get("checkpoints") or scene_doc.get("presence")):
+        return {"problems": []}
+    text = C.look(qa.layout, qa.team, MEMBER, advance=False)["text"]
+    lines = text.splitlines()
+    want = []
+    if any("human" in item for item in scene_doc.get("presence") or []):
+        want.append("operator: ")
+    if any("focus" in item for item in scene_doc.get("presence") or []):
+        want.append("here: ")
+    if any(p.get("status") == "open" for p in scene.get("proposals") or []):
+        want += ["proposals (", "[proposal P-"]
+    if scene.get("freezes"):
+        want += ["frozen: ", " [frozen]"]
+    if scene.get("proposals") or scene.get("freezes"):
+        want.append("settings: ")
+    if scene.get("checkpoints"):
+        want.append("checkpoints: ")
+    problems = ["look as {} lacks {!r}".format(MEMBER, piece) for piece in want if not any(piece in line for line in lines)]
+    return {"problems": problems, "checked": want}  # the lines themselves hold ages: never in a report that must repeat
+
+
 def gate(report: Dict[str, Any], strict: bool) -> Dict[str, Any]:
     """Every reason this scene fails, gated counts first; ``ok`` when there is none."""
     failed: List[str] = []
@@ -917,6 +1050,10 @@ def gate(report: Dict[str, Any], strict: bool) -> Dict[str, Any]:
         failed.append("page css filter on {} (AC-4.2: nothing inverts colours)".format(", ".join(report["page_filters"])))
     for line in (report.get("page_hooks") or {}).get("problems") or []:
         failed.append("page {}".format(line))
+    for line in (report.get("page_collab") or {}).get("problems") or []:
+        failed.append("page {}".format(line))
+    for line in (report.get("look_collab") or {}).get("problems") or []:
+        failed.append(line)
     return {"ok": not failed, "failed": failed}
 
 
@@ -1013,7 +1150,7 @@ PAGE_V2_FIT_JS = r"""(() => (window.__synapseV2 ? (window.__synapseV2.fit(), tru
 PAGE_V2_HOOKS_JS = r"""(() => {
   const qa = window.__synapseV2 || {};
   const read = (name) => (typeof qa[name] === 'function' ? qa[name]() : null);
-  return {charts: read('charts'), scene3d: read('scene3d')};
+  return {charts: read('charts'), scene3d: read('scene3d'), collab: read('collab')};
 })()"""
 #: Seconds the page gets to draw its charts and scenes (lazy chunks, WebGL) before their hooks are read.
 HOOKS_WAIT_S = 20.0
@@ -1294,6 +1431,168 @@ def summary_line(report: Dict[str, Any]) -> str:
         contrast_text, len(render.get("tofu") or []), len(render.get("cut_off") or []), page_text, report["png"])
 
 
+# --------------------------------------------------------------------------
+# canvas v2 phase 5: the authority matrix and the collaboration numbers (G9)
+
+MATRIX = REPO / "tests" / "fixtures" / "collab" / "matrix.json"
+
+
+def matrix_table() -> str:
+    """The authority matrix (``tests/fixtures/collab/matrix.json``, which ``tests/test_canvas_collab_matrix.py`` runs) as
+    a table: one row per op and target, one column per actor, each cell ``default / live_refuse``."""
+    rows = json.loads(MATRIX.read_text(encoding="utf-8"))["rows"]
+    actors = ("lead", "deputy", "manager", "member")
+    cells: Dict[Tuple[str, str, str], Dict[str, str]] = {}
+    order: List[Tuple[str, str]] = []
+    for row in rows:
+        key = (row["op"], row["target"])
+        if key not in order:
+            order.append(key)
+        word = row["expect"] + (" " + row["reason"] if row.get("reason") else "") + (" " + row["code"] if row.get("code") else "")
+        cells.setdefault((row["op"], row["target"], row["actor"]), {})[row["settings"]] = word
+    lines = ["| op | target | " + " | ".join(actors) + " |", "| --- | --- | " + " | ".join("---" for _ in actors) + " |"]
+    for op, target in order:
+        shown = []
+        for actor in actors:
+            found = cells.get((op, target, actor), {})
+            first, second = found.get("default", "-"), found.get("live_refuse", "-")
+            shown.append(first if first == second else "{} / {}".format(first, second))
+        lines.append("| {} | {} | {} |".format(op, target, " | ".join(shown)))
+    return "\n".join(lines) + "\n\ncells: default settings / human_edits live + frozen refuse ({} rows)".format(len(rows))
+
+
+def _median(values: Sequence[float]) -> float:
+    ordered = sorted(values)
+    return ordered[len(ordered) // 2] if ordered else 0.0
+
+
+def _big_board(qa: QaTeam, count: int) -> None:
+    lead = qa.author_for("lead")
+    ops = [{"op": "shape", "kind": "box", "text": "Box {}".format(i + 1), "w": 160, "h": 80, "at": [(i % 50) * 200, (i // 50) * 120],
+            "intent": "board"} for i in range(count)]
+    for start in range(0, len(ops), C.MAX_BATCH_OPS):
+        C.apply_ops(qa.layout, qa.team, ops[start:start + C.MAX_BATCH_OPS], lead)
+
+
+def perf_collab() -> Dict[str, Any]:
+    """The phase 5 numbers of G9: the gate per op, a 40-op member batch on a 2,000-element board with the gate on and off,
+    the display list with 200 open proposals, a presence write, look with 10 presence files, what a stream reads per
+    presence poll, and restoring a 2,000-element checkpoint."""
+    from unittest import mock
+
+    from herdr_team import canvas_collab as K
+    from herdr_team import canvas_presence as P
+
+    out: Dict[str, Any] = {}
+    with QaTeam() as qa:
+        doc = load_scene_file(SCENES_DIR / "collab.json")
+        apply_scene(qa, doc)
+        apply_presence(qa, doc)
+        spent: List[float] = []
+        real = K.review_op
+
+        def timed(ctx: Any, name: str, raised: bool) -> None:
+            started = time.perf_counter()
+            try:
+                real(ctx, name, raised)
+            finally:
+                spent.append((time.perf_counter() - started) * 1000.0)
+
+        visit = next(e["id"] for e in C.load_scene(qa.team)["elements"] if e.get("alias") == "visit")
+        with mock.patch.object(K, "review_op", timed):
+            for n in range(40):
+                C.apply_ops(qa.layout, qa.team, [{"op": "restyle", "id": visit, "tone": ("info", "success")[n % 2], "intent": "perf"}], qa.author)
+        out["gate_ms_p50"] = round(_median(spent), 3)
+        P.write_member(qa.team, qa.author, status="drawing", intent="warm")  # the secret patterns load once per process
+        started = time.perf_counter()
+        for _ in range(100):
+            P.write_member(qa.team, qa.author, status="drawing", region=[0, 0, 400, 200], intent="perf")
+        out["presence_write_ms"] = round((time.perf_counter() - started) * 10.0, 3)
+        for name in os.listdir(P.presence_dir(qa.team)):
+            os.unlink(P.presence_dir(qa.team) / name)  # look first with no presence at all
+        C.look(qa.layout, qa.team, MEMBER, advance=False)  # warm
+        timings = []
+        for _ in range(5):
+            started = time.perf_counter()
+            C.look(qa.layout, qa.team, MEMBER, advance=False)
+            timings.append((time.perf_counter() - started) * 1000.0)
+        base_look = _median(timings)
+        for n in range(10):
+            (P.presence_dir(qa.team) / "perf{}.json".format(n)).write_text(json.dumps(
+                {"v": 1, "name": "perf{}".format(n), "kind": "member", "agent": None, "at": C._iso(time.time()), "ttl_s": 600,
+                 "status": "drawing", "region": [0, 0, 100, 100], "ids": [], "intent": "perf", "via": "focus"}))
+        timings = []
+        for _ in range(5):
+            started = time.perf_counter()
+            C.look(qa.layout, qa.team, MEMBER, advance=False)
+            timings.append((time.perf_counter() - started) * 1000.0)
+        out["look_presence_added_ms"] = round(_median(timings) - base_look, 3)
+        started = time.perf_counter()
+        for _ in range(20):
+            P.signature(qa.team)
+            P.read_all(qa.team, time.time())
+        out["presence_poll_ms"] = round((time.perf_counter() - started) * 50.0, 3)
+    # The same 40-op batch on one 2,000-element board, gate on and off in turn: an atomic batch whose last op is refused runs
+    # every op and writes nothing, so each run sees the same board.
+    batch = [{"op": "shape", "kind": "box", "text": "New {}".format(n), "at": [12000 + (n % 8) * 200, (n // 8) * 120], "intent": "perf"} for n in range(40)]
+    runs: Dict[bool, List[float]] = {True: [], False: []}
+    with QaTeam() as qa:
+        _big_board(qa, C.MAX_ELEMENTS - 40)
+        for _round in range(5):
+            for gate_on in (True, False):
+                with mock.patch.object(K, "GATE_ON", gate_on):
+                    started = time.perf_counter()
+                    try:
+                        C.apply_ops(qa.layout, qa.team, batch + [{"op": "no_such_op"}], qa.author, atomic=True)
+                    except C.HerdrTeamError:
+                        pass
+                    runs[gate_on].append((time.perf_counter() - started) * 1000.0)
+    out["batch40_ms_gate_on"] = round(min(runs[True]), 1)  # the least disturbed of five runs each, taken in turn
+    out["batch40_ms_gate_off"] = round(min(runs[False]), 1)
+    out["batch40_gate_added_ms"] = round(out["batch40_ms_gate_on"] - out["batch40_ms_gate_off"], 1)
+    with QaTeam() as qa, mock.patch.object(K, "MAX_OPEN_PROPOSALS_PER_AUTHOR", 250):
+        _big_board(qa, 400)
+        lead_boxes = [e["id"] for e in C.load_scene(qa.team)["elements"]][:200]
+
+        def cold() -> float:
+            found = []
+            for _round in range(5):
+                C._DISPLAY_CACHE.clear()
+                started = time.perf_counter()
+                C.display(qa.team)
+                found.append(time.perf_counter() - started)
+            return min(found)
+
+        plain = cold()
+        for start in range(0, 200, 50):
+            C.apply_ops(qa.layout, qa.team, [{"op": "move", "id": eid, "by": [0, 20], "intent": "perf"} for eid in lead_boxes[start:start + 50]],
+                        qa.author, now=time.time() + start)
+        out["display_200_proposals_added_ms"] = round((cold() - plain) * 1000.0, 1)
+        out["display_proposals"] = sum(1 for e in C.display(qa.team)["entries"] if e.get("kind") == "proposal")
+    with QaTeam() as qa:
+        _big_board(qa, C.MAX_ELEMENTS - 2)
+        lead = qa.author_for("lead")
+        C.apply_ops(qa.layout, qa.team, [{"op": "checkpoint", "label": "perf"}], lead)
+        C.apply_ops(qa.layout, qa.team, [{"op": "delete", "ids": ["E-{}".format(n) for n in range(1, 301)]}], lead)
+        started = time.perf_counter()
+        result = C.apply_ops(qa.layout, qa.team, [{"op": "restore", "id": "V-1"}], lead)
+        out["restore_2000_ms"] = round((time.perf_counter() - started) * 1000.0, 1)
+        out["restore"] = result["applied"][0].get("restore") if result["applied"] else result["refused"]
+        # A full restore (QA phase 5 L13): every element deleted, then all of them put back in one op.
+        ids = [e["id"] for e in C.load_scene(qa.team)["elements"]]
+        for start in range(0, len(ids), 500):
+            C.apply_ops(qa.layout, qa.team, [{"op": "delete", "ids": ids[start:start + 500]}], lead)
+        started = time.perf_counter()
+        result = C.apply_ops(qa.layout, qa.team, [{"op": "restore", "id": "V-1"}], lead)
+        out["restore_full_2000_ms"] = round((time.perf_counter() - started) * 1000.0, 1)
+        out["restore_full"] = result["applied"][0].get("restore") if result["applied"] else result["refused"]
+    out["budgets"] = {"gate_ms_p50": 3.0, "batch40_gate_added_ms": 40.0 if sys.version_info >= (3, 11) else 60.0,
+                      "display_200_proposals_added_ms": 40.0, "presence_write_ms": 2.0, "look_presence_added_ms": 5.0,
+                      "restore_2000_ms": 1500.0, "restore_full_2000_ms": 1500.0 if sys.version_info >= (3, 11) else 2500.0}
+    out["within"] = {key: out.get(key, 0.0) <= limit for key, limit in out["budgets"].items()}
+    return out
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Measure text overflow, overlap and contrast on golden canvas scenes.")
     parser.add_argument("scenes", nargs="*", help="scene files, directories, or names in tests/fixtures/canvas_scenes (default: all)")
@@ -1308,11 +1607,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--dist", help="serve this page build instead of web/dist (a scratch `vite build --outDir`)")
     parser.add_argument("--engine", choices=ENGINES, default="v1",
                         help="the page engine --page opens: v1 (Excalidraw, the default) or v2 (the display-list renderer, ?engine=v2)")
+    parser.add_argument("--matrix", action="store_true", help="print the canvas v2 phase 5 authority matrix as a table and exit")
+    parser.add_argument("--perf", choices=("collab",), help="measure the canvas v2 phase 5 numbers (G9) and exit")
     parser.add_argument("--page", nargs="?", const="", metavar="CHROME",
                         help="also open each scene's page in a throwaway headless Chrome, read its line breaks and compare them "
                              "(screenshots light and dark); CHROME defaults to $CHROME or the installed Chrome")
     args = parser.parse_args(argv)
 
+    if args.matrix:
+        print(matrix_table())
+        return 0
+    if args.perf == "collab":
+        found = perf_collab()
+        print(json.dumps(found, indent=1) if args.json else "\n".join("{:<34} {}".format(k, v) for k, v in found.items()))
+        return 0 if all(found["within"].values()) else 1
     if R.find_resvg() is None:
         print("canvas_qa: resvg is not on PATH (brew install resvg)", file=sys.stderr)
         return 3

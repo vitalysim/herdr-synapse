@@ -1,0 +1,46 @@
+{
+ "aliases": {},
+ "applied": [],
+ "atomic": false,
+ "batch": null,
+ "notices": {
+  "canvas_changed": null,
+  "canvas_sent": []
+ },
+ "operator": {
+  "age_s": 4,
+  "at": "2026-09-21T14:13:28.000Z",
+  "editing": null,
+  "pointing_at": "E-2",
+  "selection": [
+   "E-3"
+  ],
+  "viewport": [
+   0,
+   0,
+   1200,
+   800
+  ]
+ },
+ "proposed": [],
+ "refused": [
+  {
+   "code": "frozen",
+   "details": {
+    "freezes": [
+     "X-1"
+    ],
+    "ids": [
+     "E-2"
+    ],
+    "reason": "frozen"
+   },
+   "index": 0,
+   "message": "E-2 is frozen (X-1): the operator holds it as it is; ask them in a comment",
+   "op": "move"
+  }
+ ],
+ "team": "qa",
+ "version": 12,
+ "warnings": []
+}

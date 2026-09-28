@@ -25,6 +25,9 @@ from herdr_team.canvas_charts._frame import Frame
 ORDER = 60
 CAP = 60
 RAMP_H = 30.0
+#: The ramp bar's height, and the gap between it and the values at its ends.
+RAMP_BAR = 10.0
+RAMP_GAP = 6.0
 #: Cells get their value written in them when there are at most this many and the value fits.
 AUTO_LABELS = 60
 
@@ -103,9 +106,28 @@ def frame(spec: Dict[str, Any], model: Dict[str, Any], box: Tuple[float, float])
     base = FR.cartesian((w, max(60.0, h - RAMP_H)), {"kind": "category", "labels": list(model.get("xs") or []), "thin": False},
                         {"kind": "category", "labels": list(model.get("ys") or [])}, (), "none", horizontal=False)
     px, py, pw, ph = base.plot
-    ramp = [px, h - RAMP_H + 2, min(pw, 220.0), 10.0]
+    # The ramp's row: its low end's value, the bar, its high end's value, as ECharts lays a horizontal visualMap's `text`
+    # out (so the page's picture and this one agree, QA phase34 low).
+    lo_text, hi_text = _end_texts(spec, model)
+    lo_w, hi_w = FR.text_w(lo_text), FR.text_w(hi_text)
+    bar_w = max(24.0, min(220.0, pw - lo_w - hi_w - 2 * RAMP_GAP))
+    ramp = [px + lo_w + RAMP_GAP, h - RAMP_H / 2.0 - RAMP_BAR / 2.0, bar_w, RAMP_BAR]
     return Frame(box=(w, h), plot=base.plot, axes=base.axes, legend=None, font=base.font, notes=base.notes, legible=base.legible,
-                 extra={"ramp": ramp})
+                 extra={"ramp": ramp, "ramp_text": [lo_text, hi_text]})
+
+
+def _ends(spec: Mapping[str, Any], model: Mapping[str, Any]) -> Tuple[float, float]:
+    """The values at the ramp's two ends (symmetric around zero when the palette diverges)."""
+    lo, hi = float(model.get("min") or 0), float(model.get("max") or 0)
+    if _diverging(spec):
+        bound = max(abs(lo), abs(hi))
+        lo, hi = -bound, bound
+    return lo, hi
+
+
+def _end_texts(spec: Mapping[str, Any], model: Mapping[str, Any]) -> Tuple[str, str]:
+    fmt, unit = _fmt(spec)
+    return tuple(F.fmt_number(v, fmt or ("compact" if abs(v) >= 1e4 else None), unit) for v in _ends(spec, model))  # type: ignore[return-value]
 
 
 def _labels_on(spec: Mapping[str, Any], model: Mapping[str, Any], cell_w: float, cell_h: float) -> bool:
@@ -139,12 +161,9 @@ def draw(spec: Dict[str, Any], model: Dict[str, Any], frame: Frame, slot: Tuple[
     step = rw / len(refs)
     for index, ref in enumerate(refs):
         pen.rect(rx + index * step, ry, step + 0.25, rh, ref)
-    lo, hi = float(model.get("min") or 0), float(model.get("max") or 0)
-    if _diverging(spec):
-        bound = max(abs(lo), abs(hi))
-        lo, hi = -bound, bound
-    pen.text(F.fmt_number(lo, fmt or ("compact" if abs(lo) >= 1e4 else None), unit), rx, ry + rh + FR.LH / 2.0 + 2, "start")
-    pen.text(F.fmt_number(hi, fmt or ("compact" if abs(hi) >= 1e4 else None), unit), rx + rw, ry + rh + FR.LH / 2.0 + 2, "end")
+    lo_text, hi_text = frame.extra.get("ramp_text") or _end_texts(spec, model)
+    pen.text(lo_text, rx - RAMP_GAP, ry + rh / 2.0, "end")
+    pen.text(hi_text, rx + rw + RAMP_GAP, ry + rh / 2.0, "start")
     return pen.items
 
 
@@ -169,10 +188,15 @@ def option(spec: Dict[str, Any], model: Dict[str, Any], frame: Frame, gist: Sequ
         lo, hi = -bound, bound
     rx, ry, rw, rh = (float(v) for v in frame.extra["ramp"])
     fmt, unit = _fmt(spec)
+    lo_text, hi_text = frame.extra.get("ramp_text") or _end_texts(spec, model)
+    # The end values sit either side of the bar (`text` is [high, low]); the component is placed by its whole box, so it
+    # starts at the low value's left edge, and a line height of the bar's own keeps that box's top on the bar's.
     out["visualMap"] = {"type": "continuous", "show": True, "min": _data.compact_number(lo), "max": _data.compact_number(hi if hi > lo else lo + 1),
-                        "dimension": 2, "calculable": False, "orient": "horizontal", "left": round(rx, 2), "top": round(ry, 2),
-                        "itemWidth": round(rh, 2), "itemHeight": round(rw, 2), "inRange": {"color": S.div_refs() if _diverging(spec) else S.seq_refs()},
-                        "textStyle": {"fontFamily": "$sans", "fontSize": FR.FONT, "color": "chart.muted"},
+                        "dimension": 2, "calculable": False, "orient": "horizontal", "left": round(rx - RAMP_GAP - FR.text_w(lo_text), 2),
+                        "top": round(ry, 2), "padding": 0, "itemWidth": round(rh, 2), "itemHeight": round(rw, 2),
+                        "text": [hi_text, lo_text], "textGap": RAMP_GAP,
+                        "inRange": {"color": S.div_refs() if _diverging(spec) else S.seq_refs()},
+                        "textStyle": {"fontFamily": "$sans", "fontSize": FR.FONT, "color": "chart.muted", "lineHeight": round(rh, 2)},
                         "formatter": {"$fmt": F.fmt_id(fmt or "auto", unit)}}
     series: Dict[str, Any] = {"type": "heatmap", "datasetIndex": 0, "encode": {"x": "x", "y": "y", "value": "value"},
                               "itemStyle": {"borderColor": "chart.paper", "borderWidth": 1, "borderRadius": 1}}

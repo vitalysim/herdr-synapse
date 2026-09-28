@@ -1,0 +1,41 @@
+{
+ "aliases": {},
+ "applied": [],
+ "atomic": false,
+ "batch": null,
+ "notices": {
+  "canvas_changed": null,
+  "canvas_sent": []
+ },
+ "operator": {
+  "age_s": 18,
+  "at": "2026-09-21T14:13:28.000Z",
+  "editing": null,
+  "pointing_at": "E-2",
+  "selection": [
+   "E-3"
+  ],
+  "viewport": [
+   0,
+   0,
+   1200,
+   800
+  ]
+ },
+ "proposed": [],
+ "refused": [
+  {
+   "code": "proposal_limit",
+   "details": {
+    "open": 1,
+    "yours": 1
+   },
+   "index": 0,
+   "message": "1 proposal is open (1 of them yours; at most 1 each and 200 in all): withdraw some or wait for the operator",
+   "op": "move"
+  }
+ ],
+ "team": "qa",
+ "version": 23,
+ "warnings": []
+}

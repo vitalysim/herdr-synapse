@@ -13,5 +13,5 @@ export { combinePreviews, createPendingPreviews } from "./preview.js";
 export { answerExport } from "./exporter.js";
 export { editTargetOf, withoutPartText } from "./parts.js";
 export { default as TextEditor } from "./TextEditor.jsx";
-export { default as Toolbar, ViewControls } from "./Toolbar.jsx";
+export { default as Toolbar, ViewControls, FREEZE_TOOL } from "./Toolbar.jsx";
 export { default as StyleBar } from "./StyleBar.jsx";

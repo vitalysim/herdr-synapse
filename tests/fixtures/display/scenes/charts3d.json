@@ -520,6 +520,9 @@
      "show": false
     },
     "xAxis3D": {
+     "axisLabel": {
+      "interval": 1
+     },
      "data": [
       "8",
       "9",
@@ -543,6 +546,9 @@
      "type": "category"
     },
     "yAxis3D": {
+     "axisLabel": {
+      "interval": 1
+     },
      "data": [
       "Mon",
       "Tue",

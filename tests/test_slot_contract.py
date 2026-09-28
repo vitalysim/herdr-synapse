@@ -29,7 +29,7 @@ def png(n: int = 0) -> bytes:
 
 class Contract(unittest.TestCase):
     def test_version_views_and_slot_kinds(self):
-        self.assertEqual(R.API_VERSION, 4)
+        self.assertEqual(R.API_VERSION, 5)  # 5: OpSpec.proposable (canvas v2 phase 5), additive
         for views in ((), ("iso", "iso"), ("Iso",), ("a" * 13,), ("iso-1",)):
             with self.assertRaises(ValueError, msg=views):
                 R.register(R.Kind(name="bad_views", still_views=views))

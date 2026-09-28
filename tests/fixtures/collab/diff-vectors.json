@@ -1,0 +1,789 @@
+{
+ "about": "canvas_collab.diff_lines(before, after, parts) -> lines (canvas v2 phase 5, 3.4); python3 -m herdr_team.canvas_collab --write-fixtures",
+ "vectors": [
+  {
+   "after": {
+    "frame": "E-2",
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "box",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "before": null,
+   "lines": [
+    "added box \"Pricing\" in E-2"
+   ],
+   "name": "added",
+   "parts": 0
+  },
+  {
+   "after": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "",
+    "type": "box",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "before": null,
+   "lines": [
+    "added box in c5r2"
+   ],
+   "name": "added in a cell",
+   "parts": 0
+  },
+  {
+   "after": null,
+   "before": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "box",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "lines": [
+    "deleted"
+   ],
+   "name": "deleted",
+   "parts": 0
+  },
+  {
+   "after": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "box",
+    "w": 160,
+    "x": 140,
+    "y": 100
+   },
+   "before": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "box",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "lines": [
+    "moved by c+2r+3"
+   ],
+   "name": "moved by grid steps",
+   "parts": 0
+  },
+  {
+   "after": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "box",
+    "w": 160,
+    "x": 115,
+    "y": 37.5
+   },
+   "before": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "box",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "lines": [
+    "moved by 15,-2.5"
+   ],
+   "name": "moved off the grid",
+   "parts": 0
+  },
+  {
+   "after": {
+    "frame": null,
+    "h": 120,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "box",
+    "w": 200,
+    "x": 100,
+    "y": 40
+   },
+   "before": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "box",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "lines": [
+    "resized 160x80 → 200x120"
+   ],
+   "name": "resized",
+   "parts": 0
+  },
+  {
+   "after": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Plans and prices",
+    "type": "box",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "before": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "box",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "lines": [
+    "text \"Pricing\" → \"Plans and prices\""
+   ],
+   "name": "text",
+   "parts": 0
+  },
+  {
+   "after": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "A heading far longer than forty characters, cut with an ellipsis",
+    "type": "box",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "before": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "box",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "lines": [
+    "text \"Pricing\" → \"A heading far longer than forty charact…\""
+   ],
+   "name": "long text",
+   "parts": 0
+  },
+  {
+   "after": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "danger",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "box",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "before": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "box",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "lines": [
+    "tone neutral → danger"
+   ],
+   "name": "tone",
+   "parts": 0
+  },
+  {
+   "after": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "dashed",
+     "fill": null,
+     "stroke": "#e03131",
+     "tone": "neutral",
+     "variant": "solid",
+     "width": 4
+    },
+    "text": "Pricing",
+    "type": "box",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "before": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "box",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "lines": [
+    "variant soft → solid",
+    "color #495057 → #e03131",
+    "fill #f8f9fa → none",
+    "width 2 → 4",
+    "dash solid → dashed"
+   ],
+   "name": "styles",
+   "parts": 0
+  },
+  {
+   "after": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "route": "orthogonal"
+    },
+    "text": "Pricing",
+    "type": "arrow",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "before": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "route": "straight"
+    },
+    "text": "Pricing",
+    "type": "arrow",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "lines": [
+    "route straight → orthogonal"
+   ],
+   "name": "route",
+   "parts": 0
+  },
+  {
+   "after": {
+    "frame": "E-2",
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "box",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "before": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "box",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "lines": [
+    "moved into E-2"
+   ],
+   "name": "into a frame",
+   "parts": 0
+  },
+  {
+   "after": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "box",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "before": {
+    "frame": "E-2",
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "box",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "lines": [
+    "out of E-2"
+   ],
+   "name": "out of a frame",
+   "parts": 0
+  },
+  {
+   "after": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "pin": {
+     "by": "agent",
+     "who": "alpha"
+    },
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "box",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "before": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "box",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "lines": [
+    "pinned"
+   ],
+   "name": "pinned",
+   "parts": 0
+  },
+  {
+   "after": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "box",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "before": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "pin": {
+     "by": "human",
+     "who": "human"
+    },
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "box",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "lines": [
+    "unpinned"
+   ],
+   "name": "unpinned",
+   "parts": 0
+  },
+  {
+   "after": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "settings": {
+     "gap": "l",
+     "layout": "column"
+    },
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "frame",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "before": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "settings": {
+     "layout": "row"
+    },
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "frame",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "lines": [
+    "settings: gap none → l",
+    "settings: layout row → column"
+   ],
+   "name": "block settings",
+   "parts": 0
+  },
+  {
+   "after": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "frame",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "before": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "frame",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "lines": [
+    "3 parts changed"
+   ],
+   "name": "block parts",
+   "parts": 3
+  },
+  {
+   "after": {
+    "frame": "E-2",
+    "h": 80,
+    "id": "E-4",
+    "pin": {
+     "by": "agent",
+     "who": "alpha"
+    },
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "info",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Plans",
+    "type": "box",
+    "w": 180,
+    "x": 120,
+    "y": 60
+   },
+   "before": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "box",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "lines": [
+    "moved by c+1r+1",
+    "resized 160x80 → 180x80",
+    "text \"Pricing\" → \"Plans\"",
+    "tone neutral → info",
+    "moved into E-2",
+    "pinned",
+    "1 part changed"
+   ],
+   "name": "everything",
+   "parts": 1
+  },
+  {
+   "after": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "box",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "before": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "box",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "lines": [],
+   "name": "nothing",
+   "parts": 0
+  }
+ ]
+}

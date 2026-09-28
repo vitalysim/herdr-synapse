@@ -120,6 +120,7 @@ class FrameEdge(CanvasRig):
         self.assertTrue(C._contains(C.bounds(self.el(self.frame)), C.bounds(self.el(eid))))
         # A frame the author may not change stays as it is, and the edge is named instead.
         theirs = self.ok({"op": "frame", "title": "Theirs", "at": [900, 100], "w": 300, "h": 200}, OPERATOR)["ids"][0]
+        self.ok({"op": "settings", "human_edits": "live"}, OPERATOR)  # phase 5: else a mark in the operator's frame is a proposal
         other = self.ok(text_op("short", at=[920, 260]))["ids"][0]
         self.assertEqual(self.el(other)["frame"], theirs)
         result = self.apply([{"op": "edit", "id": other, "text": "short\nand now\nthree lines", "intent": "t"}])

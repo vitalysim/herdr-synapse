@@ -8,7 +8,8 @@ import { primitiveOf } from "./primitives/index.js";
 import { cameraSpec, frame, makeCamera, safeBounds } from "./cameras.js";
 import { buildLights } from "./lights.js";
 import { createMaterials } from "./materials.js";
-import { labelSprite } from "./labels.js";
+import { LABEL, labelSprite, leaderLine } from "./labels.js";
+import { CONTACT } from "./manifest.js";
 
 const RAD = Math.PI / 180;
 const isNum = (v) => Number.isFinite(Number(v));
@@ -136,12 +137,13 @@ export function gridStep(span) {
   return 10 * p;
 }
 
+// The ground grid over the bounds' footprint, as the server projections draw it (a fitted floor
+// covers it; with no floor it shows where the objects stand).
 function groundGrid(b, material) {
-  const pad = Math.max(b[3] - b[0], b[5] - b[2]) * 0.06;
-  const x0 = b[0] - pad;
-  const x1 = b[3] + pad;
-  const z0 = b[2] - pad;
-  const z1 = b[5] + pad;
+  const x0 = b[0];
+  const x1 = b[3];
+  const z0 = b[2];
+  const z1 = b[5];
   const step = gridStep(Math.max(x1 - x0, z1 - z0));
   const y = b[1] - 1e-3;
   const pts = [];
@@ -194,11 +196,44 @@ function topOf(entry) {
 }
 
 /**
+ * What a label may cover, by object id (canvas_scene3d._project._supports and `held`): the object
+ * itself, what holds it up (its groups, what it rests on or sits inside, and theirs) and what it
+ * holds (a group's members). Every other object's screen box is one its label keeps clear of.
+ */
+export function labelOwners(specs, ids) {
+  const own = new Map();
+  const held = new Map();
+  for (const id of ids) {
+    let holder = specs.get(id)?.in;
+    for (let seen = 0; typeof holder === "string" && seen < 64; seen += 1) {
+      if (!held.has(holder)) held.set(holder, new Set());
+      held.get(holder).add(id);
+      holder = specs.get(holder)?.in;
+    }
+  }
+  for (const id of ids) {
+    const out = new Set();
+    const todo = [id];
+    while (todo.length && out.size < 256) {
+      const current = todo.pop();
+      if (out.has(current)) continue;
+      out.add(current);
+      const spec = specs.get(current) || {};
+      if (typeof spec.in === "string") todo.push(spec.in);
+      for (const rel of CONTACT) if (typeof spec[rel] === "string") todo.push(spec[rel]);
+    }
+    for (const other of held.get(id) || []) out.add(other);
+    own.set(id, out);
+  }
+  return own;
+}
+
+/**
  * The scene for an element: {scene, camera, framing, spec, bounds, tris, objects: Map id -> Object3D,
  * models: [{id, node}], labels, dispose()}. `assets` maps a GLB asset name to its loaded model (a
  * three Group); a missing one draws its proxy box. `palette` is the page's flat {ref: hex}.
  */
-export function buildScene(element, assets, palette, { aspect = 1, camera: cameraOverride = null } = {}) {
+export function buildScene(element, assets, palette, { aspect = 1, camera: cameraOverride = null, slotHeight = null } = {}) {
   const solved = readSolved(element);
   const specs = objectsOf(element);
   const settings = settingsOf(element);
@@ -206,7 +241,10 @@ export function buildScene(element, assets, palette, { aspect = 1, camera: camer
   const scene = new Scene();
   scene.name = `scene3d:${element?.id ?? ""}`;
   scene.userData.labels = [];
-  scene.userData.texts = [];
+  // What sizeLabels places the labels by (labels.js): each object's solved box and whether it is
+  // solid, each label's object or link, and what each label may cover.
+  const plan = { objects: [], labels: [], own: null, keep: settings.labels === "all" };
+  scene.userData.plan = plan;
   const ctx = { palette: palette || {}, materials, assets: assets instanceof Map ? assets : new Map(), element };
   const nodes = new Map();
   const models = [];
@@ -228,18 +266,20 @@ export function buildScene(element, assets, palette, { aspect = 1, camera: camer
     node.userData.shape = spec.shape;
     scene.add(node);
     nodes.set(id, node);
-    if (spec.shape === "text3d") scene.userData.texts.push(node);
     if (def.name === "gltf" && built.userData.model) models.push({ id, node: built, tris: built.userData.tris || triangles(built.userData.model) });
+    if (entry.aabb) plan.objects.push({ id, aabb: entry.aabb, solid: !def.container && spec.shape !== "arrow3d" });
     const wantLabel = settings.labels === "all" ? spec.label || id : settings.labels === "none" ? null : spec.label;
-    if (wantLabel && spec.shape !== "text3d") {
+    if (wantLabel && spec.shape !== "text3d" && entry.aabb) {
       const sprite = labelSprite(wantLabel, palette);
-      const top = topOf(entry);
-      sprite.position.set(top[0], top[1] + (bounds[4] - bounds[1]) * 0.03, top[2]);
+      sprite.position.set(...topOf(entry));
       sprite.userData.for = id;
-      scene.add(sprite);
+      const line = leaderLine(palette);
+      scene.add(sprite, line);
       scene.userData.labels.push(sprite);
+      plan.labels.push({ sprite, line, id });
     }
   }
+  plan.own = labelOwners(specs, ids);
 
   const linkNodes = [];
   for (const link of solved.links) {
@@ -260,8 +300,10 @@ export function buildScene(element, assets, palette, { aspect = 1, camera: camer
       const b = pts[Math.floor((pts.length - 1) / 2) + 1] || a;
       const sprite = labelSprite(link.label, palette);
       sprite.position.set((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2);
-      scene.add(sprite);
+      const line = leaderLine(palette);
+      scene.add(sprite, line);
       scene.userData.labels.push(sprite);
+      plan.labels.push({ sprite, line, points: [pts[0], pts[pts.length - 1]] });
     }
   }
 
@@ -275,19 +317,25 @@ export function buildScene(element, assets, palette, { aspect = 1, camera: camer
     const e = solved.objects.get(id);
     return e ? (e.aabb ? [(e.aabb[0] + e.aabb[3]) / 2, (e.aabb[1] + e.aabb[4]) / 2, (e.aabb[2] + e.aabb[5]) / 2] : e.pos) : null;
   };
-  // Labels sit above their objects: the view keeps room for them over the top of the bounds.
-  const framed = scene.userData.labels.length ? [bounds[0], bounds[1], bounds[2], bounds[3], bounds[4] + Math.max(bounds[4] - bounds[1], bounds[3] - bounds[0], bounds[5] - bounds[2]) * 0.12, bounds[5]] : bounds;
-  // What an orthographic view fits: every object's box corners and every label's anchor lifted by
-  // a label's room (the server projections fit the same corners).
-  const lift = (framed[4] - bounds[4]);
+  // What an orthographic view fits, as the server projections fit it (_project._fitted): every
+  // solid's box corners, arrows' and links' ends, and the ground's corners. Labels get `room` of
+  // the view's height above that (the server's top_room: a label's line and its padding), as a
+  // share of the slot's height, which fit() is given.
   const fitPoints = [];
-  for (const entry of solved.objects.values()) {
-    const a = entry.aabb;
-    if (!a) continue;
-    for (const x of [a[0], a[3]]) for (const y of [a[1], a[4]]) for (const z of [a[2], a[5]]) fitPoints.push([x, y, z]);
+  for (const [id, entry] of solved.objects) {
+    if (entry.points) fitPoints.push(...entry.points.map((p) => vec(p, 3)).filter(Boolean));
+    else if (entry.aabb && !primitiveOf((specs.get(id) || {}).shape).container) {
+      const a = entry.aabb;
+      for (const x of [a[0], a[3]]) for (const y of [a[1], a[4]]) for (const z of [a[2], a[5]]) fitPoints.push([x, y, z]);
+    }
   }
-  for (const sprite of scene.userData.labels) fitPoints.push([sprite.position.x, sprite.position.y + lift, sprite.position.z]);
-  let framing = frame(framed, spec, aspect, centreOf, fitPoints);
+  for (const link of solved.links) fitPoints.push(...link.points);
+  if (settings.ground && solved.objects.size) fitPoints.push([bounds[0], Math.min(0, bounds[1]), bounds[2]], [bounds[3], Math.min(0, bounds[1]), bounds[5]]);
+  const framed = bounds;
+  const labelRoom = plan.labels.length ? LABEL.height + 2 * LABEL.pad : 0;
+  const roomFor = (slotHeight) => (labelRoom && slotHeight > 0 ? labelRoom / slotHeight : 0);
+  let framedRoom = roomFor(slotHeight);
+  let framing = frame(framed, spec, aspect, centreOf, fitPoints, framedRoom);
   let framedAspect = aspect;
   const camera = makeCamera(framing);
   scene.updateMatrixWorld(true);
@@ -299,15 +347,22 @@ export function buildScene(element, assets, palette, { aspect = 1, camera: camer
     get framing() {
       return framing;
     },
-    /** The camera framed for a viewport of `aspect` (w / h): framed again only when it changes. */
-    fit(a) {
-      if (Number.isFinite(a) && a > 0 && Math.abs(a - framedAspect) > 1e-3) {
+    /**
+     * The camera framed for a viewport of `aspect` (w / h) and a slot `slotHeight` board units tall
+     * (the labels' room is a share of it): framed again only when either changes.
+     */
+    fit(a, slotHeight = null) {
+      const room = slotHeight == null ? framedRoom : roomFor(slotHeight);
+      if (Number.isFinite(a) && a > 0 && (Math.abs(a - framedAspect) > 1e-3 || Math.abs(room - framedRoom) > 1e-6)) {
         framedAspect = a;
-        framing = frame(framed, spec, a, centreOf, fitPoints);
+        framedRoom = room;
+        framing = frame(framed, spec, a, centreOf, fitPoints, room);
         makeCamera(framing, camera);
       }
       return camera;
     },
+    /** The labels' room (a share of the view's height) for a slot `slotHeight` board units tall. */
+    roomFor,
     spec,
     bounds,
     framed,

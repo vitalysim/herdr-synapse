@@ -15,6 +15,11 @@ the team's canvas is off (``features.require_on`` inside ``canvas``).
 * ``send`` (the operator's "send to member"), ``export``, ``helper`` (the
   standalone ``sketch.py`` for agents' own scripts) and ``mcp`` (the stdio MCP
   server a harness starts at launch) complete the set.
+* Collaboration (canvas v2 phase 5, ``canvas_collab``): ``accept``, ``reject``,
+  ``withdraw``, ``freeze``, ``thaw``, ``checkpoint``, ``restore`` and
+  ``settings`` build those ops; ``undo --author`` reverts one author's batches;
+  ``draw --base`` says which version the batch was made against; ``focus``
+  writes the member's presence (not an op).
 
 Exit codes: 0 when at least one operation applied (or the batch was empty);
 1 with ``canvas_refused`` when every operation was refused.
@@ -78,9 +83,9 @@ def _default_intent(text: str) -> str:
     return line[: C.MAX_INTENT_CHARS - 1].rstrip() + "…" if len(line) > C.MAX_INTENT_CHARS else line
 
 
-def _apply(args: argparse.Namespace, ops: List[Dict[str, Any]], atomic: bool = False) -> int:
+def _apply(args: argparse.Namespace, ops: List[Dict[str, Any]], atomic: bool = False, base: Any = None) -> int:
     layout, _api, _author, team, doc, author = _open(args, write=True)
-    result = C.check_applied(C.apply_ops(layout, team, ops, author, atomic=atomic, doc=doc))
+    result = C.check_applied(C.apply_ops(layout, team, ops, author, atomic=atomic, doc=doc, base=base))
     return emit(args, result, C.apply_text(result))
 
 
@@ -93,7 +98,7 @@ def _look(args: argparse.Namespace) -> int:
     result = C.look(layout, team, _reader(author), region=_json_arg(args.region), around=args.around, since=args.since,
                     image=bool(args.image or args.exact), grid=bool(args.grid), exact=bool(args.exact),
                     advance=_may_advance(author), doc=doc, theme=args.theme or "light", block=args.block, full=bool(args.full),
-                    view=args.view)
+                    view=args.view, proposals=bool(args.proposals), author=author)
     return emit(args, result, result["text"])
 
 
@@ -156,10 +161,12 @@ def _draw(args: argparse.Namespace) -> int:
         raise UsageError("draw needs --file PATH, --file - (standard input) or --op JSON")
     ops: List[Dict[str, Any]] = []
     atomic = bool(args.atomic)
+    base = C.parse_base(args.base) if args.base is not None else None
     if args.file:
-        file_ops, file_atomic = C.parse_batch(_read_batch_file(args))
-        ops.extend(file_ops)
-        atomic = atomic or file_atomic
+        envelope = C.parse_envelope(_read_batch_file(args))
+        ops.extend(envelope.ops)
+        atomic = atomic or envelope.atomic
+        base = base if base is not None else envelope.base
     for raw in args.op or []:
         try:
             op = json.loads(raw)
@@ -169,7 +176,7 @@ def _draw(args: argparse.Namespace) -> int:
             raise UsageError("--op takes one JSON object, e.g. '{\"op\": \"shape\", \"text\": \"hi\", \"intent\": \"...\"}'")
         ops.append(op)
     ops, _atomic = C.parse_batch(ops)
-    return _apply(args, ops, atomic)
+    return _apply(args, ops, atomic, base)
 
 
 def _comment(args: argparse.Namespace) -> int:
@@ -251,7 +258,113 @@ def _refit(args: argparse.Namespace) -> int:
 
 
 def _undo(args: argparse.Namespace) -> int:
-    return _apply(args, [{"op": "undo", "batch": args.batch, "intent": args.intent or "undo {}".format(args.batch)}])
+    if (args.batch is None) == (args.author is None):
+        raise UsageError("undo B-n, or undo --author NAME [--since N]")
+    if args.since is not None and args.author is None:
+        raise UsageError("--since goes with --author")
+    op: Dict[str, Any] = {"op": "undo"}
+    if args.batch is not None:
+        op.update(batch=args.batch, intent=args.intent or "undo {}".format(args.batch))
+    else:
+        op.update(author=args.author, intent=args.intent or "revert {}'s batches".format(args.author))
+        if args.since is not None:
+            op["since"] = args.since
+    if args.force:
+        op["force"] = True
+    return _apply(args, [op])
+
+
+def _proposal_op(name: str) -> Any:
+    def run(args: argparse.Namespace) -> int:
+        op: Dict[str, Any] = {"op": name, "id": args.id, "intent": args.intent or "{} {}".format(name, args.id)}
+        if getattr(args, "note", None):
+            op["note"] = args.note
+        return _apply(args, [op])
+    return run
+
+
+def _freeze(args: argparse.Namespace) -> int:
+    if (args.region is None) == (args.ids is None):
+        raise UsageError("freeze REGION, or freeze --ids E-1,E-2")
+    op: Dict[str, Any] = {"op": "freeze", "intent": args.intent or "hold this as it is"}
+    if args.region is not None:
+        op["region"] = _json_arg(args.region)
+    else:
+        op["ids"] = [part.strip() for part in str(args.ids).split(",") if part.strip()]
+    if args.label:
+        op["label"] = args.label
+    return _apply(args, [op])
+
+
+def _thaw(args: argparse.Namespace) -> int:
+    if (args.id is None) == (args.ids is None):
+        raise UsageError("thaw X-n, or thaw --ids E-1,E-2")
+    op: Dict[str, Any] = {"op": "thaw", "intent": args.intent or "let it change again"}
+    if args.id is not None:
+        op["id"] = args.id
+    else:
+        op["ids"] = [part.strip() for part in str(args.ids).split(",") if part.strip()]
+    return _apply(args, [op])
+
+
+def _checkpoint(args: argparse.Namespace) -> int:
+    if (args.label is None) == (args.remove is None):
+        raise UsageError("checkpoint LABEL, or checkpoint --remove V-n")
+    if args.remove is not None:
+        return _apply(args, [{"op": "checkpoint", "remove": args.remove, "intent": args.intent or "remove {}".format(args.remove)}])
+    return _apply(args, [{"op": "checkpoint", "label": args.label, "intent": args.intent or _default_intent(args.label)}])
+
+
+def _restore(args: argparse.Namespace) -> int:
+    return _apply(args, [{"op": "restore", "id": args.id, "intent": args.intent or "restore {}".format(args.id)}])
+
+
+def _settings(args: argparse.Namespace) -> int:
+    if args.human_edits is None and args.frozen is None:
+        layout, _api, _identity, team, doc, _author = _open(args, write=False)
+        _features.require_on(layout.session, team, doc)
+        settings = C.load_scene(team)["settings"]["collab"]
+        text = "the operator's marks: {} · frozen areas: {}".format(
+            "proposals" if settings["human_edits"] == "propose" else "live with revert", "proposals" if settings["frozen"] == "propose" else "refused")
+        return emit(args, {"settings": settings}, text)
+    op: Dict[str, Any] = {"op": "settings", "intent": args.intent or "collaboration settings"}
+    if args.human_edits is not None:
+        op["human_edits"] = args.human_edits
+    if args.frozen is not None:
+        op["frozen"] = args.frozen
+    return _apply(args, [op])
+
+
+def _focus(args: argparse.Namespace) -> int:
+    """Presence, not an op (phase 5, 9.1): where this member works, its status and intent, for ``--ttl`` seconds."""
+    from herdr_team import canvas_presence as P
+
+    layout, _api, _identity, team, doc, author = _open(args, write=True)
+    _features.require_on(layout.session, team, doc)
+    if not (author.is_member and author.verified):
+        raise HerdrTeamError("usage", "focus is a verified member's presence; the operator's page reports hers", EXIT_REFUSED)
+    if args.clear:
+        P.clear_member(team, author.name)
+        return emit(args, {"ok": True, "cleared": True}, "presence cleared")
+    region = None
+    ids: List[str] = []
+    if args.where:
+        scene = C.load_scene(team)
+        target = _json_arg(args.where)
+        region = C.parse_region(target, scene, author.name)
+        if isinstance(target, str) and not target.startswith("[") and ":" not in target and "," not in target:
+            try:
+                ids = [C._lookup_in(C._State.from_scene(scene, team.name), target, author.name, "where")["id"]]
+            except HerdrTeamError:
+                ids = []
+    ttl = args.ttl if args.ttl is not None else P.FOCUS_TTL_S
+    if not P.FOCUS_TTL_RANGE[0] <= ttl <= P.FOCUS_TTL_RANGE[1]:
+        raise UsageError("--ttl is {} to {} seconds".format(*P.FOCUS_TTL_RANGE))
+    doc_out = P.write_member(team, author, status=args.status or "drawing", region=region, ids=ids, intent=args.intent or "", ttl_s=ttl,
+                             via="focus")
+    human = "focus: {} {}{} for {}s".format(args.status or "drawing", C.region_cells(region) if region else "(no region)",
+                                           " " + C._q(args.intent, 60) if args.intent else "", ttl)
+    return emit(args, {"ok": True, "presence": doc_out}, human)
 
 
 def _lock(args: argparse.Namespace) -> int:
@@ -350,6 +463,8 @@ _ACTIONS = {
     "look": _look, "check": _check, "draw": _draw, "comment": _comment, "claim": _claim, "release": _release, "legend": _legend,
     "portrait": _portrait, "changes": _changes, "resolve": _resolve, "undo": _undo, "refit": _refit, "lock": _lock, "unlock": _unlock,
     "send": _send, "export": _export, "helper": _helper, "mcp": _mcp, "icons": _icons, "catalog": _catalog,
+    "accept": _proposal_op("accept"), "reject": _proposal_op("reject"), "withdraw": _proposal_op("withdraw"), "freeze": _freeze,
+    "thaw": _thaw, "checkpoint": _checkpoint, "restore": _restore, "settings": _settings, "focus": _focus,
 }
 
 _SPECS = (
@@ -363,7 +478,7 @@ _SPECS = (
     ("portrait", "your plan as a small frame in your home: --from-todo, or --step TEXT ... [--current N]"),
     ("changes", "what changed since you last looked (or since a version)"),
     ("resolve", "mark a comment resolved"),
-    ("undo", "undo a whole batch (B-n): yours; the manager any agent's; the operator any"),
+    ("undo", "undo a batch (B-n), or --author NAME [--since N]: every batch of one author; skips what others changed later (--force: the operator)"),
     ("refit", "size labels again (an old board, or text the page measured wider): --ids E-1,E-2, or every element you may edit"),
     ("lock", "lock a region so agents cannot draw in it (operator)"),
     ("unlock", "remove a lock (operator)"),
@@ -373,6 +488,15 @@ _SPECS = (
     ("mcp", "run the stdio MCP server that gives a harness the canvas tools (started by the harness at launch)"),
     ("icons", "the icon names cards, icons and shapes take (Lucide), or --search WORD"),
     ("catalog", "the chart types (charts) or the 3D primitives, relations and layouts (scene3d), each with an example op"),
+    ("accept", "accept a proposal (P-n): exactly what it showed lands (the operator)"),
+    ("reject", "reject a proposal (P-n), with an optional --note (the operator)"),
+    ("withdraw", "take back your own open proposal (P-n)"),
+    ("freeze", "hold a region (or --ids) as it is: others' changes there become proposals or are refused (the operator)"),
+    ("thaw", "lift a freeze (X-n), or let go of --ids (the operator)"),
+    ("checkpoint", "save the canvas as a named checkpoint (V-n), or --remove one of yours"),
+    ("restore", "restore a checkpoint (V-n) as one batch; a checkpoint of now is saved first (the operator)"),
+    ("settings", "the collaboration settings: --human-edits propose|live, --frozen propose|refuse (the operator); no flags prints them"),
+    ("focus", "your presence on the canvas: where you work (REGION or ID), --status, --intent, --ttl; --clear removes it"),
 )
 
 
@@ -395,6 +519,7 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
     p.add_argument("--block", metavar="REF", help="one block's whole spec (a kanban, a table ...), one item per line")
     p.add_argument("--full", action="store_true", help="also each block's part ids, top-level neighbours and details")
     p.add_argument("--view", metavar="VIEW", help="draw the image's 3D scenes from this view: iso, front or top")
+    p.add_argument("--proposals", action="store_true", help="print every open proposal in full (its summary, base note, what outdated it)")
     p = parsers["check"]
     where = p.add_mutually_exclusive_group()
     where.add_argument("--region", metavar="R", help='"c10r4:c40r22", "x0,y0,x1,y1", [x0,y0,x1,y1] or an element id')
@@ -404,6 +529,8 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
     p.add_argument("--file", metavar="PATH|-", help='a batch: {"ops": [...], "atomic": false} or a list of operations; - reads standard input')
     p.add_argument("--op", action="append", metavar="JSON", help="one operation as JSON (repeatable, applied after --file)")
     p.add_argument("--atomic", action="store_true", help="apply all or nothing")
+    p.add_argument("--base", metavar="N|last", help="the canvas version you last read (last: your look cursor); what the operator changed "
+                                                    "since is refused, what others changed applies with a warning")
     p = parsers["comment"]
     p.add_argument("at", metavar="AT", help="an element (E-3 or an alias), a comment to reply to (C-4), a cell (c11r6) or x,y")
     p.add_argument("text", metavar="TEXT", help="the comment (<= 1000 characters); @name mentions a member")
@@ -430,8 +557,43 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
     p.add_argument("id", metavar="C-n")
     p.add_argument("--intent", metavar="TEXT")
     p = parsers["undo"]
-    p.add_argument("batch", metavar="B-n")
+    p.add_argument("batch", metavar="B-n", nargs="?")
+    p.add_argument("--author", metavar="NAME", help="every not-undone batch of this author (a member, or human)")
+    p.add_argument("--since", type=int, metavar="N", help="with --author: only batches after version N")
+    p.add_argument("--force", action="store_true", help="write back even what others changed later (the operator)")
     p.add_argument("--intent", metavar="TEXT")
+    for name in ("accept", "reject", "withdraw"):
+        p = parsers[name]
+        p.add_argument("id", metavar="P-n")
+        if name != "withdraw":
+            p.add_argument("--note", metavar="TEXT", help="one line for the proposer")
+        p.add_argument("--intent", metavar="TEXT")
+    p = parsers["freeze"]
+    p.add_argument("region", nargs="?", metavar="REGION", help='"c10r4:c40r22", "x0,y0,x1,y1" or an element id')
+    p.add_argument("--ids", metavar="E-1,E-2", help="freeze these elements (and what they hold) instead of a region")
+    p.add_argument("--label", metavar="TEXT")
+    p.add_argument("--intent", metavar="TEXT")
+    p = parsers["thaw"]
+    p.add_argument("id", nargs="?", metavar="X-n")
+    p.add_argument("--ids", metavar="E-1,E-2", help="let go of these elements in every id freeze")
+    p.add_argument("--intent", metavar="TEXT")
+    p = parsers["checkpoint"]
+    p.add_argument("label", nargs="?", metavar="LABEL")
+    p.add_argument("--remove", metavar="V-n")
+    p.add_argument("--intent", metavar="TEXT")
+    p = parsers["restore"]
+    p.add_argument("id", metavar="V-n")
+    p.add_argument("--intent", metavar="TEXT")
+    p = parsers["settings"]
+    p.add_argument("--human-edits", dest="human_edits", choices=("propose", "live"), help="agents' changes to the operator's marks")
+    p.add_argument("--frozen", choices=("propose", "refuse"), help="agents' changes in frozen areas")
+    p.add_argument("--intent", metavar="TEXT")
+    p = parsers["focus"]
+    p.add_argument("where", nargs="?", metavar="REGION|ID", help='where you work: "c10r4:c40r22" or an element')
+    p.add_argument("--status", choices=("reading", "drawing", "waiting", "blocked", "idle"), help="default drawing")
+    p.add_argument("--intent", metavar="TEXT", help="one line: what you are doing")
+    p.add_argument("--ttl", type=int, metavar="SECONDS", help="how long it shows (60 to 3600, default 600)")
+    p.add_argument("--clear", action="store_true", help="remove your presence")
     p = parsers["refit"]
     p.add_argument("--ids", metavar="E-1,E-2", help="the elements to size again (default: every element you may edit, up to 500)")
     p.add_argument("--intent", metavar="TEXT")

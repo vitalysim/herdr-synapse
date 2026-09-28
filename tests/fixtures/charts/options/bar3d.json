@@ -227,6 +227,9 @@
     "show": false
    },
    "xAxis3D": {
+    "axisLabel": {
+     "interval": 0
+    },
     "data": [
      "9",
      "12"
@@ -240,6 +243,9 @@
     "type": "category"
    },
    "yAxis3D": {
+    "axisLabel": {
+     "interval": 0
+    },
     "data": [
      "Mon",
      "Tue"

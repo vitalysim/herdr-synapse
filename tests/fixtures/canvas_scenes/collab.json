@@ -1,0 +1,42 @@
+{
+ "name": "collab",
+ "about": "Canvas v2 phase 5: the operator's page and boxes, a member's lane and claim, an open and an outdated proposal, a region and an id freeze, a comment on a box and an orphaned one, and a checkpoint; settings at their defaults.",
+ "gates": {"strict": true},
+ "batches": [
+  {"as": "lead", "ops": [
+   {"op": "frame", "id": "page", "title": "Pricing page", "at": "c0r0", "w": 560, "h": 380},
+   {"op": "shape", "id": "plans", "kind": "box", "text": "Plans", "at": "c2r4", "w": 200, "h": 80},
+   {"op": "shape", "id": "faq", "kind": "box", "text": "FAQ", "at": "c16r4", "w": 200, "h": 80},
+   {"op": "shape", "id": "checkout", "kind": "box", "text": "Checkout", "at": "c36r2", "w": 200, "h": 80, "tone": "accent"},
+   {"op": "shape", "id": "legal", "kind": "note", "text": "Legal copy", "at": "c2r24"},
+   {"op": "shape", "id": "banner", "kind": "box", "text": "Old banner", "at": "c20r24", "w": 200, "h": 80},
+   {"op": "comment", "at": "checkout", "text": "Is this the final flow?"},
+   {"op": "comment", "at": "banner", "text": "@drawer can this go?"}
+  ]},
+  {"as": "drawer", "ops": [
+   {"op": "claim", "region": "c76r0:c112r16", "label": "the signup funnel", "intent": "where I draw the funnel"},
+   {"op": "shape", "id": "visit", "kind": "box", "text": "Visit", "at": "c78r2", "w": 180, "h": 80, "intent": "the funnel's first step"},
+   {"op": "shape", "id": "signup", "kind": "box", "text": "Sign up", "at": "c96r2", "w": 180, "h": 80, "intent": "the funnel's second step"},
+   {"op": "arrow", "from": "visit", "to": "signup", "label": "converts", "intent": "how people move on"}
+  ]},
+  {"as": "drawer", "ops": [
+   {"op": "move", "id": "checkout", "by": [0, 280], "intent": "line checkout up with the funnel"}
+  ]},
+  {"as": "drawer", "ops": [
+   {"op": "move", "id": "faq", "by": [0, 160], "intent": "questions below the plans"}
+  ]},
+  {"as": "lead", "ops": [
+   {"op": "edit", "id": "faq", "text": "FAQ and help"},
+   {"op": "delete", "id": "banner"}
+  ]},
+  {"as": "lead", "ops": [
+   {"op": "freeze", "region": "c0r22:c16r32", "label": "final legal copy"},
+   {"op": "freeze", "ids": ["page"], "label": "approved layout"},
+   {"op": "checkpoint", "label": "before review"}
+  ]}
+ ],
+ "presence": [
+  {"as": "peer", "focus": {"region": "c78r0:c108r12", "intent": "checking the funnel numbers", "status": "reading", "ttl_s": 600}},
+  {"human": {"page": "0123456789abcdef", "viewport": [0, 0, 1400, 900], "selection": ["E-4"], "cursor": [760, 60]}}
+ ]
+}

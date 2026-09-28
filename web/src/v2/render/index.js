@@ -27,7 +27,8 @@
  * urls ({asset(name), still(name), viz(id), artifact(rel)}), elementOf(id), onPointer(SurfacePointer),
  * onStill(id, version, pngBlob, view), onRendered({version, root}), entered (id|null: the entry
  * whose slot is live, WW-3), onEnter(id|null), onOps(ops) (a slot's own op, writable pages),
- * children (screen-space HTML).
+ * screenOverlay (a node drawn in screen space above the SVG world, never taking pointer events:
+ * canvas-v2-phase5.md 12.1), children (screen-space HTML).
  */
 
 export { DL_SUPPORTED, SLOT_KINDS } from "./version.js";

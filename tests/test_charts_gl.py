@@ -171,6 +171,17 @@ class Contract(unittest.TestCase):
                     for b in boxes[i + 1:]:
                         self.assertFalse(a[0] < b[0] + b[2] and b[0] < a[0] + a[2] and a[1] < b[1] + b[3] and b[1] < a[1] + a[3], (a, b))
 
+    def test_bar3d_page_shows_the_labels_the_drawing_shows(self):
+        # QA phase34 low: echarts-gl drew every hour and weekday, so crowded labels met at the floor's near corner.
+        result = compiled(OPS["bar3d"])
+        shown = {p["lines"][0]["t"] for p in draw(result) if p["k"] == "text"}
+        for key, names in (("xAxis3D", result.model["xs"]), ("yAxis3D", result.model["ys"])):
+            every = result.option[key]["axisLabel"]["interval"] + 1
+            self.assertGreater(every, 1, key)
+            page = [str(n) for i, n in enumerate(names) if i % every == 0]
+            self.assertTrue(set(page[1:]) <= shown, (key, page, shown))
+            self.assertFalse({str(n) for i, n in enumerate(names) if i % every} & shown, key)
+
 
 class Gists(unittest.TestCase):
     def test_bar3d(self):

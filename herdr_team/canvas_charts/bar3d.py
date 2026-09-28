@@ -176,6 +176,14 @@ def draw(spec: Dict[str, Any], model: Dict[str, Any], frame: Frame, slot: Tuple[
     return plot.items()
 
 
+def label_steps(model: Mapping[str, Any], box: Sequence[float]) -> Tuple[int, int]:
+    """Every how many x and y labels the drawing shows in a slot of ``box`` (w, h): the page shows the same ones."""
+    w, _h, d = size(model)
+    plot = P.Plot3D((0.0, 0.0, float(box[0]), float(box[1])), size(model))
+    nx, ny = max(1, len(model.get("xs") or [])), max(1, len(model.get("ys") or []))
+    return (plot.edge_step([w / nx * (i + 0.5) for i in range(nx)], "x"), plot.edge_step([d / ny * (j + 0.5) for j in range(ny)], "z"))
+
+
 def doc(spec: Dict[str, Any], table: _data.Table, model: Dict[str, Any]) -> Dict[str, Any]:
     return {"datasets": [], "refs": {"cells": [list(c) for c in model.get("cells") or []]}}
 
@@ -184,9 +192,11 @@ def option(spec: Dict[str, Any], model: Dict[str, Any], frame: Frame, gist: Sequ
     lo, hi = extent(model)
     gmin, gmax, step, _t = ticks(spec, model)
     fmt, unit = _fmt(spec)
+    every_x, every_y = label_steps(model, frame.box)
     out = O.base(gist, [P.seq_ref(4)])
     out.update(tooltip=O.tooltip("item"), grid3D=P.grid3d(size(model)), visualMap=P.visual_map(lo, hi, 2),
-               xAxis3D=P.axis3d("category", spec["x"], model.get("xs")), yAxis3D=P.axis3d("category", spec["y"], model.get("ys")),
+               xAxis3D=P.axis3d("category", spec["x"], model.get("xs"), every=every_x),
+               yAxis3D=P.axis3d("category", spec["y"], model.get("ys"), every=every_y),
                zAxis3D=P.axis3d("value", z_title(spec, model), lo=gmin, hi=gmax, step=step, fmt_id=F.fmt_id(fmt or "auto", unit)),
                series=[{"type": "bar3D", "name": z_title(spec, model), "data": {"$doc": "cells"}, "shading": spec.get("shading") or "lambert",
                         "bevelSize": 0, "itemStyle": {"opacity": 1}, "emphasis": {"label": {"show": False}}}])

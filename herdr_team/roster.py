@@ -1124,8 +1124,19 @@ def release_claim(layout: Layout, owner_team: str, terminal_id: str, reason: str
     update_team(team_paths, mutate)
     if not gone:
         return None
+    _clear_canvas_presence(team_paths, gone[0])
     append_system_record(team_paths, "member_gone", "{} left team {} ({})".format(gone[0], owner_team, reason), to=["all"], socket=socket)
     return gone[0]
+
+
+def _clear_canvas_presence(team_paths: TeamPaths, name: str) -> None:
+    """A member that leaves is no longer on the canvas: its presence file goes (best-effort; readers check the roster too)."""
+    try:
+        from herdr_team import canvas_presence
+
+        canvas_presence.clear_member(team_paths, name)
+    except (OSError, ValueError, HerdrTeamError):
+        pass
 
 
 # --------------------------------------------------------------------------
@@ -1801,6 +1812,7 @@ class Roster:
 
         self.update(mutate)
         remove_pane_record(self.layout.session, member.terminal_id)
+        _clear_canvas_presence(self.paths, member.name)
         seq = append_system_record(self.paths, "member_gone", "{} left team {} ({})".format(member.name, self.name, reason), to=["all"], socket=socket)
         return {"team": self.name, "removed": member.name, "tokens_cleared": tokens_cleared, "name_cleared": name_cleared, "record_seq": seq}
 

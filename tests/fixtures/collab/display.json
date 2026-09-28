@@ -1,0 +1,1030 @@
+{
+ "about": "canvas v2 phase 5 display-list entries (4.6, 5.2, I-3), from the collab scene's golden (tests/fixtures/display/collab.json)",
+ "entries": [
+  {
+   "author": "human",
+   "bbox": [
+    0,
+    0,
+    560,
+    380
+   ],
+   "chip": {
+    "bg": "chip.human.bg",
+    "fg": "chip.human.fg",
+    "initials": "OP"
+   },
+   "connect": false,
+   "edit": {
+    "align": "start",
+    "box": [
+     20,
+     8,
+     520,
+     24
+    ],
+    "field": "text",
+    "fill": "tone.neutral.text",
+    "font": "sans",
+    "lh": 20,
+    "size": 16,
+    "value": "Pricing page",
+    "weight": 600,
+    "wrap": "line"
+   },
+   "frame": null,
+   "frozen": true,
+   "handles": "box",
+   "hit": {
+    "band": 40,
+    "box": [
+     0,
+     0,
+     560,
+     380
+    ],
+    "shape": "frame"
+   },
+   "id": "E-1",
+   "items": [
+    {
+     "fill": "tone.neutral.zone",
+     "h": 380,
+     "k": "rect",
+     "r": 16,
+     "stroke": "tone.neutral.zone_stroke",
+     "sw_px": 1.5,
+     "w": 560,
+     "x": 0,
+     "y": 0
+    },
+    {
+     "anchor": "start",
+     "box": [
+      20,
+      8,
+      520,
+      20
+     ],
+     "fill": "tone.neutral.text",
+     "font": "sans",
+     "k": "text",
+     "lh": 20,
+     "lines": [
+      {
+       "t": "Pricing page",
+       "w": 99.74,
+       "y": 23.82
+      }
+     ],
+     "lod": [
+      0.75,
+      null
+     ],
+     "size": 16,
+     "weight": 600,
+     "x": 20
+    },
+    {
+     "anchor": "start",
+     "base_ratio": 0.99,
+     "box": [
+      0,
+      -20,
+      99.74,
+      20
+     ],
+     "fill": "tone.neutral.text",
+     "font": "sans",
+     "k": "text",
+     "lh": 20,
+     "lines": [
+      {
+       "t": "Pricing page",
+       "w": 99.74,
+       "y": -4.18
+      }
+     ],
+     "lod": [
+      null,
+      0.75
+     ],
+     "size": 16,
+     "weight": 600,
+     "x": 0,
+     "zoom": {
+      "bottom": 0,
+      "grow": "up",
+      "min_px": 12
+     }
+    }
+   ],
+   "kind": "frame",
+   "layer": "zones",
+   "locked": false,
+   "v": 1,
+   "z": 1
+  },
+  {
+   "author": "human",
+   "bbox": [
+    40,
+    80,
+    240,
+    160
+   ],
+   "chip": {
+    "bg": "chip.human.bg",
+    "fg": "chip.human.fg",
+    "initials": "OP"
+   },
+   "connect": true,
+   "edit": {
+    "align": "center",
+    "box": [
+     56,
+     92,
+     168,
+     56
+    ],
+    "field": "text",
+    "fill": "tone.neutral.text",
+    "font": "sans",
+    "lh": 25,
+    "size": 20,
+    "value": "Plans",
+    "weight": 500,
+    "wrap": "box"
+   },
+   "frame": "E-1",
+   "frozen": true,
+   "handles": "box",
+   "hit": {
+    "box": [
+     40,
+     80,
+     200,
+     80
+    ],
+    "shape": "rect"
+   },
+   "id": "E-2",
+   "items": [
+    {
+     "fill": "tone.neutral.fill",
+     "h": 80,
+     "k": "rect",
+     "r": 8,
+     "stroke": "tone.neutral.stroke",
+     "sw": 2,
+     "w": 200,
+     "x": 40,
+     "y": 80
+    },
+    {
+     "anchor": "middle",
+     "box": [
+      56,
+      92,
+      168,
+      56
+     ],
+     "fill": "tone.neutral.text",
+     "font": "sans",
+     "k": "text",
+     "lh": 25,
+     "lines": [
+      {
+       "t": "Plans",
+       "w": 53.59,
+       "y": 127.28
+      }
+     ],
+     "lod": [
+      0.15,
+      null
+     ],
+     "size": 20,
+     "weight": 500,
+     "x": 140
+    }
+   ],
+   "kind": "box",
+   "layer": "marks",
+   "locked": false,
+   "v": 2,
+   "z": 2
+  },
+  {
+   "author": "human",
+   "bbox": [
+    320,
+    80,
+    520,
+    160
+   ],
+   "chip": {
+    "bg": "chip.human.bg",
+    "fg": "chip.human.fg",
+    "initials": "OP"
+   },
+   "connect": true,
+   "edit": {
+    "align": "center",
+    "box": [
+     336,
+     92,
+     168,
+     56
+    ],
+    "field": "text",
+    "fill": "tone.neutral.text",
+    "font": "sans",
+    "lh": 25,
+    "size": 20,
+    "value": "FAQ and help",
+    "weight": 500,
+    "wrap": "box"
+   },
+   "frame": "E-1",
+   "frozen": true,
+   "handles": "box",
+   "hit": {
+    "box": [
+     320,
+     80,
+     200,
+     80
+    ],
+    "shape": "rect"
+   },
+   "id": "E-3",
+   "items": [
+    {
+     "fill": "tone.neutral.fill",
+     "h": 80,
+     "k": "rect",
+     "r": 8,
+     "stroke": "tone.neutral.stroke",
+     "sw": 2,
+     "w": 200,
+     "x": 320,
+     "y": 80
+    },
+    {
+     "anchor": "middle",
+     "box": [
+      336,
+      92,
+      168,
+      56
+     ],
+     "fill": "tone.neutral.text",
+     "font": "sans",
+     "k": "text",
+     "lh": 25,
+     "lines": [
+      {
+       "t": "FAQ and help",
+       "w": 132.8,
+       "y": 127.28
+      }
+     ],
+     "lod": [
+      0.15,
+      null
+     ],
+     "size": 20,
+     "weight": 500,
+     "x": 420
+    }
+   ],
+   "kind": "box",
+   "layer": "marks",
+   "locked": false,
+   "pending": [
+    "P-2"
+   ],
+   "v": 15,
+   "z": 3
+  },
+  {
+   "author": "human",
+   "bbox": [
+    720,
+    40,
+    920,
+    120
+   ],
+   "chip": {
+    "bg": "chip.human.bg",
+    "fg": "chip.human.fg",
+    "initials": "OP"
+   },
+   "connect": true,
+   "edit": {
+    "align": "center",
+    "box": [
+     736,
+     52,
+     168,
+     56
+    ],
+    "field": "text",
+    "fill": "tone.accent.text",
+    "font": "sans",
+    "lh": 25,
+    "size": 20,
+    "value": "Checkout",
+    "weight": 500,
+    "wrap": "box"
+   },
+   "frame": null,
+   "handles": "box",
+   "hit": {
+    "box": [
+     720,
+     40,
+     200,
+     80
+    ],
+    "shape": "rect"
+   },
+   "id": "E-4",
+   "items": [
+    {
+     "fill": "tone.accent.fill",
+     "h": 80,
+     "k": "rect",
+     "r": 8,
+     "stroke": "tone.accent.stroke",
+     "sw": 2,
+     "w": 200,
+     "x": 720,
+     "y": 40
+    },
+    {
+     "anchor": "middle",
+     "box": [
+      736,
+      52,
+      168,
+      56
+     ],
+     "fill": "tone.accent.text",
+     "font": "sans",
+     "k": "text",
+     "lh": 25,
+     "lines": [
+      {
+       "t": "Checkout",
+       "w": 94.85,
+       "y": 87.28
+      }
+     ],
+     "lod": [
+      0.15,
+      null
+     ],
+     "size": 20,
+     "weight": 500,
+     "x": 820
+    }
+   ],
+   "kind": "box",
+   "layer": "marks",
+   "locked": false,
+   "pending": [
+    "P-1"
+   ],
+   "v": 4,
+   "z": 4
+  },
+  {
+   "author": "human",
+   "bbox": [
+    40,
+    480,
+    220,
+    600
+   ],
+   "chip": {
+    "bg": "chip.human.bg",
+    "fg": "chip.human.fg",
+    "initials": "OP"
+   },
+   "connect": true,
+   "edit": {
+    "align": "center",
+    "box": [
+     56,
+     496,
+     148,
+     88
+    ],
+    "field": "text",
+    "fill": "tone.idea.text",
+    "font": "sans",
+    "lh": 25,
+    "size": 20,
+    "value": "Legal copy",
+    "weight": 500,
+    "wrap": "box"
+   },
+   "frame": null,
+   "frozen": true,
+   "handles": "box",
+   "hit": {
+    "box": [
+     40,
+     480,
+     180,
+     120
+    ],
+    "shape": "rect"
+   },
+   "id": "E-5",
+   "items": [
+    {
+     "fill": "tone.idea.sticky",
+     "h": 120,
+     "k": "rect",
+     "r": 4,
+     "stroke": "tone.idea.stroke",
+     "sw": 2,
+     "w": 180,
+     "x": 40,
+     "y": 480
+    },
+    {
+     "anchor": "middle",
+     "box": [
+      56,
+      496,
+      148,
+      88
+     ],
+     "fill": "tone.idea.text",
+     "font": "sans",
+     "k": "text",
+     "lh": 25,
+     "lines": [
+      {
+       "t": "Legal copy",
+       "w": 107.81,
+       "y": 547.28
+      }
+     ],
+     "lod": [
+      0.15,
+      null
+     ],
+     "size": 20,
+     "weight": 500,
+     "x": 130
+    }
+   ],
+   "kind": "note",
+   "layer": "marks",
+   "locked": false,
+   "v": 5,
+   "z": 5
+  },
+  {
+   "author": "human",
+   "bbox": [
+    -4,
+    436,
+    324,
+    644
+   ],
+   "chip": {
+    "bg": "chip.human.bg",
+    "fg": "chip.human.fg",
+    "initials": "OP"
+   },
+   "connect": false,
+   "edit": null,
+   "frame": null,
+   "freeze": {
+    "ids": null,
+    "label": "final legal copy",
+    "mode": "propose",
+    "region": [
+     0,
+     440,
+     320,
+     640
+    ]
+   },
+   "handles": "none",
+   "hit": {
+    "band": 12,
+    "box": [
+     -4,
+     436,
+     328,
+     208
+    ],
+    "shape": "frame"
+   },
+   "id": "X-1",
+   "items": [
+    {
+     "dash": [
+      10,
+      6
+     ],
+     "fill": null,
+     "h": 208,
+     "k": "rect",
+     "stroke": "tone.info.stroke",
+     "sw_px": 1.5,
+     "w": 328,
+     "x": -4,
+     "y": 436
+    },
+    {
+     "items": [
+      {
+       "anchor": "end",
+       "box": [
+        -160.09,
+        -17.87,
+        156.09,
+        15
+       ],
+       "fill": "tone.info.text",
+       "font": "sans",
+       "k": "text",
+       "lh": 15,
+       "lines": [
+        {
+         "t": "X-1 frozen: final legal copy",
+         "w": 156.09,
+         "y": -6
+        }
+       ],
+       "size": 12,
+       "weight": 400,
+       "x": -4
+      }
+     ],
+     "k": "group",
+     "screen": [
+      324,
+      436
+     ]
+    }
+   ],
+   "kind": "freeze",
+   "layer": "overlays",
+   "locked": false,
+   "v": 0,
+   "z": -3
+  },
+  {
+   "author": "human",
+   "bbox": [
+    -4,
+    -4,
+    564,
+    384
+   ],
+   "chip": {
+    "bg": "chip.human.bg",
+    "fg": "chip.human.fg",
+    "initials": "OP"
+   },
+   "connect": false,
+   "edit": null,
+   "frame": null,
+   "freeze": {
+    "ids": [
+     "E-1"
+    ],
+    "label": "approved layout",
+    "mode": "propose",
+    "region": null
+   },
+   "handles": "none",
+   "hit": {
+    "band": 12,
+    "box": [
+     -4,
+     -4,
+     568,
+     388
+    ],
+    "shape": "frame"
+   },
+   "id": "X-2",
+   "items": [
+    {
+     "dash": [
+      10,
+      6
+     ],
+     "fill": null,
+     "h": 388,
+     "k": "rect",
+     "stroke": "tone.info.stroke",
+     "sw_px": 1.5,
+     "w": 568,
+     "x": -4,
+     "y": -4
+    },
+    {
+     "items": [
+      {
+       "anchor": "end",
+       "box": [
+        -169.12,
+        -17.87,
+        165.12,
+        15
+       ],
+       "fill": "tone.info.text",
+       "font": "sans",
+       "k": "text",
+       "lh": 15,
+       "lines": [
+        {
+         "t": "X-2 frozen: approved layout",
+         "w": 165.12,
+         "y": -6
+        }
+       ],
+       "size": 12,
+       "weight": 400,
+       "x": -4
+      }
+     ],
+     "k": "group",
+     "screen": [
+      564,
+      -4
+     ]
+    }
+   ],
+   "kind": "freeze",
+   "layer": "overlays",
+   "locked": false,
+   "v": 0,
+   "z": -3
+  },
+  {
+   "author": "qa-drawer",
+   "bbox": [
+    714,
+    80,
+    926,
+    406
+   ],
+   "chip": {
+    "bg": "chip.0.bg",
+    "fg": "chip.0.fg",
+    "initials": "QA"
+   },
+   "connect": false,
+   "edit": null,
+   "frame": null,
+   "handles": "none",
+   "hit": {
+    "box": [
+     714,
+     314,
+     212,
+     92
+    ],
+    "shape": "rect"
+   },
+   "id": "P-1",
+   "items": [
+    {
+     "fill": "tone.accent.fill",
+     "h": 80,
+     "k": "rect",
+     "op": 0.5,
+     "r": 8,
+     "stroke": "tone.accent.stroke",
+     "sw": 2,
+     "w": 200,
+     "x": 720,
+     "y": 320
+    },
+    {
+     "anchor": "middle",
+     "box": [
+      736,
+      332,
+      168,
+      56
+     ],
+     "fill": "tone.accent.text",
+     "font": "sans",
+     "k": "text",
+     "lh": 25,
+     "lines": [
+      {
+       "t": "Checkout",
+       "w": 94.85,
+       "y": 367.28
+      }
+     ],
+     "lod": [
+      0.15,
+      null
+     ],
+     "op": 0.5,
+     "size": 20,
+     "weight": 500,
+     "x": 820
+    },
+    {
+     "dash": [
+      6,
+      4
+     ],
+     "k": "line",
+     "op": 0.6,
+     "points": [
+      [
+       820,
+       80
+      ],
+      [
+       820,
+       360
+      ]
+     ],
+     "stroke": "tone.accent.stroke",
+     "sw_px": 1
+    },
+    {
+     "dash": [
+      6,
+      4
+     ],
+     "fill": null,
+     "h": 92,
+     "k": "rect",
+     "r": 6,
+     "stroke": "tone.accent.stroke",
+     "sw_px": 1.5,
+     "w": 212,
+     "x": 714,
+     "y": 314
+    },
+    {
+     "items": [
+      {
+       "fill": "chip.0.bg",
+       "h": 20,
+       "k": "rect",
+       "r": 10,
+       "stroke": null,
+       "w": 360.47,
+       "x": 0,
+       "y": -24
+      },
+      {
+       "anchor": "start",
+       "box": [
+        8,
+        -21.87,
+        344.47,
+        15
+       ],
+       "fill": "chip.0.fg",
+       "font": "sans",
+       "k": "text",
+       "lh": 15,
+       "lines": [
+        {
+         "t": "P-1 · qa-drawer suggests: line checkout up with the funnel",
+         "w": 344.47,
+         "y": -10
+        }
+       ],
+       "size": 12,
+       "weight": 500,
+       "x": 8
+      }
+     ],
+     "k": "group",
+     "lod": [
+      0.35,
+      null
+     ],
+     "screen": [
+      714,
+      314
+     ]
+    }
+   ],
+   "kind": "proposal",
+   "layer": "overlays",
+   "locked": false,
+   "proposal": {
+    "author": "qa-drawer",
+    "base_note": [],
+    "batch": "B-3",
+    "created": [],
+    "deleted": [],
+    "intent": "line checkout up with the funnel",
+    "outdated": false,
+    "reason": "human_made",
+    "reasons": [
+     "human_made"
+    ],
+    "summary": [
+     "E-4 \"Checkout\" (the operator's): moved by c0r+14"
+    ],
+    "targets": [
+     "E-4"
+    ]
+   },
+   "v": 13,
+   "z": 1000001
+  },
+  {
+   "author": "qa-drawer",
+   "bbox": [
+    314,
+    120,
+    526,
+    326
+   ],
+   "chip": {
+    "bg": "chip.0.bg",
+    "fg": "chip.0.fg",
+    "initials": "QA"
+   },
+   "connect": false,
+   "edit": null,
+   "frame": null,
+   "handles": "none",
+   "hit": {
+    "box": [
+     314,
+     234,
+     212,
+     92
+    ],
+    "shape": "rect"
+   },
+   "id": "P-2",
+   "items": [
+    {
+     "fill": "tone.neutral.fill",
+     "h": 80,
+     "k": "rect",
+     "op": 0.5,
+     "r": 8,
+     "stroke": "tone.neutral.stroke",
+     "sw": 2,
+     "w": 200,
+     "x": 320,
+     "y": 240
+    },
+    {
+     "anchor": "middle",
+     "box": [
+      336,
+      252,
+      168,
+      56
+     ],
+     "fill": "tone.neutral.text",
+     "font": "sans",
+     "k": "text",
+     "lh": 25,
+     "lines": [
+      {
+       "t": "FAQ",
+       "w": 42.58,
+       "y": 287.28
+      }
+     ],
+     "lod": [
+      0.15,
+      null
+     ],
+     "op": 0.5,
+     "size": 20,
+     "weight": 500,
+     "x": 420
+    },
+    {
+     "dash": [
+      6,
+      4
+     ],
+     "k": "line",
+     "op": 0.6,
+     "points": [
+      [
+       420,
+       120
+      ],
+      [
+       420,
+       280
+      ]
+     ],
+     "stroke": "tone.accent.stroke",
+     "sw_px": 1
+    },
+    {
+     "dash": [
+      6,
+      4
+     ],
+     "fill": null,
+     "h": 92,
+     "k": "rect",
+     "r": 6,
+     "stroke": "tone.warning.stroke",
+     "sw_px": 1.5,
+     "w": 212,
+     "x": 314,
+     "y": 234
+    },
+    {
+     "items": [
+      {
+       "fill": "chip.0.bg",
+       "h": 20,
+       "k": "rect",
+       "r": 10,
+       "stroke": null,
+       "w": 393.76,
+       "x": 0,
+       "y": -24
+      },
+      {
+       "anchor": "start",
+       "box": [
+        8,
+        -21.87,
+        377.76,
+        15
+       ],
+       "fill": "chip.0.fg",
+       "font": "sans",
+       "k": "text",
+       "lh": 15,
+       "lines": [
+        {
+         "t": "P-2 · qa-drawer suggests: questions below the plans (outdated)",
+         "w": 377.76,
+         "y": -10
+        }
+       ],
+       "size": 12,
+       "weight": 500,
+       "x": 8
+      }
+     ],
+     "k": "group",
+     "lod": [
+      0.35,
+      null
+     ],
+     "screen": [
+      314,
+      234
+     ]
+    }
+   ],
+   "kind": "proposal",
+   "layer": "overlays",
+   "locked": false,
+   "proposal": {
+    "author": "qa-drawer",
+    "base_note": [],
+    "batch": "B-4",
+    "created": [],
+    "deleted": [],
+    "intent": "questions below the plans",
+    "outdated": true,
+    "reason": "human_made",
+    "reasons": [
+     "human_made"
+    ],
+    "summary": [
+     "E-3 \"FAQ\" (the operator's): moved by c0r+8"
+    ],
+    "targets": [
+     "E-3"
+    ]
+   },
+   "v": 14,
+   "z": 1000002
+  }
+ ],
+ "generated": true,
+ "scene": "collab",
+ "version": 19
+}

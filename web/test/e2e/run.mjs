@@ -1,6 +1,7 @@
 // The v2 board's CDP interaction tests (canvas-v2-phase1.md 5.3, E1 to E12, plus the Q phase 1 QA
 // regressions; canvas-v2-phase2.md 8.3, P1 to P12 in phase2.mjs; canvas-v2-phase3-4.md 8.4, the
-// charts' K1 to K7 in charts.mjs and the 3D S1 to S10 in scene3d.mjs): `npm run test:e2e`.
+// charts' K1 to K7 in charts.mjs and the 3D S1 to S10 in scene3d.mjs; canvas-v2-phase5.md 14.3,
+// the collaboration C1 to C12 in collab.mjs): `npm run test:e2e`.
 //
 // Each rig is tools/canvas_rig.py (a throwaway team on loopback, never the real session) with a
 // golden scene; one headless Chrome started here drives the page with real mouse and key events
@@ -14,6 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { MOD, findChrome, launchChrome, openPage, sleep } from "./cdp.mjs";
 import { CHART_SCENARIOS } from "./charts.mjs";
+import { COLLAB_SCENARIOS } from "./collab.mjs";
 import { PHASE2_SCENARIOS } from "./phase2.mjs";
 import { REPO, rigAvailable, startRig } from "./rig.mjs";
 import { SCENE3D_SCENARIOS } from "./scene3d.mjs";
@@ -23,7 +25,9 @@ const argOf = (name) => {
   const i = args.indexOf(name);
   return i >= 0 ? args[i + 1] : null;
 };
+// Names compare case-blind (S3b is asked for as --only S3b or --only s3b).
 const ONLY = argOf("--only") ? new Set(argOf("--only").split(",").map((s) => s.trim().toUpperCase())) : null;
+const wants = (name) => !ONLY || ONLY.has(name.toUpperCase());
 const OUT = argOf("--out") || fs.mkdtempSync(path.join(fs.existsSync("/private/tmp") ? "/private/tmp" : "/tmp", "synapse-e2e-"));
 const SCENARIO_MS = 60000;
 const MOD_KEY = process.platform === "darwin" ? MOD.meta : MOD.ctrl;
@@ -161,8 +165,8 @@ class Board {
   }
 
   // The one POST /ops after `mark`: {ops, result}. Waits for the display list to reach its version.
-  async opsPost(mark, { count = 1 } = {}) {
-    const posts = await this.waitRequests(mark, count, { method: "POST", suffix: "/ops" });
+  async opsPost(mark, { count = 1, timeoutMs = 8000 } = {}) {
+    const posts = await this.waitRequests(mark, count, { method: "POST", suffix: "/ops" }, timeoutMs);
     if (posts.length !== count) throw new Error(`expected ${count} POST /ops, saw ${posts.length}`);
     const out = [];
     for (const post of posts) {
@@ -311,7 +315,9 @@ async function e6(b) {
   assert(value === SUN_ARROW, `the arrow label editor opened with ${JSON.stringify(value)}, not the label`);
   await b.page.key("Escape");
   await sleep(200);
-  assert(b.since(mark, { method: "POST" }).length === 0, "cancelling the label editor sent something");
+  // (Opening an editor is presence, canvas-v2-phase5.md 12.2: the operator's `editing`, not an op.)
+  const sent = b.since(mark, { method: "POST" }).filter((r) => !new URL(r.url).pathname.endsWith("/presence"));
+  assert(sent.length === 0, `cancelling the label editor sent something: ${sent.map((r) => r.url).join(", ")}`);
   return `label editor pre-filled with ${JSON.stringify(value)}`;
 }
 
@@ -390,7 +396,8 @@ async function e11(b) {
   const mark = b.mark();
   await b.page.click(toggle);
   await sleep(600);
-  const requests = b.since(mark);
+  // (Presence posts on its own heartbeat, canvas-v2-phase5.md I-12: not something the switch did.)
+  const requests = b.since(mark).filter((r) => !new URL(r.url).pathname.endsWith("/presence"));
   assert(requests.length === 0, `switching the theme made requests: ${requests.map((r) => `${r.method} ${r.url}`).join(", ")}`);
   const probe = await b.page.eval(`(() => {
     const surface = document.querySelector(".sv2-surface");
@@ -612,9 +619,9 @@ async function q6ChainedDrags(b) {
   return `two drags, if_version ${first.ops[0].if_version} then ${second.ops[0].if_version}, moved ${moved}`;
 }
 
-// Q7: a second drag released while the first POST /ops is still on its way (1.2 s of network
+// Q7: a second drag released while the first POST /ops is still on its way (2.5 s of network
 // latency: at 250 ms a loaded machine finished the first POST before the second drag let go,
-// QA phase34 L10) waits behind it, is sent with if_version rebased onto the first one's answer,
+// QA phase34 L10, and at 1.2 s one at load average 100 did too, QA phase 5 L14) waits behind it, is sent with if_version rebased onto the first one's answer,
 // and is applied (QA phase 1, V-3: the op queue).
 async function q7DragWhileInFlight(b) {
   const sun = await b.entry(byText(SUN));
@@ -624,7 +631,7 @@ async function q7DragWhileInFlight(b) {
   const start = hitBox(sun);
   const from = await b.toScreen(center(start));
   const mark = b.mark();
-  await b.page.send("Network.emulateNetworkConditions", { offline: false, latency: 1200, downloadThroughput: -1, uploadThroughput: -1 });
+  await b.page.send("Network.emulateNetworkConditions", { offline: false, latency: 2500, downloadThroughput: -1, uploadThroughput: -1 });
   let first;
   let second;
   try {
@@ -632,7 +639,7 @@ async function q7DragWhileInFlight(b) {
     await b.page.drag([from[0] + 40 * scale, from[1]], [from[0] + 80 * scale, from[1]], { steps: 4, pauseMs: 8 });
     const early = b.since(mark, { method: "POST", suffix: "/ops" });
     assert(early.length === 1 && !early[0].done, `the second POST did not wait for the first (${early.length} sent, first done: ${early[0] && early[0].done})`);
-    [first, second] = await b.opsPost(mark, { count: 2 });
+    [first, second] = await b.opsPost(mark, { count: 2, timeoutMs: 20000 });
   } finally {
     await b.page.send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
   }
@@ -692,6 +699,7 @@ const SCENARIOS = [
   ...PHASE2_SCENARIOS,
   ...CHART_SCENARIOS,
   ...SCENE3D_SCENARIOS,
+  ...COLLAB_SCENARIOS,
 ];
 
 // A scene the Python side has not written yet: its scenarios are reported as skipped, not run.
@@ -724,7 +732,7 @@ async function main() {
   try {
     for (const group of SCENARIOS) {
       // E9 undoes E1's move, so asking for E9 runs E1 first.
-      const wanted = group.list.filter(([name]) => !ONLY || ONLY.has(name) || (name === "E1" && ONLY.has("E9")));
+      const wanted = group.list.filter(([name]) => wants(name) || (name === "E1" && ONLY.has("E9")));
       if (!wanted.length) continue;
       const scene = sceneOf(group.rig);
       const label = group.label || group.rig;
@@ -766,8 +774,8 @@ async function main() {
         await rig.stop();
       }
     }
-    for (const [name, during] of [["E12", "E1-E11"], ["P12", "P1-P11"], ["S10", "K1-K7 and S1-S9"]]) {
-      if (ONLY && !ONLY.has(name)) continue;
+    for (const [name, during] of [["E12", "E1-E11"], ["P12", "P1-P11"], ["S10", "K1-K7 and S1-S9"], ["C13", "C1-C12"]]) {
+      if (!wants(name)) continue;
       const ok = csp.length === 0;
       results.push({ name, ok, detail: ok ? `no CSP violation during ${during}` : csp.join("\n") });
       console.log(`${ok ? "PASS" : "FAIL"} ${name}  ${ok ? `no CSP violation during ${during}` : csp.join("; ")}`);

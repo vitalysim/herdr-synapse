@@ -91,7 +91,8 @@ class DerivedTables(unittest.TestCase):
         # Phase 0's ops keep their order, and refit joined the core ops.
         self.assertTrue(subsequence(PHASE0_OPS, C.OPS), C.OPS)
         # Phase 1 appended refit, phase 2 patch, place, pin and unpin (5.1).
-        self.assertEqual(C.CORE_OPS, PHASE0_OPS[12:] + ("refit", "patch", "place", "pin", "unpin"))
+        self.assertEqual(C.CORE_OPS, PHASE0_OPS[12:] + ("refit", "patch", "place", "pin", "unpin") +
+                         ("accept", "reject", "withdraw", "freeze", "thaw", "settings", "checkpoint", "restore"))  # phase 5
 
     def test_every_op_takes_its_specs_fields(self):
         for spec in R.ops():
@@ -108,7 +109,10 @@ class DerivedTables(unittest.TestCase):
                 # Every field it took; phase 2 may add fields to the graph (groups, same_rank, order, route), phase 3 the
                 # chart types' fields to the chart (its spec, data, title, w and h stay).
                 self.assertLessEqual(set(fields), set(C._FIELDS[name]), name)
-                if name not in ("graph", "chart"):
+                if name == "undo":
+                    # Phase 5 (6.1): undo also takes one author's batches since a version, and the operator's force.
+                    self.assertEqual(C._FIELDS[name], fields + ("author", "since", "force"))
+                elif name not in ("graph", "chart"):
                     self.assertEqual(C._FIELDS[name], fields)
         self.assertEqual(C._FIELDS["refit"], _COMMON + ("id", "ids"))
         self.assertEqual(C._FIELDS["patch"], _COMMON + ("id", "add", "update", "remove", "set", "relayout"))
@@ -162,7 +166,7 @@ class DerivedTables(unittest.TestCase):
         self.assertLessEqual(owners, set(found))
 
     def test_the_page_tables(self):
-        self.assertEqual(R.API_VERSION, 4)
+        self.assertEqual(R.API_VERSION, 5)  # 5: OpSpec.proposable (canvas v2 phase 5), additive
         self.assertEqual(R.names(page_only=True), list(PHASE0_ELEMENT_TYPES), "the 15 kinds the v1 page draws (D8): frozen")
         self.assertLessEqual({"chart", "mermaid", "viz"}, set(R.slots()))
         for slot in R.slots():

@@ -121,11 +121,17 @@ class FakeCanvas:
             return list(raw.get("ops") or []), bool(raw.get("atomic", False))
         return list(raw), False
 
+    def parse_envelope(self, raw: Any) -> Any:
+        ops, atomic = self.parse_batch(raw)
+        return canvas.Envelope(ops, atomic, raw.get("base") if isinstance(raw, dict) else None)
+
     def page_author(self, writable: bool) -> Any:
         return canvas.CanvasAuthor("human", "human", "page", True, operator=bool(writable))
 
-    def apply_ops(self, layout: Any, team: Any, ops: Any, author: Any, atomic: bool = False, doc: Any = None, now: Any = None) -> Dict[str, Any]:
+    def apply_ops(self, layout: Any, team: Any, ops: Any, author: Any, atomic: bool = False, doc: Any = None, now: Any = None,
+                  base: Any = None) -> Dict[str, Any]:
         self.record("apply_ops", team.name, ops, author, atomic)
+        self.base = base
         if self.apply_error is not None:
             raise self.apply_error
         return {"team": team.name, "version": 7, "batch": "B-3", "atomic": atomic, "applied": [{"index": 0, "op": "shape", "ids": ["E-1"]}],
@@ -176,7 +182,7 @@ class FakeCanvas:
 
     def patches(self) -> Dict[str, Any]:
         return {name: getattr(self, name) for name in (
-            "load_scene", "current_version", "changes_since", "parse_batch", "page_author", "apply_ops", "send_to_member", "store_asset",
+            "load_scene", "current_version", "changes_since", "parse_batch", "parse_envelope", "page_author", "apply_ops", "send_to_member", "store_asset",
             "store_still", "complete_export", "pending_exports", "asset_path", "artifact_file", "viz_source", "text_form")}
 
 
@@ -1469,3 +1475,98 @@ class BuiltPageTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---------------------------------------------------------------------------------------
+# presence (canvas v2 phase 5, 9.3)
+
+
+class PresenceRouteTests(ServerCase):
+    PAGE = "0123456789abcdef"
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.cookie, self.csrf = self.sign_in()
+
+    def post_presence(self, body: Any, cookie: Optional[str] = None, csrf: Optional[str] = None) -> Response:
+        return self.post_json("/api/teams/alpha/presence", body, cookie or self.cookie, csrf if csrf is not None else self.csrf)
+
+    def test_a_writable_page_posts_its_presence_and_any_page_reads_it(self):
+        from herdr_team import canvas_presence
+
+        response = self.post_presence({"page": self.PAGE, "viewport": [0, 0, 800, 600], "selection": ["E-1"], "editing": "E-1", "cursor": [10, 20]})
+        self.assertEqual((response.status, response.json()), (200, {"ok": True, "ttl_s": 30}))
+        stored = canvas_presence.operator(self.ts.team, time.time())
+        self.assertEqual((stored["page"], stored["editing"], stored["selection"]), (self.PAGE, "E-1", ["E-1"]))
+        read_only, _csrf = self.sign_in(False)
+        got = self.authed("GET", "/api/teams/alpha/presence", read_only)
+        self.assertEqual(got.status, 200)
+        self.assertEqual([e["name"] for e in got.json()["entries"]], ["human"])
+        self.assertEqual(got.header("content-security-policy"), W.API_CSP)
+
+    def test_read_only_pages_and_bad_requests_are_refused(self):
+        read_only, csrf = self.sign_in(False)
+        refused = self.post_presence({"page": self.PAGE}, read_only, csrf)
+        self.assertEqual((refused.status, refused.json()["code"]), (403, "read_only"))
+        refused = self.post_presence({"page": self.PAGE}, csrf="wrong")
+        self.assertEqual((refused.status, refused.json()["code"]), (403, "bad_csrf"))
+        refused = self.request("POST", "/api/teams/alpha/presence", {"Cookie": self.cookie, W.CSRF_HEADER: self.csrf, "Content-Type": "application/json"},
+                               b'{"page": "0123456789abcdef"}')
+        self.assertEqual((refused.status, refused.json()["code"]), (403, "bad_origin"))
+        refused = self.post_presence({"page": self.PAGE, "selection": ["E-1"] * 640})  # just past 4 KiB
+        self.assertEqual((refused.status, refused.json()["code"]), (413, "body_too_large"))
+        refused = self.post_presence({"page": "nope"})
+        self.assertEqual((refused.status, refused.json()["code"]), (400, "usage"))
+        refused = self.authed("POST", "/api/teams/alpha/presence", self.cookie, self.csrf, b"not json")
+        self.assertEqual((refused.status, refused.json()["code"]), (400, "usage"))
+
+    def test_at_most_eight_posts_a_second(self):
+        statuses = [self.post_presence({"page": self.PAGE, "cursor": [n, n]}).status for n in range(W.PRESENCE_RATE)]
+        self.assertEqual(statuses, [200] * W.PRESENCE_RATE)
+        refused = self.post_presence({"page": self.PAGE})
+        self.assertEqual((refused.status, refused.json()["code"], refused.json()["retry_after"]), (429, "presence_rate", 1))
+
+    def test_the_new_ids_are_canonical(self):
+        self.assertTrue(W.CANONICAL_ID_RE.match("P-3") and W.CANONICAL_ID_RE.match("V-12"))
+
+
+class PresenceStreamTests(ServerCase):
+    def setUp(self) -> None:
+        for name, value in (("POLL_S", 0.02), ("VIEWS_MIN_S", 3600.0), ("ACTIVITY_MIN_S", 3600.0), ("KEEPALIVE_S", 3600.0)):
+            patcher = mock.patch.object(W, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        super().setUp()
+        self.cookie, self.csrf = self.sign_in()
+
+    def open(self) -> SSE:
+        stream = SSE(self.port, "/api/stream?team=alpha", {"Cookie": self.cookie})
+        self.addCleanup(stream.close)
+        return stream
+
+    def test_presence_goes_out_after_the_scene_on_every_change_and_never_moves_the_event_id(self):
+        from herdr_team import canvas as real_canvas
+        from herdr_team import canvas_presence
+
+        stream = self.open()
+        self.assertEqual(stream.next()[0], "hello")
+        self.assertEqual(stream.next()[0], "scene")
+        event, event_id, first = stream.next()
+        self.assertEqual((event, event_id, first["team"], first["entries"]), ("presence", None, "alpha", []))
+        author = real_canvas.CanvasAuthor("alpha-worker", "member", "cli", True, agent="claude")
+        canvas_presence.write_member(self.ts.team, author, status="waiting", intent="needs the numbers", region=[0, 0, 100, 100])
+        event_id, pushed = stream.until("presence")
+        self.assertIsNone(event_id)
+        self.assertEqual([(e["name"], e["status"], e["intent"]) for e in pushed["entries"]], [("alpha-worker", "waiting", "needs the numbers")])
+        self.assertFalse(any(line.startswith("id:") for line in stream.raw[-4:]))
+
+    def test_while_anyone_is_fresh_it_is_sent_again_so_fades_reach_the_page(self):
+        from herdr_team import canvas as real_canvas
+        from herdr_team import canvas_presence
+
+        canvas_presence.write_member(self.ts.team, real_canvas.CanvasAuthor("alpha-worker", "member", "cli", True), status="drawing")
+        with mock.patch.object(W, "PRESENCE_RESEND_S", 0.05):
+            stream = self.open()
+            stream.until("presence")
+            _event_id, again = stream.until("presence")
+        self.assertEqual([e["name"] for e in again["entries"]], ["alpha-worker"])
