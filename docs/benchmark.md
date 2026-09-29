@@ -126,6 +126,7 @@ One row per prompt and run:
 
 | Field | What it means |
 | --- | --- |
+| `outcome` | `scored` for a row that measures a drawing, `no_attempt` for a row where there was no drawing to measure (below). Every other field in this table is `null` on a `no_attempt` row |
 | `valid_first_try` | offline: the reference applied with nothing refused. Live: the member's first call after the request was delivered applied with nothing refused (read from the attempt trace below); empty when it made no call |
 | `attempts`, `refused_total` | calls the member made, and ops refused in them |
 | `hard` | `label_overflow`, `overlap` and `arrow_through` from `canvas check` on what the member touched. All three must be 0 |
@@ -139,6 +140,7 @@ One row per prompt and run:
 | `pass` | something applied (or the expected proposal exists), `hard` all 0, every expected label read back, at least 80 % of the relations read back, every expected check true, and `stable` where asked |
 | `seconds` | live: from delivery to the agent idle again; offline: the apply time. Never gated |
 | `tokens` | live, where the harness records them: input, output, cache and total for the window, read from the member's own transcript, rollout log or database, read-only; empty with a reason otherwise |
+| `no_attempt` | only on a `no_attempt` row: the `cause`, a sentence saying why, and the pane's own words as `evidence` |
 
 Negative controls (at least 8, one per scorer path) prove the scorer catches
 problems: overlapping cards pinned on one cell, a straight arrow through an
@@ -163,7 +165,9 @@ prompt and member it:
    lists, and reply done in one line.";
 4. waits until the agent has worked and is idle again (or `--timeout`), then
    until the canvas version has not changed for 5 seconds;
-5. scores the drawing, saves its picture and appends the row.
+5. asks whether there is a drawing at all: a member that made no call and
+   left the board as the seed left it is classified, not scored (below);
+6. scores the drawing, saves its picture and appends the row.
 
 Clear anything that blocks an agent (an update prompt, a dialog) before the
 run: the bench does not answer dialogs.
@@ -176,16 +180,84 @@ ops, which were applied or refused and why, the batch and the version. Only the
 bench creates and removes the switch; without it nothing is written, and the
 file stops growing at 5 MB.
 
+## Rows that were never attempted
+
+A benchmark that judges models has to be able to say "this was not measured".
+Three different things used to arrive as the same failing row: an account out
+of quota, a turn that never finished, and a model that answered and drew
+nothing. Herdr reports a quota-blocked Claude pane as `agent_status: done`
+while the pane itself reads "You've hit your weekly limit" - that is its
+detection authority and it is not going to change - so the wait cannot tell a
+refused turn from a finished one. On 2026-09-29 exactly that happened.
+
+So the bench decides for itself. A row is a **no-attempt** row when both
+sources of evidence agree that nothing happened: the member made no call the
+attempt trace could see, **and** the board is exactly as the seed left it.
+Either one alone is still a measurement: a batch refused as a whole leaves no mark on the board
+but is a call the model made, and anything that applied is a drawing. (Note
+that a *refused op* is a real measurement, and `refused_total` is the count of
+them; it has nothing to do with this.)
+
+Such a row is not scored. It carries `outcome: "no_attempt"`, every
+measurement `null` (never 0, and never `pass: false`), and a `no_attempt`
+record:
+
+```json
+{"outcome": "no_attempt", "pass": null, "hard": null, "attempts": 0,
+ "no_attempt": {"cause": "usage_limit",
+   "reason": "the member's pane printed a usage or rate-limit notice, so its harness refused the turn rather than the model answering it: '⚠ Usage limit reached · limit resets 4pm'",
+   "evidence": ["  ⚠ Usage limit reached · limit resets 4pm"],
+   "pane_source": "recent-unwrapped", "pane_text_read": true,
+   "state": "done", "worked": false, "timed_out": false, "waited_seconds": 95.0}}
+```
+
+The cause is evidence, not a guess. When a turn produced nothing, and only
+then, the bench reads the tail of the member's pane (`herdr pane read <pane>
+--source recent-unwrapped`) and records the lines it matched verbatim, so a
+reader can see why the row was classified that way instead of taking the
+classifier's word for it. Reading the pane can never fail a run: when it
+cannot be read the row says so and is classified from the wait alone.
+
+| `cause` | What it means | Whose result it is |
+| --- | --- | --- |
+| `usage_limit` | the pane printed a usage or rate-limit notice ("You've hit your weekly limit", "Usage limit reached", "limit resets", "Continuing automatically at" ...) | the harness |
+| `timeout` | the wait reached `--timeout` with the turn still running | the harness |
+| `never_started` | the pane never went to work; the agent never woke up | the harness |
+| `drew_nothing` | the member worked, settled, made no call and changed nothing: it answered in words or not at all | the model |
+
+**No-attempt rows are excluded from every rate.** Pass rate, first-try
+validity, the hard-problem total, mean crossings, the alignments, the median
+seconds and the per-kind table are all computed over the rows that were
+attempted; `rows` is still every row in the group, and `scored` and
+`no_attempt` say how it splits. Only `total_tokens` covers every row, because
+a refused turn can still have cost tokens and that spend is real.
+
+`summary.md` says the count before any table, lists every such row with its
+cause and its evidence under "Not measured", and, when a whole agent kind
+produced only no-attempt rows, prints **not measured** for that kind instead
+of figures. That last part matters: a zero reads as a measurement, and "the
+model scored 0" is the one sentence this benchmark must never print by
+accident. `drew_nothing` is the one cause that is the model's own answer, and
+even then it is not a wrong drawing - read it beside the pass rate, not inside
+it.
+
+Old result files have no `outcome` field. They are read as scored rows, which
+is what they were.
+
 ## Reading the results
 
 A run writes into `--out`:
 
-- `results.json`: the rows above.
+- `results.json`: the rows above, plus `no_attempt`: one entry per row that
+  was never attempted, with its cause, its reason and its evidence.
 - `summary.md`: one table per mode (prompt by member, or prompt by language),
   the columns in short form, then the totals (pass rate, first-try validity,
   hard problems, mean crossings, mean drawn and readback alignment, median
   seconds, total tokens) and the list of failures with their reasons. The hard
-  problem total must be 0. A drawing that passes `drawn` but not `readback`
+  problem total must be 0. Rows that were never attempted are counted
+  separately, excluded from every rate, and listed under "Not measured"; a
+  kind with nothing but those is printed as **not measured** rather than as
+  zeros. A drawing that passes `drawn` but not `readback`
   points at `look`, not at the agent. The v1 language rows are there to
   compare: 0.21 drawings of graphs are loose shapes, so they have no block
   readback, and the ops and bytes columns show how much an agent had to write.

@@ -544,6 +544,8 @@ class HerdrCommands(unittest.TestCase):
                           "open({!r}, 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n"
                           "if sys.argv[1:3] == ['agent', 'get']:\n"
                           "    print(json.dumps({{'id': 'cli:agent:get', 'result': {{'type': 'agent_info', 'agent': {{'agent_status': 'working'}}}}}}))\n"
+                          "if sys.argv[1:3] == ['pane', 'read']:\n"
+                          "    print('  \\u26a0 Usage limit reached \\u00b7 limit resets 4pm')\n"
                           "if sys.argv[1:3] == ['agent', 'fail']:\n"
                           "    sys.exit(1)\n".format(sys.executable, os.fspath(self.log)), encoding="utf-8")
         script.chmod(0o755)
@@ -572,6 +574,270 @@ class HerdrCommands(unittest.TestCase):
         runner._run = lambda argv, timeout=30.0: (_ for _ in ()).throw(B.BenchError("down"))
         self.assertEqual(runner.status("w1:p2"), "unknown")
 
+    def test_the_pane_is_read_unwrapped_and_a_failure_is_no_text(self):
+        """The pane read of C2: the tail of the pane, unwrapped, and a notice found in what it prints."""
+        runner = B.HerdrRunner("l6", env=self.env)
+        text = runner.pane_text("w1:p2")
+        self.assertEqual(self.calls(), [["pane", "read", "w1:p2", "--source", "recent-unwrapped", "--lines", str(B.PANE_LINES)]])
+        self.assertEqual(B.limit_notice(text)["notice"], "usage limit reached")
+        runner._run = lambda argv, timeout=30.0: (_ for _ in ()).throw(B.BenchError("no such pane"))
+        self.assertEqual(runner.pane_text("w1:p9"), "")  # reading a pane must never be able to fail a run
+
+
+#: The Claude pane of 2026-09-29, verbatim, quota-blocked while ``herdr agent get`` reported the turn as ``done``
+#: (QA phase 6, finding C2). The U+00A0 after the box-drawing glyph and the mixed capitalisation of the notice are
+#: the pane's own, and both are why matching folds whitespace and ignores case.
+QUOTA_PANE = (
+    "❯ Probe only: reply with the single word ready and nothing else. Do not use\n"
+    "  any tools.\n"
+    "  ⎽ You've hit your weekly limit · resets 4pm (Asia/Jerusalem)\n"
+    "\n"
+    "⏺ Usage limit reached · continuing automatically at 4pm · esc to\n"
+    "  cancel\n"
+    "\n"
+    "  ⚠ Usage limit reached · limit resets 4pm\n"
+    "    Continuing automatically at 4pm · esc to cancel · /usage-credits to\n"
+    "    continue now\n"
+)
+
+
+class LimitNotices(unittest.TestCase):
+    """Reading a harness refusal out of a pane. The only input is text, so these are plain unit tests."""
+
+    def test_the_strings_the_rig_actually_printed(self):
+        for text in ("You've hit your weekly limit · resets 4pm (Asia/Jerusalem)", "⚠ Usage limit reached",
+                     "  ⚠ Usage limit reached · limit resets 4pm", "    Continuing automatically at 4pm · esc to cancel"):
+            with self.subTest(text=text):
+                found = B.limit_notice(text)
+                self.assertIsNotNone(found)
+                self.assertIn(found["notice"], B.LIMIT_NOTICES)
+                self.assertEqual(found["lines"], [text.rstrip()])  # verbatim, indentation and glyphs included
+
+    def test_the_whole_pane_gives_the_notice_and_its_own_line(self):
+        found = B.limit_notice(QUOTA_PANE)
+        self.assertEqual(found["notice"], "you've hit your weekly limit")
+        self.assertIn("You've hit your weekly limit", found["line"])
+        self.assertEqual(len(found["lines"]), 1)
+
+    def test_a_notice_split_by_the_panes_wrapping_is_still_found(self):
+        found = B.limit_notice("some reply\nContinuing\nautomatically at 4pm · esc to cancel")
+        self.assertEqual(found["notice"], "continuing automatically at")
+        self.assertEqual(found["lines"], ["Continuing", "automatically at 4pm · esc to cancel"])
+
+    def test_a_typographic_apostrophe_reads_the_same(self):
+        self.assertEqual(B.limit_notice("You’ve hit your weekly limit")["notice"], "you've hit your weekly limit")
+
+    def test_an_ordinary_pane_matches_nothing(self):
+        for text in ("", "\n\n", "Draw our checkout flow: shopper, cart, checkout API, payment approved.",
+                     "canvas check: 0 problems\n❯ done"):
+            with self.subTest(text=text):
+                self.assertIsNone(B.limit_notice(text))
+
+    def test_pane_read_output_in_either_shape(self):
+        self.assertEqual(B.pane_text_of("plain\nlines"), "plain\nlines")
+        self.assertEqual(B.pane_text_of('{"result": {"lines": ["a", "b"]}}'), "a\nb")
+        self.assertEqual(B.pane_text_of('{"text": "a\\nb"}'), "a\nb")
+        self.assertEqual(B.pane_text_of("{not json"), "{not json")
+        self.assertEqual(B.pane_text_of(None), "")
+
+
+class NoAttempt(unittest.TestCase):
+    """A live turn that produced nothing is classified, not scored (QA phase 6, C2).
+
+    Every path runs through ``run_live`` with the fake runner and its fake clock, so there is no agent, no Herdr and
+    no wall-clock assertion anywhere: an empty answer is a member that drew nothing, and a subclass decides what its
+    pane says and what ``agent get`` would report.
+    """
+
+    def setUp(self):
+        self.out = Path(tempfile.mkdtemp(prefix="bench-noattempt-"))
+        self.addCleanup(shutil.rmtree, self.out, True)
+        self.prompts = B.load_prompts("all")
+
+    def one(self, pid="09-kanban-launch", answers=None, pane_texts=None, runner_class=None, timeout=420.0):
+        """One live row for one member, and the runner that served it."""
+        with Q.QaTeam() as qa:
+            B._qa_artifacts(qa)
+            prompt = B.prompt_by_id(self.prompts, pid)
+            pane = str(B._roster_member(qa.team, Q.MEMBER)["pane_id"])
+            runner = (runner_class or B.FakeRunner)(qa.layout, qa.team, self.prompts, answers=answers,
+                                                   pane_texts={pane: pane_texts} if pane_texts else None)
+            results = B.run_live(qa.layout, qa.team, [prompt], self.prompts, [Q.MEMBER], runner, self.out,
+                                 timeout=timeout, pictures=False, env=dict(qa.env))
+            return results, runner, pane
+
+    def test_a_quota_notice_is_a_no_attempt_row_and_not_a_failure(self):
+        results, runner, pane = self.one(answers={"09-kanban-launch": []}, pane_texts=QUOTA_PANE)
+        row = results["rows"][0]
+        self.assertEqual(row["outcome"], B.OUTCOME_NO_ATTEMPT)
+        self.assertFalse(B.attempted(row))
+        self.assertEqual(row["no_attempt"]["cause"], "usage_limit")
+        self.assertIn("You've hit your weekly limit", "\n".join(row["no_attempt"]["evidence"]))  # verbatim evidence
+        self.assertIn("usage or rate-limit notice", row["no_attempt"]["reason"])
+        self.assertEqual(row["no_attempt"]["pane_source"], "recent-unwrapped")
+        self.assertTrue(row["no_attempt"]["pane_text_read"])
+        # Nothing was drawn, so nothing is reported as measured: None everywhere, never 0 and never False.
+        for key in ("pass", "valid", "valid_first_try", "hard", "soft", "drawn", "readback", "alignment",
+                    "crossings", "crossings_total", "stable"):
+            with self.subTest(key=key):
+                self.assertIsNone(row[key])
+        self.assertEqual(row["attempts"], 0)
+        self.assertIsNone(row.get("picture"))
+        self.assertEqual(runner.pane_reads, [pane])
+        self.assertEqual(results["no_attempt"], [{"id": "09-kanban-launch", "member": Q.MEMBER, "kind": "claude",
+                                                  "cause": "usage_limit", "reason": row["no_attempt"]["reason"],
+                                                  "evidence": row["no_attempt"]["evidence"]}])
+        self.assertIn("NOT MEASURED", B.summary_line(row))
+        self.assertIn("usage_limit", B.summary_line(row))
+
+    def test_a_timeout_says_timeout(self):
+        class Stuck(B.FakeRunner):
+            def status(self, pane):
+                return "working"
+
+        results, _runner, _pane = self.one(answers={"09-kanban-launch": []}, runner_class=Stuck, timeout=30.0)
+        row = results["rows"][0]
+        self.assertEqual(row["no_attempt"]["cause"], "timeout")
+        self.assertTrue(row["wait"]["timed_out"])
+        self.assertIn("never finished", row["no_attempt"]["reason"])
+        self.assertIsNone(row["pass"])
+
+    def test_an_agent_that_never_wakes_up_is_not_a_model_that_drew_nothing(self):
+        class Asleep(B.FakeRunner):
+            def status(self, pane):
+                return "done"  # what Herdr reports for a quota-blocked Claude pane (C2)
+
+        results, _runner, _pane = self.one(answers={"09-kanban-launch": []}, runner_class=Asleep)
+        never = results["rows"][0]["no_attempt"]
+        self.assertEqual(never["cause"], "never_started")
+        self.assertFalse(never["worked"])
+        self.assertIn("could not be read", never["reason"])  # no pane text: a limit notice is not ruled out
+
+        settled, _runner, _pane = self.one(answers={"09-kanban-launch": []}, pane_texts="canvas check: 0 problems\ndone")
+        nothing = settled["rows"][0]["no_attempt"]
+        self.assertEqual(nothing["cause"], "drew_nothing")
+        self.assertTrue(nothing["worked"])
+        self.assertIn("model's own outcome", nothing["reason"])
+
+    def test_a_refused_batch_is_still_an_attempt(self):
+        """A batch refused as a whole leaves no mark on the board, but it is a call the model made: a measurement."""
+        if not HAS_TRACE:
+            self.skipTest(TRACE_REASON)
+        results, runner, _pane = self.one(answers={"09-kanban-launch": [{"op": "kanbann", "id": "x", "intent": "typo"}]},
+                                          pane_texts=QUOTA_PANE)
+        row = results["rows"][0]
+        self.assertEqual(row["outcome"], B.OUTCOME_SCORED)
+        self.assertIs(row["valid_first_try"], False)
+        self.assertEqual(row["attempts"], 1)
+        self.assertEqual(runner.pane_reads, [])  # a row with a call never reads the pane
+
+    def test_a_drawing_is_scored_exactly_as_before(self):
+        results = B.run_fake([B.prompt_by_id(self.prompts, "09-kanban-launch")], self.prompts, self.out)
+        self.assertEqual(results["no_attempt"], [])
+        for row in results["rows"]:
+            with self.subTest(row["member"]):
+                self.assertEqual(row["outcome"], B.OUTCOME_SCORED)
+                self.assertTrue(B.attempted(row))
+                self.assertTrue(row["pass"], row["reasons"])
+                self.assertEqual(row["alignment"], {"drawn": 1.0, "readback": 1.0})
+                self.assertEqual(sum(row["hard"].values()), 0)
+                self.assertNotIn("no_attempt", row)
+        totals = B.aggregate(results["rows"])
+        self.assertEqual((totals["rows"], totals["scored"], totals["no_attempt"]), (2, 2, 0))
+        self.assertEqual((totals["pass_rate"], totals["hard_total"]), (1.0, 0))
+        self.assertTrue(totals["measured"])
+
+    def test_offline_rows_are_always_scored_rows(self):
+        """Offline has no harness to refuse a turn: a reference that draws nothing is a scorer finding, not a
+        no-attempt row, and the gate must keep failing it."""
+        results = B.run_offline([B.prompt_by_id(self.prompts, "11-table-vendors")], self.prompts, "v2", controls=B.load_controls())
+        for row in results["rows"] + results["controls"]:
+            with self.subTest(row["id"]):
+                self.assertEqual(row["outcome"], B.OUTCOME_SCORED)
+        self.assertTrue(results["ok"])
+
+
+class RatesWithoutNoAttemptRows(unittest.TestCase):
+    """The aggregates and the summary over a mix of scored and no-attempt rows."""
+
+    @staticmethod
+    def row(**fields):
+        base = {"id": "01-flow-checkout", "mode": "live", "member": "l6-coder", "kind": "codex", "outcome": B.OUTCOME_SCORED,
+                "pass": True, "valid": True, "valid_first_try": True, "hard": {"overlap": 0, "arrow_through": 0, "label_overflow": 0},
+                "crossings": 0, "block_crossings": 0, "crossings_total": 0, "alignment": {"drawn": 1.0, "readback": 1.0},
+                "seconds": 40.0, "tokens": {"total": 100}}
+        base.update(fields)
+        return base
+
+    @classmethod
+    def missing(cls, cause="usage_limit", **fields):
+        facts = {"cause": cause, "reason": "why", "evidence": ["⚠ Usage limit reached · limit resets 4pm"],
+                 "pane_source": "recent-unwrapped", "pane_text_read": True}
+        row = dict(cls.row(), **B.unscored_row(facts))
+        row.update({"id": "07-mind-launch", "mode": "live", "member": "l6-drawer", "kind": "claude", "seconds": 95.0,
+                    "tokens": {"total": None, "reason": "no Claude transcript"}})
+        row.update(fields)
+        return row
+
+    def test_every_rate_is_over_the_rows_that_were_attempted(self):
+        rows = [self.row(), self.row(id="04-arch-web", **{"pass": False}), self.missing(), self.missing(id="09-kanban-launch")]
+        totals = B.aggregate(rows)
+        self.assertEqual((totals["rows"], totals["scored"], totals["no_attempt"]), (4, 2, 2))
+        self.assertEqual(totals["no_attempt_causes"], {"usage_limit": 2})
+        self.assertEqual(totals["pass_rate"], 0.5)  # 1 of the 2 attempted, not 1 of 4
+        self.assertEqual(totals["first_try_rate"], 1.0)
+        self.assertEqual(totals["hard_total"], 0)
+        self.assertEqual(totals["median_seconds"], 40.0)  # the 95 s of a refused turn does not move the median
+        self.assertEqual(totals["total_tokens"], 200)  # tokens are spend, and spend counts even for a refused turn
+        self.assertTrue(totals["measured"])
+
+    def test_a_group_with_nothing_attempted_reports_no_figures_at_all(self):
+        totals = B.aggregate([self.missing(), self.missing(id="09-kanban-launch", cause="timeout")])
+        self.assertFalse(totals["measured"])
+        self.assertEqual((totals["rows"], totals["scored"], totals["no_attempt"]), (2, 0, 2))
+        self.assertEqual(totals["no_attempt_causes"], {"usage_limit": 1, "timeout": 1})
+        for key in ("pass_rate", "first_try_rate", "hard_total", "mean_crossings", "mean_drawn_alignment",
+                    "mean_readback_alignment", "median_seconds"):
+            with self.subTest(key=key):
+                self.assertIsNone(totals[key], "{} must not read as a measurement".format(key))
+
+    def test_rows_from_a_run_before_outcome_existed_still_count(self):
+        old = self.row()
+        del old["outcome"]
+        self.assertTrue(B.attempted(old))
+        self.assertEqual(B.aggregate([old])["scored"], 1)
+
+    def test_the_summary_says_a_kind_was_not_measured_instead_of_scoring_it_zero(self):
+        rows = [self.row(), self.row(id="04-arch-web", **{"pass": False}),
+                self.missing(), self.missing(id="09-kanban-launch"), self.missing(id="11-table-vendors", cause="timeout")]
+        text = B.summary_markdown({"rows": rows, "controls": []})
+        self.assertIn("**3 of 5 rows were not attempted (usage_limit 2, timeout 1), and are left out of every rate below.**", text)
+        self.assertIn("## Not measured", text)
+        self.assertIn("⚠ Usage limit reached · limit resets 4pm", text)  # the pane's own words reach the report
+        self.assertIn("**l6-drawer (claude) was not measured.**", text)
+        claude = [line for line in text.splitlines() if line.startswith("| l6-drawer (claude) |")]
+        self.assertEqual(len(claude), 1, claude)
+        self.assertIn("**not measured**", claude[0])
+        self.assertNotIn("0.00", claude[0])  # a zero pass rate for a kind nobody measured is the trap
+        codex = next(line for line in text.splitlines() if line.startswith("| l6-coder (codex) |"))
+        self.assertIn("| 0.50 |", codex)
+        # The no-attempt rows are out of the failure list too: they are not failed drawings.
+        failures = text.split("## Failures", 1)[1]
+        self.assertIn("04-arch-web", failures)
+        self.assertNotIn("07-mind-launch", failures)
+        table = text.split("## Live runs", 1)[1].split("### Aggregates", 1)[0]
+        for row_line in [line for line in table.splitlines() if line.startswith("| 07-mind-launch |")]:
+            self.assertIn("no attempt: usage_limit", row_line)
+            self.assertNotIn("| yes |", row_line)
+
+    def test_a_merged_report_carries_the_index(self):
+        out = Path(tempfile.mkdtemp(prefix="bench-merge-"))
+        self.addCleanup(shutil.rmtree, out, True)
+        B.write_outputs({"rows": [self.row()], "controls": []}, out / "one")
+        B.write_outputs({"rows": [self.missing()], "controls": []}, out / "two")
+        merged = B.merge_results([out / "one", out / "two"])
+        self.assertEqual([e["cause"] for e in merged["no_attempt"]], ["usage_limit"])
+        self.assertEqual(len(merged["rows"]), 2)
 
 class Tokens(unittest.TestCase):
     """Tokens from the member's own harness files, only inside the window, read-only."""

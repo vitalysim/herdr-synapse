@@ -33,6 +33,12 @@ It reads first-try validity from the attempt trace (``bench.on`` / ``attempts.js
 tokens from the member's own harness files, read-only. ``--fake`` answers each prompt with its reference, through the
 library, so the whole loop is testable without Herdr.
 
+A live turn that produced nothing -- no call in the attempt trace and a board still exactly as the seed left it -- is
+not scored. It is recorded as ``outcome: "no_attempt"`` with the cause the pane and the wait can prove (a usage or
+rate-limit notice, a timeout, an agent that never woke up, or a member that worked and drew nothing) and the pane's
+own words as evidence, and it is left out of every rate. Herdr reports a quota-blocked pane as a finished turn, so
+without this a harness refusal was published as a failing drawing (QA phase 6, C2).
+
 Timings are informational: nothing here fails because a machine is slow. Stdlib only; it imports ``herdr_team`` and
 ``tools/canvas_qa.py`` from this checkout, read-only.
 """
@@ -103,6 +109,47 @@ RELATIONS_PASS = 0.8
 GROWING_TYPES = ("frame", "table", "sequence")
 #: A crossing this close to an end the two routes share is where they meet, not a crossing.
 SHARED_END_SLACK = 8.0
+
+#: What a row is. ``scored`` rows are measurements of a drawing. ``no_attempt`` rows are not: the member made no
+#: canvas call and left the board exactly as the seed left it, so there is no drawing to score.
+#:
+#: Why this exists (QA phase 6, finding C2). Herdr reports a quota-blocked Claude pane as ``agent_status: done`` while
+#: the pane itself reads "You've hit your weekly limit"; that is Herdr's detection authority and it is not going to
+#: change, so every state-driven caller, including this bench's own wait, reads a refused turn as a finished one.
+#: Scoring such a row produced an ordinary failing row, indistinguishable from a model that drew the request wrong.
+#: Three different things collapsed into one number that way: a harness out of quota, a turn that never finished, and
+#: a model that genuinely drew nothing. A no-attempt row is therefore never scored and never enters a rate: a zero
+#: reads as a measurement, and "the model scored 0" is the one sentence this benchmark exists not to print by mistake.
+OUTCOME_SCORED = "scored"
+OUTCOME_NO_ATTEMPT = "no_attempt"
+#: Why a row was never attempted, decided in this order, most specific first: a limit notice in the pane beats
+#: everything, because a refused harness also stops answering and looks like silence; a timeout beats a pane that
+#: settled, because the turn may still have been running when the bench gave up; a pane that settled without ever
+#: going ``working`` is an agent that never woke up, which is the harness again; only what is left -- a member that
+#: demonstrably worked, settled and drew nothing -- is the model's own answer.
+NO_ATTEMPT_CAUSES = ("usage_limit", "timeout", "never_started", "drew_nothing")
+#: Pane text that says the harness refused the turn rather than the model answering it. The first four are verbatim
+#: from the Claude pane of 2026-09-29 (`.local/qa/phase6/bench-claude.md`); the rest are the near neighbours other
+#: kinds print for the same thing. Matched on folded, case-insensitive text, and only ever consulted for a row that
+#: already made no call and drew nothing, so a loose phrase here can mislabel the cause of a no-attempt row but can
+#: never turn a real drawing into one.
+LIMIT_NOTICES = (
+    "you've hit your weekly limit",
+    "you've hit your usage limit",
+    "you've hit your limit",
+    "usage limit reached",
+    "usage limit exceeded",
+    "limit resets",
+    "continuing automatically at",
+    "rate limit reached",
+    "rate limited",
+    "out of credits",
+    "quota exceeded",
+    "insufficient quota",
+)
+#: How many lines of the member's pane the bench reads when a turn produced nothing (``pane read --source
+#: recent-unwrapped``). Enough for a harness notice and the footer under it, far short of a whole screen of history.
+PANE_LINES = 60
 
 #: The line every live request ends with.
 DELIVERY_TAIL = "Use the team canvas. When you are done, run canvas check, fix what it lists, and reply done in one line."
@@ -1078,10 +1125,24 @@ def _ok_keys(facts: Dict[str, Any]) -> List[str]:
     return [k for k in facts if k.endswith("_ok")]
 
 
+def attempted(row: Mapping[str, Any]) -> bool:
+    """Whether this row is a measurement, and so belongs in a rate.
+
+    Rows written before ``outcome`` existed carry no such key and count as measurements, which is both the
+    backward-compatible reading of an old ``results.json`` and the honest one: every row in those runs was scored.
+    """
+    return str(row.get("outcome") or OUTCOME_SCORED) != OUTCOME_NO_ATTEMPT
+
+
 def score(layout: Any, team: Any, expect: Dict[str, Any], member: str, reader: str, since: int,
           seed_elements: Sequence[Dict[str, Any]], valid_first_try: Optional[bool], attempts: int, refused_total: int,
           applied_any: Optional[bool] = None) -> Dict[str, Any]:
-    """One row of 6.4 for the board as it is now, what ``member`` did after version ``since`` in its window."""
+    """One row of 6.4 for the board as it is now, what ``member`` did after version ``since`` in its window.
+
+    Everything here is a measurement of a drawing, so the row it returns carries ``outcome: "scored"``. A live turn
+    that produced no drawing at all never reaches this function: ``run_live`` classifies it instead
+    (``no_attempt_facts``), because scoring a board the member never touched invents a failure.
+    """
     scene = C.load_scene(team)
     display = D.display_list(scene)
     window = window_changes(team, since, member)
@@ -1126,7 +1187,8 @@ def score(layout: Any, team: Any, expect: Dict[str, Any], member: str, reader: s
         reasons.append("readback")
     passed = (valid and not any(hard.values()) and readback["labels_recall"] >= 1.0 and readback["relations_recall"] >= RELATIONS_PASS
               and all(readback[k] and drawn.get(k, True) for k in _ok_keys(readback)) and stable is not False)
-    return {"valid": valid, "valid_first_try": valid_first_try, "attempts": attempts, "refused_total": refused_total,
+    return {"outcome": OUTCOME_SCORED,
+            "valid": valid, "valid_first_try": valid_first_try, "attempts": attempts, "refused_total": refused_total,
             "touched": len(touched), "proposals": facts["proposals"], "hard": hard, "soft": soft,
             "crossings": cross["crossings"], "block_crossings": cross["block_crossings"],
             # One number for every report to print: route crossings plus the ones inside the blocks it drew. The two
@@ -1403,6 +1465,21 @@ class HerdrRunner:
                 return str(holder["agent_status"])
         return "unknown"
 
+    def pane_text(self, pane: str, lines: int = PANE_LINES) -> str:
+        """The tail of the member's pane as text, or ``""`` when it cannot be read.
+
+        Read only after a turn that produced nothing, to tell a harness that refused the turn from a model that
+        answered and drew nothing: ``agent get`` cannot tell them apart (C2), but the pane says so in words. This must
+        never be able to fail a run, so every error -- a build without ``pane read``, a pane that has gone, a slow
+        socket -- comes back as no text and the row is classified from the wait alone.
+        """
+        try:
+            out = self._run(["herdr", "pane", "read", str(pane), "--source", "recent-unwrapped", "--lines", str(int(lines))],
+                            timeout=20.0)
+        except (BenchError, OSError, subprocess.SubprocessError):
+            return ""
+        return pane_text_of(out)
+
     def now(self) -> float:
         return time.monotonic()
 
@@ -1412,15 +1489,22 @@ class HerdrRunner:
 
 class FakeRunner:
     """Answers a delivered request by applying that prompt's reference as the member, through the library; statuses go
-    working then idle. No Herdr, no clock: ``sleep`` only advances a counter."""
+    working then idle. No Herdr, no clock: ``sleep`` only advances a counter.
+
+    An empty answer (``answers={"09-kanban-launch": []}``) is a member that says nothing and draws nothing, which is
+    how the no-attempt paths are exercised without an agent; ``pane_texts`` is what its pane would then print, so a
+    test can hand it a real quota notice.
+    """
 
     def __init__(self, layout: Any, team: Any, prompts: Sequence[Dict[str, Any]], kinds: Optional[Dict[str, str]] = None,
-                 answers: Optional[Dict[str, List[Dict[str, Any]]]] = None) -> None:
+                 answers: Optional[Dict[str, List[Dict[str, Any]]]] = None, pane_texts: Optional[Dict[str, str]] = None) -> None:
         self.layout, self.team, self.prompts = layout, team, list(prompts)
         self.kinds = dict(kinds or {})
         self.answers = dict(answers or {})
+        self.pane_texts = dict(pane_texts or {})
         self.clock = 0.0
         self.delivered: List[Tuple[str, str, str]] = []
+        self.pane_reads: List[str] = []
         self._states: Dict[str, List[str]] = {}
 
     def deliver(self, member: str, pane: str, text: str) -> None:
@@ -1430,16 +1514,21 @@ class FakeRunner:
             raise BenchError("the fake runner got a request it does not know")
         ops = self.answers.get(str(prompt["id"]), prompt.get("reference") or [])
         author = C.CanvasAuthor(member, C.KIND_MEMBER, "mcp", True, agent=self.kinds.get(member, "claude"), team=self.team.name)
-        C.look(self.layout, self.team, member)
-        try:
-            C.apply_ops(self.layout, self.team, list(ops), author, base="last")
-        except HerdrTeamError:
-            pass  # a refused batch is a finding, scored from the attempt trace
+        if ops:
+            C.look(self.layout, self.team, member)
+            try:
+                C.apply_ops(self.layout, self.team, list(ops), author, base="last")
+            except HerdrTeamError:
+                pass  # a refused batch is a finding, scored from the attempt trace
         self._states[pane] = ["working", "working", "idle"]
 
     def status(self, pane: str) -> str:
         states = self._states.get(pane) or ["idle"]
         return states.pop(0) if len(states) > 1 else states[0]
+
+    def pane_text(self, pane: str, lines: int = PANE_LINES) -> str:
+        self.pane_reads.append(str(pane))
+        return self.pane_texts.get(str(pane), "")
 
     def now(self) -> float:
         return self.clock
@@ -1501,6 +1590,119 @@ def wait_settled(runner: Any, pane: str, team: Any, timeout: float) -> Dict[str,
         if current != version:
             version, quiet_since = current, runner.now()
     return {"seconds": round(runner.now() - start, 1), "worked": worked, "state": state, "timed_out": timed_out}
+
+
+# --------------------------------------------------------------------------
+# a turn that produced nothing: why, and the row that says so instead of a score
+
+
+def pane_text_of(output: Any) -> str:
+    """The pane's text out of whatever ``herdr pane read`` printed.
+
+    Today it prints the lines themselves, which is what the rig captured on 2026-09-29; a build that prints JSON gives
+    them as ``lines`` (or ``text``), possibly under ``result``. Anything unrecognised comes back untouched, because
+    all that is ever done with this is to look for a phrase inside it.
+    """
+    raw = str(output or "")
+    stripped = raw.strip()
+    if not stripped.startswith("{"):
+        return raw
+    try:
+        doc = json.loads(stripped)
+    except ValueError:
+        return raw
+    holders = [doc.get("result") if isinstance(doc, dict) and isinstance(doc.get("result"), dict) else None,
+               doc if isinstance(doc, dict) else None]
+    for holder in holders:
+        if not isinstance(holder, dict):
+            continue
+        for key in ("lines", "text", "content"):
+            value = holder.get(key)
+            if isinstance(value, list):
+                return "\n".join(str(v) for v in value)
+            if isinstance(value, str):
+                return value
+    return raw
+
+
+def limit_notice(text: Any) -> Optional[Dict[str, Any]]:
+    """The first usage or rate-limit notice in a pane's text, with the source lines verbatim, or None.
+
+    Verbatim matters: the row records the harness's own words, so whoever reads the results can see why a row was
+    classified the way it was instead of taking the classifier's word for it. A pane wraps, so a notice can be split
+    over two rendered lines ("Continuing automatically at 4pm - esc to" / "cancel"); each line is matched alone and
+    then joined with the one after it. Matching folds whitespace (the Claude pane pads with U+00A0) and the
+    typographic apostrophe, and ignores case, because the same notice appears capitalised in the body and lowercase
+    in the footer of one screen.
+    """
+    lines = [line.rstrip() for line in str(text or "").splitlines()]
+    folded = [fold(str(line).replace("’", "'").replace("ʼ", "'")) for line in lines]
+    for n, line in enumerate(folded):
+        for notice in LIMIT_NOTICES:
+            if notice in line:
+                return {"notice": notice, "lines": [lines[n]], "line": lines[n].strip()}
+    # Only now the wrapped case, so a notice that fits on one line is never credited to the line above it.
+    for n in range(len(folded) - 1):
+        pair = " ".join([folded[n], folded[n + 1]])
+        for notice in LIMIT_NOTICES:
+            if notice in pair:
+                found = [s for s in (lines[n], lines[n + 1]) if s.strip()]
+                return {"notice": notice, "lines": found, "line": " ".join(s.strip() for s in found)}
+    return None
+
+
+def no_attempt_facts(records: Optional[Sequence[Dict[str, Any]]], changed: bool, waited: Mapping[str, Any],
+                     pane_text: str = "") -> Optional[Dict[str, Any]]:
+    """Why this turn produced nothing, or None when it produced something and belongs to the scorer.
+
+    Both sources of evidence have to agree that nothing happened: the member made no call the attempt trace saw, *and* the
+    board is exactly as the seed left it. Either alone is a measurement -- a batch refused as a whole leaves no mark
+    on the board but is a call the model made, and anything that applied is a drawing -- so a row is only taken out
+    of the scoring when there is no evidence of either.
+
+    The cause follows ``NO_ATTEMPT_CAUSES``. Only ``drew_nothing`` is the model's own answer; the other three are the
+    harness, and reading them as a model's score is the defect this closes.
+    """
+    if changed or records:
+        return None
+    seen = str(pane_text or "")
+    facts: Dict[str, Any] = {"pane_source": "recent-unwrapped", "pane_text_read": bool(seen.strip()),
+                             "state": waited.get("state"), "worked": bool(waited.get("worked")),
+                             "timed_out": bool(waited.get("timed_out")), "waited_seconds": waited.get("seconds"),
+                             "notice": None, "evidence": []}
+    notice = limit_notice(seen)
+    blind = "" if facts["pane_text_read"] else " Its pane could not be read, so a limit notice cannot be ruled out."
+    if notice is not None:
+        return dict(facts, cause="usage_limit", notice=notice["notice"], evidence=list(notice["lines"]),
+                    reason="the member's pane printed a usage or rate-limit notice, so its harness refused the turn "
+                           "rather than the model answering it: {!r}".format(notice["line"]))
+    if facts["timed_out"]:
+        return dict(facts, cause="timeout",
+                    reason="the wait reached its ceiling after {} s with the pane {!r}; the turn never finished, so "
+                           "there is no drawing to score.{}".format(waited.get("seconds"), facts["state"], blind))
+    if not facts["worked"]:
+        return dict(facts, cause="never_started",
+                    reason="the pane reported {!r} for the whole start grace without ever going to work, so the agent "
+                           "never woke up.{}".format(facts["state"], blind))
+    return dict(facts, cause="drew_nothing",
+                reason="the member worked and settled ({!r}) but made no canvas call and changed nothing, so it "
+                       "answered the request in words or not at all. This one is the model's own outcome, not the "
+                       "harness's; it is still not a drawing, so there is nothing to score.{}".format(facts["state"], blind))
+
+
+def unscored_row(no_attempt: Mapping[str, Any]) -> Dict[str, Any]:
+    """The body of a row that was never attempted: every key a scored row has, every measurement ``None``.
+
+    The keys stay so that anything already reading ``results.json`` keeps finding them, and they are ``None`` rather
+    than 0 or False because a zero reads as a measurement: 0 hard problems on a board nobody drew would be the
+    benchmark's best score, and ``pass: false`` would be the failure this whole change exists to stop printing.
+    ``no_attempt`` carries the cause, the sentence and the harness's own words.
+    """
+    return {"outcome": OUTCOME_NO_ATTEMPT, "no_attempt": dict(no_attempt),
+            "valid": None, "valid_first_try": None, "attempts": 0, "refused_total": 0, "touched": 0, "proposals": [],
+            "hard": None, "soft": None, "crossings": None, "block_crossings": None, "crossings_total": None,
+            "drawn": None, "readback": None, "alignment": None, "stable": None, "moved": [], "pass": None,
+            "reasons": [], "version": None}
 
 
 def _jsonl_window(path: Path, start: float, end: float) -> Iterable[Dict[str, Any]]:
@@ -1686,29 +1888,89 @@ def run_live(layout: Any, team: Any, prompts: Sequence[Dict[str, Any]], all_prom
             refused_total = sum(len(r.get("refused") or []) + (1 if r.get("error") else 0) for r in records or [])
             row = {"id": prompt["id"], "mode": "live", "language": "v2", "member": member, "kind": row_member.get("kind"),
                    "category": prompt.get("category"), "audience": prompt.get("audience"), "prompt": prompt.get("prompt")}
-            row.update(score(layout, team, dict(prompt.get("expect") or {}), member, reader, since, seed_elements,
-                             valid_first_try=valid_first, attempts=len(records or []), refused_total=refused_total))
+            # Before scoring, ask whether there is anything to score. A member that made no call and left the board as
+            # the seed left it did not draw the request wrong; something stopped it, and only its pane says what. The
+            # pane is read here and nowhere else, so an ordinary turn costs no extra call.
+            window = window_changes(team, since, member)
+            changed = bool(window["ids"] or window["proposals"])
+            pane_text = ""
+            if not changed and not records:
+                reader_fn = getattr(runner, "pane_text", None)
+                if callable(reader_fn):
+                    try:
+                        pane_text = str(reader_fn(pane) or "")
+                    except Exception as err:  # noqa: BLE001 - reading a pane must never be able to fail a run
+                        pane_text = ""
+                        row["pane_read_error"] = "{}: {}".format(type(err).__name__, err)
+            missing = no_attempt_facts(records, changed, waited, pane_text)
+            if missing is None:
+                row.update(score(layout, team, dict(prompt.get("expect") or {}), member, reader, since, seed_elements,
+                                 valid_first_try=valid_first, attempts=len(records or []), refused_total=refused_total))
+            else:
+                row.update(unscored_row(missing))
             if records is None:
                 row["trace"] = "no attempt trace in this build (canvas.read_attempts)"
             row["seconds"] = waited["seconds"]
             row["wait"] = waited
             row["tokens"] = member_tokens(layout, team, member, started, ended, env)
-            if pictures:
+            if pictures and attempted(row):
                 row["picture"] = _picture(layout, team, reader if reader != "bench" else member, out / "pictures",
                                           "{}-{}".format(prompt["id"], member))
+            elif pictures:
+                row["picture"] = None  # a picture of the untouched seed would read as the member's drawing
             rows.append(row)
             if progress:
                 progress(summary_line(row))
-    return {"mode": "live", "rows": rows, "controls": [], "ok": True, "failures": [], "unflagged": []}
+    return {"mode": "live", "rows": rows, "controls": [], "ok": True, "failures": [], "unflagged": [],
+            "no_attempt": no_attempt_index(rows)}
 
 
 # --------------------------------------------------------------------------
 # outputs
 
 
+def no_attempt_rows(rows: Sequence[Mapping[str, Any]]) -> List[Dict[str, Any]]:
+    """The rows that were never attempted, in order."""
+    return [dict(r) for r in rows if not attempted(r)]
+
+
+def cause_counts(rows: Sequence[Mapping[str, Any]]) -> Dict[str, int]:
+    """How many no-attempt rows there are per cause, in the order of ``NO_ATTEMPT_CAUSES`` so a report reads the same
+    way twice, with anything a future build adds after them."""
+    found: Dict[str, int] = {}
+    for row in no_attempt_rows(rows):
+        cause = str((row.get("no_attempt") or {}).get("cause") or "unknown")
+        found[cause] = found.get(cause, 0) + 1
+    order = list(NO_ATTEMPT_CAUSES) + sorted(c for c in found if c not in NO_ATTEMPT_CAUSES)
+    return {cause: found[cause] for cause in order if cause in found}
+
+
+def causes_phrase(rows: Sequence[Mapping[str, Any]]) -> str:
+    """``usage_limit 10, timeout 1`` for a report line, or ``""`` when every row was attempted."""
+    return ", ".join("{} {}".format(cause, n) for cause, n in cause_counts(rows).items())
+
+
+def no_attempt_index(rows: Sequence[Mapping[str, Any]]) -> List[Dict[str, Any]]:
+    """One entry per row that was never attempted: which row, who, why, and the harness's own words. Carried in the
+    results so a reader (or a later report) never has to recompute the classification to know it happened."""
+    out: List[Dict[str, Any]] = []
+    for row in no_attempt_rows(rows):
+        facts = row.get("no_attempt") or {}
+        out.append({"id": row.get("id"), "member": row.get("member"), "kind": row.get("kind"),
+                    "cause": facts.get("cause"), "reason": facts.get("reason"),
+                    "evidence": [str(s) for s in facts.get("evidence") or []]})
+    return out
+
+
 def summary_line(row: Dict[str, Any]) -> str:
     hard = row.get("hard") or {}
     align = row.get("alignment") or {}
+    if not attempted(row):
+        facts = row.get("no_attempt") or {}
+        evidence = "; ".join(str(s).strip() for s in facts.get("evidence") or [])
+        return "{:<22} {:<8} NOT MEASURED · no attempt: {}{}".format(
+            str(row.get("id")), str(row.get("member")), facts.get("cause") or "unknown",
+            " · " + evidence if evidence else "")
     if row.get("mode") == "control":
         verdict = "FLAGGED" if row.get("flagged") else "unflagged"
     else:
@@ -1729,16 +1991,29 @@ def _mean(values: Sequence[float]) -> Optional[float]:
 
 
 def aggregate(rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
-    n = len(rows)
+    """The totals for a group of rows, over the rows that were actually attempted.
+
+    ``rows`` is still every row in the group, so an old reader sees the number it saw before, and ``scored`` and
+    ``no_attempt`` say how it splits. Every rate is over ``scored`` only: a row where nothing was drawn cannot pass,
+    cannot fail and must not be allowed to depress the group it sits in. With nothing scored, every figure is None and
+    ``measured`` is False -- including ``hard_total``, which would otherwise report the benchmark's best possible
+    result (0 hard problems) for a model that never drew anything. ``total_tokens`` is the exception and covers every
+    row: a turn refused on quota can still have cost tokens, and that spend is real.
+    """
+    scored = [r for r in rows if attempted(r)]
+    skipped = no_attempt_rows(rows)
+    n = len(scored)
     tokens = [int(r["tokens"]["total"]) for r in rows if isinstance(r.get("tokens"), dict) and isinstance(r["tokens"].get("total"), int)]
-    first = [r for r in rows if r.get("valid_first_try") is not None]
-    return {"rows": n, "pass_rate": round(sum(1 for r in rows if r.get("pass")) / float(n), 3) if n else None,
+    first = [r for r in scored if r.get("valid_first_try") is not None]
+    return {"rows": len(rows), "scored": n, "no_attempt": len(skipped), "no_attempt_causes": cause_counts(rows),
+            "measured": bool(n),
+            "pass_rate": round(sum(1 for r in scored if r.get("pass")) / float(n), 3) if n else None,
             "first_try_rate": round(sum(1 for r in first if r["valid_first_try"]) / float(len(first)), 3) if first else None,
-            "hard_total": sum(sum((r.get("hard") or {}).values()) for r in rows),
-            "mean_crossings": _mean([float(total_crossings(r)) for r in rows]),
-            "mean_drawn_alignment": _mean([float((r.get("alignment") or {}).get("drawn") or 0) for r in rows]),
-            "mean_readback_alignment": _mean([float((r.get("alignment") or {}).get("readback") or 0) for r in rows]),
-            "median_seconds": round(statistics.median([float(r.get("seconds") or 0) for r in rows]), 2) if n else None,
+            "hard_total": sum(sum((r.get("hard") or {}).values()) for r in scored) if n else None,
+            "mean_crossings": _mean([float(total_crossings(r)) for r in scored]),
+            "mean_drawn_alignment": _mean([float((r.get("alignment") or {}).get("drawn") or 0) for r in scored]),
+            "mean_readback_alignment": _mean([float((r.get("alignment") or {}).get("readback") or 0) for r in scored]),
+            "median_seconds": round(statistics.median([float(r.get("seconds") or 0) for r in scored]), 2) if n else None,
             "total_tokens": sum(tokens) if tokens else None}
 
 
@@ -1764,29 +2039,52 @@ def summary_markdown(results: Dict[str, Any]) -> str:
     rows = [r for r in results.get("rows") or [] if r.get("mode") in ("offline", "live")]
     lines = ["# Canvas benchmark", "", "Generated {} by `tools/canvas_bench.py`. Hard problems (overlap, arrow through, label overflow) "
              "must be 0; timings are informational.".format(datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")), ""]
+    skipped = no_attempt_rows(rows)
+    if skipped:
+        # Said before any table, because the one way to misread this report is to take a rate as covering every row.
+        lines += ["**{} of {} rows were not attempted ({}), and are left out of every rate below.**".format(
+            len(skipped), len(rows), causes_phrase(rows)),
+            "A no-attempt row is one where the member made no canvas call and left the board exactly as the seed left "
+            "it: there is no drawing, so there is nothing to score. It is not a failed drawing and it is not a zero. "
+            "Every one of them is listed with its cause and the pane's own words under \"Not measured\".", ""]
     for mode in ("live", "offline"):
         part = [r for r in rows if r.get("mode") == mode]
         if not part:
             continue
         lines += ["## {} runs".format(mode.capitalize()), "",
-                  "| prompt | {} | pass | first try | hard o/a/l | crossings | drawn | readback | stable | s | tokens |".format(
+                  "| prompt | {} | outcome | pass | first try | hard o/a/l | crossings | drawn | readback | stable | s | tokens |".format(
                       "member" if mode == "live" else "language"),
-                  "|---|---|---|---|---|---|---|---|---|---|---|"]
+                  "|---|---|---|---|---|---|---|---|---|---|---|---|"]
         for r in part:
             hard = r.get("hard") or {}
             tokens = (r.get("tokens") or {}).get("total") if isinstance(r.get("tokens"), dict) else None
-            lines.append("| {} | {} | {} | {} | {}/{}/{} | {} | {} | {} | {} | {} | {} |".format(
-                r.get("id"), r.get("member") if mode == "live" else r.get("language"), _cell(r.get("pass")), _cell(r.get("valid_first_try")),
+            who = r.get("member") if mode == "live" else r.get("language")
+            if not attempted(r):
+                # Nothing but the clock and the spend is a measurement here; a dash where a number would go.
+                lines.append("| {} | {} | no attempt: {} | - | - | -/-/- | - | - | - | - | {} | {} |".format(
+                    r.get("id"), who, (r.get("no_attempt") or {}).get("cause") or "unknown", _cell(r.get("seconds")), _cell(tokens)))
+                continue
+            lines.append("| {} | {} | scored | {} | {} | {}/{}/{} | {} | {} | {} | {} | {} | {} |".format(
+                r.get("id"), who, _cell(r.get("pass")), _cell(r.get("valid_first_try")),
                 hard.get("overlap", 0), hard.get("arrow_through", 0), hard.get("label_overflow", 0), total_crossings(r),
                 _cell((r.get("alignment") or {}).get("drawn")), _cell((r.get("alignment") or {}).get("readback")), _cell(r.get("stable")),
                 _cell(r.get("seconds")), _cell(tokens)))
-        lines += ["", "### Aggregates", "", "| group | rows | pass rate | first try | hard total | mean crossings | drawn | readback | median s | tokens |",
-                  "|---|---|---|---|---|---|---|---|---|---|"]
+        lines += ["", "### Aggregates", "", "Rates are over the rows that were attempted (`scored`), never over the rows that were not.", "",
+                  "| group | rows | scored | no attempt | pass rate | first try | hard total | mean crossings | drawn | readback | median s | tokens |",
+                  "|---|---|---|---|---|---|---|---|---|---|---|---|"]
         for key, group in _groups(part).items():
             a = aggregate(group)
-            lines.append("| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
-                key, a["rows"], _cell(a["pass_rate"]), _cell(a["first_try_rate"]), a["hard_total"], _cell(a["mean_crossings"]),
-                _cell(a["mean_drawn_alignment"]), _cell(a["mean_readback_alignment"]), _cell(a["median_seconds"]), _cell(a["total_tokens"])))
+            causes = causes_phrase(group)
+            skip_cell = "{}{}".format(a["no_attempt"], " ({})".format(causes) if causes else "")
+            if not a["measured"]:
+                # Zeros read as measurements. A group with nothing scored says so in the cell where the score would be.
+                lines.append("| {} | {} | 0 | {} | **not measured** | - | - | - | - | - | - | {} |".format(
+                    key, a["rows"], skip_cell, _cell(a["total_tokens"])))
+                continue
+            lines.append("| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |".format(
+                key, a["rows"], a["scored"], skip_cell, _cell(a["pass_rate"]), _cell(a["first_try_rate"]), _cell(a["hard_total"]),
+                _cell(a["mean_crossings"]), _cell(a["mean_drawn_alignment"]), _cell(a["mean_readback_alignment"]),
+                _cell(a["median_seconds"]), _cell(a["total_tokens"])))
         lines.append("")
     both = compare_languages(rows)
     if both:
@@ -1799,7 +2097,29 @@ def summary_markdown(results: Dict[str, Any]) -> str:
             lines.append("| {id} | {hard_v2} | {hard_v1} | {crossings_v2} | {crossings_v1} | {readback_v2:.2f} | {readback_v1:.2f} | {ops_v2} | {ops_v1} | "
                          "{bytes_v2} | {bytes_v1} |".format(**c))
         lines.append("")
-    failed = [r for r in rows if not r.get("pass")]
+    if skipped:
+        lines += ["## Not measured", "",
+                  "These rows produced no drawing: the member made no canvas call and the board stayed as the seed "
+                  "left it. Three of the four causes are the harness, not the model -- `usage_limit` (the pane printed "
+                  "a usage or rate-limit notice; Herdr still reports such a pane as a finished turn, QA phase 6 C2), "
+                  "`timeout` (the wait reached its ceiling) and `never_started` (the pane never went to work). Only "
+                  "`drew_nothing` is the model's own answer, and even that is not a wrong drawing: read it beside the "
+                  "pass rate, not inside it. The evidence column is the pane's text, verbatim.", "",
+                  "| prompt | member | cause | evidence |", "|---|---|---|---|"]
+        for r in skipped:
+            facts = r.get("no_attempt") or {}
+            evidence = " / ".join(str(s).strip() for s in facts.get("evidence") or []) or facts.get("reason") or "-"
+            lines.append("| {} | {} | {} | {} |".format(
+                r.get("id"), "{} ({})".format(r.get("member"), r.get("kind")) if r.get("kind") else r.get("member"),
+                facts.get("cause") or "unknown", _cell(evidence)))
+        lines.append("")
+        for key, group in _groups(rows).items():
+            a = aggregate(group)
+            if not a["measured"]:
+                lines += ["**{} was not measured.** All {} of its rows produced no drawing ({}), so it has no pass "
+                          "rate, no first-try rate and no hard-problem total. Printing zeros for it would read as a "
+                          "result.".format(key, a["rows"], causes_phrase(group) or "unknown"), ""]
+    failed = [r for r in rows if attempted(r) and not r.get("pass")]
     lines += ["## Failures", ""]
     if not failed:
         lines.append("None.")
@@ -1877,7 +2197,9 @@ def merge_results(folders: Sequence[Path]) -> Dict[str, Any]:
         rows.extend(doc.get("rows") or [])
         controls.extend(doc.get("controls") or [])
     return {"mode": "report", "rows": rows, "controls": controls, "ok": True, "failures": [], "unflagged": [],
-            "sources": [os.fspath(f) for f in folders]}
+            # Recomputed from the merged rows, so a three-kind table carries the same index a single run does; rows
+            # from a run older than ``outcome`` count as attempted, which is what they were.
+            "no_attempt": no_attempt_index(rows), "sources": [os.fspath(f) for f in folders]}
 
 
 # --------------------------------------------------------------------------
@@ -1979,12 +2301,20 @@ def main(argv: Optional[Sequence[str]] = None, env: Optional[Dict[str, str]] = N
                 results = run_live(layout, team, prompts, all_prompts, args.member, runner, out, args.timeout, env=env,
                                    progress=None if args.json else print)
             results["written"] = write_outputs(results, out)
-            print(json.dumps(results, indent=1, default=str) if args.json else "live: {} rows written to {}".format(len(results["rows"]), out))
+            missed = results.get("no_attempt") or []
+            print(json.dumps(results, indent=1, default=str) if args.json else
+                  "live: {} rows written to {}{}".format(len(results["rows"]), out,
+                                                         "; {} not attempted ({}), left out of every rate".format(
+                                                             len(missed), causes_phrase(results["rows"])) if missed else ""))
             return 0
         if args.mode == "report":
             results = merge_results([Path(d) for d in args.dirs])
             results["written"] = write_outputs(results, Path(args.out))
-            print(json.dumps(results["written"], indent=1) if args.json else "report: {} rows written to {}".format(len(results["rows"]), args.out))
+            missed = results.get("no_attempt") or []
+            print(json.dumps(results["written"], indent=1) if args.json else
+                  "report: {} rows written to {}{}".format(len(results["rows"]), args.out,
+                                                           "; {} not attempted ({})".format(len(missed), causes_phrase(results["rows"]))
+                                                           if missed else ""))
             return 0
     except (BenchError, HerdrTeamError) as err:
         print("canvas_bench: {}".format(err), file=sys.stderr)

@@ -13,7 +13,7 @@ A new canvas. The whiteboard is now drawn by Synapse's own renderer instead of E
 - **3D scenes** (phase 4). `scene3d` places boxes, cylinders, labels and glTF models by relations (`on`, `above`, `behind`), renders them live with three.js, and reads them back as text.
 - **The operator leads, agents propose** (phase 5). Proposals as ghosts, lanes, freezes, per-author undo, checkpoints, comments that stay on their element, and presence.
 - **Canvas v2 is the default** (phase 6). 0.21 boards open on it with nothing lost, and agents are taught components first.
-- **A canvas benchmark.** 30 plain-language drawing requests with a scorer for overflow, overlap, crossings and what another agent reads back.
+- **A canvas benchmark.** 30 plain-language drawing requests with a scorer for overflow, overlap, crossings and what another agent reads back. A turn that drew nothing because the account was out of quota, because the wait ran out, or because the agent never woke up is recorded as not attempted, with the pane's own words as evidence, and left out of every rate: no model is scored for a turn it never got.
 
 ### Upgrading from 0.21
 
