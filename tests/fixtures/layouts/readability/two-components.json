@@ -1,172 +1,175 @@
 {
- "name": "two-components",
- "about": "three components, one of them a pair: interleaving",
- "direction": "right",
- "layout": "layers",
- "gap": 40,
- "rank_gap": 80,
- "clearance": 20,
- "radius": 8,
- "port_spacing": 12,
- "group_pad": [
-  20,
-  40,
-  20,
-  20
- ],
- "passes": [
-  {
-   "nodes": [
+  "name": "two-components",
+  "about": "three components, one of them a pair: interleaving",
+  "direction": "right",
+  "layout": "layers",
+  "gap": 40,
+  "rank_gap": 80,
+  "clearance": 20,
+  "radius": 8,
+  "port_spacing": 12,
+  "group_pad": [
+    20,
+    40,
+    20,
+    20
+  ],
+  "passes": [
     {
-     "id": "signup",
-     "w": 160,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "verify",
-     "w": 160,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "welcome",
-     "w": 180,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "active",
-     "w": 160,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "cancel",
-     "w": 160,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "survey",
-     "w": 160,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "purge",
-     "w": 160,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "gone",
-     "w": 200,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "audit",
-     "w": 160,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "archive",
-     "w": 160,
-     "h": 60,
-     "group": null
+      "nodes": [
+        {
+          "id": "signup",
+          "w": 160,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "verify",
+          "w": 160,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "welcome",
+          "w": 180,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "active",
+          "w": 160,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "cancel",
+          "w": 160,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "survey",
+          "w": 160,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "purge",
+          "w": 160,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "gone",
+          "w": 200,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "audit",
+          "w": 160,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "archive",
+          "w": 160,
+          "h": 60,
+          "group": null
+        }
+      ],
+      "edges": [
+        {
+          "id": "e:signup->verify",
+          "a": "signup",
+          "b": "verify",
+          "label": [
+            57.98,
+            24.0
+          ],
+          "name": "email"
+        },
+        {
+          "id": "e:verify->welcome",
+          "a": "verify",
+          "b": "welcome",
+          "label": [
+            96.66,
+            24.0
+          ],
+          "name": "confirmed"
+        },
+        {
+          "id": "e:welcome->active",
+          "a": "welcome",
+          "b": "active",
+          "label": [
+            79.13,
+            24.0
+          ],
+          "name": "finished"
+        },
+        {
+          "id": "e:cancel->survey",
+          "a": "cancel",
+          "b": "survey",
+          "label": [
+            63.32,
+            24.0
+          ],
+          "name": "asked"
+        },
+        {
+          "id": "e:survey->purge",
+          "a": "survey",
+          "b": "purge",
+          "label": [
+            120.93,
+            24.0
+          ],
+          "name": "after 30 days"
+        },
+        {
+          "id": "e:purge->gone",
+          "a": "purge",
+          "b": "gone",
+          "label": [
+            55.74,
+            24.0
+          ],
+          "name": "done"
+        },
+        {
+          "id": "e:audit->archive",
+          "a": "audit",
+          "b": "archive",
+          "label": [
+            69.43,
+            24.0
+          ],
+          "name": "nightly"
+        }
+      ],
+      "groups": []
     }
-   ],
-   "edges": [
-    {
-     "id": "e:signup->verify",
-     "a": "signup",
-     "b": "verify",
-     "label": [
-      57.98,
-      24.0
-     ],
-     "name": "email"
-    },
-    {
-     "id": "e:verify->welcome",
-     "a": "verify",
-     "b": "welcome",
-     "label": [
-      96.66,
-      24.0
-     ],
-     "name": "confirmed"
-    },
-    {
-     "id": "e:welcome->active",
-     "a": "welcome",
-     "b": "active",
-     "label": [
-      79.13,
-      24.0
-     ],
-     "name": "finished"
-    },
-    {
-     "id": "e:cancel->survey",
-     "a": "cancel",
-     "b": "survey",
-     "label": [
-      63.32,
-      24.0
-     ],
-     "name": "asked"
-    },
-    {
-     "id": "e:survey->purge",
-     "a": "survey",
-     "b": "purge",
-     "label": [
-      120.93,
-      24.0
-     ],
-     "name": "after 30 days"
-    },
-    {
-     "id": "e:purge->gone",
-     "a": "purge",
-     "b": "gone",
-     "label": [
-      55.74,
-      24.0
-     ],
-     "name": "done"
-    },
-    {
-     "id": "e:audit->archive",
-     "a": "audit",
-     "b": "archive",
-     "label": [
-      69.43,
-      24.0
-     ],
-     "name": "nightly"
-    }
-   ],
-   "groups": []
+  ],
+  "budget": {
+    "length_ratio": 1.02,
+    "crossings_seen": 0,
+    "mdetour_median": 1.0,
+    "mdetour_max": 1.0,
+    "reversals_max": 0,
+    "reversals_total": 0,
+    "bends_max": 2,
+    "label_misattributed": 0,
+    "label_orphan_max": 0.2,
+    "label_astray_max": 0,
+    "edge_on_edge_len": 0,
+    "entry_cross_offset_max": 24,
+    "screen_use": 0.43,
+    "screen_ink": 0.11,
+    "empty_band_boxes": 0.25,
+    "parallel_bundle_len": 100,
+    "component_interleave": 0
   }
- ],
- "budget": {
-  "length_ratio": 1.02,
-  "crossings_seen": 0,
-  "mdetour_median": 1.0,
-  "mdetour_max": 1.0,
-  "reversals_max": 0,
-  "reversals_total": 0,
-  "bends_max": 2,
-  "label_misattributed": 0,
-  "label_orphan_max": 0.2,
-  "edge_on_edge_len": 0,
-  "entry_cross_offset_max": 24,
-  "screen_use": 0.48,
-  "parallel_bundle_len": 100,
-  "component_interleave": 0
- }
 }

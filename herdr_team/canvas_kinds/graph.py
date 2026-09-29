@@ -25,6 +25,7 @@ is converted when a ``graph`` op names it: its members keep their ids and pins.
 """
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import replace
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
@@ -533,7 +534,11 @@ def arrange(root: Element, members: List[Element], env: Dict[str, Any]) -> Arran
     lnodes = []
     for part, el in nodes.items():
         x0, y0, x1, y1 = _box(el)
-        pinned = el.get("pin") is not None or el["id"] in held
+        # A member the core says is held never moves. Past that, a pin holds a box on an incremental arrangement -
+        # a member moved by hand stays where it went (D5) - and yields to a ``full`` one, because "draw it again
+        # from scratch" is the author saying their own earlier placements are the thing to redo. The operator's
+        # placements are in ``held`` for every author but the operator, so those hold either way.
+        pinned = el["id"] in held or (incremental and el.get("pin") is not None)
         fresh = int(el.get("created_seq") or 0) == fresh_seq and not pinned
         width, height = x1 - x0, y1 - y0
         if not pinned:
@@ -1115,7 +1120,7 @@ def spec(root: Element, members: List[Element], full: bool) -> Dict[str, Any]:
     part_of = {el["id"]: part for part, el in list(nodes.items()) + list(groups.items())}
     group_items = []
     for part, el in groups.items():
-        item = dict(el.get("item") or {"id": part})
+        item = dict(el.get("item") or {"id": part}, id=part)
         title = str(el.get("text") or "")
         if title and title != part:
             item["title"] = title
@@ -1131,7 +1136,12 @@ def spec(root: Element, members: List[Element], full: bool) -> Dict[str, Any]:
         out["groups"] = group_items
     node_items: List[Any] = []
     for part, el in nodes.items():
-        item = dict(el.get("item") or _derived_node(part, el))
+        # ``part`` is the item's identity, and the stored ``item`` is only what it says: an element re-adopted into
+        # the graph keeps the item it was built from while the core gives it a fresh part, so a readback that trusted
+        # ``item["id"]`` named a part the block does not have. The owner's own board reached that state - the box
+        # "Paste long URL" was re-adopted as ``n326`` and still carried ``{"id": "paste"}`` - and every op built from
+        # the readback then removed it and added a second one under the old name.
+        item = dict(el.get("item") or _derived_node(part, el), id=part)
         item["text"] = str(el.get("text") or "") or part
         group = part_of.get(str(el.get("frame")))
         if group is not None and group in groups:
@@ -1143,7 +1153,11 @@ def spec(root: Element, members: List[Element], full: bool) -> Dict[str, Any]:
     edge_items: List[Any] = []
     used: Dict[str, int] = {}
     for part, el in edges.items():
-        item = dict(el.get("item") or {"id": part, "from": part_of.get(str(el.get("from")), "?"), "to": part_of.get(str(el.get("to")), "?")})
+        # The ends, like the id, are what the arrow is bound to now rather than what its stored item remembers.
+        item = dict(el.get("item") or {}, id=part, **{end: part_of[str(el.get(end))] for end in ("from", "to")
+                                                      if str(el.get(end)) in part_of})
+        item.setdefault("from", "?")
+        item.setdefault("to", "?")
         label = str(el.get("text") or "")
         if label:
             item["label"] = label
@@ -1241,6 +1255,14 @@ TANGLED_MDETOUR_MEDIAN = 1.45
 TANGLED_MDETOUR_MAX = 2.50
 TANGLED_REVERSALS_MAX = 3
 TANGLED_EDGE_ON_EDGE = 130.0
+#: How much more wire than a fresh drawing of the same graph counts as wandering. The gate holds the pipeline to
+#: 1.15 (``layout_conformance.CEILINGS``); the check is deliberately looser, because it is about what an agent should
+#: be told to fix rather than what the pipeline owes, and the rejected board measured 1.68.
+TANGLED_LENGTH_RATIO = 1.30
+#: How much better the fresh drawing has to be on the number that fired before the check names it, by default. A
+#: measure that moves by less than this is noise, and a check that reports noise is telling an agent to spend a turn
+#: on nothing.
+TANGLED_BETTER = 0.10
 #: What ``labels_adrift`` calls adrift: a pill nearer a third box than to either of its own ends, or one that sits
 #: further than this fraction of its arrow's span from both of them.
 ADRIFT_ORPHAN = 0.50
@@ -1269,6 +1291,77 @@ def _drawn(el: Element, env: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return found
 
 
+#: One fresh drawing of a board by ``(block id, the seq it last changed at)``: the four readability checks all
+#: compare against it and it costs a layout and a routing pass.
+_FRESH: Dict[Any, Optional[Dict[str, Any]]] = {}
+
+
+def _fresh_key(el: Element, members: Sequence[Element]) -> Any:
+    return (str(el.get("id")), int(el.get("updated_seq") or 0), len(members),
+            max([int(m.get("updated_seq") or 0) for m in members] or [0]))
+
+
+def _fresh_drawn(el: Element, env: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """What this graph would measure if it were drawn again from scratch, wire and all: the numbers a full relayout
+    promises. None when there is nothing to compare, or too much of it.
+
+    Every readability check names the same repair, and a check may not name a repair nobody has watched work. The
+    *layout's* own figures are not that evidence, and comparing against them is how the three shipped checks came to
+    cry wolf: a board of two nodes with ten edges between them has no crossings at all until the router draws the ten
+    wires around each other, so its eight visible crossings were compared against a layout's zero and ``relayout
+    full`` was advertised on a board it reproduces to the digit. So the comparison is a whole fresh drawing - laid out
+    *and routed* by the same code the op would run, honouring the same pins - measured the same way as the real one.
+    """
+    by_id = env.get("by_id") or {}
+    members = sorted((m for m in by_id.values() if m.get("group") == el.get("id")), key=lambda m: _num_id(m.get("id")))
+    nodes, _groups, edges, _loose = roles(el, members)
+    if not edges or not nodes or len(nodes) > CROSSINGS_MAX_NODES or len(edges) > READABILITY_MAX_EDGES:
+        return None
+    # Only a layout that owns its own wire quality is asked what it would draw. A force or radial layout reports no
+    # crossing count for the same reason it has no opinion about them, and laying one out again to compare would
+    # cost a pass and answer nothing (QA phase 2, R2).
+    layout = canvas_layouts.get(_zone.settings_of(el).get("layout") or "layers")
+    if layout is None or not layout.edges or not layout.crossings:
+        return None
+    reader = env.get("reader") if isinstance(env.get("reader"), str) else None
+    # What the repair could not move if the reader ran it: the operator's own pins always, and a peer's marks unless
+    # the reader hosts this graph (A1). A fresh drawing that moved what the op may not move would promise a picture
+    # the op cannot deliver, and the check would keep firing on a board it had just repaired.
+    holds = [m["id"] for m in members
+             if (m.get("pin") or {}).get("by") == "human"
+             or (reader is not None and m.get("author") != reader and el.get("author") != reader)]
+    key = _fresh_key(el, members) + (reader,)
+    if key in _FRESH:
+        return _FRESH[key]
+    found: Optional[Dict[str, Any]] = None
+    try:
+        drawn = arrange(el, list(members), {"members": members, "by_part": {}, "order": [m["id"] for m in members],
+                                            "tokens": canvas_theme.tokens(), "prepared": None, "links": [],
+                                            "incremental": False, "reason": "full",
+                                            "content": _zone.content_box(el) if el.get("type") == "frame" else bounds(el),
+                                            "children": list(members), "obstacles": [], "held": holds})
+    except (KeyError, ValueError, ZeroDivisionError, canvas_layouts.LayoutError):
+        drawn = None
+    if drawn is not None:
+        redrawn = []
+        for m in members:
+            copy = dict(m)
+            box = drawn.boxes.get(m["id"]) or drawn.frames.get(m["id"])
+            if box is not None:
+                copy["x"], copy["y"], copy["w"], copy["h"] = (float(v) for v in box)
+            route = drawn.routes.get(m["id"])
+            if route is not None:
+                copy["points"] = [list(point) for point in route["points"]]
+                if route.get("label_at") is not None:
+                    copy["label_at"] = list(route["label_at"])
+            redrawn.append(copy)
+        found = canvas_readability.measure(canvas_readability.from_block(el, redrawn))
+    if len(_FRESH) >= _MEASURED_MAX:
+        _FRESH.pop(next(iter(_FRESH)))
+    _FRESH[key] = found
+    return found
+
+
 def _relayout_fix(el: Element) -> Dict[str, Any]:
     """The one repair all three readability checks name: draw this block again from scratch.
 
@@ -1290,18 +1383,33 @@ def routes_tangled(el: Element, env: Dict[str, Any]) -> List[Dict[str, Any]]:
     found = _drawn(el, env)
     if found is None:
         return []
+    fresh = _fresh_drawn(el, env)
+    if fresh is None:
+        return []
+
+    def better(metric: str, slack: float = TANGLED_BETTER) -> bool:
+        """Whether drawing this board again would measurably improve this number (and not just change it)."""
+        return float(fresh[metric]) <= float(found[metric]) - slack
+
     reasons = []
-    if found["mdetour_median"] > TANGLED_MDETOUR_MEDIAN:
+    if found["mdetour_median"] > TANGLED_MDETOUR_MEDIAN and better("mdetour_median", 0.05):
         reasons.append("half its edges are more than {:.0%} longer than the gap they cross".format(
             found["mdetour_median"] - 1.0))
-    if found["mdetour_max"] > TANGLED_MDETOUR_MAX:
+    if found["mdetour_max"] > TANGLED_MDETOUR_MAX and better("mdetour_max", 0.10):
         worst = (found["mdetour_worst"] or [(0, "an edge", 0, 0)])[0]
         reasons.append("{} is {} units long for a {} unit gap".format(worst[1], worst[2], worst[3]))
-    if found["reversals_max"] > TANGLED_REVERSALS_MAX:
+    if found["reversals_max"] > TANGLED_REVERSALS_MAX and better("reversals_max", 1.0):
         worst = (found["reversals_worst"] or [(0, "an edge")])[0]
         reasons.append("{} turns back on itself {} times".format(worst[1], worst[0]))
-    if found["edge_on_edge_len"] > TANGLED_EDGE_ON_EDGE:
+    if found["edge_on_edge_len"] > TANGLED_EDGE_ON_EDGE and better("edge_on_edge_len", 20.0):
         reasons.append("{} units of wire are drawn along other wire".format(int(found["edge_on_edge_len"])))
+    # The headline of the gate, as a check: how much more wire this drawing uses than a fresh one of the same graph.
+    # It is the one measure that compares across boards, and it catches the shape of the owner's complaint that the
+    # per-edge measures miss - every edge a little too long rather than one edge far too long.
+    if float(fresh["length_total"]) > 0 and \
+            float(found["length_total"]) > float(fresh["length_total"]) * TANGLED_LENGTH_RATIO:
+        reasons.append("it uses {:.0%} more wire than the same graph drawn again".format(
+            found["length_total"] / fresh["length_total"] - 1.0))
     if not reasons:
         return []
     alias = el.get("alias") or el.get("id")
@@ -1320,12 +1428,15 @@ def labels_adrift(el: Element, env: Dict[str, Any]) -> List[Dict[str, Any]]:
     found = _drawn(el, env)
     if found is None:
         return []
+    fresh = _fresh_drawn(el, env)
+    if fresh is None:
+        return []
     edges = int(found["edges"])
     reasons = []
-    if found["label_misattributed"] > max(1, edges // 4):
+    if found["label_misattributed"] > max(1, edges // 4) and fresh["label_misattributed"] < found["label_misattributed"]:
         first = (found["label_misattributed_worst"] or [("a label", "a node", 0)])[0]
         reasons.append("\"{}\" sits nearer {} than to either end of its own arrow".format(first[0], first[1]))
-    if found["label_orphan_max"] > ADRIFT_ORPHAN:
+    if found["label_orphan_max"] > ADRIFT_ORPHAN and fresh["label_orphan_max"] <= found["label_orphan_max"] - 0.05:
         worst = (found["label_orphan_worst"] or [(0.0, "a label", 0)])[0]
         reasons.append("\"{}\" sits {} units from both ends of its own arrow".format(worst[1], worst[2]))
     if not reasons:
@@ -1380,6 +1491,50 @@ def edge_crossings(routes: Sequence[Tuple[Tuple[str, str], Sequence[Sequence[flo
     return count
 
 
+#: What ``graph_thin`` calls thin: a drawing this many times longer one way than the other. A view is 16:9, so 1.8:1
+#: is a perfect fit and about 3:1 still reads; past six the page's semantic zoom starts dropping node text, and a
+#: drawing whose boxes say nothing is not a drawing.
+THIN_ASPECT = 6.0
+#: How much bigger a fresh drawing has to draw the boxes before the check says so. Same number the fold itself uses:
+#: below it the redraw is churn, and the check would be asking for a rearrangement that buys nothing. It is compared
+#: on ``screen_ink``, which is an area, so the gain in length is its square root.
+THIN_GAIN = 1.25
+
+
+def graph_thin(el: Element, env: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """A graph drawn so long and so thin that fitting it to a view leaves its own text too small to read - when a
+    fresh layout would draw it bigger.
+
+    This is the owner's "the aspect is wrong and the drawing is small" with nothing else wrong: the nine-step build
+    pipeline of the readability corpus came out 16:1 and covered a ninth of a view, every node's text was dropped by
+    the page's semantic zoom, and all five checks called it clean. It was held back until there was a repair to name:
+    a path of ranks is now re-cut into lanes (``canvas_layouts._fold``), which takes that board to 2:1 and nine
+    tenths of a view, and ``relayout full`` is what applies it.
+
+    The trigger is the *measured* gain of the fresh drawing, never the aspect alone, so the check cannot advertise a
+    redraw that would change nothing - a chain of four boxes is 4:1 and there is no layout of it that is not.
+    """
+    drawn = _drawn(el, env)
+    if drawn is None:
+        return []
+    aspect = float(drawn["content_aspect"])
+    if aspect <= 1e-9 or THIN_ASPECT >= aspect >= 1.0 / THIN_ASPECT:
+        return []
+    found = _fresh_drawn(el, env)
+    if found is None:
+        return []
+    fresh = float(found.get("screen_ink") or 0.0)
+    was = float(drawn.get("screen_ink") or 0.0)
+    if was <= 0.0 or fresh < was * THIN_GAIN * THIN_GAIN:
+        return []
+    alias = el.get("alias") or el.get("id")
+    return [{"code": "graph_thin", "ids": [str(el.get("id"))],
+             "message": "{} is drawn {:.0f} times longer one way than the other, so fitting it to a view leaves its "
+                        "own text too small to read; a full relayout draws its boxes about {:.0%} the size".format(
+                            alias, aspect if aspect >= 1.0 else 1.0 / aspect, math.sqrt(fresh / was)),
+             "fix": _relayout_fix(el)}]
+
+
 def crossings_high(el: Element, env: Dict[str, Any]) -> List[Dict[str, Any]]:
     """A graph whose edges cross where a reader can see it, when a full relayout would cross less.
 
@@ -1399,25 +1554,10 @@ def crossings_high(el: Element, env: Dict[str, Any]) -> List[Dict[str, Any]]:
         [((str(e.get("from")), str(e.get("to"))), e.get("points") or []) for e in edges.values() if len(e.get("points") or []) >= 2])
     if found <= max(CROSSINGS_FLOOR, len(edges) // 6):
         return []
-    settings = _zone.settings_of(el)
-    layout = canvas_layouts.get(settings.get("layout") or "layers")
-    if layout is None or not layout.edges or not layout.crossings:
+    fresh = _fresh_drawn(el, env)
+    if fresh is None:
         return []
-    part_of = {m["id"]: part for part, m in nodes.items()}
-    request = canvas_layouts.LayoutRequest(
-        nodes=tuple(canvas_layouts.LNode(id=part, w=bounds(m)[2] - bounds(m)[0], h=bounds(m)[3] - bounds(m)[1], order=i)
-                    for i, (part, m) in enumerate(sorted(nodes.items(), key=lambda item: _num_id(item[1]["id"])))),
-        edges=tuple(canvas_layouts.LEdge(id=part, a=part_of[str(e.get("from"))], b=part_of[str(e.get("to"))])
-                    for part, e in edges.items() if str(e.get("from")) in part_of and str(e.get("to")) in part_of),
-        direction=(settings.get("direction") or "down") if (settings.get("direction") or "down") in layout.directions else layout.directions[0],
-        incremental=False)
-    key = _cache_key(layout.name, request)
-    fresh_crossings = _FRESH_CROSSINGS.get(key)
-    if fresh_crossings is None:
-        fresh_crossings = float(canvas_layouts.run(layout.name, request).stats.get("crossings", found))
-        if len(_FRESH_CROSSINGS) >= _PREPARED_MAX:
-            _FRESH_CROSSINGS.pop(next(iter(_FRESH_CROSSINGS)))
-        _FRESH_CROSSINGS[key] = fresh_crossings
+    fresh_crossings = float(fresh["crossings_seen"])
     if fresh_crossings >= found:
         return []
     alias = el.get("alias") or el.get("id")
@@ -1510,6 +1650,6 @@ KINDS = (
                                              doc="\"a -> b: label\" relations", refs=(("from", "nodes", "drop"), ("to", "nodes", "drop")))),
                      settings=SETTINGS, fields=("title",), parts="members", positional=True, normalize=normalize, build=build, spec=spec,
                      adopt=adopt, prepare=prepare, max_members=2000),
-         arrange=arrange, emit=_zone.emit, hit=_zone.hit, text_edit=_zone.title_edit, readback=readback, checks=(pin_overlap, crossings_high, routes_tangled, labels_adrift),
+         arrange=arrange, emit=_zone.emit, hit=_zone.hit, text_edit=_zone.title_edit, readback=readback, checks=(pin_overlap, crossings_high, routes_tangled, labels_adrift, graph_thin),
          noun=("graph", "graphs"), doc="a graph: nodes, groups and edges, laid out and routed (patch it to change it)"),
 )

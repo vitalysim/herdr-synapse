@@ -16,13 +16,26 @@
    "undone": false
   }
  },
+ "checkpoints": [
+  {
+   "at": "2026-01-01T00:00:00.000Z",
+   "auto": true,
+   "by": "qa-drawer",
+   "elements": 0,
+   "id": "V-1",
+   "label": "before B-1 (a batch of 32 ops)",
+   "version": 0
+  }
+ ],
  "claims": [],
  "counters": {
   "B": 1,
   "C": 0,
   "E": 32,
   "G": 0,
-  "K": 0,
+  "K": 1,
+  "P": 0,
+  "V": 1,
   "X": 0
  },
  "elements": [
@@ -1628,6 +1641,7 @@
    "z": 32
   }
  ],
+ "freezes": [],
  "homes": {
   "qa-drawer": [
    0,
@@ -1638,6 +1652,13 @@
  },
  "legend": [],
  "locks": [],
+ "proposals": [],
+ "settings": {
+  "collab": {
+   "frozen": "propose",
+   "human_edits": "propose"
+  }
+ },
  "team": "qa",
  "updated_at": "2026-01-01T00:00:00.000Z",
  "v": 1,

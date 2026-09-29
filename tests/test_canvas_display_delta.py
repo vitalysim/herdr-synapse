@@ -68,7 +68,9 @@ class Deltas(CanvasRig):
         self.assertFalse(delta["full"])
         self.assertIn(mine, [e["id"] for e in delta["upserts"]])
         patched = applied(before, delta)
-        self.assertEqual(clip_of(patched, mine), [0, 400, 420 - D.CLAIM_LABEL_GAP, 300])
+        self.assertEqual(clip_of(patched, mine),
+                         [0, 400 - D.CLAIM_LABEL_ROOM, 420 - D.CLAIM_LABEL_GAP, 300 + 2 * D.CLAIM_LABEL_ROOM],
+                         "a horizontal stop and nothing else: the label hangs above the region")
         self.assertIsNone(clip_of(patched, other), "nothing beside it on the right")
         self.assertEqual(D.dumps(patched["entries"]), D.dumps(D.display_list(C.load_scene(self.team), stills=set())["entries"]))
         # A claim below it, not beside it, stops nothing; one that goes lets the label run on again.
@@ -79,13 +81,16 @@ class Deltas(CanvasRig):
         self.ok({"op": "claim", "region": [420, 900, 800, 1000], "label": "below", "intent": "t"}, OPERATOR)
         self.assertIsNone(clip_of(C.display(self.team), mine))
 
-    def test_a_claims_label_clears_its_own_dashed_rectangle(self):
-        """QA phase 6, 3.6 saw a claim's label struck through by the claim's own dashes on the page. The list both
-        renderers draw keeps them apart, and this is where that clearance lives: the label hangs from the top-left
-        corner in screen pixels, so the rectangle's 2 px stroke ends 1 px below the corner while the first line's ink
-        starts lower. Both distances are screen pixels, so the gap is the same at every zoom. Since V2 the border is
-        drawn ``CLAIM_BORDER_OUT`` units outside the region as well, so its stroke lands on nothing the region holds;
-        the label still hangs from the region's own corner, which is where the authority begins."""
+    def test_a_claims_label_sits_above_its_region_and_clears_its_own_dashes(self):
+        """QA phase 6, 3.6 saw a claim's label struck through by the claim's own dashes; F8 then saw both of them
+        drawn through the *frame's* own title, because a claim snaps to the marks it holds and a frame's top-left
+        corner is where it draws its title.
+
+        So the label hangs *above* the region now, in screen pixels from its top-left corner, and the whole of its
+        ink ends above the dashed border - which is itself ``CLAIM_BORDER_OUT`` units outside the region. Every
+        distance here is screen pixels, so the clearance is the same at every zoom, and nothing the region holds has
+        the label over it at any zoom.
+        """
         self.ok({"op": "claim", "region": [0, 400, 400, 700], "label": "the pricing table", "intent": "t"})
         entry = next(e for e in C.display(self.team)["entries"] if e["kind"] == "claim" and e["bbox"] == [0, 400, 400, 700])
         rect = next(i for i in entry["items"] if i["k"] == "rect")
@@ -96,12 +101,10 @@ class Deltas(CanvasRig):
                          "the dashed border is drawn outside the region it holds (V2)")
         text = group["items"][0]
         face = X.face("normal", text["weight"])
-        ink_top = text["lines"][0]["y"] - face.ascender / float(face.units_per_em) * text["size"]
-        self.assertGreaterEqual(ink_top, rect["sw_px"] / 2.0 + 1.0,
-                                "the label's first line runs into the dashes along the claim's top edge")
-        # The other edges are world units, so how far the label reaches into the region depends on the zoom: a
-        # region drawn shorter than one line (about 17 px) would meet its bottom edge, which the page clips sideways
-        # (CLAIM_LABEL_GAP) and nobody has seen vertically.
+        ink_bottom = text["lines"][0]["y"] - face.descender / float(face.units_per_em) * text["size"]
+        self.assertLessEqual(ink_bottom, -(rect["sw_px"] / 2.0 + D.CLAIM_BORDER_OUT),
+                             "the label's ink ends above the dashes along the claim's top edge")
+        self.assertLessEqual(text["box"][1] + text["box"][3], 0.0, "and the whole line is above the region")
 
     def test_no_change_is_an_empty_delta(self):
         version = C.display(self.team)["version"]
@@ -180,7 +183,9 @@ class DisplayRoute(RouteCase):
         self.assertEqual((doc["dl"], len(doc["entries"])), (1, 3))  # the box, the pin, and the member's automatic claim (phase 5)
         C.apply_ops(self.layout, self.ts.team, [{"op": "move", "id": self.box, "by": [0, 40], "intent": "t"}], WORKER)
         delta = self.get("/api/teams/alpha/display?since={}".format(doc["version"])).json()
-        self.assertEqual((delta["full"], [e["id"] for e in delta["upserts"]]), (False, [self.box]))
+        # The box, and the automatic claim that holds it: a claim's dashed edge is fitted again when the mark it
+        # holds moves, or it ends up drawn through it (``canvas_collab._refit_auto``, QA F7).
+        self.assertEqual((delta["full"], [e["id"] for e in delta["upserts"]]), (False, [self.box, "K-1"]))
         self.assertEqual(self.get("/api/teams/alpha/display?since=0").json()["version"], delta["version"])
         self.assertEqual(self.get("/api/teams/alpha/display?since=-1").status, 400)
 

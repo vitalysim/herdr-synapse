@@ -1,185 +1,188 @@
 {
- "name": "long-chain",
- "about": "a nine-node path: the aspect case",
- "direction": "right",
- "layout": "layers",
- "gap": 40,
- "rank_gap": 80,
- "clearance": 20,
- "radius": 8,
- "port_spacing": 12,
- "group_pad": [
-  20,
-  40,
-  20,
-  20
- ],
- "passes": [
-  {
-   "nodes": [
+  "name": "long-chain",
+  "about": "a nine-node path: the aspect case",
+  "direction": "right",
+  "layout": "layers",
+  "gap": 40,
+  "rank_gap": 80,
+  "clearance": 20,
+  "radius": 8,
+  "port_spacing": 12,
+  "group_pad": [
+    20,
+    40,
+    20,
+    20
+  ],
+  "passes": [
     {
-     "id": "src",
-     "w": 160,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "lint",
-     "w": 160,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "unit",
-     "w": 160,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "build",
-     "w": 160,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "scan",
-     "w": 160,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "stage",
-     "w": 220,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "e2e",
-     "w": 200,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "prod",
-     "w": 240,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "watch",
-     "w": 180,
-     "h": 60,
-     "group": null
+      "nodes": [
+        {
+          "id": "src",
+          "w": 160,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "lint",
+          "w": 160,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "unit",
+          "w": 160,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "build",
+          "w": 160,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "scan",
+          "w": 160,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "stage",
+          "w": 220,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "e2e",
+          "w": 200,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "prod",
+          "w": 240,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "watch",
+          "w": 180,
+          "h": 60,
+          "group": null
+        }
+      ],
+      "edges": [
+        {
+          "id": "e:src->lint",
+          "a": "src",
+          "b": "lint",
+          "label": [
+            79.15,
+            24.0
+          ],
+          "name": "on push"
+        },
+        {
+          "id": "e:lint->unit",
+          "a": "lint",
+          "b": "unit",
+          "label": [
+            58.62,
+            24.0
+          ],
+          "name": "clean"
+        },
+        {
+          "id": "e:unit->build",
+          "a": "unit",
+          "b": "build",
+          "label": [
+            61.86,
+            24.0
+          ],
+          "name": "green"
+        },
+        {
+          "id": "e:build->scan",
+          "a": "build",
+          "b": "scan",
+          "label": [
+            64.04,
+            24.0
+          ],
+          "name": "image"
+        },
+        {
+          "id": "e:scan->stage",
+          "a": "scan",
+          "b": "stage",
+          "label": [
+            55.08,
+            24.0
+          ],
+          "name": "clear"
+        },
+        {
+          "id": "e:stage->e2e",
+          "a": "stage",
+          "b": "e2e",
+          "label": [
+            61.08,
+            24.0
+          ],
+          "name": "ready"
+        },
+        {
+          "id": "e:e2e->prod",
+          "a": "e2e",
+          "b": "prod",
+          "label": [
+            61.86,
+            24.0
+          ],
+          "name": "green"
+        },
+        {
+          "id": "e:prod->watch",
+          "a": "prod",
+          "b": "watch",
+          "label": [
+            43.46,
+            24.0
+          ],
+          "name": "live"
+        },
+        {
+          "id": "e:watch->src",
+          "a": "watch",
+          "b": "src",
+          "label": [
+            100.09,
+            24.0
+          ],
+          "name": "regression"
+        }
+      ],
+      "groups": []
     }
-   ],
-   "edges": [
-    {
-     "id": "e:src->lint",
-     "a": "src",
-     "b": "lint",
-     "label": [
-      79.15,
-      24.0
-     ],
-     "name": "on push"
-    },
-    {
-     "id": "e:lint->unit",
-     "a": "lint",
-     "b": "unit",
-     "label": [
-      58.62,
-      24.0
-     ],
-     "name": "clean"
-    },
-    {
-     "id": "e:unit->build",
-     "a": "unit",
-     "b": "build",
-     "label": [
-      61.86,
-      24.0
-     ],
-     "name": "green"
-    },
-    {
-     "id": "e:build->scan",
-     "a": "build",
-     "b": "scan",
-     "label": [
-      64.04,
-      24.0
-     ],
-     "name": "image"
-    },
-    {
-     "id": "e:scan->stage",
-     "a": "scan",
-     "b": "stage",
-     "label": [
-      55.08,
-      24.0
-     ],
-     "name": "clear"
-    },
-    {
-     "id": "e:stage->e2e",
-     "a": "stage",
-     "b": "e2e",
-     "label": [
-      61.08,
-      24.0
-     ],
-     "name": "ready"
-    },
-    {
-     "id": "e:e2e->prod",
-     "a": "e2e",
-     "b": "prod",
-     "label": [
-      61.86,
-      24.0
-     ],
-     "name": "green"
-    },
-    {
-     "id": "e:prod->watch",
-     "a": "prod",
-     "b": "watch",
-     "label": [
-      43.46,
-      24.0
-     ],
-     "name": "live"
-    },
-    {
-     "id": "e:watch->src",
-     "a": "watch",
-     "b": "src",
-     "label": [
-      100.09,
-      24.0
-     ],
-     "name": "regression"
-    }
-   ],
-   "groups": []
+  ],
+  "budget": {
+    "length_ratio": 1.02,
+    "crossings_seen": 1,
+    "mdetour_median": 1.0,
+    "mdetour_max": 1.1,
+    "reversals_max": 1,
+    "reversals_total": 1,
+    "bends_max": 4,
+    "label_misattributed": 0,
+    "label_orphan_max": 0.3,
+    "label_astray_max": 0,
+    "edge_on_edge_len": 0,
+    "entry_cross_offset_max": 24,
+    "screen_use": 0.85,
+    "screen_ink": 0.19,
+    "empty_band_boxes": 0.15,
+    "parallel_bundle_len": 100
   }
- ],
- "budget": {
-  "length_ratio": 1.02,
-  "crossings_seen": 0,
-  "mdetour_median": 1.0,
-  "mdetour_max": 1.1,
-  "reversals_max": 1,
-  "reversals_total": 1,
-  "bends_max": 4,
-  "label_misattributed": 0,
-  "label_orphan_max": 0.3,
-  "edge_on_edge_len": 0,
-  "entry_cross_offset_max": 24,
-  "screen_use": 0.1,
-  "parallel_bundle_len": 100
- }
 }

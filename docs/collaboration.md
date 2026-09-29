@@ -49,12 +49,18 @@ element; the rules judge primary changes.
 | 50 | `human_made` | the operator's marks, or a new mark in her container or on her top-level marks: propose, or live under `human_edits: live` (the event says `touched_human`) |
 | 55 | `host_geometry` | a peer's mark inside a frame or group **you** made, moved or resized and nothing else: live (the element records `moved_by`) |
 | 60 | `peer` | a raised run changing another member's marks, apart from what `host_geometry` allows: propose |
-| 70 | `foreign_lane` | a plain member's new mark whose centre lies in another author's claim or home: propose |
+| 70 | `foreign_lane` | a plain member's new mark whose centre lies in another author's claim or home: propose — unless it is inside a frame or group **you** made, where a lane says nothing (a drawing of your own growing while it is laid out again is not a mark placed in a lane) |
 
 Combining: any refusal wins (except `stale_base`, which yields to a proposal);
 else any proposal makes the whole op one proposal (ops are never split); else
 live. A raised run that would be live for any other reason than her own
 `human_edits: live` or `host_geometry` is a proposal.
+
+Arranging a block is a geometry-only change by construction, so `host_geometry`
+is also what lets the author of a graph lay their own graph out again once a
+peer's mark has landed in it. Without that the peer's boxes were held where
+they stood and the other boxes were laid out around them, and nobody could make
+the drawing readable.
 
 ### Inside your own frame or group
 
@@ -121,6 +127,18 @@ their area (`auto: true`); the batch grows that one claim, and so does a later
 batch drawing within 200 units of an automatic claim of the author's (up to
 2400 a side, never over another author's lane); a fourth claim releases the
 oldest automatic one first.
+
+An automatic claim's region is fitted to the marks it holds so its dashed edge
+is not drawn through one of them (`canvas_check.claim_snap`), and it is fitted
+**again** whenever its author draws, because the op that makes a claim is not
+the op that decides how big its marks are: a block settles its members and hugs
+itself around them afterwards. An asked-for claim is left alone — its region is
+its author's own statement of where they are working, and `claim_edge` offers
+them the correction to make.
+
+A claim's label hangs *above* its region rather than inside its top-left
+corner. A claim snaps to the marks it holds, so its corner is usually a frame's
+corner, and a frame draws its title there.
 
 ## Proposals
 

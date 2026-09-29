@@ -675,6 +675,13 @@ CLAIM_LABEL_GAP = 4.0
 #: region itself the stroke lands on their outline, which at 41% zoom read as a chart's axis labels being cut off.
 #: The entry's ``bbox`` stays the region, because that is the authority the claim carries.
 CLAIM_BORDER_OUT = 3.0
+#: World room above and below the region the claim's label may use. The label is drawn at a fixed *screen* size, so
+#: its height in world units grows as the board is zoomed out, and the clip that stops it running over the claim
+#: beside it is a horizontal stop and nothing else: the vertical range is whatever cannot cut it at a usable zoom.
+CLAIM_LABEL_ROOM = 2000.0
+#: Screen pixels between the bottom of the label's ink and the dashed border below it: the border's own 2 px stroke
+#: reaches 1 px past ``CLAIM_BORDER_OUT``, and a descender must clear that.
+CLAIM_LABEL_LIFT = CLAIM_BORDER_OUT + 3.0
 
 
 def _claim_neighbour(claim: Mapping[str, Any], box: Tuple[float, float, float, float], env: Env) -> Optional[float]:
@@ -703,12 +710,18 @@ def _claim_entry(claim: Mapping[str, Any], env: Env) -> Optional[Dict[str, Any]]
     who = "you" if reader and author == reader else ("the operator" if author == "human" else author)
     found = chip(author, env)
     text = "{} {}: {}".format(claim.get("id"), who, claim.get("label") or "")[:120]
-    label: Dict[str, Any] = {"k": "group", "screen": [x0, y0], "items": [text_prim([text], 4, 14 - _ctext.baseline(12, "normal", 400), 12, {}, found["bg"],
-                                                                                   "start", None, 400)]}
+    # Above the region's top edge, not just inside it. A claim snaps to the marks it holds, so its top-left corner is
+    # usually a frame's own top-left corner - and that is where a frame draws its title. The dashed rectangle and this
+    # pill were being drawn straight through "Customer interview findings, week 38" on nearly every graph render, in
+    # both themes (QA phase 6 V2, still open as F8). Text on text is the owner's own word for unclear.
+    label: Dict[str, Any] = {"k": "group", "screen": [x0, y0],
+                             "items": [text_prim([text], 4, -(_ctext.line_height(12) + CLAIM_LABEL_LIFT), 12, {},
+                                                 found["bg"], "start", None, 400)]}
     right = _claim_neighbour(claim, (x0, y0, x1, y1), env)
     if right is not None:
         # A claim beside it on the right (QA phase 5 L8): the label stops where that claim, and its label, begin.
-        label = {"k": "group", "clip": [x0, y0, max(0.0, right - CLAIM_LABEL_GAP - x0), y1 - y0], "items": [label]}
+        label = {"k": "group", "clip": [x0, y0 - CLAIM_LABEL_ROOM, max(0.0, right - CLAIM_LABEL_GAP - x0),
+                                        (y1 - y0) + 2 * CLAIM_LABEL_ROOM], "items": [label]}
     out_w, out_h = x1 - x0 + 2 * CLAIM_BORDER_OUT, y1 - y0 + 2 * CLAIM_BORDER_OUT
     items = [{"k": "rect", "x": x0 - CLAIM_BORDER_OUT, "y": y0 - CLAIM_BORDER_OUT, "w": out_w, "h": out_h,
               "fill": None, "stroke": found["bg"], "sw_px": 2, "dash": [8, 6]}, label]

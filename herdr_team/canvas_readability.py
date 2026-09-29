@@ -558,6 +558,16 @@ def measure(g: Drawn) -> Dict[str, Any]:
     m["screen_use"] = round(min(1.0, SCREEN_ASPECT / aspect) * min(1.0, aspect / SCREEN_ASPECT), 3) if aspect > 1e-9 else 0.0
     m["bbox_fill"] = round(((cx1 - cx0) * (cy1 - cy0)) / frame_area, 3)
     m["node_bbox"] = (round(cx0), round(cy0), round(cx1), round(cy1))
+    # How much of that fitted view the **boxes** cover, which is the one shape number that cannot be bought with
+    # empty space, and so the one that means "the drawing is small".
+    #
+    # ``screen_use`` can be. A drawing wider than 16:9 is fitted by its width, so its boxes render at exactly
+    # ``view_width / content_width`` whatever its height is: adding empty space across the flow raises
+    # ``screen_use`` and enlarges nothing. That is not a hypothetical - it is how the two-band form of the owner's
+    # own board scored 0.64 with a corridor taking a third of it, against 0.54 with the corridor they did not
+    # object to. ``screen_ink`` is ``screen_use`` times the share of the content box the boxes fill, which cancels
+    # the padding exactly: it goes up only when the content box itself gets shorter along its long axis.
+    m["screen_ink"] = round(m["screen_use"] * node_area / max((cx1 - cx0) * (cy1 - cy0), 1.0), 4)
     # The widest strip across the flow that the drawing does not use: the owner's "roughly the top third of the frame
     # is empty while the bottom is crowded".
     #
@@ -587,6 +597,16 @@ def measure(g: Drawn) -> Dict[str, Any]:
         cursor = max(cursor, s1)
     m["empty_band"] = round(gap / max(hi - lo, 1.0), 3)
     m["empty_band_at"] = at
+    # The same strip counting boxes only. A corridor a wire crosses is doing a job and ``empty_band`` is right to
+    # call it used; a reader still has nothing to *read* in it, and when a corridor takes a third of the drawing
+    # that is what the owner means by "roughly the top third of the frame is empty". Reported next to
+    # ``empty_band`` rather than instead of it, because the two answer different questions and the corridor between
+    # two separated components is honest space where the corridor inside one flow is not.
+    widest, cursor = 0.0, lo
+    for s0, s1 in sorted((boxes[i][across], boxes[i][across + 2]) for i in ids):
+        widest = max(widest, s0 - cursor)
+        cursor = max(cursor, s1)
+    m["empty_band_boxes"] = round(max(widest, hi - cursor) / max(hi - lo, 1.0), 3)
     # An edge whose own extent covers most of the frame along the flow: the wire that crosses the whole picture.
     flow_len = max(frame[2] - frame[0] if g.direction in ("right", "left") else frame[3] - frame[1], 1.0)
     axis = g.axis
@@ -760,6 +780,8 @@ def layout_stats(g: Drawn) -> Dict[str, float]:
         aspect = (x1 - x0) / max(y1 - y0, 1.0)
         out["content_aspect"] = round(aspect, 2)
         out["screen_use"] = round(min(1.0, SCREEN_ASPECT / aspect) * min(1.0, aspect / SCREEN_ASPECT), 3) if aspect > 1e-9 else 0.0
+        area = math.fsum((b[2] - b[0]) * (b[3] - b[1]) for b in boxes.values())
+        out["screen_ink"] = round(out["screen_use"] * area / max((x1 - x0) * (y1 - y0), 1.0), 4)
     if g.bands:
         cross = g.axis ^ 1
         drawn = [bid for bid, _box in sorted(g.bands.items(), key=lambda item: item[1][cross] * g.sign)]

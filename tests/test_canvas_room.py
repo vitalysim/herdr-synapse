@@ -162,12 +162,20 @@ class R3Placement(unittest.TestCase):
         self.assertEqual(spot[1], 0)
         self.assertFalse(LB.hits(block, LB.pill_box(spot, (100, 24))))
 
-    def test_a_line_too_short_puts_the_label_beside_it(self):
+    def test_a_line_too_short_keeps_its_label_within_reach_of_it(self):
+        """A 32-unit line between two boxes has nowhere clear for a 100-unit pill, and the answer is not "further away".
+
+        It used to be: the rings ran out at 96 units and the first clear spot won, so the pill for a step between two
+        touching boxes was drawn 56 units off the line it names - one of the owner's own words for the board they
+        rejected. ``ASTRAY_MAX`` now bounds the search, so a line with no room leaves its pill on the least-covered
+        spot near it and the ends are the ones that have to move (``room_at_end``).
+        """
         ends = [((0.0, -40.0, 160.0, 40.0), "rect"), ((200.0, -40.0, 360.0, 40.0), "rect")]
         self.assertTrue(LB.blocked_on_route([(164, 0), (196, 0)], (100, 24), ends, []))
-        spot, ring = LB.place([(164, 0), (196, 0)], (100, 24), ends, [])
-        self.assertGreater(ring, 0)
-        self.assertFalse(any(LB.hits(end, LB.pill_box(spot, (100, 24))) for end in ends))
+        spot, _ring = LB.place([(164, 0), (196, 0)], (100, 24), ends, [])
+        self.assertLessEqual(LB.distance([(164, 0), (196, 0)], spot[0], spot[1]), LB.ASTRAY_MAX)
+        self.assertGreater(LB.room_at_end([(164, 0), (196, 0)], (100, 24), ends[1:], [], True), 0.0,
+                           "the room the start would have to give it")
 
     def test_a_label_keeps_its_spot_while_it_is_on_the_route_and_clear(self):
         spot, ring = LB.place([(0, 0), (400, 0)], (100, 24), [], [], current=(90.0, 0.0))

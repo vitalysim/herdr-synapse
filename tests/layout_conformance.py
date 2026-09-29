@@ -116,34 +116,57 @@ RECUT_PASSES = 2
 #: pill on its own line), and ``edge_over_node``/``edge_near_node`` are 0 everywhere (the obstacle handling works).
 #: They are asserted as regression guards instead, so nobody "fixes" working code.
 CEILINGS: Dict[str, Any] = {
-    "length_ratio": ("<=", 1.20),
+    "length_ratio": ("<=", 1.15),
     # A hub's own wires cross each other a few tens of units out from the box they all leave, and ``crossings_seen``
     # counts those, which is right - a reader sees them - but it means a fan of seven has a natural floor of about
     # three. Spilling a crowded side's overflow onto the next side would remove them and is not built; until it is,
-    # the floor is 3 and the corpus's fan carries exactly that as its own budget.
+    # the corpus's fan measures exactly three and they are all of that kind. The floor stays 3 for that reason - the
+    # spec asked for 2 and the fan says no - and every other board carries 0, 1 or 2 as its own budget.
     "crossings_seen": ("<=edges", 6, 3),
-    "mdetour_median": ("<=", 1.40),
-    "mdetour_max": ("<=", 2.40),
+    "mdetour_median": ("<=", 1.20),
+    "mdetour_max": ("<=", 1.60),
     "reversals_max": ("<=", 2),
-    "reversals_total": ("<=edges", 1, 0),
-    "bends_max": ("<=", 8),
-    "label_misattributed": ("<=edges", 6, 1),
-    "label_orphan_max": ("<=", 0.40),
-    # Wire drawn along other wire. The rejected board had 549 units of it; six of the nine corpus boards now have
+    # A share of the edges rather than a count, because a count cannot compare across boards. 0.6 and not 0.5: the
+    # two-batch board - the rejected picture, repaired - turns back six times on ten edges, and five of those six are
+    # a route the operator's own pin holds in place. Its own budget is 6; nothing else in the corpus is over 4.
+    "reversals_total": ("<=share", 0.6, 1),
+    "bends_max": ("<=", 6),
+    "label_misattributed": ("<=share", 0.12, 1),
+    "label_orphan_max": ("<=", 0.35),
+    # How far a pill may sit from the line it names. It was in ``ALWAYS_ZERO``, which was an over-claim read off the
+    # corpus: the router does always put a pill on its own line *when there is room on it*, and when there is not it
+    # puts it beside the line, which is what the corpus never needed and a board outside it did. Left ungated, that
+    # reached 48 units on the owner's own flow and 16 on a three-cycle board. It is now bounded by construction
+    # (``canvas_labels.ASTRAY_MAX``) and this is the same number, so the gate and the code cannot drift; every corpus
+    # board still carries 0 as its own budget.
+    "label_astray_max": ("<=", 24.0),
+    # Wire drawn along other wire. The rejected board had 549 units of it; seven of the nine corpus boards now have
     # none. The ceiling is what the two-batch board still measures: two routes of the second batch pick the same
     # corridor, and neither's alternative is cheaper, because ``route_many`` is one ordered pass and the first of
     # them cannot see the second. A second routing pass would close it (see ``router_conformance``'s fixed point).
-    "edge_on_edge_len": ("<=", 120),
+    "edge_on_edge_len": ("<=", 115),
     # A source may sit this far off its own first step's line. This one is a non-regression bound rather than a
     # target: when two nodes in one rank feed the same successor only one of them can have the line, and moving the
-    # other costs a crossing and a board-wide detour (measured, rejected, and recorded in ``_align_entries``).
-    "entry_cross_offset_max": ("<=", 180),
-    # The shape gate. ``screen_use`` and ``content_aspect`` are the same fact: for an aspect above 16:9,
-    # ``screen_use == 1.78 / aspect`` exactly, and below it ``aspect / 1.78``. Only one of them can be a bound, and
-    # it is this one, because it is symmetric (a tall drawing is as badly fitted as a wide one) and it goes up when
-    # the picture gets better. ``content_aspect`` stays a reported number and is what ``graph_thin`` would trigger
-    # on if a fold ever ships.
-    "screen_use": (">=", 0.10),
+    # other costs a crossing and a board-wide detour (measured, rejected, and recorded in ``_align_entries``). The
+    # owner's own flow measures 131 for exactly that reason and carries 135; every other board carries 24.
+    "entry_cross_offset_max": ("<=", 140),
+    # The shape, in two numbers that answer two different questions.
+    #
+    # ``screen_use`` is the share of a 16:9 view the drawing covers once fitted, and it is symmetric: a drawing too
+    # tall is as badly fitted as one too wide. It can be *bought with empty space*, though - a drawing wider than
+    # 16:9 is fitted by its width, so its boxes render at the same size however much room is left above them - and
+    # that is not a hypothetical: the two-band form of the owner's board scored 0.64 with a corridor taking a third
+    # of it against 0.54 with the corridor they did not object to.
+    #
+    # ``screen_ink`` is the share of that view the **boxes** cover, which cancels the padding exactly and is the one
+    # number that only goes up when the drawing genuinely gets bigger. Both are gated, because a board can be dense
+    # and badly shaped or well shaped and nearly empty, and the owner objected to each of those in turn.
+    "screen_use": (">=", 0.18),
+    "screen_ink": (">=", 0.035),
+    # The widest strip across the flow with no box in it: the owner's "roughly the top third of the frame is empty
+    # while the bottom is crowded", and the number that went the wrong way when the shape pass started spreading
+    # lanes. Gated at last, which is what a corridor growing from 27 % of a drawing to 32 % needed and did not have.
+    "empty_band_boxes": ("<=", 0.50),
     "band_order": ("==", 0),
     "component_interleave": ("==", 0),
     "parallel_bundle_len": ("<=", 700),
@@ -152,17 +175,17 @@ CEILINGS: Dict[str, Any] = {
 #: ``length_ratio`` 1.77, ``crossings_seen`` 11, ``mdetour_median`` 2.28, ``mdetour_max`` 3.57, ``reversals_max`` 7,
 #: ``reversals_total`` 19, ``bends_max`` 16, ``label_misattributed`` 7, ``label_orphan_max`` 0.54,
 #: ``edge_on_edge_len`` 549 and ``parallel_bundle_len`` 1305 on ten edges, ``band_order`` 1 on its banded form, and
-#: ``screen_use`` 0.07 on the corpus's long chain. Sixteen bounds, sixteen failures, on ``19f9f469``.
+#: ``screen_use`` 0.07, ``screen_ink`` 0.024 and ``empty_band_boxes`` 0.31 on the corpus's long chain. Eighteen
+#: bounds, eighteen failures, on ``19f9f469``.
 #: The metrics that must stay at zero on every board, whatever else changes: a regression guard, not a target.
-ALWAYS_ZERO = ("label_astray_max", "edge_over_node", "edge_near_node")
+ALWAYS_ZERO = ("edge_over_node", "edge_near_node")
 #: Measured and reported, never gated, and here so the next reader does not add them back.
 #:
-#: ``empty_band`` is 0 on every connected board once it counts the wire that crosses a strip and not only the boxes,
-#: and on a disconnected board it measures the space between two components - which is separation working, not a
-#: defect. Gating it would push two flows together. The complaint it was meant to carry ("the top third of the frame
-#: is empty, the drawing is small") is carried by ``screen_use``.
-#: ``label_astray_max``, ``edge_over_node`` and ``edge_near_node`` are in ``ALWAYS_ZERO`` instead: they are 0
-#: everywhere because that part of the router genuinely works, so a bound would only invite someone to "fix" it.
+#: ``empty_band`` is 0 on every connected board once it counts the wire that crosses a strip and not only the boxes;
+#: what it was meant to carry is gated as ``empty_band_boxes``, which counts boxes alone.
+#: ``content_aspect`` is one-sided - it is width over height, so a drawing far too *tall* scores near zero and a
+#: ``<=`` bound never sees it - and ``screen_use`` is the symmetric form of the same fact. It stays reported because
+#: it is the number a message quotes ("drawn 16 times longer one way than the other").
 NOT_GATED = ("empty_band", "detour_max", "monotone", "ink_fill", "bbox_fill", "content_aspect")
 
 
@@ -176,10 +199,16 @@ def corpus(name: str) -> Dict[str, Any]:
 
 
 def ceiling_of(metric: str, edges: int) -> Tuple[str, float]:
-    """``(comparison, bound)`` for one metric on a board with ``edges`` edges."""
+    """``(comparison, bound)`` for one metric on a board with ``edges`` edges.
+
+    ``<=edges`` is one per so many edges, ``<=share`` a fraction of them; both with a floor, because a board of three
+    edges may not be held to a third of one.
+    """
     spec = CEILINGS[metric]
     if spec[0] == "<=edges":
         return "<=", float(max(spec[2], edges // spec[1]))
+    if spec[0] == "<=share":
+        return "<=", float(max(spec[2], round(spec[1] * edges)))
     return spec[0], float(spec[1])
 
 

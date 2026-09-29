@@ -37,7 +37,7 @@ from dataclasses import replace
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 from herdr_team.canvas_layouts import MAX_SIZE, LEdge, LNode, Layout, LayoutRequest, LayoutResult, Point
-from herdr_team.canvas_layouts import _budget, _order, _position, _rank, _util
+from herdr_team.canvas_layouts import _budget, _fold, _order, _position, _rank, _util
 
 #: Its place in the registration order.
 ORDER = 10
@@ -82,7 +82,113 @@ def _find(parent: Dict[str, str], n: str) -> str:
     return n
 
 
+#: How much bigger a folded drawing's boxes must render for the fold to be taken (``_folded``). A fold rearranges
+#: the whole drawing, so a few per cent is not worth it; a quarter again is.
+FOLD_GAIN = 1.25
+#: How close to the best shape a fold has to come to stay in the running once the wire is compared. Shape is not the
+#: only thing a fold decides: the forty-step board of the corpus carries six edges that skip five steps each, and the
+#: column count that fitted a view best put every one of those skips inside a single column, where it had to be
+#: routed down past four boxes - four reversals and a route that crossed itself. One column narrower draws the same
+#: skips as one straight rank-to-rank step. So the widest shape within this much of the best wins on its wire.
+FOLD_SHAPE_TOL = 0.85
+
+
 def layers(request: LayoutRequest) -> LayoutResult:
+    """The layered layout, and then - for a graph whose ranks hold one node each - the same graph re-cut into lanes
+    when that draws its boxes materially bigger (``_fold``)."""
+    result, rank = _layered(request)
+    return _folded(request, rank, result) or result
+
+
+def _render_scale(request: LayoutRequest, result: LayoutResult) -> float:
+    """How big this drawing's boxes render once it is fitted to a 16:9 view: ``min(view_w / W, view_h / H)``.
+
+    The one number "the drawing is small" is a complaint about, and not the same number as ``screen_use``. A drawing
+    wider than 16:9 is fitted by its width, so its boxes render at ``view_w / W`` whatever its height is: making it
+    taller raises ``screen_use`` and enlarges nothing. Only a shorter long axis makes a box bigger, which is why the
+    only pass that can answer a 16:1 drawing is one that shortens the flow.
+    """
+    size = {n.id: (n.w, n.h) for n in request.nodes}
+    places = [(x, y, size[k][0], size[k][1]) for k, (x, y) in result.positions.items() if k in size]
+    if not places:
+        return 0.0
+    across = max(x + w for x, _y, w, _h in places) - min(x for x, _y, _w, _h in places)
+    along = max(y + h for _x, y, _w, h in places) - min(y for _x, y, _w, _h in places)
+    return min(SCREEN_ASPECT / max(across, 1.0), 1.0 / max(along, 1.0))
+
+
+def _folded(request: LayoutRequest, rank: Mapping[str, int], drawn: LayoutResult) -> Optional[LayoutResult]:
+    """The same graph with its path of ranks re-cut into lanes, when that is a materially bigger drawing.
+
+    A fold is only ever **chosen** on a fresh layout and only ever **kept** on an incremental one, which is what
+    makes it stable: a board drawn as a line stays a line when a step is added to it, a board drawn folded stays
+    folded with the new step joining the column it follows, and neither rearranges itself under its author.
+
+    Each candidate is laid out in full and measured, rather than estimated: a column's thickness is its thickest
+    box, the ranks between columns hold the labels of the steps that cross them, and no closed form for that was
+    worth trusting. The recursion terminates because a folded request declares ``same_rank``, which is the first
+    thing this refuses to fold again.
+    """
+    if request.same_rank or request.order or request.groups or not request.nodes:
+        return None  # the author has arranged this drawing; a fold would be the layout overruling them
+    seeds: Dict[str, Point] = {}
+    heights: Dict[str, float] = {}
+    if request.incremental:
+        for node in request.nodes:
+            corner = node.pin if node.pin is not None else node.seed
+            if corner is None:
+                continue
+            fw, fh = _util.frame_size(request.direction, node.w, node.h)
+            seeds[node.id] = _util.to_frame(request.direction, corner[0], corner[1], fw, fh)
+            heights[node.id] = fh
+    if seeds:
+        # A drawn board keeps the fold it has, whatever the graph has become since. This is the whole of the
+        # stability story and it is asked of the **seeds**, never of the graph: a step added to a folded pipeline
+        # gives some rank two nodes, at which point the graph is no longer a path and a fold chosen from the graph
+        # would vanish - every box back into a line, which is the churn that stopped the first attempt at this from
+        # shipping. The new step joins the column its predecessor is in and nothing else moves.
+        ranks = {n: rank[n] for n in seeds if n in rank}
+        if len(set(ranks.values())) != len(ranks) or len(ranks) < _fold.FROM_RANKS or len(ranks) > _fold.MAX_NODES:
+            return None  # two boxes already share a rank: this board was never a folded line
+        found = _fold.from_seeds(sorted(ranks, key=lambda n: (ranks[n], n)), seeds, heights)
+        if found is None:
+            return None
+        kept, _kept_rank = _layered(replace(request, same_rank=found[0], order=found[1]))
+        return kept
+    path = _fold.path_of_ranks(rank, {n.id: n.order for n in request.nodes})
+    if path is None:
+        return None
+    budget = _budget.active()
+    tried: List[Tuple[float, Tuple[int, float], int, LayoutResult]] = []
+    pairs = [(e.a, e.b) for e in request.edges if e.a != e.b]
+    sizes = [_util.frame_size(request.direction, n.w, n.h) for n in request.nodes if n.id in path]
+    labelled = any(e.label is not None and e.label[0] > 0 for e in request.edges)
+    hint = _fold.lanes_for(len(path), _util.median([s[0] for s in sizes]), _util.median([s[1] for s in sizes]),
+                           request.gap, request.rank_gap / (2 if labelled else 1),
+                           request.direction in ("down", "up"), SCREEN_ASPECT)
+    for lanes, (sets, ordered) in _fold.candidates(path, pairs, hint):
+        if budget.over():
+            break
+        found_result, _found_rank = _layered(replace(request, same_rank=sets, order=ordered))
+        tried.append((_render_scale(request, found_result), _wire_cost_of(request, found_result), lanes, found_result))
+    if not tried:
+        return None
+    was = _render_scale(request, drawn)
+    top = max(score for score, _wire, _lanes, _found in tried)
+    if top < was * FOLD_GAIN:
+        return None
+    score, _wire, lanes, result = min((entry for entry in tried if entry[0] >= top * FOLD_SHAPE_TOL),
+                                      key=lambda entry: (entry[1], -entry[0], entry[2]))
+    # The fold's own same-rank edges are not the author's doing, so they are not reported to them: forty steps in
+    # seven lanes is thirty-three of these notes, and the one note that says what happened is ``shape_folded``.
+    notes = tuple(note for note in result.notes if not note.startswith("same_rank_flat"))
+    return replace(result, notes=notes + (
+        "shape_folded {}: the drawing is a line of {} steps, so it is drawn as {} lanes; its boxes come out {:.0%} "
+        "the size they would in one line".format(lanes, len(path), lanes, score / max(was, 1e-9)),),
+                   stats=dict(result.stats, folded=float(lanes)))
+
+
+def _layered(request: LayoutRequest) -> Tuple[LayoutResult, Dict[str, int]]:
     direction = request.direction
     nodes = _util.nodes_in_order(request)
     edges = _util.edges_in_order(request)
@@ -213,11 +319,13 @@ def layers(request: LayoutRequest) -> LayoutResult:
                 component_of[key] = component_of[e.a]
 
     def place_with(order_layers: List[List[str]], gap: float, ranks: float) -> Tuple[Dict[str, float], Dict[str, float]]:
-        return _place(graph, order_layers, replace(request, gap=gap), ranks, pads, chain, wanted, seeds, component_of)
+        return _place(graph, order_layers, replace(request, gap=gap), ranks, pads, chain, wanted, seeds, component_of,
+                      wire_gap=request.gap)
 
     def place_fresh(order_layers: List[List[str]], gap: float, ranks: float) -> Tuple[Dict[str, float], Dict[str, float]]:
         """The same order laid out from scratch: the shape the graph *would* have, whatever the seeds say."""
-        return _place(graph, order_layers, replace(request, gap=gap), ranks, pads, chain, None, {}, component_of)
+        return _place(graph, order_layers, replace(request, gap=gap), ranks, pads, chain, None, {}, component_of,
+                      wire_gap=request.gap)
 
     best, crossings, sweeps = _order.improve(model, first, incremental=bool(seeds))
     # How far apart the lanes are. A fresh layout picks the spacing that makes the drawing a shape a view can fit;
@@ -273,7 +381,7 @@ def layers(request: LayoutRequest) -> LayoutResult:
         if _seeds_hold(request, graph, seeds) or \
                 all(abs(xs[n] - seeds[n][0]) < 0.005 and abs(ys[n] - seeds[n][1]) < 0.005 for n in seeds):
             return _result(request, graph, best, xs, ys, chains, label_key, flat, loops, reversed_ids, notes, sweeps,
-                           crossings, fixed_point=True)
+                           crossings, fixed_point=True), rank
     # A long chain of ranks (200 nodes in a chain, drawn to the right) can run past the drawing limit: the ranks close up
     # toward ``MIN_RANK_GAP`` until it fits, or as far as they can (QA phase 2, R4).
     extent = max(ys[k] + graph.h[k] for k in ys) - min(ys.values()) if ys else 0.0
@@ -282,7 +390,7 @@ def layers(request: LayoutRequest) -> LayoutResult:
         ys = _rank_tops(graph, best, replace(request, gap=lane_gap), squeezed, pads, chain, seeds)  # only the ranks move: along them nothing changes
         notes.append("ranks_closed_up {:g}: ranks {:g} apart instead of {:g}, to keep the drawing within {}".format(
             squeezed, squeezed, rank_gap, MAX_SIZE))
-    return _result(request, graph, best, xs, ys, chains, label_key, flat, loops, reversed_ids, notes, sweeps, crossings)
+    return _result(request, graph, best, xs, ys, chains, label_key, flat, loops, reversed_ids, notes, sweeps, crossings), rank
 
 
 def _wire_cost_of(request: LayoutRequest, result: LayoutResult) -> Tuple[int, float]:
@@ -346,6 +454,16 @@ FILL_KEEP = 0.75
 #: Past this many nodes the shape is left alone: each candidate spacing is another coordinate pass, and a graph that
 #: big is already against its time budget (a 500-node layout has 2 s, and six more passes do not fit in it).
 BALANCE_MAX_NODES = 120
+#: How wide a stretch across the flow may be left with nothing in it, as a share of the drawing's width across the
+#: flow, before spreading the lanes stops. Whichever is larger: this, or the empty stretch the drawing already had.
+#:
+#: Density (``_fill``) was the only guard on spreading, and it is the wrong shape of guard for a drawing whose empty
+#: space is all in one place. Asked for the owner's flow as two labelled bands, the lanes went to 1.5x, every unit
+#: of the room went into the one corridor between the two band frames - not into the boxes - and the corridor went
+#: from 27 % of the frame to 32 %, which is the owner's own complaint ("roughly the top third of the frame is
+#: empty") made worse by the pass that exists to answer it. Overall density barely moved, because the corridor is a
+#: small part of a big drawing, so ``_fill`` let it through.
+EMPTY_BAND_KEEP = 0.22
 #: How far the lanes may be spread from the spacing the theme asked for. Beyond this the drawing stops looking like
 #: the rest of the canvas, which is a worse problem than a long drawing.
 #:
@@ -426,6 +544,7 @@ def _lane_scale(place_fresh, order_layers: List[List[str]], request: LayoutReque
     if was >= good:
         return 1.0  # already a shape a view fits: leave it exactly as it was
     floor = _fill(request, graph, base_xs, base_ys) * FILL_KEEP
+    room = max(_empty_band(request, graph, base_xs), EMPTY_BAND_KEEP)
     best = (was, 1.0)
     budget = _budget.active()
     for gap_scale in BALANCE_STEPS:
@@ -434,6 +553,8 @@ def _lane_scale(place_fresh, order_layers: List[List[str]], request: LayoutReque
         found_xs, found_ys = place_fresh(order_layers, request.gap * gap_scale, rank_gap)
         if _fill(request, graph, found_xs, found_ys) < floor:
             break  # past here the drawing is a better shape made of more empty space
+        if _empty_band(request, graph, found_xs) > room:
+            break  # and past here the empty space is all in one corridor, which is what the owner objected to
         score = _screen_use(request, graph, found_xs, found_ys)
         if score > best[0] + 1e-6:
             best = (score, gap_scale)
@@ -471,6 +592,24 @@ def _fill(request: LayoutRequest, graph: _Graph, xs: Mapping[str, float], ys: Ma
     across = max(xs[k] + graph.w[k] for k in keys) - min(xs[k] for k in keys)
     along = max(ys[k] + graph.h[k] for k in keys) - min(ys[k] for k in keys)
     return area / max(across * along, 1.0)
+
+
+def _empty_band(request: LayoutRequest, graph: _Graph, xs: Mapping[str, float]) -> float:
+    """The widest stretch across the flow with no box in it, as a share of the drawing's width across the flow.
+
+    Measured on the boxes alone, which is the point: the wire that will be drawn through a corridor does not make
+    the corridor somewhere a reader's eye has anything to rest on, and the layout has no routes yet anyway.
+    """
+    keys = [n.id for n in request.nodes if n.id in xs]
+    if not keys:
+        return 0.0
+    spans = sorted((xs[k], xs[k] + graph.w[k]) for k in keys)
+    hi = max(x1 for _x0, x1 in spans)
+    widest, cursor = 0.0, spans[0][0]
+    for x0, x1 in spans:
+        widest = max(widest, x0 - cursor)
+        cursor = max(cursor, x1)
+    return widest / max(hi - spans[0][0], 1.0)
 
 
 def _screen_use_at(aspect: float) -> float:
@@ -583,14 +722,30 @@ def _wanted(graph: _Graph, chains: Mapping[str, List[str]], seeds: Mapping[str, 
 
 def _place(graph: _Graph, order_layers: List[List[str]], request: LayoutRequest, rank_gap: float,
            pads: Mapping[str, Tuple[float, float, float, float]], chain, wanted: Optional[Mapping[str, float]],
-           seeds: Mapping[str, Point], component_of: Optional[Mapping[str, int]] = None) -> Tuple[Dict[str, float], Dict[str, float]]:
-    """Left edges and tops of every item in the ``down`` frame."""
+           seeds: Mapping[str, Point], component_of: Optional[Mapping[str, int]] = None,
+           wire_gap: Optional[float] = None) -> Tuple[Dict[str, float], Dict[str, float]]:
+    """Left edges and tops of every item in the ``down`` frame.
+
+    ``wire_gap`` is how much room a *wire* lane gets across the flow, which is the theme's own spacing even when the
+    lanes have been spread for the shape (``_lane_scale``). Spreading exists to give the boxes room; giving the same
+    multiple to every dummy lane only stretches wire, and on a banded drawing it lands entirely in the corridor
+    between the bands - which is the empty space the spread was supposed to take away.
+    """
     gap = request.gap
+    wire = gap if wire_gap is None else min(gap, wire_gap)
 
     def spacing(k: str) -> float:
-        return gap / 2.0 if graph.kind[k] in ("dummy", "border") else gap
+        return wire / 2.0 if graph.kind[k] in ("dummy", "border") else gap
 
     def offset(u: str, v: str) -> float:
+        # A group's border keeps its pad from what is inside it and ``gap`` from what is outside it, wire included.
+        #
+        # Halving that clearance for wire was tried, because the corridor between two bands is made of the lanes of
+        # the wire crossing it: it takes the owner's two-band board from a 188-unit corridor (27 % of the drawing) to
+        # 148 (23 %), and costs more than it buys. The drawing is 3.2:1 *wide*, so its empty corridor is also the
+        # only thing making its shape fit a screen at all, and a shorter corridor took it to 3.7:1 and 48 % of a
+        # view from 54 %. Every unit of corridor is either empty space or shape here; there is no third thing to
+        # spend it on until a band with one lane in it can be made thicker.
         bu, bv = graph.border_of.get(u), graph.border_of.get(v)
         if bu is not None:
             return pads[bu[0]][0] if bu[1] == "left" else gap

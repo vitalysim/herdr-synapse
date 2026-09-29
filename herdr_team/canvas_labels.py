@@ -40,6 +40,14 @@ MAX_STOPS = 61
 SIDE_STEPS = 12
 #: A stored spot this close to the route still counts as on it (rounding of stored points).
 ON_ROUTE = 1.5
+#: How far a pill's centre may end up from its own line. Past this a pill reads as belonging to nothing, which is one
+#: of the owner's own words for the board they rejected ("edge labels float in empty space away from the line they
+#: belong to"), so beyond it a spot that covers something is the lesser evil and the ``_cover`` fallback decides.
+#:
+#: ``SIDE_STEPS`` alone was the bound, and 12 rings of 8 units is 96: on the owner's own flow the pill "track" was
+#: placed 48 units out from its arrow, clear of everything and attached to nothing. 24 is three rings, which keeps a
+#: pill within about its own height of the line it names.
+ASTRAY_MAX = 24.0
 
 
 # --------------------------------------------------------------------------
@@ -174,6 +182,8 @@ def place(points: Sequence[Point], size: Tuple[float, float], obstacles: Sequenc
         return (float(current[0]), float(current[1])), 0
     tried: List[Point] = []
     for center, ring in candidates(points, size):
+        if ring and distance(points, center[0], center[1]) > ASTRAY_MAX:
+            continue  # this far out the pill no longer names its own arrow, clear or not
         if clear(center, size, obstacles, pills):
             return center, ring
         tried.append(center)

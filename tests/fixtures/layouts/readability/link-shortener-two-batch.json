@@ -1,282 +1,285 @@
 {
- "name": "link-shortener-two-batch",
- "about": "the rejected picture: the same graph built six nodes first, then the rest",
- "direction": "right",
- "layout": "layers",
- "gap": 40,
- "rank_gap": 80,
- "clearance": 20,
- "radius": 8,
- "port_spacing": 12,
- "group_pad": [
-  20,
-  40,
-  20,
-  20
- ],
- "passes": [
-  {
-   "nodes": [
+  "name": "link-shortener-two-batch",
+  "about": "the rejected picture: the same graph built six nodes first, then the rest",
+  "direction": "right",
+  "layout": "layers",
+  "gap": 40,
+  "rank_gap": 80,
+  "clearance": 20,
+  "radius": 8,
+  "port_spacing": 12,
+  "group_pad": [
+    20,
+    40,
+    20,
+    20
+  ],
+  "passes": [
     {
-     "id": "paste",
-     "w": 220,
-     "h": 60,
-     "group": null
+      "nodes": [
+        {
+          "id": "paste",
+          "w": 220,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "api",
+          "w": 200,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "store",
+          "w": 160,
+          "h": 80,
+          "group": null
+        },
+        {
+          "id": "short",
+          "w": 200,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "open",
+          "w": 220,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "redirect",
+          "w": 160,
+          "h": 80,
+          "group": null
+        }
+      ],
+      "edges": [
+        {
+          "id": "e:paste->api",
+          "a": "paste",
+          "b": "api",
+          "label": [
+            66.21,
+            24.0
+          ],
+          "name": "create"
+        },
+        {
+          "id": "e:api->store",
+          "a": "api",
+          "b": "store",
+          "label": [
+            53.39,
+            24.0
+          ],
+          "name": "save"
+        },
+        {
+          "id": "e:store->short",
+          "a": "store",
+          "b": "short",
+          "label": [
+            88.55,
+            24.0
+          ],
+          "name": "short link"
+        },
+        {
+          "id": "e:open->api",
+          "a": "open",
+          "b": "api",
+          "label": [
+            69.37,
+            24.0
+          ],
+          "name": "lookup"
+        },
+        {
+          "id": "e:api->redirect",
+          "a": "api",
+          "b": "redirect",
+          "label": [
+            142.2,
+            24.0
+          ],
+          "name": "original address"
+        }
+      ],
+      "groups": []
     },
     {
-     "id": "api",
-     "w": 200,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "store",
-     "w": 160,
-     "h": 80,
-     "group": null
-    },
-    {
-     "id": "short",
-     "w": 200,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "open",
-     "w": 220,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "redirect",
-     "w": 160,
-     "h": 80,
-     "group": null
+      "nodes": [
+        {
+          "id": "paste",
+          "w": 220,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "api",
+          "w": 200,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "store",
+          "w": 160,
+          "h": 80,
+          "group": null
+        },
+        {
+          "id": "short",
+          "w": 200,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "open",
+          "w": 220,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "redirect",
+          "w": 160,
+          "h": 80,
+          "group": null
+        },
+        {
+          "id": "cache",
+          "w": 240,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "counter",
+          "w": 200,
+          "h": 60,
+          "group": null
+        }
+      ],
+      "edges": [
+        {
+          "id": "e:paste->api",
+          "a": "paste",
+          "b": "api",
+          "label": [
+            66.21,
+            24.0
+          ],
+          "name": "create"
+        },
+        {
+          "id": "e:api->store",
+          "a": "api",
+          "b": "store",
+          "label": [
+            53.39,
+            24.0
+          ],
+          "name": "save"
+        },
+        {
+          "id": "e:store->short",
+          "a": "store",
+          "b": "short",
+          "label": [
+            88.55,
+            24.0
+          ],
+          "name": "short link"
+        },
+        {
+          "id": "e:open->api",
+          "a": "open",
+          "b": "api",
+          "label": [
+            69.37,
+            24.0
+          ],
+          "name": "lookup"
+        },
+        {
+          "id": "e:api->redirect",
+          "a": "api",
+          "b": "redirect",
+          "label": [
+            142.2,
+            24.0
+          ],
+          "name": "original address"
+        },
+        {
+          "id": "e:store->cache",
+          "a": "store",
+          "b": "cache",
+          "label": [
+            85.04,
+            24.0
+          ],
+          "name": "populate"
+        },
+        {
+          "id": "e:open->cache",
+          "a": "open",
+          "b": "cache",
+          "label": [
+            74.16,
+            24.0
+          ],
+          "name": "cached"
+        },
+        {
+          "id": "e:cache->api",
+          "a": "cache",
+          "b": "api",
+          "label": [
+            35.67,
+            24.0
+          ],
+          "name": "hit"
+        },
+        {
+          "id": "e:open->counter",
+          "a": "open",
+          "b": "counter",
+          "label": [
+            56.07,
+            24.0
+          ],
+          "name": "track"
+        },
+        {
+          "id": "e:counter->api",
+          "a": "counter",
+          "b": "api",
+          "label": [
+            70.4,
+            24.0
+          ],
+          "name": "logged"
+        }
+      ],
+      "groups": []
     }
-   ],
-   "edges": [
-    {
-     "id": "e:paste->api",
-     "a": "paste",
-     "b": "api",
-     "label": [
-      66.21,
-      24.0
-     ],
-     "name": "create"
-    },
-    {
-     "id": "e:api->store",
-     "a": "api",
-     "b": "store",
-     "label": [
-      53.39,
-      24.0
-     ],
-     "name": "save"
-    },
-    {
-     "id": "e:store->short",
-     "a": "store",
-     "b": "short",
-     "label": [
-      88.55,
-      24.0
-     ],
-     "name": "short link"
-    },
-    {
-     "id": "e:open->api",
-     "a": "open",
-     "b": "api",
-     "label": [
-      69.37,
-      24.0
-     ],
-     "name": "lookup"
-    },
-    {
-     "id": "e:api->redirect",
-     "a": "api",
-     "b": "redirect",
-     "label": [
-      142.2,
-      24.0
-     ],
-     "name": "original address"
-    }
-   ],
-   "groups": []
-  },
-  {
-   "nodes": [
-    {
-     "id": "paste",
-     "w": 220,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "api",
-     "w": 200,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "store",
-     "w": 160,
-     "h": 80,
-     "group": null
-    },
-    {
-     "id": "short",
-     "w": 200,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "open",
-     "w": 220,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "redirect",
-     "w": 160,
-     "h": 80,
-     "group": null
-    },
-    {
-     "id": "cache",
-     "w": 240,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "counter",
-     "w": 200,
-     "h": 60,
-     "group": null
-    }
-   ],
-   "edges": [
-    {
-     "id": "e:paste->api",
-     "a": "paste",
-     "b": "api",
-     "label": [
-      66.21,
-      24.0
-     ],
-     "name": "create"
-    },
-    {
-     "id": "e:api->store",
-     "a": "api",
-     "b": "store",
-     "label": [
-      53.39,
-      24.0
-     ],
-     "name": "save"
-    },
-    {
-     "id": "e:store->short",
-     "a": "store",
-     "b": "short",
-     "label": [
-      88.55,
-      24.0
-     ],
-     "name": "short link"
-    },
-    {
-     "id": "e:open->api",
-     "a": "open",
-     "b": "api",
-     "label": [
-      69.37,
-      24.0
-     ],
-     "name": "lookup"
-    },
-    {
-     "id": "e:api->redirect",
-     "a": "api",
-     "b": "redirect",
-     "label": [
-      142.2,
-      24.0
-     ],
-     "name": "original address"
-    },
-    {
-     "id": "e:store->cache",
-     "a": "store",
-     "b": "cache",
-     "label": [
-      85.04,
-      24.0
-     ],
-     "name": "populate"
-    },
-    {
-     "id": "e:open->cache",
-     "a": "open",
-     "b": "cache",
-     "label": [
-      74.16,
-      24.0
-     ],
-     "name": "cached"
-    },
-    {
-     "id": "e:cache->api",
-     "a": "cache",
-     "b": "api",
-     "label": [
-      35.67,
-      24.0
-     ],
-     "name": "hit"
-    },
-    {
-     "id": "e:open->counter",
-     "a": "open",
-     "b": "counter",
-     "label": [
-      56.07,
-      24.0
-     ],
-     "name": "track"
-    },
-    {
-     "id": "e:counter->api",
-     "a": "counter",
-     "b": "api",
-     "label": [
-      70.4,
-      24.0
-     ],
-     "name": "logged"
-    }
-   ],
-   "groups": []
+  ],
+  "budget": {
+    "length_ratio": 1.0,
+    "crossings_seen": 0,
+    "mdetour_median": 1.15,
+    "mdetour_max": 1.6,
+    "reversals_max": 1,
+    "reversals_total": 6,
+    "bends_max": 4,
+    "label_misattributed": 0,
+    "label_orphan_max": 0.32,
+    "label_astray_max": 0,
+    "edge_on_edge_len": 115,
+    "entry_cross_offset_max": 65,
+    "screen_use": 0.33,
+    "screen_ink": 0.055,
+    "empty_band_boxes": 0.25,
+    "parallel_bundle_len": 700
   }
- ],
- "budget": {
-  "length_ratio": 1.0,
-  "crossings_seen": 0,
-  "mdetour_median": 1.15,
-  "mdetour_max": 1.6,
-  "reversals_max": 1,
-  "reversals_total": 6,
-  "bends_max": 4,
-  "label_misattributed": 0,
-  "label_orphan_max": 0.32,
-  "edge_on_edge_len": 115,
-  "entry_cross_offset_max": 65,
-  "screen_use": 0.33,
-  "parallel_bundle_len": 700
- }
 }

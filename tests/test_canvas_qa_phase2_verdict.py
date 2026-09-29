@@ -315,8 +315,14 @@ class R3TreeCrossLinks(Base):
 
 
 class R4LongLayeredChains(Base):
-    """A 200-node layered chain drawn to the right lays out: its ranks close up, and a block may be bigger than one
-    element; past the documented block limit it is refused by name."""
+    """A 200-node layered chain drawn to the right lays out: a path of ranks is folded into lanes, a chain that is not
+    a path closes its ranks up instead, and past the documented block limit it is refused by name.
+
+    The three chains here are deliberately different shapes. A *pure* path is now folded
+    (``canvas_layouts._fold``), which is what took the corpus's long chain from 16:1 to 2:1, so it no longer runs past
+    ``MAX_SIZE`` and its ranks no longer have to close up. A chain with anything else in it - a branch, two nodes in
+    one rank - is still drawn as one line, and that is the shape the rank-closing and the block limit are for.
+    """
 
     def test_a_chain_like_graph_to_the_right_lays_out(self):
         nodes, edges = random_graph(200, 400, 0, chain=True)
@@ -327,17 +333,34 @@ class R4LongLayeredChains(Base):
         self.assertLessEqual(max(root["w"], root["h"]), C.MAX_BLOCK_SIZE)
         self.assertTrue(any("ranks_closed_up" in w["message"] for w in result["warnings"]), result["warnings"])
 
-    def test_a_pure_chain_of_two_hundred_lays_out_past_the_element_limit(self):
+    def test_a_pure_chain_of_two_hundred_is_folded_into_lanes(self):
         nodes = ["N{}".format(i) for i in range(200)]
         edges = ["N{} -> N{}".format(i, i + 1) for i in range(199)]
-        self.ok({"op": "graph", "id": "g", "direction": "right", "nodes": nodes, "edges": edges, "at": [0, 0], "intent": "t"}, OPERATOR)
+        result = self.apply([{"op": "graph", "id": "g", "direction": "right", "nodes": nodes, "edges": edges, "at": [0, 0], "intent": "t"}],
+                            OPERATOR)
+        self.assertEqual(result["refused"], [])
         root = self.by_alias("g")
+        self.assertLessEqual(max(root["w"], root["h"]), C.MAX_BLOCK_SIZE)
+        self.assertTrue(any("shape_folded" in w["message"] for w in result["warnings"]), result["warnings"])
+        self.assertLess(max(root["w"], root["h"]) / max(min(root["w"], root["h"]), 1.0), 6.0,
+                        "a two-hundred-step line fits a view once it is folded")
+
+    def test_a_chain_with_a_branch_in_it_is_still_drawn_as_one_line(self):
+        """The fold is for a path of ranks. One rank holding two nodes is not one, and nothing about it changes."""
+        nodes = ["N{}".format(i) for i in range(200)]
+        # 199 in a line and one hanging beside rank 5: two nodes in one rank, so the ranks are not a path.
+        edges = ["N{} -> N{}".format(i, i + 1) for i in range(198)] + ["N4 -> N199", "N199 -> N6"]
+        result = self.apply([{"op": "graph", "id": "g", "direction": "right", "nodes": nodes, "edges": edges, "at": [0, 0], "intent": "t"}],
+                            OPERATOR)
+        self.assertEqual(result["refused"], [])
+        root = self.by_alias("g")
+        self.assertFalse(any("shape_folded" in w["message"] for w in result["warnings"]), result["warnings"])
         self.assertGreater(root["w"], C.MAX_SIZE)
         self.assertLessEqual(root["w"], C.MAX_BLOCK_SIZE)
 
     def test_past_the_block_limit_it_is_refused_by_name(self):
         nodes = [{"id": "N{}".format(i), "text": "a node whose label runs long enough to widen it a lot {}".format(i)} for i in range(200)]
-        edges = ["N{} -> N{}".format(i, i + 1) for i in range(199)]
+        edges = ["N{} -> N{}".format(i, i + 1) for i in range(198)] + ["N4 -> N199", "N199 -> N6"]
         refused = self.refused({"op": "graph", "id": "g", "direction": "right", "nodes": nodes, "edges": edges, "at": [0, 0], "intent": "t"},
                                OPERATOR)
         self.assertEqual((refused["code"], refused["details"]["limit"], refused["details"]["max"]),
@@ -345,11 +368,16 @@ class R4LongLayeredChains(Base):
         self.assertIn("split it", refused["message"])
 
     def test_ranks_close_up_only_past_the_limit(self):
-        nodes = tuple(LNode(id="n{}".format(i), w=160.0, h=60.0, order=i) for i in range(12))
-        edges = tuple(LEdge(id="e{}".format(i), a="n{}".format(i), b="n{}".format(i + 1)) for i in range(11))
+        # Twelve nodes with one rank holding two of them: a line, and not a path of ranks, so no fold and the usual
+        # rank spacing.
+        nodes = tuple(LNode(id="n{}".format(i), w=160.0, h=60.0, order=i) for i in range(12)) + \
+            (LNode(id="side", w=160.0, h=60.0, order=12),)
+        edges = tuple(LEdge(id="e{}".format(i), a="n{}".format(i), b="n{}".format(i + 1)) for i in range(11)) + \
+            (LEdge(id="s1", a="n4", b="side"), LEdge(id="s2", a="side", b="n6"))
         result = CL.run("layers", LayoutRequest(nodes=nodes, edges=edges, direction="right"))
         self.assertFalse(any(n.startswith("ranks_closed_up") for n in result.notes))
-        xs = sorted(x for x, _y in result.positions.values())
+        self.assertFalse(any(n.startswith("shape_folded") for n in result.notes))
+        xs = sorted(set(round(x, 2) for x, _y in result.positions.values()))
         self.assertEqual(xs[1] - xs[0], 160.0 + 80.0, "the usual rank gap")
 
 

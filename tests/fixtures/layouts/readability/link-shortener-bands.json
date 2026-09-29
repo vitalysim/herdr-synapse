@@ -1,201 +1,204 @@
 {
- "name": "link-shortener-bands",
- "about": "the same flow in two declared bands, the second journey declared first",
- "direction": "right",
- "layout": "layers",
- "gap": 40,
- "rank_gap": 80,
- "clearance": 20,
- "radius": 8,
- "port_spacing": 12,
- "group_pad": [
-  20,
-  40,
-  20,
-  20
- ],
- "passes": [
-  {
-   "nodes": [
+  "name": "link-shortener-bands",
+  "about": "the same flow in two declared bands, the second journey declared first",
+  "direction": "right",
+  "layout": "layers",
+  "gap": 40,
+  "rank_gap": 80,
+  "clearance": 20,
+  "radius": 8,
+  "port_spacing": 12,
+  "group_pad": [
+    20,
+    40,
+    20,
+    20
+  ],
+  "passes": [
     {
-     "id": "paste",
-     "w": 220,
-     "h": 60,
-     "group": "band_create"
-    },
-    {
-     "id": "api",
-     "w": 200,
-     "h": 60,
-     "group": "band_create"
-    },
-    {
-     "id": "store",
-     "w": 160,
-     "h": 80,
-     "group": "band_create"
-    },
-    {
-     "id": "short",
-     "w": 200,
-     "h": 60,
-     "group": "band_create"
-    },
-    {
-     "id": "open",
-     "w": 220,
-     "h": 60,
-     "group": "band_open"
-    },
-    {
-     "id": "redirect",
-     "w": 160,
-     "h": 80,
-     "group": "band_open"
-    },
-    {
-     "id": "cache",
-     "w": 240,
-     "h": 60,
-     "group": "band_open"
-    },
-    {
-     "id": "counter",
-     "w": 200,
-     "h": 60,
-     "group": "band_open"
+      "nodes": [
+        {
+          "id": "paste",
+          "w": 220,
+          "h": 60,
+          "group": "band_create"
+        },
+        {
+          "id": "api",
+          "w": 200,
+          "h": 60,
+          "group": "band_create"
+        },
+        {
+          "id": "store",
+          "w": 160,
+          "h": 80,
+          "group": "band_create"
+        },
+        {
+          "id": "short",
+          "w": 200,
+          "h": 60,
+          "group": "band_create"
+        },
+        {
+          "id": "open",
+          "w": 220,
+          "h": 60,
+          "group": "band_open"
+        },
+        {
+          "id": "redirect",
+          "w": 160,
+          "h": 80,
+          "group": "band_open"
+        },
+        {
+          "id": "cache",
+          "w": 240,
+          "h": 60,
+          "group": "band_open"
+        },
+        {
+          "id": "counter",
+          "w": 200,
+          "h": 60,
+          "group": "band_open"
+        }
+      ],
+      "edges": [
+        {
+          "id": "e:paste->api",
+          "a": "paste",
+          "b": "api",
+          "label": [
+            66.21,
+            24.0
+          ],
+          "name": "create"
+        },
+        {
+          "id": "e:api->store",
+          "a": "api",
+          "b": "store",
+          "label": [
+            53.39,
+            24.0
+          ],
+          "name": "save"
+        },
+        {
+          "id": "e:store->short",
+          "a": "store",
+          "b": "short",
+          "label": [
+            88.55,
+            24.0
+          ],
+          "name": "short link"
+        },
+        {
+          "id": "e:open->api",
+          "a": "open",
+          "b": "api",
+          "label": [
+            69.37,
+            24.0
+          ],
+          "name": "lookup"
+        },
+        {
+          "id": "e:api->redirect",
+          "a": "api",
+          "b": "redirect",
+          "label": [
+            142.2,
+            24.0
+          ],
+          "name": "original address"
+        },
+        {
+          "id": "e:store->cache",
+          "a": "store",
+          "b": "cache",
+          "label": [
+            85.04,
+            24.0
+          ],
+          "name": "populate"
+        },
+        {
+          "id": "e:open->cache",
+          "a": "open",
+          "b": "cache",
+          "label": [
+            74.16,
+            24.0
+          ],
+          "name": "cached"
+        },
+        {
+          "id": "e:cache->api",
+          "a": "cache",
+          "b": "api",
+          "label": [
+            35.67,
+            24.0
+          ],
+          "name": "hit"
+        },
+        {
+          "id": "e:open->counter",
+          "a": "open",
+          "b": "counter",
+          "label": [
+            56.07,
+            24.0
+          ],
+          "name": "track"
+        },
+        {
+          "id": "e:counter->api",
+          "a": "counter",
+          "b": "api",
+          "label": [
+            70.4,
+            24.0
+          ],
+          "name": "logged"
+        }
+      ],
+      "groups": [
+        {
+          "id": "band_open",
+          "parent": null,
+          "title": null
+        },
+        {
+          "id": "band_create",
+          "parent": null,
+          "title": null
+        }
+      ]
     }
-   ],
-   "edges": [
-    {
-     "id": "e:paste->api",
-     "a": "paste",
-     "b": "api",
-     "label": [
-      66.21,
-      24.0
-     ],
-     "name": "create"
-    },
-    {
-     "id": "e:api->store",
-     "a": "api",
-     "b": "store",
-     "label": [
-      53.39,
-      24.0
-     ],
-     "name": "save"
-    },
-    {
-     "id": "e:store->short",
-     "a": "store",
-     "b": "short",
-     "label": [
-      88.55,
-      24.0
-     ],
-     "name": "short link"
-    },
-    {
-     "id": "e:open->api",
-     "a": "open",
-     "b": "api",
-     "label": [
-      69.37,
-      24.0
-     ],
-     "name": "lookup"
-    },
-    {
-     "id": "e:api->redirect",
-     "a": "api",
-     "b": "redirect",
-     "label": [
-      142.2,
-      24.0
-     ],
-     "name": "original address"
-    },
-    {
-     "id": "e:store->cache",
-     "a": "store",
-     "b": "cache",
-     "label": [
-      85.04,
-      24.0
-     ],
-     "name": "populate"
-    },
-    {
-     "id": "e:open->cache",
-     "a": "open",
-     "b": "cache",
-     "label": [
-      74.16,
-      24.0
-     ],
-     "name": "cached"
-    },
-    {
-     "id": "e:cache->api",
-     "a": "cache",
-     "b": "api",
-     "label": [
-      35.67,
-      24.0
-     ],
-     "name": "hit"
-    },
-    {
-     "id": "e:open->counter",
-     "a": "open",
-     "b": "counter",
-     "label": [
-      56.07,
-      24.0
-     ],
-     "name": "track"
-    },
-    {
-     "id": "e:counter->api",
-     "a": "counter",
-     "b": "api",
-     "label": [
-      70.4,
-      24.0
-     ],
-     "name": "logged"
-    }
-   ],
-   "groups": [
-    {
-     "id": "band_open",
-     "parent": null,
-     "title": null
-    },
-    {
-     "id": "band_create",
-     "parent": null,
-     "title": null
-    }
-   ]
+  ],
+  "budget": {
+    "length_ratio": 1.02,
+    "crossings_seen": 2,
+    "mdetour_median": 1.0,
+    "mdetour_max": 1.3,
+    "reversals_max": 1,
+    "reversals_total": 1,
+    "bends_max": 4,
+    "label_misattributed": 0,
+    "label_orphan_max": 0.35,
+    "label_astray_max": 0,
+    "edge_on_edge_len": 0,
+    "entry_cross_offset_max": 24,
+    "screen_use": 0.53,
+    "screen_ink": 0.055,
+    "empty_band_boxes": 0.48,
+    "band_order": 0,
+    "parallel_bundle_len": 440
   }
- ],
- "budget": {
-  "length_ratio": 1.02,
-  "crossings_seen": 2,
-  "mdetour_median": 1.0,
-  "mdetour_max": 1.3,
-  "reversals_max": 1,
-  "reversals_total": 1,
-  "bends_max": 4,
-  "label_misattributed": 0,
-  "label_orphan_max": 0.35,
-  "edge_on_edge_len": 0,
-  "entry_cross_offset_max": 24,
-  "screen_use": 0.62,
-  "band_order": 0,
-  "parallel_bundle_len": 440
- }
 }

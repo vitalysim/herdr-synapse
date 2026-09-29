@@ -71,7 +71,16 @@ keeps seeded nodes where they were and pushes only what must make room; dummies 
 component is then shifted so its seeded nodes' median displacement is zero. When every node is seeded and the seeds already
 are a layered drawing of the graph (ranks on their lines, nothing too close, groups clean), the result is the seeds exactly.
 `relayout: "full"` — a field of `graph`, `patch` and `unpin` — sends `incremental=False`: every seed **and** every
-stored route is dropped, and the block is drawn as one op would draw it. Pins still hold.
+stored route is dropped, and the block is drawn as one op would draw it. The *operator's* placements still hold, and
+so do the sizes they gave a box; the author's own earlier placements are what "draw it again from scratch" redoes,
+so a pin an agent set yields to it.
+
+`graph {id, relayout: "full"}` with no items at all is that op for a block that already exists: the items stay
+exactly as they are, whatever else the op says lands on top, and nothing is added, removed or renamed. It is what
+every readability check prints, and the block may be named by its alias by its author, by the operator or by the
+team's manager. Re-supplying the whole spec is *not* the same thing: a spec re-issued against a board a person has
+been working in drops the parts they renamed or re-adopted, and dropping an element the operator placed is refused —
+with a message that names this op.
 
 A fresh layout also **spreads its lanes** until the drawing is a shape a view can fit (`layers._lane_scale`): nothing
 else bounded a drawing's shape, so a graph only ever grew along the flow and the page fitted the owner's own flow at
@@ -131,13 +140,14 @@ distinct ends — which skipped nine of the eleven a reader could see.
 | `crossings` / `crossings_seen` | Pairs with four distinct ends whose lines cross; and the count a reader makes, which includes two wires off one node crossing more than 24 units out from it. |
 | `mdetour_median` / `mdetour_max` | A route's drawn length over the Manhattan span of its own two ends. An orthogonal route cannot beat 1.00, so this needs no comparison with anything. |
 | `reversals_*`, `bends_*` | How often a route turns back on an axis, and how many corners it turns. |
-| `label_astray_max` | How far a pill is from its own line. The router must keep this at 0. |
+| `label_astray_max` | How far a pill is from its own line. Bounded by `canvas_labels.ASTRAY_MAX` (24): past that a spot that covers something is the lesser evil, and the ends are the ones that have to move (`room_at_end`). |
 | `label_orphan_max` | How far a pill sits from both ends of its arrow, as a fraction of the span. |
 | `label_misattributed` | Pills nearer a third node than to either of their own ends. |
 | `edge_over_node`, `edge_near_node` | Routes through, or within 12 units of, a node they do not join. |
 | `edge_on_edge_len`, `parallel_bundle_len` | Wire drawn on wire, and wire drawn close enough alongside to read as one line. |
 | `content_aspect`, `screen_use` | The drawing's shape, and how much of a 16:9 view it fills once fitted to it. These are one fact: above 16:9, `screen_use == 1.78 / aspect`. |
-| `empty_band` | The widest strip across the flow the drawing does not use: no box, no pill, and no wire crossing it. |
+| `screen_ink` | How much of that view the **boxes** cover. The one shape number empty space cannot buy: a drawing wider than 16:9 is fitted by its width, so its boxes render at the same size however tall it is, and `screen_use` goes up while nothing gets bigger. It is `screen_use` times the share of the content box the boxes fill, which cancels the padding exactly. |
+| `empty_band` / `empty_band_boxes` | The widest strip across the flow the drawing does not use: nothing at all, and then counting boxes alone. A corridor a wire crosses is doing a job; a reader still has nothing to read in it, and "roughly the top third of the frame is empty" is the second number. |
 | `entry_cross_offset_max` | How far an entry point sits off the line its own first step continues. |
 | `band_order` | How far the bands are drawn from the order their author declared them in (Kendall distance). |
 | `component_interleave` | Pairs of disconnected components whose spans across the flow overlap. |
@@ -148,18 +158,56 @@ variant the router's keep decision calls, once per edge, and is O(1) in that rou
 
 ### The checks it gives `canvas check`
 
-Three graph kind checks, all naming the one repair that works, `{"op": "graph", "id": <alias>, "relayout": "full"}`:
+Four graph kind checks, all naming the one repair that works, `{"op": "graph", "id": <alias>, "relayout": "full"}`:
 
 | Code | Fires when |
 |---|---|
-| `crossings_high` | More than `max(3, edges // 6)` crossings a reader can see, and a fresh layout would cross less. |
-| `routes_tangled` | `mdetour_median > 1.45`, `mdetour_max > 2.50`, `reversals_max > 3`, or more than 60 units of wire drawn along other wire. |
+| `crossings_high` | More than `max(3, edges // 6)` crossings a reader can see, and a fresh drawing would cross less. |
+| `routes_tangled` | `mdetour_median > 1.45`, `mdetour_max > 2.50`, `reversals_max > 3`, more than 130 units of wire drawn along other wire, or 30 % more wire than the same graph drawn again. |
 | `labels_adrift` | More than `max(1, edges // 4)` pills nearer a third node than their own ends, or one more than half its arrow's span from both of them. |
+| `graph_thin` | Drawn more than six times longer one way than the other, when a fresh drawing's boxes would render at least a quarter bigger (`screen_ink`). |
+
+Each of them fires only when a **whole fresh drawing** — laid out *and routed* by the code the repair would run,
+honouring the same pins and the same peer marks the author may not move — is measurably better on the number that
+fired. The layout's own figures are not that evidence, and comparing against them is how these checks came to cry
+wolf: a board of two nodes with ten wires between them has no crossings at all until the router draws the ten around
+each other, so its eight visible crossings were compared against a layout's zero, and `relayout full` was advertised
+on a board it reproduces to the digit.
 
 Their thresholds are deliberately **looser** than the gates in `tests/layout_conformance.py`: the gate is about what
 the pipeline owes, the check is about what an agent should be told to fix, and a test asserts the two can never
-invert. A fourth code, `graph_thin`, waits for a fold that can fit a long chain to a view — a check whose fix does not
-work is worse than no check.
+invert.
+
+## Folding a path of ranks
+
+A graph whose ranks hold one node each is drawn as a line, and a line is the one shape a screen cannot fit: the
+nine-step pipeline of the readability corpus came out 16:1 and covered a ninth of a view, the forty-step one 26:1 and
+a fifteenth, and at those shapes the page's semantic zoom drops every node's text. `canvas_layouts._fold` cuts such a
+path into columns and puts each column's nodes **in one rank**, side by side across the flow, in serpentine order
+(odd columns reversed). Nine steps come out 2:1 and nine tenths of a view; forty come out 2:1 and eight tenths, with a
+third of the wire.
+
+Two properties make it a fold of the layered layout rather than a layout of its own:
+
+- Every step inside a column is a same-rank edge — short, local, no dummy chain, and no direction to get wrong,
+  because a rank's lane order is an order and not a flow. Every step between columns joins the last lane of one to
+  the last lane of the next: one rank forward, in the same lane, straight.
+- The result is an ordinary layered drawing, so `_seeds_hold` recognises a folded board as its own fixed point.
+
+**A fold is only ever chosen on a fresh layout and only ever kept on an incremental one**, and that is what makes it
+stable. A board drawn as a line stays a line when a step is added to it; a board drawn folded stays folded, with the
+new step joining the column its predecessor is in and nothing else moving. The fold is recovered from the **seeds** —
+which nodes share a line across the flow — and never from the graph, because a step added to a folded pipeline gives
+some rank two nodes, at which point the graph is no longer a path and a fold read off the graph would vanish, taking
+every box back into a line. An earlier attempt folded along the *flow* axis, with alternate rows running backwards;
+that cannot be recovered from a layered drawing at all, and it is why the first attempt at this was built, measured
+and abandoned.
+
+The lane count is estimated in closed form from the box sizes (`_fold.lanes_for`) and only a window around the
+estimate is laid out and compared, on how big its boxes render and then on its wire. Counts that would send a step
+down a column past other boxes are dropped first: the forty-step board carries six steps that skip five each, and the
+count that fitted a view best put every one of them inside a single column — four reversals each, and one route that
+crossed itself.
 
 ## Adding a layout or a router
 
@@ -199,10 +247,20 @@ so far when it is; one that counts crossings in `stats` sets `crossings=True`. A
   other lines and of the other pills and on its own line, and the batch a fixed point.
 - `tests/layout_conformance.py`, the readability corpus: nine committed boards under
   `tests/fixtures/layouts/readability/`, each drawn, routed and measured against its own budget under one set of
-  global ceilings. Sixteen of those bounds were red on the commit the owner rejected the drawing on.
+  global ceilings. Eighteen of those bounds were red on the commit the owner rejected the drawing on. A board's own
+  budget may only ever be **tighter** than the ceiling (`test_canvas_layouts` asserts it), so the only way to loosen
+  a gate is to loosen it in one place. Each ceiling carries the measurement that sets it: where a number the spec
+  asked for turned out to be unreachable — the crossings floor of 2 against a fan's natural three, `edge_on_edge_len`
+  8 against the 110 units of corridor two routes of a second batch still share, `entry_cross_offset_max` 24 against
+  the 131 the owner's own flow measures because moving that entry costs a crossing — the comment says so and names
+  the board.
 - `tests/test_canvas_readability.py`: the metric on shapes whose answers can be checked by hand, the keep decision,
-  the `relayout` repair through the real canvas, and the three checks (they fire on a tangled board and say nothing on
+  the `relayout` repair through the real canvas, and the checks (they fire on a tangled board and say nothing on
   every board the pipeline makes).
+- `tests/test_canvas_clarity_verdict.py`: the QA verdict on layout clarity, one test per finding — the printed repair
+  is a valid op and clears the check that printed it, an operator's pin survives a relayout instead of blocking one,
+  a path of ranks is folded and a folded board stays folded, a pill never floats away from its own line, a lane never
+  locks an author out of their own drawing, and a claim's label clears a frame's title.
 - `tests/test_kind_graph.py`, `test_kind_mindmap.py`, `test_kind_sequence.py`, `test_kind_arrow_routes.py`: the kinds
   that use them.
 - `tests/test_canvas_qa_phase2_verdict.py`: skip arrows in tight stacks, the budgets, tree cross links, long chains,

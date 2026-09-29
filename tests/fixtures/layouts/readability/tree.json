@@ -1,175 +1,178 @@
 {
- "name": "tree",
- "about": "a nine-node tree: already clean everywhere, must not regress",
- "direction": "right",
- "layout": "layers",
- "gap": 40,
- "rank_gap": 80,
- "clearance": 20,
- "radius": 8,
- "port_spacing": 12,
- "group_pad": [
-  20,
-  40,
-  20,
-  20
- ],
- "passes": [
-  {
-   "nodes": [
+  "name": "tree",
+  "about": "a nine-node tree: already clean everywhere, must not regress",
+  "direction": "right",
+  "layout": "layers",
+  "gap": 40,
+  "rank_gap": 80,
+  "clearance": 20,
+  "radius": 8,
+  "port_spacing": 12,
+  "group_pad": [
+    20,
+    40,
+    20,
+    20
+  ],
+  "passes": [
     {
-     "id": "ceo",
-     "w": 200,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "cto",
-     "w": 220,
-     "h": 80,
-     "group": null
-    },
-    {
-     "id": "cfo",
-     "w": 180,
-     "h": 80,
-     "group": null
-    },
-    {
-     "id": "eng",
-     "w": 200,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "plat",
-     "w": 180,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "acct",
-     "w": 200,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "fp",
-     "w": 180,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "be",
-     "w": 180,
-     "h": 60,
-     "group": null
-    },
-    {
-     "id": "fe",
-     "w": 180,
-     "h": 60,
-     "group": null
+      "nodes": [
+        {
+          "id": "ceo",
+          "w": 200,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "cto",
+          "w": 220,
+          "h": 80,
+          "group": null
+        },
+        {
+          "id": "cfo",
+          "w": 180,
+          "h": 80,
+          "group": null
+        },
+        {
+          "id": "eng",
+          "w": 200,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "plat",
+          "w": 180,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "acct",
+          "w": 200,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "fp",
+          "w": 180,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "be",
+          "w": 180,
+          "h": 60,
+          "group": null
+        },
+        {
+          "id": "fe",
+          "w": 180,
+          "h": 60,
+          "group": null
+        }
+      ],
+      "edges": [
+        {
+          "id": "e:ceo->cto",
+          "a": "ceo",
+          "b": "cto",
+          "label": [
+            73.05,
+            24.0
+          ],
+          "name": "reports"
+        },
+        {
+          "id": "e:ceo->cfo",
+          "a": "ceo",
+          "b": "cfo",
+          "label": [
+            73.05,
+            24.0
+          ],
+          "name": "reports"
+        },
+        {
+          "id": "e:cto->eng",
+          "a": "cto",
+          "b": "eng",
+          "label": [
+            73.05,
+            24.0
+          ],
+          "name": "reports"
+        },
+        {
+          "id": "e:cto->plat",
+          "a": "cto",
+          "b": "plat",
+          "label": [
+            73.05,
+            24.0
+          ],
+          "name": "reports"
+        },
+        {
+          "id": "e:cfo->acct",
+          "a": "cfo",
+          "b": "acct",
+          "label": [
+            73.05,
+            24.0
+          ],
+          "name": "reports"
+        },
+        {
+          "id": "e:cfo->fp",
+          "a": "cfo",
+          "b": "fp",
+          "label": [
+            73.05,
+            24.0
+          ],
+          "name": "reports"
+        },
+        {
+          "id": "e:eng->be",
+          "a": "eng",
+          "b": "be",
+          "label": [
+            58.41,
+            24.0
+          ],
+          "name": "owns"
+        },
+        {
+          "id": "e:eng->fe",
+          "a": "eng",
+          "b": "fe",
+          "label": [
+            58.41,
+            24.0
+          ],
+          "name": "owns"
+        }
+      ],
+      "groups": []
     }
-   ],
-   "edges": [
-    {
-     "id": "e:ceo->cto",
-     "a": "ceo",
-     "b": "cto",
-     "label": [
-      73.05,
-      24.0
-     ],
-     "name": "reports"
-    },
-    {
-     "id": "e:ceo->cfo",
-     "a": "ceo",
-     "b": "cfo",
-     "label": [
-      73.05,
-      24.0
-     ],
-     "name": "reports"
-    },
-    {
-     "id": "e:cto->eng",
-     "a": "cto",
-     "b": "eng",
-     "label": [
-      73.05,
-      24.0
-     ],
-     "name": "reports"
-    },
-    {
-     "id": "e:cto->plat",
-     "a": "cto",
-     "b": "plat",
-     "label": [
-      73.05,
-      24.0
-     ],
-     "name": "reports"
-    },
-    {
-     "id": "e:cfo->acct",
-     "a": "cfo",
-     "b": "acct",
-     "label": [
-      73.05,
-      24.0
-     ],
-     "name": "reports"
-    },
-    {
-     "id": "e:cfo->fp",
-     "a": "cfo",
-     "b": "fp",
-     "label": [
-      73.05,
-      24.0
-     ],
-     "name": "reports"
-    },
-    {
-     "id": "e:eng->be",
-     "a": "eng",
-     "b": "be",
-     "label": [
-      58.41,
-      24.0
-     ],
-     "name": "owns"
-    },
-    {
-     "id": "e:eng->fe",
-     "a": "eng",
-     "b": "fe",
-     "label": [
-      58.41,
-      24.0
-     ],
-     "name": "owns"
-    }
-   ],
-   "groups": []
+  ],
+  "budget": {
+    "length_ratio": 1.02,
+    "crossings_seen": 0,
+    "mdetour_median": 1.0,
+    "mdetour_max": 1.0,
+    "reversals_max": 0,
+    "reversals_total": 0,
+    "bends_max": 2,
+    "label_misattributed": 0,
+    "label_orphan_max": 0.3,
+    "label_astray_max": 0,
+    "edge_on_edge_len": 0,
+    "entry_cross_offset_max": 24,
+    "screen_use": 0.65,
+    "screen_ink": 0.11,
+    "empty_band_boxes": 0.05,
+    "parallel_bundle_len": 100
   }
- ],
- "budget": {
-  "length_ratio": 1.02,
-  "crossings_seen": 0,
-  "mdetour_median": 1.0,
-  "mdetour_max": 1.0,
-  "reversals_max": 0,
-  "reversals_total": 0,
-  "bends_max": 2,
-  "label_misattributed": 0,
-  "label_orphan_max": 0.3,
-  "edge_on_edge_len": 0,
-  "entry_cross_offset_max": 24,
-  "screen_use": 0.65,
-  "parallel_bundle_len": 100
- }
 }

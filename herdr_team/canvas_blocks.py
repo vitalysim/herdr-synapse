@@ -435,8 +435,23 @@ class BlockCtx:
             if all(old.get(k) == v for k, v in new.items() if k not in ("updated_seq", "updated_at")) and set(new) == set(old):
                 return old
             if pin_of(old) == "human" and not ctx.author.is_human and (new.get("w"), new.get("h")) != (old.get("w"), old.get("h")):
-                raise C._error("pin_held", "{} ({} of {}) was placed by the operator; changing it would resize it. Ask them".format(
-                    old["id"], part, self.alias or self.root["id"]), id=old["id"])
+                # An operator's pin survives a re-draw: the layout moves what it may and leaves their box the size
+                # they gave it. Refusing the whole op instead meant one resized box locked a whole drawing - on the
+                # board the owner rejected they had made "Store URL mapping" 160x80, and from then on every repair
+                # any agent could reach for came back ``pin_held`` and the drawing could not be laid out again.
+                #
+                # Only words their box cannot hold are still theirs to decide: re-fitting a box the operator sized
+                # is not a change they asked for, but new text that does not fit would be truncated silently.
+                fitted = (float(new.get("w") or 0.0), float(new.get("h") or 0.0))
+                kept = (float(old.get("w") or 0.0), float(old.get("h") or 0.0))
+                if old.get("text") != text and (fitted[0] > kept[0] + 0.5 or fitted[1] > kept[1] + 0.5):
+                    raise C._error("pin_held", "{} ({} of {}) was placed by the operator at {:g}x{:g} and \"{}\" needs "
+                                               "{:g}x{:g}. Ask them".format(old["id"], part, self.alias or self.root["id"],
+                                                                            kept[0], kept[1], text, fitted[0], fitted[1]),
+                                   id=old["id"])
+                new["w"], new["h"] = old.get("w"), old.get("h")
+                ctx.warn("pin_size_kept", "{} ({} of {}) stays {:g}x{:g}: the operator placed it".format(
+                    old["id"], part, self.alias or self.root["id"], kept[0], kept[1]), [old["id"]])
             return ctx.update(old, **{k: v for k, v in new.items() if old.get(k) != v or k not in old})
         if old is not None:
             self.drop(part)  # the part changed its kind: a new element replaces it
@@ -504,7 +519,14 @@ class BlockCtx:
             raise C._error("element_not_yours", "{} ({}) is {}'s; ask them to remove it".format(el["id"], part, C._who(el.get("author"), None)),
                            id=el["id"], author=el.get("author"))
         if pin_of(el) == "human" and not ctx.author.is_human:
-            raise C._error("pin_held", "{} ({}) was placed by the operator; ask them before removing it".format(el["id"], part), id=el["id"])
+            # Naming the repair that does work, because this refusal is the one an agent trying to tidy its own
+            # drawing hits: re-supplying a whole spec removes every part the spec does not name, and a part the
+            # operator has placed is one of them. ``relayout`` re-draws the same items and removes nothing.
+            raise C._error("pin_held", "{} ({} of {}) was placed by the operator; ask them before removing it. To lay "
+                                       "the drawing out again without removing anything, send {{\"op\": \"{}\", "
+                                       "\"id\": \"{}\", \"relayout\": \"full\"}}".format(
+                               el["id"], part, self.alias or (self.root or {}).get("id"), self._kind.name,
+                               self.alias or (self.root or {}).get("id")), id=el["id"])
         doomed = [el["id"]] + [d for d in C._descendants(ctx, [el["id"]]) if (ctx.el(d) or {}).get("group") == (self.root or {}).get("id")]
         for other in list(ctx.live()):
             if other.get("type") == "arrow" and other.get("group") == (self.root or {}).get("id") and \
@@ -557,7 +579,15 @@ def _min_of(el: Mapping[str, Any], kind: _kinds.Kind) -> Tuple[float, float]:
 # the pipeline
 
 
-def _existing(ctx: Any, alias: Any) -> Optional[Element]:
+def _existing(ctx: Any, alias: Any, any_author: bool = False) -> Optional[Element]:
+    """The block this op's ``id`` names, among the author's own; with ``any_author``, the one block of that name on
+    the board when the author is the operator or the team's manager.
+
+    An alias belongs to its author, which is why two members may both have a ``flow``, and an op that carries items
+    always means "mine": the wider lookup is only ever used for an op that carries *none*, where it cannot be a
+    create. Without it, the repair every readability check prints - which names the block by its alias - came back
+    ``graph needs nodes`` in the operator's hands.
+    """
     if not isinstance(alias, str):
         return None
     owners = ctx.state.aliases.get(alias) or {}
@@ -565,6 +595,9 @@ def _existing(ctx: Any, alias: Any) -> Optional[Element]:
     el = ctx.el(eid) if eid else None
     if el is None:
         el = next((e for e in ctx.pending.values() if e is not None and e.get("alias") == alias and e.get("author") == ctx.author.name), None)
+    if el is None and any_author and len(owners) == 1 and \
+            (getattr(ctx.author, "operator", False) or getattr(ctx.author, "manager", False)):
+        el = ctx.el(next(iter(owners.values())))
     return el
 
 
@@ -589,7 +622,7 @@ def run(ctx: Any, kind_name: str, op: Mapping[str, Any]) -> Element:
     if kind is None or kind.block is None:
         raise C._invalid("op", "{} is not a block kind".format(kind_name))
     kctx = C._KindCtx(ctx)
-    existing = _existing(ctx, op.get("id"))
+    existing = _existing(ctx, op.get("id"), any_author=_redraws(kind, op))
     upsert = existing is not None and kind_of(existing) is kind
     if existing is not None and not upsert:
         C._alias(ctx, dict(op))  # a different kind under that alias: alias_taken, as today
@@ -597,7 +630,13 @@ def run(ctx: Any, kind_name: str, op: Mapping[str, Any]) -> Element:
         assert existing is not None
         _may_change(ctx, existing)
         _check_version(ctx, existing, op)
-    spec = normalized(kctx, kind, op)
+    # An op that names a block it already drew and carries no items at all means *that block, again*: the items stay
+    # exactly as they are and whatever else the op says lands on top. Without this, ``graph {id, relayout:"full"}``
+    # - the repair every readability check prints - came back ``op_invalid: graph needs nodes``, so the only advice
+    # ``canvas check`` could give about an unreadable drawing was advice that could not be carried out. Re-supplying
+    # the whole spec is not an answer either: a spec re-issued against a board a person has been working in drops
+    # the parts they renamed or adopted, and dropping an element the operator placed is refused (rightly).
+    spec = _redrawn(ctx, kctx, kind, existing, op) if upsert and _redraws(kind, op) else normalized(kctx, kind, op)
     # ``relayout`` is a field of a kind's own op where that kind declares it (today: ``graph``), and it means there
     # what it already means on ``patch``: ``full`` drops every seed and every stored route and draws the block again.
     # Re-issuing the whole drawing was the one repair an agent would reach for, and it was byte for byte a no-op: the
@@ -605,6 +644,33 @@ def run(ctx: Any, kind_name: str, op: Mapping[str, Any]) -> Element:
     # graph twice and nothing happened.
     mode = C._choice(op.get("relayout"), "relayout", RELAYOUTS, "incremental")
     return build(ctx, kind, spec, op, existing if upsert else None, upsert=upsert, mode=mode)
+
+
+def _redraws(kind: _kinds.Kind, op: Mapping[str, Any]) -> bool:
+    """Whether this op names a block and none of its items: "draw it again", not "here is what it holds".
+
+    An op that gives no items and says nothing else either is still ``<kind> needs <items>``, because an agent that
+    sends only an id has not asked for anything.
+    """
+    if any(op.get(coll.name) is not None for coll in kind.block.collections):
+        return False
+    return any(op.get(name) is not None for name in ("relayout",) + tuple(kind.block.fields) + tuple(kind.block.settings))
+
+
+def _redrawn(ctx: Any, kctx: Any, kind: _kinds.Kind, root: Element, op: Mapping[str, Any]) -> Dict[str, Any]:
+    """The stored block's own spec with the op's fields and settings on top: what re-drawing a block means.
+
+    The same spec ``patch`` reconciles against, so ``graph {id, relayout:"full"}`` and ``patch {id,
+    relayout:"full"}`` are one operation under two names, and an agent that reaches for either gets the drawing laid
+    out again with nothing added, nothing removed and nobody's part renamed.
+    """
+    spec = current_spec(root, members_of(ctx, root["id"]))
+    for name in tuple(kind.block.fields) + tuple(kind.block.settings):
+        if op.get(name) is not None:
+            spec[name] = op[name]
+    if isinstance(op.get("id"), str):
+        spec["id"] = op["id"]
+    return normalized(kctx, kind, spec)
 
 
 def build(ctx: Any, kind: _kinds.Kind, spec: Dict[str, Any], op: Mapping[str, Any], root: Optional[Element], upsert: bool = False,
@@ -1039,10 +1105,38 @@ def _bump_roots(ctx: Any) -> None:
                 ctx.update(root)
 
 
+class _ById:
+    """``ctx.el`` as the mapping ``canvas_collab.hosts`` reads: it only ever asks for one id at a time."""
+
+    def __init__(self, ctx: Any) -> None:
+        self._c = ctx
+
+    def get(self, eid: Any, default: Any = None) -> Any:
+        found = self._c.el(eid) if isinstance(eid, str) else None
+        return found if found is not None else default
+
+
+def _hosted(ctx: Any, el: Element) -> bool:
+    """Whether the author hosts this peer's mark: it sits inside a frame or group the author made, so where it is
+    drawn is theirs to decide (A1, canvas v2 layout clarity 5.6).
+
+    Arranging a block only ever moves and resizes its members, which is exactly the host right and nothing more; a
+    change to what a peer's mark *says* is still a proposal, and ``member`` still refuses it. Without this, a peer's
+    contribution froze the drawing it landed in: on the owner's own board the two boxes and five arrows
+    ``l6-sketcher`` added were held where they stood, so every relayout laid the other six boxes out around them and
+    the picture could not be made readable by anybody.
+    """
+    from herdr_team import canvas_collab
+
+    if not getattr(ctx.author, "is_member", False) or not getattr(ctx.author, "name", None):
+        return False
+    return canvas_collab.hosts(ctx.author.name, el, _ById(ctx)) is not None
+
+
 def _held(ctx: Any, el: Element, positional_block: bool) -> bool:
-    """A member the arrangement must leave where it is: not the author's to move, pinned by a person (for an agent), or
-    pinned at all inside a positional block."""
-    if not C._may_edit(ctx.author, el):
+    """A member the arrangement must leave where it is: not the author's to move (and not hosted by them), pinned by a
+    person (for an agent), or pinned at all inside a positional block."""
+    if not C._may_edit(ctx.author, el) and not _hosted(ctx, el):
         return True
     by = pin_of(el)
     if by == "human" and not ctx.author.is_human:
@@ -1089,7 +1183,11 @@ def arrange(ctx: Any, root: Element, reason: str) -> None:
         return
     rid = root["id"]
     layout = stack_of(root)
-    pos = positional(root)
+    # A positional block holds every pinned member where it is, which is right for every arrangement but the one the
+    # author asks for by name: ``relayout: "full"`` means "draw it again from scratch", and their own earlier
+    # placements are exactly the thing being redone. The operator's placements, and a peer's marks the author does
+    # not host, are held by the other two rules in ``_held`` and are unaffected.
+    pos = positional(root) and reason != "full"
     children = children_of(ctx, rid)
     order = stack_order(root, children) if layout else [el["id"] for el in children]
     if layout and settings_of(root).get("align") == "stretch":

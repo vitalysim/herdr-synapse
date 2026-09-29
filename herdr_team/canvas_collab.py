@@ -541,6 +541,12 @@ def _rule_foreign_lane(review: Review) -> Optional[Verdict]:
     for change in review.changes:
         if not change.primary or change.before is not None or change.after is None or _is_note(change.after):
             continue
+        if hosts(getattr(author, "name", None), change.after, review.scene) is not None:
+            # Inside a frame or a group the author made, where a mark goes is the author's to decide (A1). A lane is
+            # about free ground: a graph of one's own that grows a node while it is laid out again is not a mark
+            # placed in somebody else's lane, and treating it as one locked an author out of their own drawing the
+            # moment a peer drew beside it (QA F5).
+            continue
         found = review.lanes.owner_at(C.bounds(change.after), exclude=author.name)
         if found is not None:
             owner, what = found
@@ -1085,6 +1091,32 @@ def _near_auto_claim(ctx: Any, name: str, region: Sequence[int], lanes: Lanes) -
     return None
 
 
+def _refit_auto(ctx: Any, batch: "Batch") -> None:
+    """Every automatic claim of this author fitted again to the marks as they stand now.
+
+    A claim is fitted when it is made, and the op that makes it is not the op that decides how big its marks are: a
+    later op patches the block, its members settle, it hugs itself around them, and the dashed edge of a claim nobody
+    asked for is suddenly drawn through a mark the claim holds. That is the defect ``claim_edge`` reports, arriving
+    from the system's own side - it appeared on four previously clean QA scenes - and an op that creates nothing was
+    the one path that never fitted the claim again.
+
+    All of the author's automatic claims and not only this batch's, because the op that grows a mark is usually in a
+    later batch than the op that drew it. An asked-for claim is left alone: its region is the operator's or the
+    agent's own statement of where they are working, and ``claim_edge`` offers them the correction to make.
+    """
+    name = batch.author.name
+    for claim in ctx.state.active_claims(ctx.now):
+        if claim.get("author") != name or not claim.get("auto"):
+            continue
+        old = claim.get("region")
+        if not isinstance(old, list) or len(old) != 4:
+            continue
+        grown = _claim_fit(ctx, old)
+        if grown != list(old):
+            ctx.other("claim", "update", claim["id"], dict(claim, region=grown))
+            ctx.entry_extra.setdefault("auto_claim", claim["id"])
+
+
 def _auto_claim(ctx: Any) -> None:
     """Creation in free space claims it (4.1): the union of the new marks' boxes, padded a grid step, as an ``auto`` claim."""
     batch: Batch = ctx.collab
@@ -1099,6 +1131,7 @@ def _auto_claim(ctx: Any) -> None:
         if not lanes.owners_at(box):
             boxes.append(box)
     if not boxes:
+        _refit_auto(ctx, batch)
         return
     union = (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
     region = _claim_fit(ctx, _snap(union))

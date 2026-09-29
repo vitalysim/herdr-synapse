@@ -144,8 +144,17 @@ region, and its `bbox` is the region itself. The border is the only ink a claim
 puts on the board, it is two screen pixels wide at every zoom, and the region
 snaps to the marks it holds (`canvas_check.claim_snap`), so drawn on the region
 its stroke lands along their outlines - which at 41% zoom read as a chart's axis
-labels being cut off. The label still hangs from the region's own corner: that
-is where the authority begins.
+labels being cut off.
+
+The label hangs *above* that corner, `CLAIM_LABEL_LIFT` screen pixels clear of
+the border's own stroke. It used to hang just inside it, which is exactly where
+a frame draws its title, and a claim snaps to the marks it holds - so on nearly
+every graph render the dashed rectangle and the pill were both drawn through the
+frame's own words. The clip that stops the label running over the claim beside
+it is therefore a horizontal stop and nothing else: the label is screen-sized,
+so its height in world units grows as the board is zoomed out, and the clip's
+vertical range (`CLAIM_LABEL_ROOM` either side) is whatever cannot cut it at a
+usable zoom.
 
 **Paint** is `null`, a literal `"#rrggbb"` (the same in both themes), a token
 reference (`base.<role>`, `tone.<tone>.<role>`, `chip.<0-7|human>.<bg|fg>`,

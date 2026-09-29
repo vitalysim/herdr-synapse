@@ -439,13 +439,13 @@
     },
     {
      "action": "delete",
-     "id": "K-2",
+     "id": "K-1",
      "target": "claim",
      "value": null
     },
     {
      "action": "delete",
-     "id": "K-1",
+     "id": "K-2",
      "target": "claim",
      "value": null
     },
@@ -485,9 +485,9 @@
     }
    ],
    "ids": [
+    "K-1",
     "E-4",
-    "K-2",
-    "K-1"
+    "K-2"
    ],
    "index": 0,
    "intent": "revert mine",

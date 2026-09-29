@@ -32,12 +32,19 @@ them).
 
 A wire the layout redrew around too many times gets cut and drawn again, and
 the reply says so (`routes_recut`). When the drawing still reads badly, ask for
-it fresh: `relayout: "full"` on `graph` or `patch` drops every remembered
-position and every stored line and draws the block as one op would. It is the
-fix `check` prints for `crossings_high` (edges crossing where a reader sees
-it), `routes_tangled` (wire that wanders, doubles back, or is drawn along other
-wire) and `labels_adrift` (a label reading as some other node's). `look` prints
-`crossings`.
+it fresh: `graph {id, relayout: "full"}` — the id and nothing else — drops every
+remembered position and every stored line and draws that block again. It adds
+nothing, removes nothing, renames nothing, and it keeps what the operator
+placed; re-sending the whole spec instead can drop a part a person renamed. It
+is the fix `check` prints for `crossings_high` (edges crossing where a reader
+sees it), `routes_tangled` (wire that wanders, doubles back, or is drawn along
+other wire), `labels_adrift` (a label reading as some other node's) and
+`graph_thin` (a drawing so long and thin its own text is too small to read).
+`look` prints `crossings`.
+
+A long chain is drawn as lanes, not as a line: nine steps come out about 2:1
+instead of 16:1. Adding a step keeps the lanes; asking for it fresh picks them
+again.
 
 ## Mind maps and sequences
 

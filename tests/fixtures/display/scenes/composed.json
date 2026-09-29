@@ -16,13 +16,16 @@
    "undone": false
   }
  },
+ "checkpoints": [],
  "claims": [],
  "counters": {
   "B": 1,
   "C": 0,
   "E": 6,
   "G": 0,
-  "K": 0,
+  "K": 1,
+  "P": 0,
+  "V": 0,
   "X": 0
  },
  "elements": [
@@ -264,7 +267,7 @@
    "id": "E-5",
    "intent": "call path",
    "label_at": [
-    394.5,
+    386.8,
     262
    ],
    "points": [
@@ -355,6 +358,7 @@
    "z": 6
   }
  ],
+ "freezes": [],
  "homes": {
   "qa-drawer": [
    0,
@@ -365,6 +369,13 @@
  },
  "legend": [],
  "locks": [],
+ "proposals": [],
+ "settings": {
+  "collab": {
+   "frozen": "propose",
+   "human_edits": "propose"
+  }
+ },
  "team": "qa",
  "updated_at": "2026-01-01T00:00:00.000Z",
  "v": 1,
