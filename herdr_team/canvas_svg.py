@@ -575,7 +575,14 @@ def write(dl: Mapping[str, Any], *, theme: str = "light", box: Optional[Sequence
 
 
 def badge(ident: str, x: float, y: float, above: bool, u: float) -> str:
-    """An id badge at an element's anchor (Set-of-Mark): inside a shape's corner, above a free text's first line."""
+    """An id badge at an element's anchor (Set-of-Mark), hanging above that point when ``above``, else drawn from just inside it.
+
+    ``canvas_render.mark_anchor`` picks the anchor and that flag (QA phase 6, F7): a badge is a fixed size in pixels
+    while an element is a box in canvas units, so it hangs above the element - above its top edge, above an arrow
+    label's pill, above a comment's pin - with the clearance measured in the pixels it is drawn in. A frame is the one
+    type whose badge stays inside its corner (``canvas_render.BADGE_INSIDE``), because a frame's own title stands
+    above it when the picture is zoomed out. ``docs/display-list.md`` states the rule.
+    """
     size = 11.0 * u
     width = (_ctext.measure(ident, size=11.0, weight=700).width + 6.0) * u
     height = 15.0 * u

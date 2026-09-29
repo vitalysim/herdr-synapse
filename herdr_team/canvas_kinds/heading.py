@@ -112,7 +112,7 @@ def create(ctx: Any, op: Dict[str, Any]) -> None:
 
 
 OPS = (
-    OpSpec(name="heading", fields=("text", "level", "tone", "align", "w", "id", "client_id"), create=create, place=True, order=39,
+    OpSpec(name="heading", family="block", fields=("text", "level", "tone", "align", "w", "id", "client_id"), create=create, place=True, order=39,
            doc="a title at level 1 (display), 2 or 3", mcp="heading {text, level 1|2|3, tone, align start|center, w}"),
 )
 

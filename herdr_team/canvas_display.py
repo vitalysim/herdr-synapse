@@ -667,6 +667,26 @@ def entry(el: Mapping[str, Any], env: Env) -> Dict[str, Any]:
     return _rounded(out)
 
 
+#: World units kept between a claim's label and the claim beside it.
+CLAIM_LABEL_GAP = 4.0
+
+
+def _claim_neighbour(claim: Mapping[str, Any], box: Tuple[float, float, float, float], env: Env) -> Optional[float]:
+    """The left edge of the nearest other claim that starts right of this one's left edge, beside it (its region meets this
+    one's rows), or None. A claim's label is drawn at a fixed screen size from its top-left corner, so without a stop it
+    runs over its neighbour's label when zoomed out."""
+    x0, y0, _x1, y1 = box
+    best: Optional[float] = None
+    for other in env.get("claims") or []:
+        region = other.get("region")
+        if other is claim or other.get("id") == claim.get("id") or not isinstance(region, list) or len(region) != 4:
+            continue
+        ox0, oy0, _ox1, oy1 = (num(v, 0.0) for v in region)
+        if ox0 > x0 and oy0 < y1 and oy1 > y0 and (best is None or ox0 < best):
+            best = ox0
+    return best
+
+
 def _claim_entry(claim: Mapping[str, Any], env: Env) -> Optional[Dict[str, Any]]:
     region = claim.get("region")
     if not isinstance(region, list) or len(region) != 4:
@@ -677,9 +697,13 @@ def _claim_entry(claim: Mapping[str, Any], env: Env) -> Optional[Dict[str, Any]]
     who = "you" if reader and author == reader else ("the operator" if author == "human" else author)
     found = chip(author, env)
     text = "{} {}: {}".format(claim.get("id"), who, claim.get("label") or "")[:120]
-    items = [{"k": "rect", "x": x0, "y": y0, "w": x1 - x0, "h": y1 - y0, "fill": None, "stroke": found["bg"], "sw_px": 2, "dash": [8, 6]},
-             {"k": "group", "screen": [x0, y0], "items": [text_prim([text], 4, 14 - _ctext.baseline(12, "normal", 400), 12, {}, found["bg"], "start",
-                                                                    None, 400)]}]
+    label: Dict[str, Any] = {"k": "group", "screen": [x0, y0], "items": [text_prim([text], 4, 14 - _ctext.baseline(12, "normal", 400), 12, {}, found["bg"],
+                                                                                   "start", None, 400)]}
+    right = _claim_neighbour(claim, (x0, y0, x1, y1), env)
+    if right is not None:
+        # A claim beside it on the right (QA phase 5 L8): the label stops where that claim, and its label, begin.
+        label = {"k": "group", "clip": [x0, y0, max(0.0, right - CLAIM_LABEL_GAP - x0), y1 - y0], "items": [label]}
+    items = [{"k": "rect", "x": x0, "y": y0, "w": x1 - x0, "h": y1 - y0, "fill": None, "stroke": found["bg"], "sw_px": 2, "dash": [8, 6]}, label]
     out = {"id": str(claim.get("id") or ""), "kind": "claim", "layer": "overlays", "z": -1, "v": 0,
            "bbox": [x0, y0, x1, y1], "hit": {"shape": "none"}, "handles": "none", "connect": False, "edit": None,
            "frame": None, "author": author, "chip": found, "locked": False, "items": items}
@@ -719,6 +743,7 @@ def environment(scene: Mapping[str, Any], reader: Optional[str] = None, stills: 
     elements = [el for el in scene.get("elements") or [] if isinstance(el, dict)]
     return {"authors": scene.get("authors") if isinstance(scene.get("authors"), dict) else {},
             "locks": [lock for lock in scene.get("locks") or [] if isinstance(lock, dict)],
+            "claims": [claim for claim in scene.get("claims") or [] if isinstance(claim, dict)],
             "reader": reader, "by_id": {el.get("id"): el for el in elements}, "stills": stills}
 
 

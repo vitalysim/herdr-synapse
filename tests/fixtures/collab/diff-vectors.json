@@ -784,6 +784,265 @@
    "lines": [],
    "name": "nothing",
    "parts": 0
+  },
+  {
+   "after": {
+    "body": "- store credit only after 45 days\n- no cash back\n- damaged goods refunded",
+    "frame": null,
+    "h": 200,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "card",
+    "w": 320,
+    "x": 100,
+    "y": 40
+   },
+   "before": {
+    "body": "- store credit only after 30 days\n- no cash back",
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "card",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "lines": [
+    "resized 160x80 → 320x200",
+    "body …\"30 days / - no cash back\" → …\"45 days / - no cash back / - damaged go…\""
+   ],
+   "name": "body rewritten",
+   "parts": 0
+  },
+  {
+   "after": {
+    "body": "Ask the vendor first",
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "card",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "before": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "card",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "lines": [
+    "body \"\" → \"Ask the vendor first\""
+   ],
+   "name": "body added",
+   "parts": 0
+  },
+  {
+   "after": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "owner": "ben",
+    "status": "doing",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "card",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "before": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "owner": "ana",
+    "status": "todo",
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "card",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "lines": [
+    "owner \"ana\" → \"ben\"",
+    "status \"todo\" → \"doing\""
+   ],
+   "name": "owner and status",
+   "parts": 0
+  },
+  {
+   "after": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "rows": [
+     {
+      "id": "r1"
+     },
+     {
+      "id": "r2"
+     },
+     {
+      "id": "r3"
+     }
+    ],
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "table",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "before": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "rows": [
+     {
+      "id": "r1"
+     },
+     {
+      "id": "r2"
+     }
+    ],
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "table",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "lines": [
+    "rows: 2 → 3"
+   ],
+   "name": "rows added",
+   "parts": 0
+  },
+  {
+   "after": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "rows": [
+     {
+      "cells": {
+       "c1": "EMEA and UK"
+      },
+      "id": "r1"
+     }
+    ],
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "table",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "before": {
+    "frame": null,
+    "h": 80,
+    "id": "E-4",
+    "rows": [
+     {
+      "cells": {
+       "c1": "EMEA"
+      },
+      "id": "r1"
+     }
+    ],
+    "style": {
+     "dash": "solid",
+     "fill": "#f8f9fa",
+     "stroke": "#495057",
+     "tone": "neutral",
+     "variant": "soft",
+     "width": 2
+    },
+    "text": "Pricing",
+    "type": "table",
+    "w": 160,
+    "x": 100,
+    "y": 40
+   },
+   "lines": [
+    "rows rewritten (1 item)"
+   ],
+   "name": "a cell rewritten",
+   "parts": 0
   }
  ]
 }

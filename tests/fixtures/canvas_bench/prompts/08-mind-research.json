@@ -1,0 +1,15 @@
+{
+  "id": "08-mind-research",
+  "category": "mindmap",
+  "audience": "nondev",
+  "live": false,
+  "prompt": "Map out our home coffee grinder research as a mind map titled Coffee grinder research, with branches for Segments (commuters, home baristas, office kitchens), Price bands (under $50, $50 to $150, over $150), Brands (Baratza, Fellow, Hario) and Open questions (burr or blade, noise limits).",
+  "expect": {
+    "kinds_any": ["mindmap"],
+    "labels": ["Coffee grinder research", "Segments", "Commuters", "Home baristas", "Office kitchens", "Price bands", "Under $50", "$50 to $150", "Over $150", "Brands", "Baratza", "Fellow", "Hario", "Open questions", "Burr or blade", "Noise limits"],
+    "relations": [["Coffee grinder research", "Segments"], ["Coffee grinder research", "Price bands"], ["Coffee grinder research", "Brands"], ["Coffee grinder research", "Open questions"], ["Segments", "Commuters"], ["Segments", "Home baristas"], ["Segments", "Office kitchens"], ["Price bands", "Under $50"], ["Price bands", "$50 to $150"], ["Price bands", "Over $150"], ["Brands", "Baratza"], ["Brands", "Fellow"], ["Brands", "Hario"], ["Open questions", "Burr or blade"], ["Open questions", "Noise limits"]]
+  },
+  "reference": [
+   {"op": "mindmap", "id": "grinder", "title": "Coffee grinder research", "at": [0, 0], "side": "both", "branch_tones": "auto", "intent": "research map", "tree": {"Segments": ["Commuters", "Home baristas", "Office kitchens"], "Price bands": ["Under $50", "$50 to $150", "Over $150"], "Brands": ["Baratza", "Fellow", "Hario"], "Open questions": ["Burr or blade?", "Noise limits"]}}
+  ]
+}

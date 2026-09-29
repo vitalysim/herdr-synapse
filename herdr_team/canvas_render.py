@@ -760,19 +760,31 @@ def embedder(team: Optional[TeamPaths]) -> _svg.Embed:
     return embed
 
 
-def mark_anchor(el: Dict[str, Any]) -> Tuple[float, float]:
-    """Where an element's id badge goes: its top-left, an arrow's midpoint, a comment's pin."""
+#: The element types whose badge stays inside their top-left corner: a frame's own title stands above it at the zoom an
+#: agent's whole-board picture uses, and a badge put there would cover that title instead of the label it moved off.
+BADGE_INSIDE = ("frame",)
+
+
+def mark_anchor(el: Dict[str, Any]) -> Tuple[float, float, bool]:
+    """``(x, y, above)``: where an element's id badge goes, and whether it hangs above that point (QA phase 6, F7).
+
+    A badge is a fixed size in *pixels* (Set-of-Mark: it must stay legible at any zoom) while an element's box is in
+    canvas units, so on a whole-board picture - where a unit is two or three pixels - a badge put inside a short box's
+    corner is taller than the room its label leaves and sits across the label's first word. Every badge therefore
+    hangs above its element's top edge, above an arrow label's pill and above a comment's pin, which is clearance
+    measured in the same pixels the badge is drawn in. Frames keep theirs inside (``BADGE_INSIDE``).
+    """
     if el.get("type") == "arrow":
         pill = arrow_label_pill(el)
         if pill is not None:
             # A labelled arrow's badge goes just above its label's pill.
             (px, py, pw, _ph), _size, _lines = pill
-            return px + pw / 2.0, py - 17
-        return arrow_midpoint(_points(el.get("points")))
+            return px + pw / 2.0, py, True
+        return arrow_midpoint(_points(el.get("points"))) + (True,)
     if el.get("type") == "comment":
         point = el.get("point") if isinstance(el.get("point"), list) else [el.get("x") or 0, el.get("y") or 0]
-        return float(point[0]) + 12, float(point[1]) - 22
-    return float(el.get("x") or 0), float(el.get("y") or 0)
+        return float(point[0]) + 12, float(point[1]) - 10, True
+    return float(el.get("x") or 0), float(el.get("y") or 0), el.get("type") not in BADGE_INSIDE
 
 
 def picture(scene: Dict[str, Any], region: Optional[Sequence[float]] = None, marks: bool = True, grid: bool = False,
@@ -790,10 +802,10 @@ def picture(scene: Dict[str, Any], region: Optional[Sequence[float]] = None, mar
         drawn.sort(key=lambda e: (int(e.get("z") or 0), str(e.get("id"))))
         for el in drawn:
             try:
-                x, y = mark_anchor(el)
+                x, y, above = mark_anchor(el)
             except (TypeError, ValueError, KeyError, IndexError):
                 continue
-            badges.append((str(el.get("id") or ""), x, y, el.get("type") == "text"))
+            badges.append((str(el.get("id") or ""), x, y, above))
     svg_text = _svg.write(dl, theme=theme, box=box, max_px=max_px, embed=embedder(team), resvg_text=True, marks=badges, grid=grid)
     return svg_text, box  # type: ignore[return-value]
 

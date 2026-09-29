@@ -1,0 +1,16 @@
+{
+  "id": "18-chart-csv",
+  "category": "chart",
+  "audience": "dev",
+  "live": true,
+  "prompt": "Using the file rev.csv in the team's artifacts, chart revenue by region for each month as grouped bars titled Revenue by region, H1 2026.",
+  "artifacts": ["rev.csv"],
+  "expect": {
+    "kinds_any": ["chart"],
+    "labels": ["Revenue by region"],
+    "chart": {"type_any": ["bar", "column"], "fields": ["month", "revenue", "region"]}
+  },
+  "reference": [
+   {"op": "chart", "id": "rev", "title": "Revenue by region, H1 2026", "type": "bar", "data": "rev.csv", "x": "month", "y": "revenue", "color": "region", "format": {"y": "compact"}, "units": {"y": "$"}, "at": [0, 0], "intent": "compare regions by month"}
+  ]
+}

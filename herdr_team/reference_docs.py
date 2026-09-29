@@ -266,7 +266,8 @@ def render_console_section() -> str:
 
 
 def render_canvas_ops_section() -> str:
-    """Every canvas operation with its fields: the kind modules' ops from the registry (canvas v2 phase 1), then the core ops."""
+    """Every canvas operation with its fields, grouped as agents are taught (canvas v2 phase 6, 3.1): the kind modules' ops by
+    family from the registry, the core ops (any element, and the operator's own), then the primitives and ops with no family."""
     from herdr_team import canvas, canvas_kinds  # the canvas is heavy; only this section needs it
 
     lines = [
@@ -279,14 +280,26 @@ def render_canvas_ops_section() -> str:
         "| Op | Fields | What it does |",
         "| --- | --- | --- |",
     ]
-    for spec in canvas_kinds.ops():
-        extras = [name for name, on in (("style", spec.style), ("place", spec.place)) if on]
-        fields = ", ".join("`{}`".format(field) for field in spec.fields) + ("; " + ", ".join("*{}*".format(e) for e in extras) if extras else "")
-        lines.append("| `{}` | {} | {} |".format(spec.name, _markdown_cell(fields), _markdown_cell(spec.doc)))
+    def kind_rows(specs: Sequence[Any]) -> None:
+        for spec in specs:
+            extras = [name for name, on in (("style", spec.style), ("place", spec.place)) if on]
+            fields = ", ".join("`{}`".format(field) for field in spec.fields) + ("; " + ", ".join("*{}*".format(e) for e in extras) if extras else "")
+            lines.append("| `{}` | {} | {} |".format(spec.name, _markdown_cell(fields), _markdown_cell(spec.doc)))
+
+    # Components first and the 0.21 primitives last (canvas v2 phase 6, 3.1), like the MCP op table and draw --help.
+    groups = canvas_kinds.ops_by_family()
+    late = ("primitive", canvas_kinds.MORE)
+    for family, specs in [g for g in groups if g[0] not in late]:
+        lines.append("| **{}** | | |".format(canvas_kinds.FAMILY_TITLES.get(family, family)))
+        kind_rows(specs)
+    lines.append("| **Any element** | | |")
     for name in canvas.CORE_OPS:
         fields = [field for field in canvas.CORE_FIELDS[name] if field not in ("op", "intent", "if_version")]
         lines.append("| `{}` | {} | {} |".format(name, _markdown_cell(", ".join("`{}`".format(f) for f in fields)),
                                                 _markdown_cell(canvas.CORE_OP_DOCS.get(name, ""))))
+    for family, specs in [g for g in groups if g[0] in late]:
+        lines.append("| **{}** | | |".format(canvas_kinds.FAMILY_TITLES.get(family, "More")))
+        kind_rows(specs)
     return "\n".join(lines)
 
 

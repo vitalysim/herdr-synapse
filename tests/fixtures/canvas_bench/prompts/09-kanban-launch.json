@@ -1,0 +1,25 @@
+{
+  "id": "09-kanban-launch",
+  "category": "kanban",
+  "audience": "dev",
+  "live": true,
+  "prompt": "Make a launch board with Todo, Doing and Done columns. Todo has Rotate API keys and Landing page copy, which is P0. Doing has Gateway JWT check, which is blocked. Done has Persona research.",
+  "expect": {
+    "kinds_any": ["kanban"],
+    "labels": ["Todo", "Doing", "Done", "Rotate API keys", "Landing page copy", "P0", "Gateway JWT check", "Persona research"],
+    "relations": [["Todo", "Rotate API keys", "contains"], ["Todo", "Landing page copy", "contains"], ["Doing", "Gateway JWT check", "contains"], ["Done", "Persona research", "contains"]],
+    "status": {"Gateway JWT check": "blocked"}
+  },
+  "reference": [
+   {"op": "kanban", "id": "launch", "title": "Launch board", "at": [0, 0], "intent": "track launch tasks", "columns": [{"id": "todo", "title": "Todo", "cards": ["Rotate API keys", {"title": "Landing page copy", "badges": ["P0"]}]}, {"id": "doing", "title": "Doing", "tone": "warning", "cards": [{"title": "Gateway JWT check", "status": "blocked"}]}, {"id": "done", "title": "Done", "tone": "success", "cards": ["Persona research"]}]}
+  ],
+  "reference_v1": [
+   {"op": "frame", "id": "todo", "title": "Todo", "at": [0, 0], "w": 300, "h": 360, "intent": "launch board"},
+   {"op": "shape", "kind": "note", "id": "keys", "text": "Rotate API keys", "in": "todo", "intent": "launch board"},
+   {"op": "shape", "kind": "note", "id": "copy", "text": "Landing page copy (P0)", "in": "todo", "intent": "launch board"},
+   {"op": "frame", "id": "doing", "title": "Doing", "right_of": "todo", "w": 300, "h": 360, "intent": "launch board"},
+   {"op": "shape", "kind": "note", "id": "jwt", "text": "Gateway JWT check (blocked)", "in": "doing", "intent": "launch board"},
+   {"op": "frame", "id": "done", "title": "Done", "right_of": "doing", "w": 300, "h": 360, "intent": "launch board"},
+   {"op": "shape", "kind": "note", "id": "persona", "text": "Persona research", "in": "done", "intent": "launch board"}
+  ]
+}

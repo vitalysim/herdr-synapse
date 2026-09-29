@@ -1,0 +1,12 @@
+{
+  "id": "c08-crossings-k33",
+  "about": "K3,3 forced into one order: it cannot be drawn without crossings, and they are counted.",
+  "expect_crossings_min": 1,
+  "expect": {
+    "labels": ["Alpha", "Bravo", "Charlie", "One", "Two", "Three"],
+    "relations": [["Alpha", "One"], ["Alpha", "Two"], ["Alpha", "Three"], ["Bravo", "One"], ["Bravo", "Two"], ["Bravo", "Three"], ["Charlie", "One"], ["Charlie", "Two"], ["Charlie", "Three"]]
+  },
+  "reference": [
+   {"op": "graph", "id": "k33", "title": "K3,3", "direction": "down", "at": [0, 0], "route": "straight", "intent": "crossings", "nodes": [{"id": "a", "text": "Alpha"}, {"id": "b", "text": "Bravo"}, {"id": "c", "text": "Charlie"}, {"id": "x", "text": "One"}, {"id": "y", "text": "Two"}, {"id": "z", "text": "Three"}], "edges": ["a -> x", "a -> y", "a -> z", "b -> x", "b -> y", "b -> z", "c -> x", "c -> y", "c -> z"], "same_rank": [["a", "b", "c"], ["x", "y", "z"]], "order": [["a", "b", "c"], ["z", "y", "x"]]}
+  ]
+}

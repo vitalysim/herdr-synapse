@@ -441,7 +441,7 @@ def create(ctx: Any, op: Dict[str, Any]) -> None:
 
 
 OPS = (
-    OpSpec(name="timeline", fields=("title", "events", "scale", "tone", "id", "client_id"), create=create, place=True, order=45,
+    OpSpec(name="timeline", family="block", fields=("title", "events", "scale", "tone", "id", "client_id"), create=create, place=True, order=45,
            doc="events on a horizontal axis, dated (YYYY-MM-DD) or in order, with spans and milestones",
            mcp="timeline {title, events [{at YYYY-MM-DD, end, title, body, tone, icon, milestone}], scale auto|day|week|month|quarter|year|ordinal}"),
 )

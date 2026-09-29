@@ -41,6 +41,9 @@ when a full layout would cross fewer edges.
   par, label, from, to}]}`: one element; `from`/`to` are message numbers.
 - `mermaid {source}`: a flowchart becomes a graph block; other Mermaid
   diagrams render on the page. Charts are in `canvas-charts`.
+- A `graph` or Mermaid flowchart drawn before 0.22 is loose shapes and
+  arrows, not a block: `look` lists them one by one and `patch` does not
+  reach them. To rework one, draw it again as a `graph` and delete the old.
 
 ## Examples
 
@@ -76,4 +79,10 @@ reply says what moved, the crossings, and the pins nobody may move:
 {"op": "patch", "id": "checkout", "if_version": 412, "intent": "add a fraud step",
  "add": {"nodes": [{"id": "fraud", "text": "Fraud check", "in": "core"}], "edges": ["api -> fraud", "fraud -> ok"]},
  "remove": {"edges": ["api -> ok"]}}
+```
+
+Mermaid source, when you already have it (a flowchart becomes a graph block):
+
+```json
+{"op": "mermaid", "title": "Signup flow", "source": "flowchart TD\n  A[Visit] --> B{Signs up?}\n  B -- yes --> C[Active]\n  B -- no --> D[Lost]", "right_of": "launch", "gap": "l", "intent": "where users drop"}
 ```

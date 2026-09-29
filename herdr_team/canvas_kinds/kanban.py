@@ -279,7 +279,7 @@ def create(ctx: Any, op: Dict[str, Any]) -> None:
 
 
 OPS = (
-    OpSpec(name="kanban", fields=("title", "columns", "tone", "id", "client_id"), create=create, place=True, order=44,
+    OpSpec(name="kanban", family="block", fields=("title", "columns", "tone", "id", "client_id"), create=create, place=True, order=44,
            doc="a kanban board: columns of cards (move a card with place in, or patch)",
            mcp="kanban {title, columns [{id, title, tone, limit, cards [title | {id, title, body, owner, badges, status, tone, icon}]}]}"),
 )

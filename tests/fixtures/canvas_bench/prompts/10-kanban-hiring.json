@@ -1,0 +1,15 @@
+{
+  "id": "10-kanban-hiring",
+  "category": "kanban",
+  "audience": "nondev",
+  "live": false,
+  "prompt": "Set up a hiring board with the stages Sourced, Screen, Onsite and Offer. Sourced has Priya Shah and Tom Becker, Screen has Ana Lopez, Onsite has Marco Rossi and Offer has Jin Park.",
+  "expect": {
+    "kinds_any": ["kanban"],
+    "labels": ["Sourced", "Screen", "Onsite", "Offer", "Priya Shah", "Tom Becker", "Ana Lopez", "Marco Rossi", "Jin Park"],
+    "relations": [["Sourced", "Priya Shah", "contains"], ["Sourced", "Tom Becker", "contains"], ["Screen", "Ana Lopez", "contains"], ["Onsite", "Marco Rossi", "contains"], ["Offer", "Jin Park", "contains"]]
+  },
+  "reference": [
+   {"op": "kanban", "id": "hiring", "title": "Hiring pipeline", "at": [0, 0], "intent": "track candidates", "columns": [{"id": "sourced", "title": "Sourced", "cards": ["Priya Shah", "Tom Becker"]}, {"id": "screen", "title": "Screen", "cards": ["Ana Lopez"]}, {"id": "onsite", "title": "Onsite", "tone": "warning", "cards": ["Marco Rossi"]}, {"id": "offer", "title": "Offer", "tone": "success", "cards": ["Jin Park"]}]}
+  ]
+}

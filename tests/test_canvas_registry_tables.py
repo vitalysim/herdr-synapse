@@ -92,7 +92,8 @@ class DerivedTables(unittest.TestCase):
         self.assertTrue(subsequence(PHASE0_OPS, C.OPS), C.OPS)
         # Phase 1 appended refit, phase 2 patch, place, pin and unpin (5.1).
         self.assertEqual(C.CORE_OPS, PHASE0_OPS[12:] + ("refit", "patch", "place", "pin", "unpin") +
-                         ("accept", "reject", "withdraw", "freeze", "thaw", "settings", "checkpoint", "restore"))  # phase 5
+                         ("accept", "reject", "withdraw", "freeze", "thaw", "settings", "checkpoint", "restore") +  # phase 5
+                         ("migrate",))  # phase 6
 
     def test_every_op_takes_its_specs_fields(self):
         for spec in R.ops():

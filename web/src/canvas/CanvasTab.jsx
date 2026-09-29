@@ -9,6 +9,8 @@
 // the Inter the server measured them in, not in a fallback that would clip them.
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { CaptureUpdateAction, Excalidraw, MainMenu, exportToCanvas, getCommonBounds, restoreElements } from "@excalidraw/excalidraw";
+// Excalidraw's own styles load with the classic canvas, never on the default (v2) page (canvas-v2-phase6.md 1.2).
+import "@excalidraw/excalidraw/index.css";
 import { ApiError, dataURLToBlob, getJSON, postBytes, postJSON, teamPath } from "../api.js";
 import VizFrame from "../viz/VizFrame.jsx";
 import { CANVAS, INK, SANS, TOKENS, authorChip } from "../theme/tokens.js";

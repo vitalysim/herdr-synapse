@@ -62,6 +62,42 @@ class MindMap(GraphRig):
         self.ok({"op": "patch", "id": "launch", "add": {"topics": [{"text": "Budget"}]}, "intent": "t"})
         self.assertEqual(C.bounds(self.topic("Risks")), held)
 
+    def test_a_topics_entry_inside_the_tree_is_refused_not_drawn_as_its_field_names(self):
+        """QA phase 6 F2: ``tree`` walked a ``{id, text, tone}`` topic as further nested branches, so its **field
+        names** became topics and the real content hung under them - 110 marks that ``check`` called clean, and the
+        one place in the language where the wrong shape was accepted instead of named."""
+        bad = dict(LAUNCH, tree={"Audience": [{"id": "devs", "text": "Platform developers", "tone": "info"}],
+                                 "Risks": [{"id": "docs", "text": "Docs not ready", "tone": "danger"}]})
+        refused = self.refused(bad)
+        self.assertEqual(refused["details"]["field"], "tree.Audience[0]")
+        self.assertIn("is a topic (id, text, tone), not a branch", refused["message"])
+        self.assertIn("topics: [{id, text, under, tone, icon}]", refused["message"])
+        # The run that found this passed `children` as a sixth key, which is not a topic field: the two that are
+        # still give the topic away, wherever in the tree it sits.
+        with_children = dict(LAUNCH, tree={"Audience": [{"id": "devs", "text": "Platform developers",
+                                                         "children": ["Backend", "Frontend"]}]})
+        self.assertEqual(self.refused(with_children)["details"]["field"], "tree.Audience[0]")
+        self.assertEqual(self.refused(dict(LAUNCH, tree={"id": "devs", "text": "Platform developers"}))["details"]["field"], "tree")
+        # `topics` spelled into the tree is refused by the entry it holds, which is the form the message names.
+        self.assertIn("is a topic", self.refused(dict(LAUNCH, tree={"topics": [{"id": "devs", "text": "Devs"}]}))["message"])
+        # Nested branch objects still work.
+        self.ok(dict(LAUNCH, tree={"Channels": [{"Blog": ["SEO"]}]}))
+
+    def test_a_branch_named_like_a_topic_field_still_draws(self):
+        """QA phase 6, 3.3: the F2 guard refused any dict that named a topic field, so a mind map of a data model
+        (``{"User": {"id": [...], "text": [...]}}``) could not use the tree form at all - and the advice it got, to
+        pass it as ``topics``, did not apply. A topic entry is what holds its fields' own values; a branch called
+        ``id`` or ``text`` holds children, and draws."""
+        model = dict(LAUNCH, tree={"User": {"id": ["primary key"], "text": ["display name"]},
+                                   "Order": {"icon": ["cart"], "tone": {"paid": ["invoice"]}}})
+        self.ok(model)
+        texts = {e["text"] for e in self.members("launch") if e["type"] == "box"}
+        for branch in ("User", "id", "primary key", "text", "display name", "Order", "icon", "cart", "tone", "paid"):
+            self.assertIn(branch, texts, branch)
+        # One topic field alone, and a mix of a value and children, are branches too.
+        self.ok(dict(LAUNCH, id="one", at=[0, 3000], tree={"text": ["one"]}))
+        self.ok(dict(LAUNCH, id="mixed", at=[0, 6000], tree={"User": {"id": "primary key", "text": ["display name"]}}))
+
     def test_round_trip(self):
         kctx = C._KindCtx(None)
         kind = R.get("mindmap")

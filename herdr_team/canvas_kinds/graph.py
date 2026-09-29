@@ -1210,7 +1210,7 @@ def create(ctx: Any, op: Dict[str, Any]) -> None:
 
 
 OPS = (
-    OpSpec(name="graph", fields=("nodes", "edges", "layout", "direction", "title", "id", "groups", "same_rank", "order", "route", "client_id"),
+    OpSpec(name="graph", family="diagram", fields=("nodes", "edges", "layout", "direction", "title", "id", "groups", "same_rank", "order", "route", "client_id"),
            create=create, style=True, place=True, order=70,
            doc="nodes, groups and edges laid out by a registered layout and routed around each other (a block you patch)",
            mcp="graph {nodes [{id,text,kind,tone,icon,in,detail}], edges [\"a -> b: label\", \"a --> b\"], groups [{id,title,tone,parent}], "

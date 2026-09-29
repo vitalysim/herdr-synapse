@@ -109,6 +109,10 @@ class OpSpec:
     #: What it does to someone else's marks goes through the review gate (canvas v2 phase 5, ``canvas_collab``): it may
     #: become a proposal the operator accepts. False keeps it always live (a comment is a request, never a change).
     proposable: bool = True
+    #: Where the op is taught (canvas v2 phase 6, D11): one of ``FAMILIES`` (``block``, ``diagram``, ``data``, ``3d``,
+    #: ``primitive``). The MCP op table, ``canvas draw --help`` and the reference list components first and the 0.21
+    #: primitives last; an op without a family is listed after them all, under "more", so a new kind needs no list edit.
+    family: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -519,6 +523,23 @@ def ops() -> List[OpSpec]:
     load()
     specs = list(_OPS.values())
     return sorted(specs, key=lambda spec: (spec.order, specs.index(spec)))
+
+
+#: The op families in teaching order (canvas v2 phase 6, 3.1): components, diagrams, data, 3D, then the 0.21 primitives.
+FAMILIES = ("block", "diagram", "data", "3d", "primitive")
+#: What the op table calls each family, and the group of ops that have none.
+FAMILY_TITLES = {"block": "Components", "diagram": "Diagrams", "data": "Data", "3d": "3D", "primitive": "Primitives (when no component fits)"}
+MORE = "more"
+
+
+def ops_by_family() -> List[Tuple[str, List[OpSpec]]]:
+    """``[(family, [OpSpec, ...]), ...]`` in ``FAMILIES`` order, then ``"more"`` (ops with no family or an unknown one), each
+    group in ``ops()`` order (``order``, then registration); a group with no op is left out."""
+    specs = ops()
+    groups: Dict[str, List[OpSpec]] = {name: [] for name in FAMILIES + (MORE,)}
+    for spec in specs:
+        groups[spec.family if spec.family in FAMILIES else MORE].append(spec)
+    return [(name, groups[name]) for name in FAMILIES + (MORE,) if groups[name]]
 
 
 def op(name: Any) -> Optional[OpSpec]:

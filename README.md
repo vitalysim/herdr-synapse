@@ -156,9 +156,11 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
 **Operations**
 
 - **A whiteboard, when you want one.** Off until you turn it on. Then each
-  team gets a shared canvas that its agents and you draw on together, a page
-  that draws the team's work, facts and people, and a watch that shows what
-  any agent is doing on its sidebar row. All of it runs from `prefix+t`: `d`
+  team gets a shared canvas that its agents and you draw on together (agents
+  name cards, tables, kanbans, flow graphs, charts and 3D scenes, and the
+  canvas lays them out so text always fits; their changes to your work arrive
+  as proposals), a page that draws the team's work, facts and people, and a
+  watch that shows what any agent is doing on its sidebar row. All of it runs from `prefix+t`: `d`
   on any agent or team. See [Whiteboard and watch](#whiteboard-and-watch).
 - **Mission control and templates.** `prefix+d` shows what needs you across every
   team. `create --template research-sprint | content-campaign | vuln-hunt |
@@ -207,7 +209,7 @@ The coordination layer itself does not depend on a harness adapter:
 | Board and collaboration | ✓ | ✓ | Posts, kinds, replies, references, attachments, receipts, filters and the agent skill use the same board format for every kind. |
 | Team-to-team coordination | ✓ | ✓ | Links, topology, cross-team posts and receipts are harness-independent; both teams need a manager. |
 | Instructions and knowledge | ✓ | ✓ | Project folder, rules, per-member instructions, findings and artifact watching work for every kind; automatic delivery of a change follows the delivery row below. |
-| Whiteboard and watch | ✓ | ✓ | The canvas, its CLI, the page and watch work for every kind. Claude Code and Codex members Synapse starts also get the canvas as MCP tools. Watch reads plans, recent actions and files from Claude Code, Codex, OpenCode and Pi; other kinds show their title and state. |
+| Whiteboard and watch | ✓ | ✓ | The canvas (components, charts and 3D laid out for the agent), its CLI, the page and watch work for every kind. Claude Code and Codex members Synapse starts also get the canvas as MCP tools. Watch reads plans, recent actions and files from Claude Code, Codex, OpenCode and Pi; other kinds show their title and state. |
 | Human interaction and UI | ✓ | ✓ | Teams view, console, compose, sidebar tokens, focus/peek and the operator ask queue are shared. Whether an agent's shell tool can remain blocked for an answer is listed below. |
 | Operations and safety | ✓ | ✓ | Export, archive, wipe, audit, notifier statistics, mute/pause, health checks and operator gates are agent-independent. |
 | Work, facts and recall | ✓ | ✓ | Work items, briefs, settlements, reviews, facts, disputes and the recall index are team records, identical for every kind; the posts they make are delivered like any other. |
@@ -501,7 +503,7 @@ version changes, so after that one upgrade run `herdr-synapse daemon start`
 (or use `herdr-synapse update`, which restarts it for you).
 
 Agents learn new commands from the skill. After an update that raises the
-skill version (0.21 ships v12), `herdr-synapse skill check` lists the stale
+skill version (0.21 and 0.22 ship v12, so 0.22 needs no skill reinstall), `herdr-synapse skill check` lists the stale
 copies and `skill install` refreshes them, and an agent's own `me` warns it
 while its installed skill differs from the CLI.
 
@@ -761,11 +763,14 @@ agent jumps to its pane; on anything else it shows the command.
 
 ## Whiteboard and watch
 
-A visual layer for your teams, **off until you turn it on**. When it is on:
+A visual layer for your teams, **off until you turn it on**. Each team you
+choose gets a canvas that its agents and you draw on together. Agents describe
+components and how they relate, not coordinates, and the canvas lays them out,
+so text always fits its box. You lead: what an agent would change on your work
+arrives as a proposal you accept or reject. When the whiteboard is on:
 
-- each team you choose gets a **shared canvas**, an infinite clean board
-  (Excalidraw) that its agents and you draw on together, shown on a local page.
-  A canvas is per team: turning the whiteboard on gives no team one by itself;
+- each team you choose gets a **shared canvas** on a local page. A canvas is
+  per team: turning the whiteboard on gives no team one by itself;
 - the page's **Team** tab draws what the team already knows: the work graph,
   the fact map with its disputes, who is on the team and linked to it, the
   board as a timeline, and the mission-control lanes;
@@ -836,41 +841,90 @@ its canvas on is told in its briefing. Off means nothing runs: no page server, n
 watching, no canvas commands (they refuse `whiteboard_off`), nothing taught to
 agents, and nothing deleted (`whiteboard purge` does that).
 
-**How agents draw.** They send small batches of operations: frames, notes,
-boxes and arrows placed on a labelled grid or next to each other, freehand pen
-strokes, SVG illustrations, graphs laid out for them, Mermaid diagrams,
-Vega-Lite charts over a file in the team's `artifacts/`, and comments that
-point at an element and `@mention` a teammate or you. Shapes grow to fit
-their label (a given size is a minimum), measured with the same bundled fonts
-(Inter, Geist Mono) the page and the agent's picture draw with, so text never
-spills out; colour comes from a tone that means something (`info`, `success`,
-`warning`, `danger`, `idea`, `decision` ...), not from who drew it. Every mark
-carries its author and a one-line intent, shown when you hover it. They read the canvas
-back as text (`canvas look`, with element ids, bounds, text and connections,
-and only what changed since they last looked) and, when they can read images,
-as a rendered picture with the ids drawn on (`--exact` asks your open page
-for exactly what you see). After drawing they run `canvas check`, which lists
-what reads badly (overlaps, labels too big for their shape, marks half inside
-a frame, arrows through shapes, strays) with a ready fix for each, so an agent
-that cannot see images still tidies its layout. Claude Code and Codex members
-that Synapse starts while the canvas is on (`create --spawn`, `resume`,
-`restore`, `swap`) also get the same tools over MCP, added by a launch flag so
-no config of yours is edited; a controlled restart keeps them. Every other
-agent, Pi included, and any agent you started yourself uses the `canvas` CLI,
-which does the same. The skill tells an agent to
-read `herdr-synapse skill get --reference canvas` when `me` says
-`whiteboard: on`, and that reference teaches when to draw and how, with one
-example per kind of drawing.
+**What agents draw.** Components, by name. One operation gives a finished,
+laid-out result: the canvas measures every label with the same bundled fonts
+(Inter, Geist Mono) that the page and the agent's picture draw with, sizes
+each box to its text, places it and routes the lines around what is in the
+way.
 
-**Working together.** An agent claims a region before drawing in it, records a
-convention in the legend before relying on it ("red cross = I disagree"), and
-keeps a small portrait of its own plan in its corner. Drawing never wakes
-anyone; the board gets one line per author per minute. A comment that
-mentions someone is a normal, idle-gated nudge. You lead: draw anywhere, lock
-a region, undo any agent's batch, resolve comments, hide an agent's marks,
-and select a few elements and "Send to…" a member, who receives the text form
-and a picture of them. Your marks reach agents as the operator's requests and
-their marks reach each other as a peer's requests; neither is an order.
+| Component | What it is for | You might ask |
+| --- | --- | --- |
+| `card`, `section` | one thing with a title, body, badges, owner and status; a titled zone that lays out what joins it | "put each service on a card, grouped by team" |
+| `sticky`, `callout` | an idea on square paper; a note, tip, warning, decision or question in its colour | "brainstorm six names as stickies and mark the favourite" |
+| `table` | columns and rows, every cell editable on its own | "compare the three CRMs by price, free tier and API" |
+| `kanban` | columns of cards that keep their ids when they move | "track the launch tasks as a board" |
+| `timeline` | dated events, spans and milestones on an axis | "lay out the 2027 roadmap" |
+| `graph` | flowcharts and architecture: nodes, groups, labelled edges | "draw our checkout flow" |
+| `mindmap`, `sequence` | a topic and its branches; who calls whom, in order | "map the Q4 launch", "show the login handshake" |
+| `chart` | bar, line, area, scatter, pie, donut, heatmap, histogram, box, funnel, treemap, sankey, and 3D bars, points and surfaces | "chart revenue by region from rev.csv" |
+| `scene3d` | a 3D scene of boxes, cylinders, labels and models, placed by relations ("above", "behind", "on") | "sketch the warehouse floor in 3D" |
+| `heading`, `badge`, `icon` | titles, tags, and 1,928 Lucide icons by name | "tag the P0 items" |
+
+A chart reads a `.csv`, `.tsv` or `.json` file in the team's `artifacts/` (or
+rows given inline); the canvas checks the fields against the data before it
+draws, so a misspelt column comes back with the nearest name. Colour comes
+from a tone that means something (`info`, `success`, `warning`, `danger`,
+`idea`, `decision` ...), never from who drew it. When no component fits,
+agents still have the 0.21 primitives: boxes, arrows, frames, freehand pen
+strokes, sanitised SVG, images, Mermaid, and comments that point at an element
+and `@mention` a teammate or you. Every mark carries its author and a one-line
+intent, shown when you hover it. A graph with a note beside it, as an agent
+sends it:
+
+```json
+{"ops": [
+ {"op": "graph", "id": "checkout", "title": "Checkout", "direction": "right", "groups": [{"id": "backend", "title": "Backend"}],
+  "nodes": [{"id": "web", "text": "Web app"}, {"id": "api", "text": "Checkout API", "in": "backend"},
+            {"id": "db", "text": "Orders DB", "in": "backend"}, {"id": "mail", "text": "Email worker", "in": "backend"}],
+  "edges": ["web -> api", "api -> db: SQL", "api --> mail: order placed"], "intent": "the checkout flow"},
+ {"op": "callout", "kind": "decision", "title": "Postgres for orders", "body": "One database until we pass 10k orders a day.",
+  "right_of": "checkout", "intent": "the decision behind it"}]}
+```
+
+**What agents see.** They read the canvas back as text, so an agent that
+cannot read images still knows what is there. A block reads back as the
+operation that builds it, and a chart in words (its extremes, trends and
+shares). Another member reading the board above gets:
+
+```
+canvas of shop · v2 · 10 elements · you are shop-reviewer
+claims: K-1 shop-architect "the checkout flow" c0r-41:c68r-20 (5m left)
+here: shop-architect drawing c1r-40:c67r-22 "the checkout flow" (0s ago)
+elements:
+  E-1 graph checkout "Checkout" v1 [c1r-40:c45r-22 880x360] nodes 4, groups 1, edges 3 by shop-architect
+    {"op":"graph","id":"checkout","title":"Checkout","direction":"right","groups":[…],"nodes":[…],"edges":["web -> api","api -> db: SQL","api --> mail: order placed"]}
+  E-10 callout decision "Postgres for orders": One database until we pass 10k orders a day. c47r-40 by shop-architect — the decision behind it
+```
+
+`look --since last` shows only what changed; `look --image` renders a PNG with
+the element ids drawn on, for agents that read images (`--exact` asks your open
+page for exactly what you see). After drawing, agents run `canvas check`,
+which lists what reads badly with a ready fix for each. Three findings must
+always be zero: `overlap`, `arrow_through` (an arrow crossing a mark it does
+not connect) and `label_overflow`. Claude Code and Codex members that Synapse
+starts while the canvas is on (`create --spawn`, `resume`, `restore`, `swap`)
+get the same tools over MCP, added by a launch flag so no config of yours is
+edited; a controlled restart keeps them. Every other agent, Pi included, and
+any agent you started yourself uses the `canvas` CLI, which does the same. The
+skill tells an agent to read `herdr-synapse skill get --reference canvas` when
+`me` says `whiteboard: on`, and that reference teaches components, relations,
+tones and the check routine first, and the primitives last.
+
+**Working together.** You lead; agents contribute in their own lanes (the
+area they are drawing in, and their home). What an agent would do to your
+marks, to a peer's work, in another lane or in an area you froze does not
+happen: it waits as a proposal, drawn as a faint ghost with the agent's name
+and intent, until you accept or reject it (on the page, or `canvas accept
+P-3`). You can freeze a region, undo everything one agent did since a point
+(`canvas undo --author NAME --since N`, which skips what someone changed
+later and says so), save and restore checkpoints, and select a few elements
+and "Send to…" a member. Comments stay on their element when it moves, and a
+comment that mentions someone is the only thing that wakes them: drawing
+never does (the board gets one line per author per minute). Agents see where
+you are looking and what you are editing, and leave it alone for a few
+seconds. Your marks reach agents as the operator's requests and their marks
+reach each other as a peer's requests; neither is an order. The model and
+its rules are in [docs/collaboration.md](docs/collaboration.md).
 
 **Live visuals.** An agent can also put a live visual on the canvas: an
 animation, a force layout, an interactive explorer, written in HTML and
@@ -884,9 +938,50 @@ and existing ones then show as a still picture.
 `ssh -L` line to forward it. The page stops after 30 minutes with nobody on
 it, or with `whiteboard stop` or `disable`. It has four tabs: Canvas, Team,
 Activity (watched agents) and Diagrams (every chart, diagram and live visual
-with its source). The page ships prebuilt in `web/dist/`, so running it needs
-only Python; rebuilding it after changing `web/src/` needs Node
-(`cd web && npm ci && npm run build`).
+with its source). The Canvas tab opens on canvas v2. The classic Excalidraw
+canvas of 0.21 is kept in 0.22 for comparison: the **Classic canvas** chip in
+the top bar switches to it, **Canvas v2** switches back, and the page
+remembers your choice; `whiteboard open --engine v1` (or `?engine=v1` in the
+address) opens it directly. The classic canvas is loaded only when you choose
+it and gets no new features. It follows the page theme like everything else,
+but it draws less: shapes, arrows, notes, text and flow graphs come through
+with their labels, a block keeps its title and loses its body, badges and
+column counters, a chart is drawn from the Vega-Lite spec stored beside it,
+and a table or a 3D scene is a captioned placeholder box. Proposals and
+presence show only on canvas v2. On canvas v2 the keys are `V` select, `H`
+hand, `R` box, `O` ellipse, `D` diamond, `N` sticky, `C` card, `T` text, `A`
+arrow, `P` pen, `F` frame and `S` section; Space-drag pans,
+`Ctrl`/`⌘` `+`, `-` and `0` zoom and fit, `Enter` edits the selection, arrow
+keys nudge it (with Shift, further), `Ctrl`/`⌘`+`Z` undoes, and `[` and `]`
+step through open proposals while the review list is open. The page ships
+prebuilt in `web/dist/`, so running it needs only Python; rebuilding it after
+changing `web/src/` needs Node (`cd web && npm ci && npm run build`).
+
+What you see, in words (the repository keeps no screenshots): a composed
+board on a light grey canvas, a kanban with Todo, Doing and Done columns whose
+cards carry owner chips and a P0 badge, a flow graph whose boxes sit in a
+tinted "Backend" group with right-angled, labelled arrows between them, and a
+bar chart with its axes and legend, each block titled in its band; in the dark
+theme the same board in the same places on a near-black canvas, every colour
+taken from the same tones. Select an agent's proposal and a review card opens
+beside it: "alpha suggests: move the JWT card to Done", its intent, and
+Accept and Reject, while the ghost shows where the card would go.
+
+**Upgrading from 0.21.** A board drawn with 0.21 opens on canvas v2 with
+nothing lost: the canvas is rebuilt from its log, and the log is never
+rewritten. Two things are drawn differently. Labels are measured with the new
+fonts, so some of the old boxes are now too small for their text, and 0.21's
+sketch style (rough strokes and the hand-written font, which it used by
+default) is drawn clean (it still shows on the classic canvas). The first time
+you open such a board, a banner on your page says how many labels need
+resizing and how many marks in that old style are now drawn clean - usually
+every mark on a 0.21 board, since that was its default look - and offers
+**Fix sizes**, **Details**, **Not now** and **Dismiss**; your
+`canvas look` carries the same line. `canvas migrate` prints the report,
+`canvas migrate --apply` grows the old labels' boxes (moving neighbours out of
+the way) and draws those marks clean in one batch you can undo, and
+`--dismiss` keeps the board as it is. Only you see the notice and only you
+can apply it; agents are not told.
 
 **Watch.** `o` on any agent row in `prefix+t`, or `herdr-synapse watch
 <pane|name>`, flags an agent. Synapse reads what its harness already writes
@@ -1708,6 +1803,8 @@ just written it; a schedule that fails toasts you and wakes nobody.
 - [docs/capabilities.md](docs/capabilities.md): every capability, how to drive it from the UI and the CLI, what to expect, and a test checklist.
 - [docs/cli.md](docs/cli.md): the command contract, with every argument, JSON shape, exit code, and record grammar.
 - [docs/development.md](docs/development.md): internals, conventions, state layout, and the status log.
+- [docs/collaboration.md](docs/collaboration.md): how the operator and agents share the canvas: proposals, lanes, freezes, per-author undo, checkpoints and presence.
+- [docs/benchmark.md](docs/benchmark.md): the canvas benchmark: 30 plain-language drawing requests, how agents' drawings are scored, and how to run it.
 - [skills/herdr-synapse/SKILL.md](skills/herdr-synapse/SKILL.md): what agents are taught, printed by `herdr-synapse --skill`.
 - [skill-guides/](skill-guides/): the worker, manager, reviewer and librarian guides, and the work, facts, recall, coordination and canvas references, served to agents by `herdr-synapse skill get` (canvas only while the whiteboard is on).
 - [templates/](templates/): the built-in team templates, each a folder of Markdown you can copy and adapt.
@@ -1717,7 +1814,7 @@ just written it; a schedule that fails toasts you and wakes nobody.
 
 ## Status
 
-Current source version: 0.21.0, skill v12.
+Current source version: 0.22.0, skill v12.
 
 Claude Code 2.1.267, Codex 0.153.4 and OpenCode 1.18.30 were exercised together
 in one disposable Herdr 0.9.0/p22 session. Formation, exact-session resume, idle

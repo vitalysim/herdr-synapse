@@ -144,7 +144,7 @@ def create(ctx: Any, op: Dict[str, Any]) -> None:
 
 
 OPS = (
-    OpSpec(name="callout", fields=("kind", "title", "body", "icon", "w", "id", "client_id"), create=create, place=True, order=38,
+    OpSpec(name="callout", family="block", fields=("kind", "title", "body", "icon", "w", "id", "client_id"), create=create, place=True, order=38,
            doc="a note, tip, important point, warning, danger, decision or question, set apart in its tone",
            mcp="callout {kind note|tip|important|warning|danger|decision|question, title, body, icon}"),
 )

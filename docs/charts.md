@@ -68,11 +68,11 @@ model with no file read.
 - `chart_frame` is the fit (`canvas_charts._frame.Frame.to_json`). It is not
   called `frame`: that field is an element's enclosing frame.
 - `option` (16 KB or less) is the ECharts option; `doc_asset` the page's
-  datasets; `spec_asset` a small Vega-Lite spec over the model for the frozen
-  v1 page (a text card of the gist for a type Vega-Lite has no mark for).
+  datasets; `spec_asset` a small Vega-Lite spec over the model for the classic
+  (Excalidraw, v1) page at `?engine=v1` (a text card of the gist for a type Vega-Lite has no mark for).
 - A flat chart keeps its file only in `settings` and `source`; a Vega-Lite
-  chart keeps `data` at the top level too, as v1 charts did.
-- A v1 chart element (a `spec_asset` and a `data`) is read as a `vega-lite`
+  chart keeps `data` at the top level too, as 0.21 charts did.
+- A 0.21 chart element (chart kind version 1: a `spec_asset` and a `data`) is read as a `vega-lite`
   chart (`Kind.upgrade`, applied by `canvas_kinds.upgraded` when the state is
   folded); the log is never rewritten.
 

@@ -69,7 +69,7 @@ def resize(el: Element, w: Any, h: Any, ctx: Any) -> Dict[str, Any]:
 
 
 OPS = (
-    OpSpec(name="path", fields=("d", "scale", "id", "client_id"), create=create, style=True, place=True, order=50,
+    OpSpec(name="path", family="primitive", fields=("d", "scale", "id", "client_id"), create=create, style=True, place=True, order=50,
            doc="SVG path data drawn as one shape", mcp="path {d}"),
 )
 

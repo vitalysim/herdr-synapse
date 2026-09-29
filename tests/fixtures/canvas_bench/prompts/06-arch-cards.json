@@ -1,0 +1,22 @@
+{
+  "id": "06-arch-cards",
+  "category": "architecture",
+  "audience": "dev",
+  "live": false,
+  "prompt": "Lay out the auth redesign as cards in a section called Auth redesign: an API gateway card marked P0 that terminates TLS, an auth service card that issues and rotates tokens, and a session store card backed by Redis. The gateway calls the auth service, which reads the session store. Next to the section, add a decision callout asking whether we keep server sessions or go stateless.",
+  "expect": {
+    "kinds_any": ["section", "card"],
+    "labels": ["Auth redesign", "API gateway", "P0", "Terminates TLS", "Auth service", "Rotates tokens", "Session store", "Redis", "server sessions or go stateless"],
+    "relations": [["API gateway", "Auth service"], ["Auth service", "Session store"], ["Auth redesign", "API gateway", "contains"], ["Auth redesign", "Auth service", "contains"], ["Auth redesign", "Session store", "contains"]],
+    "tones": {"server sessions or go stateless": "decision"}
+  },
+  "reference": [
+   {"op": "section", "id": "auth", "title": "Auth redesign", "layout": "row", "gap": "l", "tone": "info", "at": [0, 0], "intent": "the auth redesign"},
+   {"op": "card", "id": "gw", "in": "auth", "title": "API gateway", "icon": "network", "body": "Terminates TLS and forwards the JWT", "badges": ["P0"], "intent": "gateway"},
+   {"op": "card", "id": "svc", "in": "auth", "title": "Auth service", "icon": "shield-check", "tone": "accent", "body": "Issues and rotates tokens", "intent": "auth service"},
+   {"op": "card", "id": "store", "in": "auth", "title": "Session store", "icon": "database", "body": "Backed by Redis", "intent": "session store"},
+   {"op": "arrow", "from": "gw", "to": "svc", "label": "verify", "route": "orthogonal", "intent": "call path"},
+   {"op": "arrow", "from": "svc", "to": "store", "label": "read", "route": "orthogonal", "intent": "call path"},
+   {"op": "callout", "kind": "decision", "right_of": "auth", "gap": "l", "title": "Decision needed", "body": "Keep server sessions or go stateless?", "intent": "open question"}
+  ]
+}

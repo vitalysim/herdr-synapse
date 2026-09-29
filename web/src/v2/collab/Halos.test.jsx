@@ -62,7 +62,8 @@ describe("geometry", () => {
 
   test("the operator's other pages: the viewport and the cursor", () => {
     const { operators } = haloShapes({ members: [], operators: [{ page: "00112233445566aa", viewport: [0, 0, 400, 300], cursor: [100, 50], opacity: 1 }], camera: { x: 0, y: 0, scale: 1 }, viewport: VIEWPORT });
-    expect(operators).toEqual([{ page: "00112233445566aa", viewport: { x: 0, y: 0, w: 400, h: 300 }, cursor: [100, 50], opacity: 1 }]);
+    // Her cursor's label goes right of and under the dot when nothing is there (labels.test.js has the rest).
+    expect(operators).toEqual([{ page: "00112233445566aa", viewport: { x: 0, y: 0, w: 400, h: 300 }, cursor: [100, 50], label: { x: 108, y: 56 }, opacity: 1 }]);
   });
 });
 
@@ -102,6 +103,33 @@ describe("drawing", () => {
     expect(light.querySelector('rect.cv2-halo[data-name="peer"]').getAttribute("stroke-dasharray")).toBe("6 4");
     expect(light.querySelectorAll(".cv2-operator-view")).toHaveLength(1);
     expect(light.querySelectorAll(".cv2-operator-cursor")).toHaveLength(0); // that page has no cursor
+  });
+
+  test("a pill or cursor label with no clear place is left out; the halo and the dot stay (QA phase 5 L10)", () => {
+    // One label as big as the board: no place is clear of it.
+    const dl = { entries: [{ id: "E-1", items: [{ k: "text", x: -5000, anchor: "start", size: 10000, lh: 12500, lines: [{ t: "everywhere", y: 5000, w: 20000 }] }] }] };
+    const presence = { members: [{ name: "agent", status: "drawing", region: [0, 0, 100, 100], ids: [], intent: "", opacity: 1 }], operators: [{ page: "p", viewport: null, cursor: [300, 300], opacity: 1 }] };
+    const node = mount({ presence, dl });
+    expect(node.querySelectorAll("rect.cv2-halo")).toHaveLength(1);
+    expect(node.querySelectorAll(".cv2-operator-cursor")).toHaveLength(1);
+    expect(node.querySelectorAll(".cv2-halo-pill")).toHaveLength(0);
+    expect(node.querySelectorAll(".cv2-operator-label")).toHaveLength(0);
+    // With the board clear, both are drawn where their placement says.
+    const clear = mount({ presence, dl: { entries: [] } });
+    expect(clear.querySelector(".cv2-halo-pill").style.top).toBe("108px");
+    expect(clear.querySelector(".cv2-operator-label").style.left).toBe("308px");
+  });
+
+  test("a pill that only has room for its chip draws the chip alone", () => {
+    // Labels all round the halo but its inside top-left corner (labels.test.js has the geometry).
+    const box = (x0, y0, x1, y1) => ({ k: "text", x: x0, anchor: "start", size: (y1 - y0) / 1.21, lh: y1 - y0, lines: [{ t: "x", y: y0 + (0.97 * (y1 - y0)) / 1.21, w: x1 - x0 }] });
+    const dl = { entries: [{ id: "L", items: [box(0, 0, 1000, 96), box(0, 200, 1000, 700), box(0, 100, 94, 200), box(306, 100, 1000, 200), box(124, 100, 306, 200), box(100, 130, 124, 200)] }] };
+    const presence = { members: [{ name: "agent", status: "drawing", region: [100, 100, 300, 200], ids: [], intent: "", opacity: 1 }], operators: [] };
+    const node = mount({ presence, dl });
+    const pill = node.querySelector(".cv2-halo-pill");
+    expect(pill.classList.contains("cv2-halo-pill-compact")).toBe(true);
+    expect(pill.querySelector(".cv2-halo-text")).toBeNull();
+    expect(pill.querySelector(".cv2-halo-chip").textContent).toBe("AG");
   });
 
   test("a hostile intent or name stays text", () => {

@@ -47,6 +47,30 @@ class Discovery(unittest.TestCase):
         self.assertIn('invalid type "barchart"; one of: bar, line', caught.exception.message)
         self.assertIn('did you mean "bar"', caught.exception.message)
 
+    def test_kind_is_read_as_type(self):
+        """QA phase 6 F8: a chart names its variant ``type`` where every other op names it ``kind``, which cost a live
+        agent its first try. ``kind`` is accepted with a warning that teaches the real name."""
+        spec, warnings = CC.normalize_spec({"kind": "bar", "rows": [{"a": "x", "b": 1}], "x": "a", "y": "b"})
+        self.assertEqual(spec["type"], "bar")
+        self.assertNotIn("kind", spec, "nothing stores the alias")
+        self.assertEqual([w["code"] for w in warnings], ["field_alias"])
+        self.assertIn("a chart's type is type, not kind", warnings[0]["message"])
+        # An explicit type wins, and is not warned about.
+        spec, warnings = CC.normalize_spec({"type": "line", "kind": "bar", "rows": [{"a": "x", "b": 1}], "x": "a", "y": "b"})
+        self.assertEqual((spec["type"], warnings), ("line", []))
+
+    def test_a_word_that_names_a_charts_shape_says_which_fields_draw_it(self):
+        """``invalid type "grouped"`` used to list the types without saying how to get grouped bars - the most ordinary
+        business request there is (QA phase 6, F8)."""
+        for word, wanted in (("grouped", 'type "bar" with color:'), ("grouped bar chart", 'type "bar" with color:'),
+                             ("stacked", "stack: true"), ("horizontal", "horizontal: true")):
+            with self.assertRaises(HerdrTeamError) as caught:
+                CC.normalize_spec({"type": word, "rows": [{"a": 1}]})
+            self.assertIn(wanted, caught.exception.message, word)
+        with self.assertRaises(HerdrTeamError) as caught:
+            CC.normalize_spec({"type": "wobble", "rows": [{"a": 1}]})
+        self.assertNotIn("; wobble is", caught.exception.message, "only the words that name a shape earn a hint")
+
     def test_pie_takes_x_and_y_as_category_and_value(self):
         spec, warnings = CC.normalize_spec({"type": "pie", "rows": [{"a": "x", "b": 1}], "x": "a", "y": "b"})
         self.assertEqual((spec["category"], spec["value"]), ("a", "b"))

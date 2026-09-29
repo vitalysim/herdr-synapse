@@ -1,0 +1,14 @@
+{
+  "id": "14-timeline-history",
+  "category": "timeline",
+  "audience": "nondev",
+  "live": false,
+  "prompt": "Show our company history on a timeline: founded in 2019, first customer in 2020, Series A in 2021, opened the Berlin office in 2023, and reached 100 employees in 2025.",
+  "expect": {
+    "kinds_any": ["timeline"],
+    "labels": ["Founded", "First customer", "Series A", "Berlin office", "100 employees"]
+  },
+  "reference": [
+   {"op": "timeline", "id": "history", "title": "Company history", "at": [0, 0], "intent": "our story so far", "events": [{"at": "2019", "title": "Founded", "icon": "flag"}, {"at": "2020", "title": "First customer", "tone": "success"}, {"at": "2021", "title": "Series A", "tone": "accent"}, {"at": "2023", "title": "Opened the Berlin office"}, {"at": "2025", "title": "100 employees", "milestone": true}]}
+  ]
+}

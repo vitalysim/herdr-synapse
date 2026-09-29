@@ -614,7 +614,7 @@ MCP = ("scene3d {title, objects [{id, shape " + "|".join(S3.names()) + ", size|r
        + "|".join(_spec.CAMERA_PRESETS) + "}")
 
 OPS = (
-    OpSpec(name="scene3d", fields=("title", "objects", "links") + SETTINGS + ("w", "h", "id", "client_id"), create=create, place=True, order=95,
+    OpSpec(name="scene3d", family="3d", fields=("title", "objects", "links") + SETTINGS + ("w", "h", "id", "client_id"), create=create, place=True, order=95,
            doc="a 3D scene: objects placed by relations (on, right_of, inside ...), links, camera; glTF from artifacts/", mcp=MCP),
 )
 

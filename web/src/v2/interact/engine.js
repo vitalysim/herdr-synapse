@@ -1,11 +1,16 @@
-// Which canvas engine the page runs: "v1" (Excalidraw, the default until the owner's demo gate)
-// or "v2" (the display-list board). The query value wins (the ticket redirect keeps
-// ?engine=v2), then the choice stored in this browser, then v1. Pure apart from the storage
-// handed in, so it is testable without a DOM.
+// Which canvas engine the page runs: "v2" (the display-list board, the default since 0.22) or
+// "v1" (the classic Excalidraw canvas, kept for comparison). The query value wins (the ticket
+// redirect keeps ?engine=), then the choice stored in this browser, then v2. Pure apart from the
+// storage handed in, so it is testable without a DOM.
+//
+// The stored choice moved to a new key in 0.22 (canvas-v2-phase6.md D2): whoever switched back to
+// the classic canvas while testing phases 1 to 5 has "v1" under the old key, and would otherwise
+// open 0.22 on v1. The old key is ignored and removed on first load.
 
 export const ENGINES = ["v1", "v2"];
-export const DEFAULT_ENGINE = "v1";
-export const ENGINE_KEY = "synapse-engine";
+export const DEFAULT_ENGINE = "v2";
+export const ENGINE_KEY = "synapse-engine-v022";
+export const LEGACY_ENGINE_KEY = "synapse-engine";
 // Set to "1" in this browser's storage to always show the engine toggle (a developer's flag).
 export const DEV_KEY = "synapse-dev";
 
@@ -30,8 +35,15 @@ function storedEngine(storage) {
   }
 }
 
-// engineOf(window.location, window.localStorage) -> "v1" | "v2"
+// engineOf(window.location, window.localStorage) -> "v1" | "v2". Drops the pre-0.22 choice.
 export function engineOf(location, storage) {
+  if (storage) {
+    try {
+      storage.removeItem(LEGACY_ENGINE_KEY);
+    } catch {
+      // blocked storage: nothing was kept there either
+    }
+  }
   return queryEngine(location) || storedEngine(storage) || DEFAULT_ENGINE;
 }
 
@@ -63,12 +75,17 @@ export function withEngine(href, value) {
   return url.toString();
 }
 
-// Whether the top bar shows the "v2 preview" toggle (Phase 1 open question 8.4-2, carried item 16):
-// only for someone who asked for v2 (?engine=v2 in the URL), who runs it now from an earlier choice
-// (so there is always a way back), or who set the developer flag (`dev`, e.g. the Vite dev server,
-// or DEV_KEY in storage). Everyone else sees the default engine and no toggle.
+// Whether the top bar shows the engine chip. While both engines ship (0.22) it always does
+// (canvas-v2-phase6.md D3): the way to the other canvas is one visible button. Setting
+// ALWAYS_SHOW_ENGINE_TOGGLE to false brings back the earlier rule: only for someone who asked for the
+// other engine (?engine=v1 in the URL), who runs it from an earlier choice (so there is always a way
+// back), or who set the developer flag (`dev`, e.g. the Vite dev server, or DEV_KEY in storage).
+export const ALWAYS_SHOW_ENGINE_TOGGLE = true;
+
 export function engineToggleVisible(location, storage, { dev = false } = {}) {
-  if (dev || queryEngine(location) === "v2" || storedEngine(storage) === "v2") return true;
+  if (ALWAYS_SHOW_ENGINE_TOGGLE) return true;
+  const other = ENGINES.find((name) => name !== DEFAULT_ENGINE);
+  if (dev || queryEngine(location) === other || storedEngine(storage) === other) return true;
   if (!storage) return false;
   try {
     return storage.getItem(DEV_KEY) === "1";

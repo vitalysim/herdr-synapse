@@ -1,0 +1,16 @@
+{
+  "id": "22-3d-topology",
+  "category": "3d",
+  "audience": "dev",
+  "live": false,
+  "prompt": "Build a 3D view of our cluster: a floor, an API box, a Postgres cylinder to the right of the API, a Redis sphere above the API, and three workers behind the API. Link the API to Postgres and the API to Redis.",
+  "expect": {
+    "kinds_any": ["scene3d"],
+    "labels": ["API", "Postgres", "Redis", "Worker"],
+    "relations": [["API", "Postgres"], ["API", "Redis"]],
+    "scene3d": {"objects_min": 6, "links_min": 2}
+  },
+  "reference": [
+   {"op": "scene3d", "id": "cluster", "title": "Cluster in 3D", "at": [0, 0], "intent": "the cluster in 3D", "objects": [{"id": "floor", "shape": "plane", "tone": "neutral"}, {"id": "api", "shape": "box", "size": [1.2, 1.0, 1.2], "tone": "accent", "label": "API", "on": "floor"}, {"id": "pg", "shape": "cylinder", "radius": 0.6, "height": 1.4, "tone": "success", "label": "Postgres", "on": "floor", "right_of": "api", "gap": 1}, {"id": "redis", "shape": "sphere", "radius": 0.4, "tone": "warning", "label": "Redis", "above": "api", "gap": 0.4}, {"id": "workers", "shape": "group", "layout": "row", "gap": 0.3, "on": "floor", "behind": "api"}, {"id": "w1", "shape": "box", "size": [0.6, 0.8, 0.6], "tone": "info", "label": "Worker 1", "in": "workers"}, {"id": "w2", "shape": "box", "size": [0.6, 0.8, 0.6], "tone": "info", "label": "Worker 2", "in": "workers"}, {"id": "w3", "shape": "box", "size": [0.6, 0.8, 0.6], "tone": "info", "label": "Worker 3", "in": "workers"}], "links": ["api -> pg: SQL", "api -> redis: cache"]}
+  ]
+}

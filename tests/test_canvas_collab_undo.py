@@ -75,7 +75,7 @@ class Revert(CollabRig):
         # A peer's batches are for the manager, a delegate or the operator: not "operator only" (QA phase 5 L15).
         self.assertEqual(self.refused({"op": "undo", "author": "alpha-member", "intent": "t"}, PEER)["code"], "element_not_yours")
         self.assertEqual(self.refused({"op": "undo", "batch": self.first, "intent": "t"}, PEER)["code"], "element_not_yours")
-        self.ok({"op": "undo", "batch": self.first, "intent": "t"}, MANAGER)
+        self.ok({"op": "undo", "batch": self.second, "intent": "t"}, MANAGER)
         self.ok({"op": "undo", "author": "alpha-member", "intent": "t"}, DEPUTY)
         self.ok({"op": "undo", "author": "human"}, LEAD)
 
@@ -84,8 +84,28 @@ class Revert(CollabRig):
                           ({"op": "undo", "batch": self.first, "since": 3, "intent": "t"}, "since"), ({"op": "undo", "batch": "E-3", "intent": "t"}, "batch")):
             with self.subTest(op=op):
                 self.assertEqual(self.refused(op)["details"]["field"], field)
-        self.ok({"op": "undo", "batch": self.first, "intent": "t"})
-        self.assertEqual(self.refused({"op": "undo", "batch": self.first, "intent": "t"})["code"], "op_invalid", "already undone")
+        self.ok({"op": "undo", "batch": self.second, "intent": "t"})
+        self.assertEqual(self.refused({"op": "undo", "batch": self.second, "intent": "t"})["message"], "{} is already undone".format(self.second))
+
+    def test_undo_twice_in_a_row_takes_back_both(self):
+        # Ctrl+Z twice: the newer batch undone first leaves the older one's marks as it left them, so it is not "edited later".
+        for author in (MEMBER, PAGE):
+            with self.subTest(author=author.name):
+                box = self.ok({"op": "shape", "kind": "box", "text": "Z", "at": [0, 1200 if author is MEMBER else 1600], "intent": "t"}, author)["ids"][0]
+                older = self.apply([{"op": "move", "id": box, "by": [40, 0], "intent": "t"}], author)["batch"]
+                newer = self.apply([{"op": "move", "id": box, "by": [40, 0], "intent": "t"}], author)["batch"]
+                self.ok({"op": "undo", "batch": newer, "intent": "t"}, author)
+                undo = self.ok({"op": "undo", "batch": older, "intent": "t"}, author)["undo"]
+                self.assertEqual((undo["restored"], undo["skipped"], self.el(box)["x"]), (1, [], 0))
+        # A later change that is still in effect is not cancelled: moved away by the operator and undone by her, then moved again.
+        box = self.ok({"op": "shape", "kind": "box", "text": "Y", "at": [0, 2000], "intent": "t"})["ids"][0]
+        mine = self.apply([{"op": "move", "id": box, "by": [40, 0], "intent": "t"}])["batch"]
+        hers = self.apply([{"op": "move", "id": box, "by": [40, 0]}], LEAD)["batch"]
+        self.ok({"op": "undo", "batch": hers}, LEAD)
+        self.apply([{"op": "move", "id": box, "by": [0, 40]}], LEAD)
+        refusal = self.refused({"op": "undo", "batch": mine, "intent": "t"})
+        self.assertIn("{} was edited by the operator later".format(box), refusal["message"])
+        self.assertEqual(self.el(box)["y"], 2040)
 
     def test_undo_of_the_same_batch_twice_in_one_revert_is_one_revert(self):
         result = self.apply([{"op": "undo", "author": "alpha-member", "since": self.since, "intent": "t"},
@@ -105,15 +125,8 @@ class Guarded(CollabRig):
         self.since = C.current_version(self.team)
         self.moved = self.apply([{"op": "move", "id": self.box, "by": [200, 0], "intent": "t"}])["batch"]
 
-    def undo_rolled_back(self, op, author):
-        """What an undo does, rolled back (an atomic batch whose second op is refused): its applied entry and warnings."""
-        try:
-            self.apply([op, {"op": "no_such_op"}], author, atomic=True)
-        except HerdrTeamError as err:
-            return err.details["applied"][0], err.details["warnings"]
-        raise AssertionError("the atomic batch was not refused")
-
     def test_an_undo_leaves_what_an_id_freeze_holds(self):
+        # An undo that would take nothing back because a freeze holds it all is refused, saying so (QA phase 5 verdict).
         drawn = self.apply([{"op": "shape", "kind": "box", "text": "Fresh", "at": [0, 600], "intent": "t"}])
         fresh = drawn["applied"][0]["ids"][0]
         xid = self.ok({"op": "freeze", "ids": [self.box, fresh], "label": "keep"}, LEAD)["ids"][0]
@@ -122,27 +135,48 @@ class Guarded(CollabRig):
             for author in (MEMBER, MANAGER, DEPUTY):
                 for batch, eid, what in ((self.moved, self.box, "move it back"), (drawn["batch"], fresh, "delete it")):
                     with self.subTest(frozen=frozen, author=author.name, undo=what):
-                        entry, warnings = self.undo_rolled_back({"op": "undo", "batch": batch, "intent": "t"}, author)
-                        self.assertEqual(entry["undo"]["skipped"], [{"id": eid, "reason": "frozen", "freeze": xid}])
-                        self.assertEqual((entry["undo"]["restored"], entry["undo"]["of"]), (0, 1))
-                        self.assertIn("{} is frozen ({}): the operator holds it as it is".format(eid, xid), warnings[-1]["message"])
+                        refusal = self.refused({"op": "undo", "batch": batch, "intent": "t"}, author)
+                        self.assertEqual(refusal["code"], "op_invalid")
+                        self.assertEqual(refusal["details"]["skipped"], [{"id": eid, "reason": "frozen", "freeze": xid}])
+                        self.assertEqual(refusal["message"], '{} was not undone, nothing in it can be taken back now: {} is frozen ({}); '
+                                                             'the operator may force it ("force": true)'.format(batch, eid, xid))
         self.assertEqual(self.el(self.box)["x"], 200)
+        self.assertFalse(self.scene()["batches"][self.moved]["undone"], "History does not strike an undo that took nothing back")
         self.ok({"op": "undo", "batch": self.moved}, LEAD)
         self.assertEqual(self.el(self.box)["x"], 0, "the lead is never guarded")
+
+    def undo_rolled_back(self, op, author):
+        """What an undo does, rolled back (an atomic batch whose second op is refused): its applied entry and warnings."""
+        try:
+            self.apply([op, {"op": "no_such_op"}], author, atomic=True)
+        except HerdrTeamError as err:
+            return err.details["applied"][0], err.details["warnings"]
+        raise AssertionError("the atomic batch was not refused")
+
+    def test_an_undo_that_takes_back_part_says_what_a_freeze_left(self):
+        other = self.apply([{"op": "shape", "kind": "box", "text": "Other", "at": [0, 600], "intent": "t"}])["applied"][0]["ids"][0]
+        both = self.apply([{"op": "move", "id": self.box, "by": [0, 40], "intent": "t"}, {"op": "move", "id": other, "by": [0, 40], "intent": "t"}])
+        xid = self.ok({"op": "freeze", "ids": [self.box]}, LEAD)["ids"][0]
+        for author in (MEMBER, MANAGER, DEPUTY):
+            with self.subTest(author=author.name):
+                entry, warnings = self.undo_rolled_back({"op": "undo", "batch": both["batch"], "intent": "t"}, author)
+                self.assertEqual(entry["undo"]["skipped"], [{"id": self.box, "reason": "frozen", "freeze": xid}])
+                self.assertEqual((entry["undo"]["restored"], entry["undo"]["of"]), (1, 2))
+                self.assertIn("{} is frozen ({}): the operator holds it as it is".format(self.box, xid), warnings[-1]["message"])
 
     def test_an_undo_does_not_move_a_frozen_mark_back(self):
         self.ok({"op": "freeze", "region": [150, -50, 500, 200], "label": "done"}, LEAD)
         self.ok({"op": "settings", "frozen": "refuse"}, LEAD)
         self.assertEqual(self.refused({"op": "move", "id": self.box, "by": [-200, 0], "intent": "t"})["code"], "frozen")
-        result = self.apply([{"op": "undo", "batch": self.moved, "intent": "t"}])
-        self.assertEqual(result["applied"][0]["undo"]["skipped"][0]["reason"], "frozen")
+        refusal = self.refused({"op": "undo", "batch": self.moved, "intent": "t"})
+        self.assertEqual(refusal["details"]["skipped"][0]["reason"], "frozen")
         self.assertEqual(self.el(self.box)["x"], 200)
 
     def test_an_undo_does_not_bring_a_mark_back_into_a_frozen_region(self):
         gone = self.apply([{"op": "delete", "id": self.box, "intent": "t"}])["batch"]
         self.ok({"op": "freeze", "region": [150, -50, 500, 200], "label": "empty on purpose"}, LEAD)
-        result = self.apply([{"op": "undo", "batch": gone, "intent": "t"}])
-        self.assertEqual(result["applied"][0]["undo"]["skipped"][0]["reason"], "frozen")
+        refusal = self.refused({"op": "undo", "batch": gone, "intent": "t"})
+        self.assertEqual(refusal["details"]["skipped"][0]["reason"], "frozen")
         self.assertFalse(self.has(self.box))
 
     def test_an_undo_of_what_the_operator_is_editing_waits(self):
@@ -155,40 +189,124 @@ class Guarded(CollabRig):
         self.ok({"op": "undo", "batch": self.moved, "intent": "t"})
         self.assertEqual(self.el(self.box)["x"], 0)
 
+    def pair(self):
+        """A batch that moved the box and a second mark: an undo can take back one and leave the other (``left``)."""
+        other = self.apply([{"op": "shape", "kind": "box", "text": "Other", "at": [0, 600], "intent": "t"}])["applied"][0]["ids"][0]
+        batch = self.apply([{"op": "move", "id": self.box, "by": [0, 40], "intent": "t"}, {"op": "move", "id": other, "by": [0, 40], "intent": "t"}])["batch"]
+        return other, batch
+
     def test_what_a_freeze_left_is_undone_once_it_is_thawed(self):
+        other, both = self.pair()
         xid = self.ok({"op": "freeze", "ids": [self.box]}, LEAD)["ids"][0]
-        self.ok({"op": "undo", "batch": self.moved, "intent": "t"})
-        self.assertEqual(self.scene()["batches"][self.moved]["left"], [["element", self.box]])
-        refusal = self.refused({"op": "undo", "batch": self.moved, "intent": "t"})
+        self.ok({"op": "undo", "batch": both, "intent": "t"})
+        self.assertEqual((self.el(self.box)["y"], self.el(other)["y"]), (40, 600))
+        self.assertEqual(self.scene()["batches"][both]["left"], [["element", self.box]])
+        refusal = self.refused({"op": "undo", "batch": both, "intent": "t"})
         self.assertEqual(refusal["code"], "op_invalid")
-        self.assertIn("{} is frozen ({})".format(self.box, xid), refusal["message"])
+        self.assertEqual(refusal["message"], '{} is already undone; it left {} as it is: {} is frozen ({}); the operator may force it ("force": true)'.format(
+            both, self.box, self.box, xid))
         self.ok({"op": "thaw", "id": xid}, LEAD)
-        self.ok({"op": "undo", "batch": self.moved, "intent": "t"})
-        self.assertEqual(self.el(self.box)["x"], 0)
-        self.assertNotIn("left", self.scene()["batches"][self.moved])
-        self.assertEqual(self.refused({"op": "undo", "batch": self.moved, "intent": "t"})["message"], "{} is already undone".format(self.moved))
+        self.ok({"op": "undo", "batch": both, "intent": "t"})
+        self.assertEqual(self.el(self.box)["y"], 0)
+        self.assertNotIn("left", self.scene()["batches"][both])
+        self.assertEqual(self.refused({"op": "undo", "batch": both, "intent": "t"})["message"], "{} is already undone".format(both))
 
     def test_the_leads_force_after_a_skipped_revert(self):
         # QA phase 5 M1: the warning says to force it; that works after the revert, by batch and by author.
+        _other, both = self.pair()
         self.ok({"op": "restyle", "id": self.box, "tone": "danger"}, LEAD)
-        result = self.apply([{"op": "undo", "batch": self.moved, "intent": "t"}])
+        result = self.apply([{"op": "undo", "batch": both, "intent": "t"}])
         self.assertIn('force it with "force": true', result["warnings"][0]["message"])
-        self.assertEqual(self.el(self.box)["x"], 200)
-        refusal = self.refused({"op": "undo", "batch": self.moved, "intent": "t"})
+        self.assertEqual(self.el(self.box)["y"], 40)
+        refusal = self.refused({"op": "undo", "batch": both, "intent": "t"})
         self.assertIn("edited by the operator later", refusal["message"])
-        self.assertEqual(self.refused({"op": "undo", "batch": self.moved, "force": True, "intent": "t"})["code"], "operator_only")
-        forced = self.ok({"op": "undo", "batch": self.moved, "force": True}, LEAD)
-        self.assertEqual((forced["undo"]["restored"], self.el(self.box)["x"]), (1, 0))
-        self.assertEqual(self.refused({"op": "undo", "batch": self.moved, "force": True}, LEAD)["message"], "{} is already undone".format(self.moved))
+        self.assertEqual(self.refused({"op": "undo", "batch": both, "force": True, "intent": "t"})["code"], "operator_only")
+        forced = self.ok({"op": "undo", "batch": both, "force": True}, LEAD)
+        self.assertEqual((forced["undo"]["restored"], self.el(self.box)["y"]), (1, 0))
+        self.assertEqual(self.refused({"op": "undo", "batch": both, "force": True}, LEAD)["message"], "{} is already undone".format(both))
 
     def test_the_leads_force_by_author_after_a_skipped_revert(self):
+        _other, both = self.pair()
         self.ok({"op": "restyle", "id": self.box, "tone": "danger"}, LEAD)
-        since = self.since
+        since = self.scene()["batches"][both]["first_seq"] - 1
         self.ok({"op": "undo", "author": "alpha-member", "since": since}, LEAD)
-        self.assertEqual(self.el(self.box)["x"], 200, "skipped: the operator restyled it later")
+        self.assertEqual(self.el(self.box)["y"], 40, "skipped: the operator restyled it later")
         self.assertEqual(self.refused({"op": "undo", "author": "alpha-member", "since": since}, LEAD)["code"], "element_unknown")
         forced = self.ok({"op": "undo", "author": "alpha-member", "since": since, "force": True}, LEAD)
-        self.assertEqual((forced["undo"]["batches"], self.el(self.box)["x"]), ([self.moved], 0))
+        self.assertEqual((forced["undo"]["batches"], self.el(self.box)["y"]), ([both], 0))
+
+    def test_an_undo_that_takes_nothing_back_is_refused_and_not_struck(self):
+        # QA phase 5 verdict: not "#0 undo -" and a struck-through batch; a refusal that says why and what would work.
+        hers = self.apply([{"op": "restyle", "id": self.box, "tone": "danger"}], LEAD)["batch"]
+        version = C.current_version(self.team)
+        refusal = self.refused({"op": "undo", "batch": self.moved, "intent": "t"})
+        self.assertEqual(refusal["message"], '{} was not undone, nothing in it can be taken back now: {} was edited by the operator later (v{}); '
+                                             'the operator may force it ("force": true)'.format(self.moved, self.box, version))
+        self.assertEqual(refusal["details"]["skipped"], [{"id": self.box, "by": "human", "seq": version}])
+        self.assertEqual(C.current_version(self.team), version, "no event")
+        self.assertFalse(self.scene()["batches"][self.moved]["undone"])
+        self.assertNotIn("left", self.scene()["batches"][self.moved])
+        text = C.apply_text(self.apply([{"op": "undo", "batch": self.moved, "intent": "t"}]))
+        self.assertIn("refused:\n  #0 undo op_invalid: {} was not undone".format(self.moved), text)
+        self.assertNotIn("#0 undo -", text)
+        # By author: the same, naming the batches.
+        refusal = self.refused({"op": "undo", "author": "alpha-member", "since": self.since, "intent": "t"})
+        self.assertEqual((refusal["code"], refusal["details"]["field"]), ("op_invalid", "author"))
+        self.assertIn("{} was not undone".format(self.moved), refusal["message"])
+        # Her own look at it: "edited by you later", and force works.
+        refusal = self.refused({"op": "undo", "batch": self.moved}, LEAD)
+        self.assertIn('edited by you later (v{}); undo {} first, or force it with "force": true'.format(version, hers), refusal["message"])
+        self.assertEqual(self.ok({"op": "undo", "batch": self.moved, "force": True}, LEAD)["undo"]["restored"], 1)
+
+    def test_your_own_later_batch_is_you_and_named(self):
+        again = self.apply([{"op": "move", "id": self.box, "by": [0, 40], "intent": "t"}])["batch"]
+        refusal = self.refused({"op": "undo", "batch": self.moved, "intent": "t"})
+        self.assertIn("{} was edited by you later (v{}); undo {} first, or the operator may force it".format(
+            self.box, C.current_version(self.team), again), refusal["message"])
+        # The manager reads the member's name, and no hint to undo a batch that is not its own.
+        refusal = self.refused({"op": "undo", "batch": self.moved, "intent": "t"}, MANAGER)
+        self.assertIn("{} was edited by alpha-member later".format(self.box), refusal["message"])
+        self.assertNotIn("first", refusal["message"])
+        # Part of a batch: the warning says "you" too.
+        other, both = self.pair()
+        self.apply([{"op": "move", "id": other, "by": [0, 40], "intent": "t"}])
+        warning = self.apply([{"op": "undo", "batch": both, "intent": "t"}])["warnings"][0]["message"]
+        self.assertIn("1 of 2 reverted; {} edited by you later".format(other), warning)
+        self.assertIn(": undo B-", warning)
+
+    def test_claims_are_never_named_in_a_skip(self):
+        # A batch that drew in free space came with an automatic claim; a later batch nearby grew it (QA phase 5 L8). The
+        # claim is bookkeeping: an undo neither lists it nor warns about it.
+        made = self.apply([{"op": "shape", "kind": "box", "text": "Free", "at": [3000, 3000], "intent": "t"},
+                           {"op": "shape", "kind": "box", "text": "Too", "at": [3300, 3000], "intent": "t"}])
+        claim = made["applied"][0].get("auto_claim")
+        self.assertTrue(claim)
+        near = self.apply([{"op": "shape", "kind": "box", "text": "Near", "at": [3000, 3200], "intent": "t"}])
+        self.assertEqual(near["applied"][0].get("auto_claim"), claim, "the claim grew")
+        mark = made["applied"][1]["ids"][0]
+        self.ok({"op": "restyle", "id": mark, "tone": "danger"}, LEAD)
+        result = self.apply([{"op": "undo", "batch": made["batch"], "intent": "t"}])
+        undo = result["applied"][0]["undo"]
+        self.assertEqual([s["id"] for s in undo["skipped"]], [mark])
+        self.assertFalse([w for w in result["warnings"] if claim in w["message"] or claim in (w.get("ids") or [])], result["warnings"])
+
+    def test_frozen_and_edited_later_names_the_freeze(self):
+        # QA phase 5 verdict: undo --author after a partial revert; the mark is frozen and edited later: the freeze is named.
+        other, both = self.pair()
+        self.ok({"op": "restyle", "id": self.box, "tone": "danger"}, LEAD)
+        xid = self.ok({"op": "freeze", "ids": [self.box]}, LEAD)["ids"][0]
+        version = C.current_version(self.team) - 1
+        for author in (MANAGER, DEPUTY):
+            with self.subTest(author=author.name):
+                entry, warnings = self.undo_rolled_back({"op": "undo", "author": "alpha-member", "since": self.since, "intent": "t"}, author)
+                skip = next(s for s in entry["undo"]["skipped"] if s["id"] == self.box)
+                self.assertEqual(skip, {"id": self.box, "reason": "frozen", "freeze": xid, "by": "human", "seq": version})
+                message = next(w["message"] for w in warnings if self.box in w["ids"])
+                self.assertIn("{} is frozen ({}); {} was also edited by the operator later (v{})".format(self.box, xid, self.box, version), message)
+        refusal = self.refused({"op": "undo", "batch": self.moved, "intent": "t"})
+        self.assertIn("{} is frozen ({}) and was edited by you later (v{})".format(self.box, xid, self.scene()["batches"][both]["first_seq"]),
+                      refusal["message"])
+        self.assertEqual(self.el(other)["y"], 640)
 
 
 class Follow(CollabRig):

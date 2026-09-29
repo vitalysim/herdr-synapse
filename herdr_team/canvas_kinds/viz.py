@@ -56,7 +56,7 @@ def readback(el: Element, full: bool) -> str:
 
 
 OPS = (
-    OpSpec(name="viz", fields=("html", "libs", "data", "data_path", "title", "w", "h", "id", "client_id"), create=create, place=True, order=100,
+    OpSpec(name="viz", family="data", fields=("html", "libs", "data", "data_path", "title", "w", "h", "id", "client_id"), create=create, place=True, order=100,
            doc="a sealed live visual (d3, three, p5) the page runs",
            mcp="viz {html, libs [d3,three,p5], title; draw to synapse.width x synapse.height}"),
 )

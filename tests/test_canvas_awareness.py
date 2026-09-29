@@ -27,6 +27,9 @@ class BriefingText(unittest.TestCase):
         self.assertEqual(lines[:2], plain)
         self.assertEqual(lines[2], CANVAS_LINE)
         self.assertIn("skill get --reference canvas", CANVAS_LINE)
+        # QA phase 6 F5: every unprompted canvas call in the live run went through the shell while the eight MCP tools
+        # sat unused, because the briefing named a CLI and nothing else.
+        self.assertIn("canvas_draw/canvas_look tools if you have them", CANVAS_LINE)
         self.assertLessEqual(len(CANVAS_LINE), nudge.MAX_BRIEF_LINE_CHARS)
         solo = nudge.briefing_lines("gem", "gemini-dev", "gem-canvas", None, [], None, "herdr-synapse", canvas=True)
         self.assertEqual((len(solo), solo[-1]), (2, CANVAS_LINE))

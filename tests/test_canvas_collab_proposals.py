@@ -194,7 +194,7 @@ class Headline(CollabRig):
         record = next(p for p in self.scene()["proposals"] if p["id"] == found["proposal"])
         elements = {el["id"]: el for el in self.scene()["elements"]}
         self.assertIn("(yours and the operator's)", K.proposal_line(record, MEMBER.name, elements))
-        self.assertIn("(alpha-member's and the operator's)", K.proposal_line(record, "human", elements))
+        self.assertIn("(alpha-member's and yours)", K.proposal_line(record, "human", elements), "her own look: yours (QA phase 5 verdict)")
 
 
 class Ghosts(CollabRig):
@@ -226,6 +226,31 @@ class Ghosts(CollabRig):
         from herdr_team import canvas_svg
 
         self.assertIn('data-id="{}"'.format(deleted), canvas_svg.write(C.display(self.team), theme="light"))
+
+    def test_an_in_place_ghost_is_drawn_beside_its_host_not_on_top_of_it(self):
+        """QA phase 6 F3: a rewrite that does not move the mark used to ghost it at the host's own origin, so the
+        ghost's words and the host's ran through each other and the two author chips sat on top of each other."""
+        card = self.ok({"op": "card", "id": "refund", "title": "Refund policy", "body": "- store credit after 30 days",
+                        "at": [0, 0]}, LEAD)["ids"][0]
+        pid = self.proposed({"op": "edit", "id": card, "part": "body",
+                             "text": "- store credit after 45 days\n- damaged goods refunded in full",
+                             "intent": "as the operator asked"})["proposal"]
+        doc = C.display(self.team)
+        self.assertEqual(C._display.validate(doc), [])
+        by_id = {e["id"]: e for e in doc["entries"]}
+        host, ghost = by_id[card], by_id[pid]
+        leader, outline = ghost["items"][-3], ghost["items"][-2]
+        self.assertEqual((leader["k"], outline["k"]), ("line", "rect"), "the leader to the host, then the outline")
+        self.assertGreaterEqual(outline["x"], host["bbox"][2], "the ghost's outline clears the host")
+        self.assertEqual(leader["points"][0][0], C._r2(host["bbox"][2]), "the leader starts at the host's right edge")
+        self.assertEqual(leader["points"][1][0], C._r2(outline["x"] + 6), "and ends at the ghost's left edge")
+        self.assertIn("body ", "; ".join(ghost["proposal"]["summary"]), "and the card says what the words become")
+
+    def test_a_ghost_that_moves_its_host_still_draws_where_the_change_lands(self):
+        box = self.ok({"op": "shape", "kind": "box", "text": "Pricing", "at": [0, 0]}, LEAD)["ids"][0]
+        pid = self.proposed({"op": "move", "id": box, "by": [0, 200], "intent": "t"})["proposal"]
+        ghost = {e["id"]: e for e in C.display(self.team)["entries"]}[pid]
+        self.assertEqual(ghost["items"][-2]["y"], 200 - 6, "the outline sits where the mark would land")
 
     def test_the_delta_redraws_a_proposal_whose_target_changed(self):
         box = self.ok({"op": "shape", "kind": "box", "text": "Pricing", "at": [0, 0]}, LEAD)["ids"][0]

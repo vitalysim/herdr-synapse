@@ -168,6 +168,24 @@ class Recipients(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertEqual(payload["to"], ["alpha-reviewer", "alpha-worker"])
 
+    def test_an_opening_mention_with_no_to_is_told_it_woke_everybody(self):
+        """QA phase 6 F6: ``post "@l6-drawer please draw ..."`` went to the whole team and nudged every member, and
+        both peers spent a real turn reading the board to decide the request was not theirs. ``@name`` targets in the
+        console; in a post ``--to`` is the selector, and the post now says so."""
+        with TempState() as ts:
+            code, payload, err = json_out(run_cli(["--json", "--team", "alpha", "post", "@alpha-worker please draw the flow"], ts.env))
+            self.assertEqual(code, 0)
+            self.assertEqual(payload["to"], ["all"])
+            self.assertIn("@alpha-worker in the text does not target anyone", err)
+            self.assertIn("--to alpha-worker", err)
+            # With --to there is nothing to warn about, and a mention that is not a member is left alone.
+            _code, _payload, err = json_out(run_cli(["--json", "--team", "alpha", "post", "@alpha-worker hi", "--to", "alpha-worker"], ts.env))
+            self.assertNotIn("does not target anyone", err)
+            _code, _payload, err = json_out(run_cli(["--json", "--team", "alpha", "post", "@someone-else hi"], ts.env))
+            self.assertNotIn("does not target anyone", err)
+            _code, _payload, err = json_out(run_cli(["--json", "--team", "alpha", "post", "ask @alpha-worker about it"], ts.env))
+            self.assertNotIn("does not target anyone", err, "only a post that opens with a mention reads as addressed")
+
     def test_kind_label_as_recipient_lists_roster(self):
         with TempState() as ts:
             code, payload, err = json_out(run_cli(["--json", "--team", "alpha", "post", "x", "--to", "codex"], ts.env))

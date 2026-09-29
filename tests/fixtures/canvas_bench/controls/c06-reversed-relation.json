@@ -1,0 +1,12 @@
+{
+  "id": "c06-reversed-relation",
+  "about": "Edges drawn the wrong way round.",
+  "expect_fail": ["relations", "reversed"],
+  "expect": {
+    "labels": ["Producer", "Broker", "Consumer"],
+    "relations": [["Producer", "Broker"], ["Broker", "Consumer"]]
+  },
+  "reference": [
+   {"op": "graph", "id": "g", "title": "Messaging", "direction": "right", "at": [0, 0], "intent": "messaging", "nodes": [{"id": "p", "text": "Producer"}, {"id": "b", "text": "Broker"}, {"id": "c", "text": "Consumer"}], "edges": ["b -> p", "c -> b"]}
+  ]
+}

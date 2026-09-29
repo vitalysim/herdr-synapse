@@ -228,6 +228,49 @@ are held from stopping while a directed post is unread, capped at three
 times per ten minutes. `herdr-synapse hooks uninstall claude` removes exactly
 those entries.
 
+## 9. The whiteboard (0.22, canvas v2)
+
+Use the sandbox or a disposable session. Every row of section 5g of
+`capabilities.md` has the details; this is the short guided run.
+
+1. **Turn it on for one team.** From your own shell: `herdr-synapse
+   whiteboard enable`, then `herdr-synapse --team demo whiteboard team on`.
+   Each member is told at its next idle that the canvas is on.
+2. **Open the page.** `prefix+a` (or `herdr-synapse whiteboard open`). The
+   Canvas tab opens on canvas v2: a light grey board with a tool bar (`V`
+   select, `N` sticky, `C` card, `S` section, `A` arrow ...) and a
+   **Classic canvas** chip in the top bar.
+3. **Ask for a drawing.** `@demo-worker draw our release process as a flow
+   graph with a note on the riskiest step, then run canvas check`. Expect the
+   drawing to arrive laid out in one piece, every label inside its box, and
+   the member to report a clean check (no `overlap`, `arrow_through` or
+   `label_overflow`). `herdr-synapse canvas look` in your shell reads the
+   graph back as the op that builds it.
+4. **Lead.** Draw a card yourself (`C`, click), then ask the member to change
+   its title. Your card does not change: a faint ghost with the member's name
+   appears on it. Click it, read the review card, and Accept or Reject.
+5. **Compare with the classic canvas.** Click **Classic canvas**: the
+   Excalidraw page of 0.21 loads (only now) with a one-line banner saying it
+   is kept for comparison. The same board is there, in the same theme, and
+   less of it: your flow graph, arrows, notes and text come through with
+   their labels, a card or a kanban card keeps its title and loses its body,
+   badges and counters, a chart is drawn from the Vega-Lite spec stored
+   beside it, and a table or a 3D scene is a captioned placeholder box.
+   Reload: it stays on the classic canvas. Click **Canvas v2** to go back.
+   `herdr-synapse whiteboard open --engine v1` opens the classic canvas
+   directly.
+6. **A board from 0.21.** If you have a team whose board was drawn with 0.21,
+   open it. Otherwise serve a recorded 0.21 board on its own throwaway server,
+   which touches nothing of yours: `python3 tools/canvas_rig.py v021-house
+   --writable` prints a one-use URL to open. Expect a banner: "This board was
+   drawn before canvas v2. N labels need resizing and M marks in the old sketch
+   style are now drawn clean." **Details** says what is drawn differently; **Fix sizes**
+   grows the old labels' boxes in one step and the banner goes; undoing that
+   batch (in a real session `canvas undo B-n`, the batch the result names) brings the old sizes
+   and the banner back. In a
+   real session your own `canvas look` shows the same as a `migration:` line,
+   and a member's does not.
+
 ## Known gaps
 
 - Claude Code, Codex and OpenCode are verified end to end. Other kinds

@@ -711,6 +711,14 @@ post "<text>" [--to <name>[,<name>…] | all | human | role:<r>] [--kind note|re
   a role with `--to role:<r>`. Directed posts nudge their recipients. A post
   to `all` from the human nudges every member (normal holds apply); from a
   member it is read at the next board read unless `--urgent`.
+- `@name` inside a post's text is prose, not a selector: only `--to` decides
+  who gets the post and who is nudged. A post that *opens* with a teammate's
+  `@name` and has no `--to` is told so once, because it reads like the
+  console's `@name text` (the warning names the member and the `--to` to use).
+  A mention anywhere later in the text (`post "please ask @alpha-worker to
+  redraw"`) is not warned about and still goes to the whole team: on the board
+  a mention in the middle of a sentence is just a way of writing a name. Only
+  a canvas comment's `@name` addresses anyone (`canvas comment`, section 9n).
 - `--interrupt` (implies `--urgent`) marks a post that could not wait. The
   notifier may type its nudge into the recipient's *running turn* when the
   recipient's kind is in `config.gate.interrupt_kinds` (default `claude`,
@@ -2132,12 +2140,14 @@ A change agents can see posts `whiteboard_state` (nothing while the layer is
 off). JSON `{"team","switch":{"team","layer","enabled","viz_enabled","on","viz"},"changed":["enabled"|"viz"],"notice_seq":<seq>|null,"by":"operator"|"delegate"}`.
 A member without a delegation is refused `author_mismatch`.
 
-### `whiteboard open [--no-browser]` / `whiteboard stop` (people only)
+### `whiteboard open [--no-browser] [--engine v1|v2]` / `whiteboard stop` (people only)
 
 `open` refuses `whiteboard_off` while the layer is off; members and hooks are
 refused `author_mismatch`. It starts the page server if none runs, mints a
 one-use opening ticket (120 s) and opens `http://127.0.0.1:<port>/?ticket=…`
-in the browser with Python's `webbrowser`. Over SSH (`SSH_CONNECTION`,
+in the browser with Python's `webbrowser`. `--engine v1` adds `&engine=v1`
+to that URL, which opens the classic Excalidraw canvas; no flag (or `--engine
+v2`) opens canvas v2, the page's default since 0.22. Over SSH (`SSH_CONNECTION`,
 `SSH_CLIENT` or `SSH_TTY` set), or when no browser opens, it prints the URL and
 `ssh -L <port>:127.0.0.1:<port> <user>@<host>` to run on the machine with the
 browser. JSON `{"url","port","pid","writable","started","browser":"opened"|"skipped"|"ssh"|"failed","ssh_hint":"…"|null,"ticket_ttl_s":120}`.
@@ -2209,6 +2219,7 @@ canvas changes [--since N|last]
 canvas resolve C-n
 canvas undo B-n [--force] | canvas undo --author NAME [--since N] [--force]
 canvas refit [--ids E-1,E-2]
+canvas migrate [--apply | --dismiss] [--json]  (anyone reads; the operator applies or dismisses)
 canvas withdraw P-n
 canvas checkpoint LABEL | canvas checkpoint --remove V-n
 canvas focus [REGION|ID] [--intent TEXT] [--status S] [--ttl SECONDS] | canvas focus --clear
@@ -2235,7 +2246,9 @@ names the point at a cell's top-left (`c17r6` = 340,120); a point is also
 `|x|,|y| ≤ 1,000,000`, sizes up to 20,000 (a laid-out block such as a graph up
 to 50,000). Each author gets a home region
 `[i*1000, -1000, i*1000+800, -400]` the first time it draws; an element with
-no placement goes to the next free slot there. Placement is one of `at`,
+no placement goes to the next free slot there. The operator's index is -1, so
+her lane sits immediately left of the first member's: since 0.22 she draws
+without coordinates like anyone else. Placement is one of `at`,
 `right_of`, `left_of`, `below`, `above` (with `gap`: `s` 20, `m` 40 (the
 default), `l` 80, or a number), `inside` a frame, or `in` a container (a
 section, a kanban column) to join its layout at `index` (phase 2; `in` with
@@ -2288,6 +2301,7 @@ post, and secrets or marker text refuse):
 | `settings` | `human_edits` (`propose`, the default, or `live`: agents' changes to the operator's marks apply, marked `touched_human`) and `frozen` (`propose`, the default, or `refuse`) | the operator in person |
 | `checkpoint` | save the elements as `V-n` (`label`; 3 named each, 30 for the operator, 10 automatic), or `remove` one | writer (remove: its author, the operator) |
 | `restore` | an automatic checkpoint of now, then the difference to `V-n` as one op (comments stay; claims, locks, freezes, proposals and settings are untouched); undo it like any batch | the operator in person |
+| `migrate` | a board drawn before 0.22 (0.22): `action: apply` refits every element the migration report lists and draws the marks in 0.21's sketch style clean, in one batch, then records the `migration` setting; `action: dismiss` records only the setting. `if_version` is not accepted; an `apply` with nothing to do is refused `op_invalid` | the operator in person |
 
 Writer: a verified member, the operator, or a delegate. Editor: the element's
 author, the manager for any agent's element, the operator for anything; the
@@ -2442,8 +2456,8 @@ element ids (and `--grid` cell labels) through `resvg` when it is installed, dra
 bundled Inter and Geist Mono at each label's stored lines
 (`image_error: "resvg_missing"` otherwise); `--theme dark` draws it in the
 dark theme (since canvas v2 phase 1 the picture is the display list, drawn
-with the same token palettes the page uses); `--exact` asks an open page for
-Excalidraw's own export (5 s, else the server render). JSON
+with the same token palettes the page uses); `--exact` asks an open writable page for
+its own picture of the board (either engine answers; 5 s, else the server render). JSON
 `{"team","version","reader","switch","region","region_cells","level","elements","elsewhere","clusters","omitted","since","changes","claims","locks","legend","comments_for_you","image","svg","image_error","exact","text"}`.
 `look --since last` and `changes` advance the reader's cursor. `look` ends
 with the layout problems in view (at most 8; `canvas check` lists them all).
@@ -2471,7 +2485,9 @@ a grouping), `text_on_label` (text lying on a labelled shape), `label_overflow`
 (a shape's or a text's label needs more room than it has at the size it is
 drawn, measured with the bundled fonts; since 0.22 shapes grow to fit, so this
 finds elements drawn before that), `label_truncated` (a clamped label shows
-only part of its text), `frame_edge` (a mark half inside a frame), `arrow_through` (an arrow
+only part of its text; for a table cell the fix is the smallest change that
+keeps it whole - more `max_lines` (up to 4), else a wider column (up to 600),
+else, with no fix, the number of characters the cell must be cut to), `frame_edge` (a mark half inside a frame), `arrow_through` (an arrow
 crossing a mark it does not connect), `route_loop` (an arrow whose route crosses
 itself or runs back through one of its own ends), `label_astray` (an arrow label
 placed so far beside its line that it reads as something else's) and `stray` (a
@@ -2493,6 +2509,57 @@ labelled arrow places its label again. Without `--ids` it takes every element
 the caller may edit (at most 500; elements in a lock are left as they are).
 The op is `{"op": "refit", "ids": [...]}`; `if_version` holds with ids. Its
 result carries `geometry` as `shape` does.
+
+**`migrate [--apply | --dismiss] [--json]`** (0.22) is the one-time move of a
+board drawn before canvas v2. Replaying the log loses nothing (0.21 stored no
+element type 0.22 cannot draw), but two things draw differently: a label
+measured with the bundled fonts may no longer fit the box 0.21 gave it, and
+0.21's sketch style - rough strokes (`rough`) and the hand font, which it drew
+with by default - is drawn clean. Without a flag it prints the report, which
+anyone may read:
+
+```json
+{"pending": true, "state": null, "pre_022": 3, "refit": ["E-4", "E-7", "E-9"], "overflow": ["E-9"], "sketch": ["E-12"],
+ "legacy_colour": 2, "unknown_hex": 1, "vega_lite": 1}
+```
+
+`pending` is true while the operator has neither applied nor dismissed it and
+there is something to do (a mark in the old sketch style, or an element drawn
+before 0.22 that `refit` would size); `state` is
+`{"action": "apply"|"dismiss", "seq", "by"}` once she has. `pre_022` counts
+labelled elements with no `fit` record; `refit` lists those whose kind can be
+measured (what `--apply` refits, at most 2,000), `overflow` the ones whose
+label no longer fits, and `sketch` the marks with `rough` above 0 or `font:
+hand`. `legacy_colour`, `unknown_hex` and `vega_lite` only inform: those draw
+as they are. An empty board, or one drawn only with 0.22, is never pending.
+
+`--apply` and `--dismiss` are the `migrate` op, refused `operator_only` for
+anyone but the operator in person, delegates included. `--apply` refits every
+id in `refit` in one batch (in `refit` steps of at most 500, grow only,
+neighbours pushed aside with `moved_to_fit`), sets `rough: 0` and `font:
+normal` on every `sketch` id, and records the setting once nothing is left;
+pins and freezes do not stop it, and comments follow their elements. A board
+with more than 2,000 marks to fix takes more than one `--apply`: each is its
+own undoable batch, the answer is recorded only by the last one, and until then
+the report stays pending and the result says how many are still to go. It
+answers `migrated: 14 refitted (6 grew, 2 moved to fit), 3 drawn clean (rough,
+hand font); undo B-12 to take it back`. Undoing that batch restores the elements and removes the setting,
+so the report is pending again. `--dismiss` records only the setting. While the
+report is pending, the operator's own `look` carries one line (and `--json` a
+`migration` object), members and delegates see nothing:
+
+```
+migration: drawn before canvas v2 · 14 labels need resizing · 3 marks in the old sketch style now drawn clean · herdr-synapse canvas migrate --apply (or --dismiss)
+```
+
+A board whose old labels all still fit, but were never sized by 0.22, says
+`N labels to size again` instead of `need resizing`. Because 0.21 drew every
+mark sketchy by default, the sketch count is usually every mark of a 0.21
+board; `--apply` therefore restyles the whole board, which one undo takes back.
+Growing labels can uncover a problem the old sizes hid, so run `canvas check`
+after it: the fix moves a mark it pushed onto a neighbour, but an arrow whose
+line is now short under its label (`label_astray`) and a mark that now reaches
+into a frame it does not belong to are left for you to place.
 
 Storage, per team under `whiteboard/`: `events.jsonl` (one event per applied
 op, the source of truth), `scene.json`, `cursors/`, `assets/`, `stills/`,
@@ -2592,7 +2659,8 @@ checks `Host` and `Origin`, every write a CSRF header; the page runs under a
 strict Content-Security-Policy with no remote loads. Agent `viz` code runs only
 in `<iframe sandbox="allow-scripts">` documents served from `/viz/<team>/<id>`
 with their own policy (`connect-src 'none'`); the vendored d3, three and p5 are
-served from `/viz-lib/`. The page itself (Excalidraw, Mermaid, Vega-Lite) is
+served from `/viz-lib/`. The page itself (canvas v2 with ECharts and three.js,
+Mermaid, Vega-Lite, and the classic Excalidraw canvas at `?engine=v1`) is
 prebuilt in `web/dist/` with its licences and a hash list, so nothing needs
 Node to run it. Tabs: Canvas, Team (the views above), Activity (watch cards),
 and Diagrams (every mermaid, chart, viz and svg element with its source).
@@ -2664,8 +2732,21 @@ them from then on; an element whose label no longer fits as stored is refitted
 by a `refit` op in the operator's name (intent "the page measured wider text").
 JSON `{"accepted","ignored":[{"i","why"}],"refit","batch","version"}`.
 
-The page opened with `?engine=v2` (and a ticket link with `&engine=v2`, whose
-redirect keeps it) is the display-list renderer; without it the Excalidraw page.
+The page opens on canvas v2, the display-list renderer (0.22). `?engine=v1`
+(and a ticket link with `&engine=v1`, whose redirect keeps it) opens the
+classic Excalidraw page, which is loaded only then; a top-bar chip switches
+between the two ("Classic canvas" on v2, "Canvas v2" on v1), and the page keeps
+the choice in the browser under `synapse-engine-v022` (the key earlier builds
+used, `synapse-engine`, is ignored and removed). A v2 page whose server has no
+`display` route falls back to v1 for that visit.
+
+While the team's migration report (see `canvas migrate`) is pending, the full
+`GET display` answer carries an optional `migration` object: the report
+without the id lists, plus `ids_total`. A delta carries it when it changes (the
+object, or `null` once applied or dismissed). A writable v2 page shows it as a
+banner with **Fix sizes** (the `migrate` op with `action: apply` through `POST
+ops`), **Details**, **Not now** (this visit only) and **Dismiss**; read-only
+pages and v1 show nothing.
 
 `POST presence` (canvas v2 phase 5, writable pages only) is the operator's page
 telling agents where she is: `{"page": "<16 hex>", "viewport": [x0,y0,x1,y1],

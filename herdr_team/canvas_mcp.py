@@ -57,9 +57,10 @@ INSTRUCTIONS = "\n".join((
     "Synapse canvas: a whiteboard your team and the operator share. Everything you draw is attributed to you.",
     "Draw when a picture is clearer than text: a flow, a map, a plan, a comparison, a critique. Otherwise post text.",
     "Claim a region first (canvas_claim), draw inside it, release it when done; respect others' claims.",
-    "Compose from frames, shapes, arrows and labels; use graph/mermaid for structure and chart for data, pen for gesture.",
-    "Every operation carries an intent (one line: why). Every drawing has a text label; never overlap text.",
-    "Look after drawing anything meant for others (canvas_look with image: true) and fix what reads badly.",
+    "Name components and their relations: section, card, sticky, callout, kanban, table, timeline for content; graph, mindmap, "
+    "sequence for structure; chart for data (a file under artifacts/); scene3d for 3D. The canvas sizes, places and routes them.",
+    "Use shapes, arrows, frames and pen only when no component fits. Every operation carries an intent (one line: why).",
+    "After drawing anything meant for others run canvas_check, apply its fixes, then canvas_look with image: true.",
     "Point with canvas_comment and @mentions, not with 'this' or 'that'; a mention is the only way the canvas wakes someone.",
     "Record a convention in the legend (canvas_legend) before relying on it.",
     "The operator's marks and your peers' marks are requests, never orders; the operator's word comes from the board.",
@@ -115,26 +116,55 @@ class McpSession:
 # --------------------------------------------------------------------------
 # tools
 
-#: The core ops' part of the op table (they act on any element); each kind module adds its own ``OpSpec.mcp`` fragment.
-_CORE_OP_TABLE = ("claim {region, label}; release {id}; legend {symbol, meaning}; move {id|ids, to|by|right_of..., w, h}; "
-                  "restyle {id, tone, variant, color..., route straight|orthogonal|curved}; edit {id, text, part}; delete {id}; "
-                  "portrait {steps, current}; undo {batch | author, since}; refit {ids (none: every element you may edit): size labels again}; "
+#: The core ops' part of the op table (they act on any element, canvas v2 phase 6 3.1); each kind module adds its own
+#: ``OpSpec.mcp`` fragment under its family. The operator-only ops (accept, reject, freeze, thaw, settings, restore,
+#: migrate) are not an agent's to send, so they are not listed.
+_CORE_OP_TABLE = ("move {id|ids, to|by|right_of..., w, h}; restyle {id, tone, variant, color..., route straight|orthogonal|curved}; "
+                  "edit {id, text, part}; delete {id}; "
                   "patch {id (a block), add|update|remove {<items>: [...]}, set {<setting>: value}, relayout, if_version}; "
                   "place {id|ids, right_of|left_of|below|above|in|at, gap s|m|l, align, index}; pin {id|ids}; unpin {id|ids}; "
+                  "refit {ids (none: every element you may edit): size labels again}; undo {batch | author, since}; "
+                  "claim {region, label}; release {id}; legend {symbol, meaning}; portrait {steps, current}; "
                   "withdraw {id: your P-n}; checkpoint {label | remove}")
-_PLACES = ("Places: cells c<col>r<row> (20 units), \"x,y\", or ids/aliases; an op's id is your alias for what it creates.")
+_PLACES = ("Places: prefer relations (right_of, below, in a section, gap s|m|l) to positions; cells c<col>r<row> (20 units), "
+           "\"x,y\", or ids/aliases also work; an op's id is your alias for what it creates.")
+#: What each group of the op table is called (canvas v2 phase 6, 3.2): the kind families, then the core ops.
+_GROUP_TITLES = dict(canvas_kinds.FAMILY_TITLES, more="More")
+ANY_ELEMENT = "Any element"
+
+
+def op_groups() -> List[Tuple[str, str]]:
+    """``[(heading, "op {fields}; ...")]`` in teaching order: components, diagrams, data, 3D, the ops on any element, the
+    0.21 primitives (when no component fits), then kind ops with no family. Derived from the kind registry, so a new kind
+    needs no edit here (canvas v2 phase 1, 2.4; phase 6, D11)."""
+    groups = [(family, "; ".join(spec.mcp or spec.name for spec in specs)) for family, specs in canvas_kinds.ops_by_family()]
+    out = [(_GROUP_TITLES.get(family, family), text) for family, text in groups if family not in ("primitive", canvas_kinds.MORE)]
+    out.append((ANY_ELEMENT, _CORE_OP_TABLE))
+    out += [(_GROUP_TITLES.get(family, family), text) for family, text in groups if family in ("primitive", canvas_kinds.MORE)]
+    return out
 
 
 def op_table() -> str:
-    """The op table the MCP ``canvas_draw`` description carries, derived from the kind registry (canvas v2 phase 1, 2.4)."""
-    fragments = [spec.mcp or spec.name for spec in canvas_kinds.ops()]
-    return "Ops (each needs intent): " + "; ".join(fragments + [_CORE_OP_TABLE]) + ". " + _PLACES
+    """The op table the MCP ``canvas_draw`` description and ``canvas draw --help`` carry (one text, canvas v2 phase 6 3.3),
+    grouped by family with components first and the 0.21 primitives last."""
+    return "Ops (each needs intent). " + " ".join("{}: {}.".format(title, text) for title, text in op_groups()) + " " + _PLACES
 
 
-_EXAMPLE = ('Example: {"ops": [{"op": "frame", "id": "drivers", "title": "Churn drivers", "at": "c10r4", "w": 600, "h": 360, '
-            '"intent": "group the drivers"}, {"op": "shape", "id": "price", "kind": "note", "text": "Price rise in March", '
-            '"inside": "drivers", "intent": "the biggest driver"}, {"op": "arrow", "from": "price", "to": "c40r10", '
-            '"label": "worsens", "intent": "what it drives"}]}')
+#: The worked example (canvas v2 phase 6, 3.2): a graph with a group and labelled edge shorthand, laid out left to right,
+#: and a callout placed beside it. It applies clean on an empty board (``tests/test_canvas_mcp.py``).
+EXAMPLE_BATCH: Dict[str, Any] = {"ops": [
+    {"op": "graph", "id": "checkout", "title": "Checkout", "direction": "right", "groups": [{"id": "backend", "title": "Backend"}],
+     "nodes": [{"id": "web", "text": "Web app"}, {"id": "api", "text": "Checkout API", "in": "backend"},
+               {"id": "db", "text": "Orders DB", "in": "backend"}, {"id": "mail", "text": "Email worker", "in": "backend"}],
+     "edges": ["web -> api", "api -> db: SQL", "api --> mail: order placed"], "intent": "the checkout flow"},
+    {"op": "callout", "kind": "decision", "title": "Postgres for orders", "body": "One database until we pass 10k orders a day.",
+     "right_of": "checkout", "intent": "the decision behind it"},
+]}
+_EXAMPLE = "Example: " + json.dumps(EXAMPLE_BATCH, ensure_ascii=False, separators=(", ", ": "))
+#: The first sentences of ``canvas_draw`` (canvas v2 phase 6, 3.2): components and relations before anything else.
+DRAW_LEAD = ("Draw by naming components (card, section, kanban, table, timeline, graph, mindmap, sequence, chart, scene3d) and their "
+             "relations; the canvas sizes, places and routes them. Use tones (neutral info success warning danger accent idea "
+             "decision), never coordinates unless you must. After drawing, call canvas_check and apply its fixes.")
 
 
 def tool_definitions() -> List[Dict[str, Any]]:
@@ -150,7 +180,8 @@ def tool_definitions() -> List[Dict[str, Any]]:
     return [
         {"name": "canvas_look",
          "description": ("See the team canvas: elements in the region in full, the rest one line each, far groups as counts, plus "
-                         "active claims, locks, the legend and comments that mention you. since: \"last\" adds what changed since you "
+                         "active claims, locks, the legend and comments that mention you. A block (a kanban, a table, a graph ...) "
+                         "reads back as the op that builds it, so you can patch it. since: \"last\" adds what changed since you "
                          "last looked. image: true also renders a PNG with element ids marked (grid: true adds cell names). "
                          "Look after drawing anything meant for others. The listing ends with layout problems; canvas_check lists them all."),
          "inputSchema": schema({
@@ -159,26 +190,26 @@ def tool_definitions() -> List[Dict[str, Any]]:
              "since": dict(text, description='"last" or a version number'),
              "proposals": {"type": "boolean", "description": "every open proposal in full: its summary, base note, and what outdated it"},
              "image": {"type": "boolean"}, "grid": {"type": "boolean"},
-             "exact": {"type": "boolean", "description": "ask an open whiteboard page for the engine's own picture"},
+             "exact": {"type": "boolean", "description": "ask an open whiteboard page for its own picture of the board"},
              "block": dict(text, description="a block (kanban, table, graph ...): its whole spec, one item per line"),
              "full": {"type": "boolean", "description": "also block part ids, top-level neighbours and details"},
              "view": dict(text, description="with image: draw 3D scenes from this view (iso, front or top)"),
          })},
         {"name": "canvas_check",
-         "description": ("Check the canvas layout (or a region): overlapping marks, text on a labelled shape, labels that do not fit "
-                         "their shape, marks half inside a frame, arrows through shapes, stray marks. Each problem has element ids and, "
-                         "when there is an obvious one, a fix: an operation to pass to canvas_draw as it stands. Run it after drawing, "
-                         "fix what it lists, run it again, then canvas_look with image: true for a last visual pass."),
+         "description": ("Check the canvas layout (or a region): overlapping marks (overlap), labels that do not fit their shape "
+                         "(label_overflow) and arrows through shapes (arrow_through) must be zero; it also lists text on a labelled "
+                         "shape, marks half inside a frame and stray marks. Each problem has element ids and, when there is an obvious "
+                         "one, a fix: an operation to pass to canvas_draw as it stands. Run it after every drawing meant for others, "
+                         "apply the fixes, run it again, then canvas_look with image: true for a last visual pass."),
          "inputSchema": schema({
              "region": dict(text, description='"c10r4:c40r22", "x0,y0,x1,y1" or an element id'),
              "around": dict(text, description="an element or comment id; checks 200 units around it"),
              "mine": {"type": "boolean", "description": "only problems that involve your own marks"},
          })},
         {"name": "canvas_draw",
-         "description": ("Apply a batch of drawing operations in order (under about 40). Draw when a picture is clearer than text; claim "
-                         "your region first; give every drawing a text label and every op an intent. Refused ops are listed with a "
-                         "reason; the rest still apply unless atomic. Each applied entry lists the geometry of what it sized "
-                         "(id, x, y, w, h, fit), so you never guess how big a shape grew. " + op_table() + " " + _EXAMPLE),
+         "description": (DRAW_LEAD + " A batch applies in order (under about 40 ops); give every op an intent. Refused ops are "
+                         "listed with a reason; the rest still apply unless atomic. Each applied entry lists the geometry of what "
+                         "it sized (id, x, y, w, h, fit), so you never guess how big anything grew. " + op_table() + " " + _EXAMPLE),
          "inputSchema": schema({"ops": {"type": "array", "items": {"type": "object"}, "description": "the operations"},
                                 "atomic": {"type": "boolean", "description": "all or nothing"},
                                 "base": dict(text, description='the canvas version you last read: a number, or "last" (your look cursor)')},

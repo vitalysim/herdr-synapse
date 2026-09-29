@@ -61,6 +61,32 @@ class Table(CanvasRig):
         self.ok(problem["fix"])
         self.assertEqual(self.table()["settings"]["max_lines"], 2)
 
+    def test_every_remedy_check_names_for_a_clamped_cell_is_reachable(self):
+        """QA phase 6 F1: check used to advise "raise max_lines or widen the column" for a cell no `max_lines` (capped
+        at 4) and no column width could hold, so a live agent applied its fix twice, was refused a third time and left
+        the board reporting a problem for ever. Each rung is now measured before it is named."""
+        long_cell = "word " * 32  # 160 characters: four lines of the default column still clamp it
+        self.ok(dict(RISKS, max_lines=4, rows=[[long_cell.strip(), "x", "High"]]))
+        problem = next(p for p in C.check(self.layout, self.team, "alpha-worker")["problems"] if p["code"] == "label_truncated")
+        self.assertIn("widen Risk to ", problem["message"])
+        self.assertEqual(problem["fix"]["op"], "patch")
+        [column] = problem["fix"]["update"]["columns"]
+        self.assertEqual(column["id"], "c1")
+        self.assertLessEqual(column["width"], 600, "a column takes width 80 to 600")
+        self.ok(problem["fix"])
+        self.assertEqual([p["code"] for p in C.check(self.layout, self.team, "alpha-worker")["problems"]
+                          if p["code"] == "label_truncated"], [], "one fix, and the cell is whole")
+
+    def test_a_cell_no_width_can_hold_is_told_to_be_shortened_and_offers_no_fix(self):
+        """The rung of last resort: check says how many characters fit and does not pretend an op can do it, because
+        only the cell's author can choose which words to drop."""
+        wide = "需要注意的事项" * 28  # 196 characters, each as wide as it is tall: 4 lines of 600 still clamp it
+        self.ok(dict(RISKS, max_lines=2, rows=[[wide, "x", "High"]]))
+        problem = next(p for p in C.check(self.layout, self.team, "alpha-worker")["problems"] if p["code"] == "label_truncated")
+        self.assertIsNone(problem["fix"])
+        self.assertIn("no column width and no max_lines holds it", problem["message"])
+        self.assertRegex(problem["message"], r"shorten r1\.c1 to about \d+ characters")
+
     def test_limits(self):
         refused = self.refused(dict(RISKS, columns=["c"] * 17, rows=[]))
         self.assertEqual(refused["code"], "canvas_limit")

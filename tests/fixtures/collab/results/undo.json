@@ -53,7 +53,7 @@
     "E-3"
    ],
    "index": 0,
-   "message": "1 of 2 reverted; E-3 edited by the operator later (v17): force it with \"force\": true (the operator)"
+   "message": "1 of 2 reverted; E-3 edited by you later (v17): undo B-14 first, or force it with \"force\": true"
   }
  ]
 }

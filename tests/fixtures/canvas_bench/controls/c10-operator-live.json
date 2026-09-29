@@ -1,0 +1,15 @@
+{
+  "id": "c10-operator-live",
+  "about": "The operator's card edited live (her setting says live) when a proposal was expected.",
+  "prompt": "30-edit-operator",
+  "expect_fail": ["proposal", "absent"],
+  "seed": {"as": "operator", "ops": [
+   {"op": "section", "id": "q4", "title": "Q4 marketing plan", "layout": "row", "at": [0, 0], "intent": "the operator's plan"},
+   {"op": "card", "id": "budget", "in": "q4", "title": "Budget: $40k", "body": "Paid ads, events and content", "intent": "the budget"},
+   {"op": "card", "id": "owner", "in": "q4", "title": "Owner: Maya", "body": "Signs off every spend over $5k", "intent": "who owns it"},
+   {"op": "settings", "human_edits": "live", "intent": "agents may edit my marks"}
+  ]},
+  "reference": [
+   {"op": "edit", "id": "budget", "text": "Budget: $45k", "intent": "raise the budget to $45k"}
+  ]
+}

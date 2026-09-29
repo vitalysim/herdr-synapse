@@ -1,0 +1,20 @@
+{
+  "id": "26-edit-add-node",
+  "category": "edit",
+  "audience": "dev",
+  "live": true,
+  "prompt": "In the checkout flow, add a fraud check step between the checkout API and the payment decision.",
+  "seed": {"as": "member", "from": "01-flow-checkout"},
+  "expect": {
+    "kinds_any": ["graph"],
+    "labels": ["Shopper", "Cart", "Checkout API", "Payment approved", "Orders database", "Confirmation email", "Retry payment", "Core services", "Fraud check"],
+    "relations": [["Shopper", "Cart"], ["Cart", "Checkout API"], ["Payment approved", "Orders database"], ["Orders database", "Confirmation email"], ["Payment approved", "Retry payment"], ["Retry payment", "Cart"], ["Core services", "Checkout API", "contains"], ["Core services", "Payment approved", "contains"], ["Core services", "Orders database", "contains"], ["Checkout API", "Fraud check"], ["Fraud check", "Payment approved"]],
+    "gone_relations": [["Checkout API", "Payment approved"]],
+    "stable": true,
+    "changes": ["Checkout flow", "Core services", "Shopper", "Cart", "Checkout API"]
+  },
+  "reference": [
+   {"op": "patch", "id": "checkout", "intent": "add a fraud check", "add": {"nodes": [{"id": "fraud", "text": "Fraud check", "icon": "shield-alert", "in": "core"}], "edges": ["api -> fraud", "fraud -> ok"]}, "remove": {"edges": ["api -> ok"]}}
+  ],
+  "notes": "The layered layout makes room for the new rank by shifting what comes before it (the graph grows to the left); the decision and everything after it must stay put."
+}

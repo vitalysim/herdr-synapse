@@ -1,0 +1,16 @@
+{
+  "id": "19-chart-json",
+  "category": "chart",
+  "audience": "dev",
+  "live": false,
+  "prompt": "Using traffic.json in the team's artifacts, draw daily active users per day as a line titled Daily active users, and highlight the peak day.",
+  "artifacts": ["traffic.json"],
+  "expect": {
+    "kinds_any": ["chart"],
+    "labels": ["Daily active users"],
+    "chart": {"type_any": ["line", "area"], "fields": ["day", "users"]}
+  },
+  "reference": [
+   {"op": "chart", "id": "dau", "title": "Daily active users", "type": "line", "data": "traffic.json", "x": "day", "y": "users", "annotations": [{"x": "2026-09-10", "text": "peak 2,915"}], "at": [0, 0], "intent": "daily active users"}
+  ]
+}

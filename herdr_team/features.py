@@ -240,7 +240,7 @@ def require_viz(session: SessionPaths, team: TeamPaths, doc: Optional[Dict[str, 
     if not switch.viz:
         raise HerdrTeamError(
             "viz_off",
-            "live visuals (viz) are off for team {}; draw with shapes, svg, graph or chart instead, or ask the operator: {} --team {} whiteboard viz on".format(team.name, CLI, team.name),
+            "live visuals (viz) are off for team {}; draw with components, a graph or a chart instead, or ask the operator: {} --team {} whiteboard viz on".format(team.name, CLI, team.name),
             EXIT_REFUSED, {"scope": "viz", "team": team.name},
         )
     return switch
@@ -263,7 +263,9 @@ def status(session: SessionPaths, teams: Optional[Iterable[str]] = None) -> Dict
 
 
 def me_line(switch: TeamSwitch, version: Optional[int] = None) -> str:
-    """The one line ``me``, ``orient`` and the briefing show about the whiteboard."""
+    """The one line ``me``, ``orient`` and the briefing show about the whiteboard. It points at the canvas guides
+    (``skill get --reference canvas``), which teach canvas v2 first: components, relations, tones and ``canvas check``,
+    then the 0.21 primitives (canvas v2 phase 6, 3.4)."""
     if not switch.layer:
         return "whiteboard: off"
     if not switch.enabled:

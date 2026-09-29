@@ -1,0 +1,15 @@
+{
+  "id": "17-chart-inline",
+  "category": "chart",
+  "audience": "dev",
+  "live": false,
+  "prompt": "Chart our monthly signups as bars titled Signups per month: 1,200 in June, 1,450 in July, 1,700 in August and 2,100 in September.",
+  "expect": {
+    "kinds_any": ["chart"],
+    "labels": ["Signups per month"],
+    "chart": {"type_any": ["bar", "column", "line"], "fields": []}
+  },
+  "reference": [
+   {"op": "chart", "id": "signups", "title": "Signups per month", "type": "bar", "at": [0, 0], "intent": "signup growth", "rows": [{"month": "June", "signups": 1200}, {"month": "July", "signups": 1450}, {"month": "August", "signups": 1700}, {"month": "September", "signups": 2100}], "x": "month", "y": "signups", "types": {"month": "ordinal"}}
+  ]
+}

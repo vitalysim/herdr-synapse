@@ -168,3 +168,46 @@
   caret-color: var(--selection);
   z-index: 2;
 }
+
+/* The canvas v2 migration notice (canvas-v2-phase6.md 2.4, migrate/MigrationBanner.jsx): its JS is a lazy chunk; these few
+   rules ride with the board's styles so the chunk needs no stylesheet of its own. */
+
+.cv2-migrate {
+  position: absolute;
+  top: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(760px, calc(100% - 360px));
+  padding: 8px 12px;
+  background: var(--accent-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+  font-size: 14px;
+  z-index: 6;
+}
+
+.cv2-migrate-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.cv2-migrate-text {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.cv2-migrate-details {
+  margin: 8px 0 0;
+  padding-left: 1.2em;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+@media (max-width: 900px) {
+  .cv2-migrate {
+    max-width: calc(100% - 24px);
+  }
+}

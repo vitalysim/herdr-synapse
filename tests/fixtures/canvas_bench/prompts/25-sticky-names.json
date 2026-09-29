@@ -1,0 +1,21 @@
+{
+  "id": "25-sticky-names",
+  "category": "sticky",
+  "audience": "nondev",
+  "live": false,
+  "prompt": "Brainstorm six product names on sticky notes: Brewly, Grindhouse, Bean There, Morning Ritual, Crema Club and Daily Grind. Mark Crema Club as our favourite, the decision.",
+  "expect": {
+    "kinds_any": ["sticky"],
+    "labels": ["Brewly", "Grindhouse", "Bean There", "Morning Ritual", "Crema Club", "Daily Grind"],
+    "tones": {"Crema Club": "decision"}
+  },
+  "reference": [
+   {"op": "section", "id": "names", "title": "Product names", "layout": "grid", "cols": 3, "at": [0, 0], "intent": "name brainstorm"},
+   {"op": "sticky", "in": "names", "text": "Brewly", "intent": "name brainstorm"},
+   {"op": "sticky", "in": "names", "text": "Grindhouse", "intent": "name brainstorm"},
+   {"op": "sticky", "in": "names", "text": "Bean There", "intent": "name brainstorm"},
+   {"op": "sticky", "in": "names", "text": "Morning Ritual", "intent": "name brainstorm"},
+   {"op": "sticky", "in": "names", "text": "Crema Club", "tone": "decision", "intent": "our favourite"},
+   {"op": "sticky", "in": "names", "text": "Daily Grind", "intent": "name brainstorm"}
+  ]
+}

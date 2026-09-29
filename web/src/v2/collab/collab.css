@@ -79,14 +79,22 @@
   text-overflow: ellipsis;
 }
 
+/* no clear place for the whole pill: its chip alone (QA phase 5 L10) */
+.cv2-halo-pill-compact {
+  padding: 0 1px;
+}
+
 .cv2-operator-label {
   position: absolute;
-  padding: 1px 5px;
+  box-sizing: border-box;
+  height: 16px;
+  padding: 0 5px;
+  white-space: nowrap;
   border-radius: 4px;
   /* see-through, so the text under her cursor still reads (QA phase 5 L10) */
   background: color-mix(in srgb, var(--panel) 55%, transparent);
   color: var(--muted);
-  font: 500 10px/1.4 var(--font-sans);
+  font: 500 10px/14px var(--font-sans);
   border: 1px solid var(--line);
 }
 

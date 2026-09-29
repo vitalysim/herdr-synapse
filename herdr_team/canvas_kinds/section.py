@@ -241,7 +241,7 @@ def create(ctx: Any, op: Dict[str, Any]) -> None:
 
 OPS = (
     # ``gap`` is both the stack's gap and, with right_of/below..., the distance from the reference (it is a placement field).
-    OpSpec(name="section", fields=("title", "layout", "cols", "padding", "align", "grid", "children", "region", "w", "h", "tone", "variant",
+    OpSpec(name="section", family="block", fields=("title", "layout", "cols", "padding", "align", "grid", "children", "region", "w", "h", "tone", "variant",
                                    "id", "client_id"),
            create=create, place=True, order=35,
            doc="a titled zone that lays out what is put in it: a row, column or grid, or free (with a local grid)",

@@ -5,21 +5,30 @@ It builds a temporary state root with one team (``tools/canvas_qa.QaTeam``: the
 real HOME, socket and state are never touched), applies a scene, serves the
 page on loopback and prints one JSON line::
 
-    {"url": "http://127.0.0.1:PORT/?ticket=...&engine=v2", "team": "qa", "port": PORT, "dir": "..."}
+    {"url": "http://127.0.0.1:PORT/?ticket=...", "team": "qa", "port": PORT, "dir": "..."}
 
 The URL opens the page once (a one-use ticket, like ``whiteboard open``). The
 server runs until ``--seconds`` pass or stdin closes, then writes
 ``<out>/events.jsonl`` and ``<out>/scene.json`` (what the page did, for the test
 to assert on) and removes the temporary state.
 
-    python3 tools/canvas_rig.py house --engine v2 --writable --seconds 180 --out /tmp/rig
-    python3 tools/canvas_rig.py empty --engine v2 --writable
-    python3 tools/canvas_rig.py synthetic-2000 --engine v2          # 2,000 boxes, for the page's frame budget
+    python3 tools/canvas_rig.py house --writable --seconds 180 --out /tmp/rig
+    python3 tools/canvas_rig.py empty --writable
+    python3 tools/canvas_rig.py house --engine v1                   # the classic Excalidraw page
+    python3 tools/canvas_rig.py synthetic-2000                      # 2,000 boxes, for the page's frame budget
+    python3 tools/canvas_rig.py v021-house --writable               # a board 0.21.2 drew: the migration banner
 
 A scene is a golden scene name (``tests/fixtures/canvas_scenes``), a scene file,
-``empty``, or ``synthetic-<n>`` (n boxes with short labels on a grid, drawn by
-the operator so no rate limit applies). ``--writable`` opens the page as the
-operator in person (it may draw); without it the page is read-only.
+``empty``, ``synthetic-<n>`` (n boxes with short labels on a grid, drawn by
+the operator so no rate limit applies), or ``v021-<name>``: a golden 0.21 board
+(``tests/fixtures/migration/v021/<name>/``) whose ``events.jsonl`` (and stored
+assets) are copied into the team's canvas folder as they are, no op applied
+(canvas v2 phase 6, 1.5). ``--writable`` opens the page as the operator in
+person (it may draw); without it the page is read-only.
+
+The page opens on its default engine, canvas v2 (phase 6); ``--engine v1`` or
+``--engine v2`` puts that choice in the URL (``&engine=``), which wins over a
+choice stored in the browser.
 
 While it serves, the rig reads commands on stdin, one JSON object per line, and
 answers each with one JSON line on stdout (canvas v2 phase 5, I-9), so a test can
@@ -30,6 +39,7 @@ operator grant) or ``lead`` (the operator in person over the CLI path)::
     {"as": "drawer", "ops": [...], "base": 12}        -> {"result": <apply result>}
     {"as": "peer", "focus": {"region": "c0r0:c20r10", "intent": "...", "status": "drawing", "ttl_s": 60}}  -> {"ok": true}
     {"as": "drawer", "look": {"region": "operator", "since": "last", "proposals": true}}  -> {"look": <look JSON>}
+    {"as": "lead", "check": {}}                        -> {"check": <check JSON>}
     {"settings": {"human_edits": "live"}}              -> {"result": <apply result>}   (as the lead)
     {"human": {"page": "0123456789abcdef", "viewport": [0, 0, 800, 600], "selection": ["E-1"]}}  -> {"ok": true}
 
@@ -57,6 +67,8 @@ import canvas_qa as Q  # noqa: E402  (it puts the checkout on sys.path)
 from herdr_team import canvas as C  # noqa: E402
 
 SYNTHETIC_RE = re.compile(r"^synthetic-([1-9][0-9]{0,4})\Z")
+V021_RE = re.compile(r"^v021-([a-z0-9][a-z0-9-]{0,63})\Z")
+V021_DIR = Q.REPO / "tests" / "fixtures" / "migration" / "v021"
 #: Boxes per row of a synthetic board and the grid they sit on.
 SYNTHETIC_COLUMNS = 50
 SYNTHETIC_STEP = (200, 120)
@@ -76,6 +88,10 @@ def build(qa: Q.QaTeam, scene: str) -> None:
     """Apply ``scene`` to the rig's team: nothing, a synthetic board, or a golden scene as its member."""
     if scene == "empty":
         return
+    old = V021_RE.match(scene)
+    if old:
+        load_v021(qa, old.group(1))
+        return
     found = SYNTHETIC_RE.match(scene)
     if found:
         operator = C.page_author(True)
@@ -88,6 +104,32 @@ def build(qa: Q.QaTeam, scene: str) -> None:
     if result["refused"]:
         raise SystemExit("scene {}: {} op(s) refused: {}".format(scene, len(result["refused"]), result["refused"][:3]))
     Q.apply_presence(qa, doc)
+
+
+def load_v021(qa: Q.QaTeam, name: str) -> None:
+    """Put a golden 0.21 board's log (and its stored assets) in the team's canvas folder, as 0.21.2 wrote it."""
+    import shutil
+
+    source = V021_DIR / name
+    if not (source / "events.jsonl").is_file():
+        raise ValueError("no golden 0.21 board {} (tests/fixtures/migration/v021)".format(name))
+    folder = C._dir(qa.team)
+    folder.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(os.fspath(source / "events.jsonl"), os.fspath(folder / C.EVENTS_FILE))
+    if (source / "assets").is_dir():
+        shutil.copytree(os.fspath(source / "assets"), os.fspath(folder / C.ASSETS_DIR), dirs_exist_ok=True)
+    if (source / "artifacts").is_dir():
+        # The files the board's chart reads, in the team's artifacts folder (like a scene's ``artifacts``).
+        from herdr_team import store, workdir
+
+        project = qa.tmp / "project"
+        project.mkdir(exist_ok=True)
+        doc = store.read_json(qa.team.team_json)
+        doc.setdefault("config", {})["project_dir"] = os.fspath(project)
+        store.write_json(qa.team.team_json, doc)
+        art = Path(workdir.paths_for(os.fspath(project), Q.TEAM)["artifacts"])
+        art.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(os.fspath(source / "artifacts"), os.fspath(art), dirs_exist_ok=True)
 
 
 def command(qa: Q.QaTeam, message: Any) -> Dict[str, Any]:
@@ -121,7 +163,10 @@ def command(qa: Q.QaTeam, message: Any) -> Dict[str, Any]:
             found = C.look(qa.layout, qa.team, author.name, region=look.get("region"), since=look.get("since"),
                            proposals=bool(look.get("proposals")), author=author, advance=bool(look.get("advance", True)))
             return {"look": found}
-        return {"error": {"code": "usage", "message": "a command has ops, focus, look, settings or human"}}
+        if "check" in message:
+            check = message["check"] or {}
+            return {"check": C.check(qa.layout, qa.team, author.name, region=check.get("region"))}
+        return {"error": {"code": "usage", "message": "a command has ops, focus, look, check, settings or human"}}
     except HerdrTeamError as err:
         return {"error": err.to_json()}
     except (KeyError, TypeError, ValueError) as err:
@@ -183,8 +228,8 @@ def serve(qa: Q.QaTeam, engine: str, writable: bool, seconds: float, out: Path, 
 
 def main(argv: List[str]) -> int:
     parser = argparse.ArgumentParser(prog="canvas_rig.py", description="Serve a throwaway whiteboard page for interaction tests.")
-    parser.add_argument("scene", nargs="?", default="empty", help="a golden scene name or file, empty, or synthetic-<n>")
-    parser.add_argument("--engine", choices=("v1", "v2"), help="open the page with ?engine=")
+    parser.add_argument("scene", nargs="?", default="empty", help="a golden scene name or file, empty, synthetic-<n>, or v021-<name>")
+    parser.add_argument("--engine", choices=("v1", "v2"), help="put ?engine= in the URL (default: none, the page's default, v2)")
     parser.add_argument("--writable", action="store_true", help="open the page as the operator in person (it may draw)")
     parser.add_argument("--seconds", type=float, default=120.0, help="serve this long at most (default 120)")
     parser.add_argument("--out", help="where events.jsonl and scene.json go (default: a new folder under the system temp dir)")

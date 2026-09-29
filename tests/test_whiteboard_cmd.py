@@ -227,6 +227,22 @@ class OpenStopTests(Rig):
         self.assertIn("works once", out)
         self.assertEqual(self.browser.call_count, 1)
 
+    def test_open_takes_the_engine_and_the_default_is_the_pages(self):
+        """Canvas v2 phase 6, 1.4: no --engine leaves the URL without one (the page opens v2); --engine v1 opens the classic
+        canvas; an engine asked for is carried by the one-use link (the ticket's redirect keeps it)."""
+        features.set_layer(self.ts.session, True, "human", "cli")
+        payload = self.ok(self.human("whiteboard", "open", "--no-browser"))
+        self.assertNotIn("engine=", payload["url"])
+        payload = self.ok(self.human("whiteboard", "open", "--no-browser", "--engine", "v1"))
+        self.assertEqual(payload["url"], STARTED["url"] + ("&" if "?" in STARTED["url"] else "?") + "engine=v1")
+        payload = self.ok(self.human("whiteboard", "open", "--engine", "v2"))
+        self.assertTrue(payload["url"].endswith("engine=v2"))
+        self.browser.assert_called_with(payload["url"])
+        self.assertEqual(cmd_whiteboard.with_engine("http://127.0.0.1:9/?ticket=abc", None), "http://127.0.0.1:9/?ticket=abc")
+        self.assertEqual(cmd_whiteboard.with_engine("http://127.0.0.1:9/?ticket=abc", "v1"), "http://127.0.0.1:9/?ticket=abc&engine=v1")
+        code, _out, _err = run_cli(["whiteboard", "open", "--engine", "v3"], env_no_daemon(self.ts), self.api)
+        self.assertEqual(code, 2)
+
     def test_members_and_hooks_cannot_open_or_stop_it(self):
         features.set_layer(self.ts.session, True, "human", "cli")
         self.refused(self.worker("whiteboard", "open"), "author_mismatch")
@@ -415,9 +431,37 @@ class KeysManifestSetupTests(unittest.TestCase):
         self.assertEqual(cmd_whiteboard.POPUP_ENTRYPOINT, "whiteboard")
         from herdr_team import VERSION, SKILL_VERSION
 
-        self.assertEqual(VERSION, "0.21.2")
+        self.assertEqual(VERSION, "0.22.0")
         self.assertEqual(SKILL_VERSION, 12)
-        self.assertIn('version = "0.21.2"', text)
+        self.assertIn('version = "0.22.0"', text)
+
+    def test_the_page_carries_the_same_version(self):
+        """Every version file of canvas-v2-phase6.md 4 in one assertion: a bump that forgets the page (or forgets to
+        rebuild the committed ``web/dist``) fails here instead of shipping a page that names the old release."""
+        from herdr_team import VERSION
+
+        web = PLUGIN_ROOT / "web"
+        self.assertEqual(json.loads((web / "package.json").read_text(encoding="utf-8"))["version"], VERSION)
+        lock = json.loads((web / "package-lock.json").read_text(encoding="utf-8"))
+        self.assertEqual(lock["version"], VERSION, "web/package-lock.json")
+        self.assertEqual(lock["packages"][""]["version"], VERSION, 'web/package-lock.json packages[""]')
+        manifest = web / "dist" / "MANIFEST.json"
+        if manifest.exists():  # a checkout without the built page still runs the suite
+            self.assertEqual(json.loads(manifest.read_text(encoding="utf-8"))["version"], VERSION,
+                             "web/dist is built from an older version; cd web && npm run build")
+
+    def test_every_other_version_file_carries_the_same_version(self):
+        """QA phase 6, 4.4: the page files were tied to ``herdr_team.VERSION`` but the plugin manifest and the
+        README's status line were only spelled out, so a bump that forgot one of them passed every gate. Every file
+        that names the version is read from the one constant here."""
+        from herdr_team import SKILL_VERSION, VERSION
+
+        manifest = (PLUGIN_ROOT / "herdr-plugin.toml").read_text(encoding="utf-8")
+        found = re.search(r'^version = "([^"]+)"', manifest, re.M)
+        self.assertEqual(found and found.group(1), VERSION, "herdr-plugin.toml names another version")
+        readme = (PLUGIN_ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("Current source version: {}, skill v{}.".format(VERSION, SKILL_VERSION), readme,
+                      "README.md's Status line names another version or skill")
 
     def test_the_sidebar_snippet_has_a_doing_row(self):
         self.assertIn('[{ token = "$team_doing", fg = "#a6e3a1" }],', cmd_misc.SIDEBAR_SNIPPET)

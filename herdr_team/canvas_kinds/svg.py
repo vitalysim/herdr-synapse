@@ -44,7 +44,7 @@ def create(ctx: Any, op: Dict[str, Any]) -> None:
 
 
 OPS = (
-    OpSpec(name="svg", fields=("svg", "w", "h", "sketchy", "title", "id", "client_id"), create=create, place=True, order=60,
+    OpSpec(name="svg", family="primitive", fields=("svg", "w", "h", "sketchy", "title", "id", "client_id"), create=create, place=True, order=60,
            doc="a sanitised SVG block, stored and drawn as an image", mcp="svg {svg}"),
 )
 

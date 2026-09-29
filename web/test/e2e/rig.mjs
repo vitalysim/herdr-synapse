@@ -29,8 +29,11 @@ export function rigAvailable() {
   return fs.existsSync(RIG);
 }
 
-export async function startRig(scene, { writable = true, seconds = 180, out, python = process.env.PYTHON || "python3" } = {}) {
-  const args = [RIG, scene, "--engine", "v2", "--seconds", String(seconds)];
+// `engine`: "v2" (the default here) or "v1" puts ?engine= in the page URL; null leaves it out, so the page
+// opens its own default (canvas v2 since phase 6) or what this browser stored.
+export async function startRig(scene, { writable = true, seconds = 180, out, engine = "v2", python = process.env.PYTHON || "python3" } = {}) {
+  const args = [RIG, scene, "--seconds", String(seconds)];
+  if (engine) args.push("--engine", engine);
   if (writable) args.push("--writable");
   if (out) args.push("--out", out);
   // SYNAPSE_E2E_DIST serves a page build other than web/dist (a build under test that is not
@@ -82,7 +85,7 @@ export async function startRig(scene, { writable = true, seconds = 180, out, pyt
     });
   });
   const url = new URL(info.url);
-  if (url.searchParams.get("engine") !== "v2") url.searchParams.set("engine", "v2");
+  if (engine && url.searchParams.get("engine") !== engine) url.searchParams.set("engine", engine);
   const stop = async () => {
     if (child.exitCode !== null) return;
     child.stdin.end();

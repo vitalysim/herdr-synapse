@@ -1,0 +1,1 @@
+{"$schema":"https://vega.github.io/schema/vega-lite/v5.json","mark":"bar","encoding":{"x":{"field":"month","type":"ordinal"},"y":{"field":"revenue","type":"quantitative"},"color":{"field":"region","type":"nominal"}}}

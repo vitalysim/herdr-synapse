@@ -1,0 +1,16 @@
+{
+  "id": "20-chart-tsv",
+  "category": "chart",
+  "audience": "nondev",
+  "live": false,
+  "prompt": "Using budget.tsv in the team's artifacts, show how the marketing budget is split across areas as a donut chart titled Marketing budget split.",
+  "artifacts": ["budget.tsv"],
+  "expect": {
+    "kinds_any": ["chart"],
+    "labels": ["Marketing budget split"],
+    "chart": {"type_any": ["donut", "pie"], "fields": ["area", "amount"]}
+  },
+  "reference": [
+   {"op": "chart", "id": "budget", "title": "Marketing budget split", "type": "donut", "data": "budget.tsv", "category": "area", "value": "amount", "units": {"value": "$"}, "at": [0, 0], "intent": "where the budget goes"}
+  ]
+}

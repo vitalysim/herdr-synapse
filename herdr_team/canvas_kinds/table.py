@@ -13,6 +13,7 @@ agent's picture and ``check`` agree on every cell.
 """
 from __future__ import annotations
 
+import math
 from typing import Any, Dict, List, Optional, Tuple
 
 from herdr_team import canvas_display as D
@@ -403,17 +404,119 @@ def readback(el: Element, full: bool) -> str:
                                                    len(_rows(el)), len(_columns(el)), el.get("x"), el.get("y"), el.get("w"), el.get("h"))
 
 
+#: The most clamped cells ``clamped`` measures a remedy for (the counts and the named parts stay exact).
+MAX_RELIEF_CELLS = 24
+#: The widths a column may be given, as ``column_item`` accepts them, snapped to the 4-unit grid ``geometry`` uses.
+WIDTH_STEP, WIDTH_MIN, WIDTH_MAX = 4, 80, 600
+
+
+def _clamped_cells(el: Element, geo: Dict[str, Any], parts_cut: List[str]) -> List[Tuple[str, int, str, int]]:
+    """``(part, column index, text, weight)`` for each clamped cell, in the order ``fit`` names them."""
+    columns = _columns(el)
+    index_of = {c["id"]: i for i, c in enumerate(columns)}
+    rows = {r["id"]: r for r in _rows(el)}
+    out: List[Tuple[str, int, str, int]] = []
+    for part in parts_cut[:MAX_RELIEF_CELLS]:
+        rid, _dot, cid = part.partition(".")
+        index = index_of.get(cid)
+        if index is None:
+            continue
+        if rid == "h":
+            out.append((part, index, str(columns[index].get("title") or ""), HEADER_WEIGHT))
+        elif rid in rows:
+            out.append((part, index, str((rows[rid].get("cells") or {}).get(cid) or ""), CELL_WEIGHT))
+    return out
+
+
+def _holds(text: str, width: float, size: float, weight: int, lines: int) -> bool:
+    return not TX.lay(text, width - 2 * PAD_X, size, weight, max_lines=lines, bullets=False).truncated
+
+
+def _widest_needed(cells: List[Tuple[str, int, str, int]], size: float, lines: int, floor: float) -> Optional[int]:
+    """The smallest width in ``WIDTH_MIN``..``WIDTH_MAX`` at which every one of ``cells`` holds at ``lines``."""
+    low = max(WIDTH_MIN, int(math.ceil(floor / WIDTH_STEP) * WIDTH_STEP))
+    if not all(_holds(text, float(WIDTH_MAX), size, weight, lines) for _part, _i, text, weight in cells):
+        return None
+    high = WIDTH_MAX
+    while low < high:  # at most 8 steps: the width grid is 4 units over a 520-unit range
+        mid = low + (high - low) // (2 * WIDTH_STEP) * WIDTH_STEP
+        if mid <= low:
+            break
+        if all(_holds(text, float(mid), size, weight, lines) for _part, _i, text, weight in cells):
+            high = mid
+        else:
+            low = mid + WIDTH_STEP
+    return int(high)
+
+
+def _budget(text: str, width: float, size: float, weight: int, lines: int) -> int:
+    """About how many characters of ``text`` are drawn before it is clamped (what the operator must cut it to)."""
+    laid = TX.lay(text, width - 2 * PAD_X, size, weight, max_lines=lines, bullets=False)
+    return max(1, sum(len(line.rstrip("\u2026")) for line in laid.lines()))
+
+
+def _relief(el: Element, geo: Dict[str, Any], parts_cut: List[str], lines: int) -> Tuple[str, Any]:
+    """The smallest change that keeps every clamped cell whole (QA phase 6, F1).
+
+    ``("max_lines", n)`` when more lines hold them, else ``("width", {column id: width})`` when a wider column does,
+    else ``("shorten", {part: characters})``: the one remedy left, and the one ``check`` never used to name. The rungs
+    are tried in that order because ``max_lines`` costs no width, and each is measured on the clamped cells themselves
+    (at most ``MAX_RELIEF_CELLS`` of them), never by laying the whole table out again.
+    """
+    cells = _clamped_cells(el, geo, parts_cut)
+    size, widths, columns = geo["size"], list(geo["widths"]), _columns(el)
+    if not cells:
+        return ("shorten", {})
+    for more in range(lines + 1, 5):
+        if all(_holds(text, widths[i], size, weight, more) for _part, i, text, weight in cells):
+            return ("max_lines", more)
+    wanted: Dict[str, int] = {}
+    for i in sorted({i for _part, i, _t, _w in cells}):
+        column = columns[i]
+        found = _widest_needed([c for c in cells if c[1] == i], size, 4, widths[i])
+        if found is None:
+            wanted = {}
+            break
+        if found > widths[i]:
+            wanted[str(column.get("id"))] = found
+    if wanted:
+        return ("width", wanted)
+    return ("shorten", {part: _budget(text, widths[i], size, weight, 4) for part, i, text, weight in cells})
+
+
 def clamped(el: Element, env: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """``label_truncated`` naming the clamped cells, with a fix that keeps one more line."""
+    """``label_truncated`` naming the clamped cells, with the smallest fix that keeps them whole.
+
+    Every remedy it names is reachable: more lines (up to 4), a wider column (up to 600), or - when neither holds the
+    text, which a cell of over ~140 characters never is - shortening the cell, with the character budget, and no
+    machine fix, because only its author can choose which words to drop (QA phase 6, F1).
+    """
     fit = el.get("fit") if isinstance(el.get("fit"), dict) else {}
     if not fit.get("truncated"):
         return []
     lines = _settings(el).get("max_lines") if isinstance(_settings(el).get("max_lines"), int) else DEFAULT_LINES
     parts_cut = [str(p) for p in fit.get("parts") or []]
-    fix = {"op": "patch", "id": el.get("alias") or el.get("id"), "set": {"max_lines": lines + 1}} if lines < 4 else None
+    ident = el.get("alias") or el.get("id")
+    how, value = _relief(el, geometry(el), parts_cut, lines)
+    if how == "max_lines":
+        advice = "max_lines {} keeps them whole".format(value)
+        fix: Optional[Dict[str, Any]] = {"op": "patch", "id": ident, "set": {"max_lines": value}}
+    elif how == "width":
+        titles = {str(c.get("id")): str(c.get("title") or c.get("id")) for c in _columns(el)}
+        advice = "max_lines stops at 4 and that is not enough, so widen {} (a column takes width 80 to 600)".format(
+            ", ".join("{} to {}".format(titles.get(cid, cid), w) for cid, w in sorted(value.items())))
+        fix = {"op": "patch", "id": ident, "update": {"columns": [{"id": cid, "width": w} for cid, w in sorted(value.items())]}}
+    else:
+        worst = sorted(value.items(), key=lambda item: item[1])[:3]
+        advice = ("no column width and no max_lines holds {}: shorten {} (edit {{id, part, text}})".format(
+            "it" if len(parts_cut) == 1 else "them",
+            ", ".join("{} to about {} characters".format(part, n) for part, n in worst)) if worst else
+            "shorten the cells it names (edit {id, part, text})")
+        fix = None
     return [{"code": "label_truncated", "ids": [str(el.get("id"))], "parts": parts_cut,
-             "message": "{} clamps {} cell{} to {} line{} ({}); raise max_lines or widen the column".format(
-                 el.get("id"), len(parts_cut), "" if len(parts_cut) == 1 else "s", lines, "" if lines == 1 else "s", ", ".join(parts_cut[:5])),
+             "message": "{} clamps {} cell{} to {} line{} ({}); {}".format(
+                 el.get("id"), len(parts_cut), "" if len(parts_cut) == 1 else "s", lines, "" if lines == 1 else "s",
+                 ", ".join(parts_cut[:5]), advice),
              "fix": fix}]
 
 
@@ -422,7 +525,7 @@ def create(ctx: Any, op: Dict[str, Any]) -> None:
 
 
 OPS = (
-    OpSpec(name="table", fields=("title", "columns", "rows", "header", "zebra", "max_lines", "size", "id", "client_id"), create=create, place=True,
+    OpSpec(name="table", family="block", fields=("title", "columns", "rows", "header", "zebra", "max_lines", "size", "id", "client_id"), create=create, place=True,
            order=43, doc="a table: columns and rows held in one element, every cell editable",
            mcp="table {title, columns [title | {key, title, align, width s|m|l}], rows [[cells] | {id, cells, tone}], header, zebra, max_lines 1-4}"),
 )

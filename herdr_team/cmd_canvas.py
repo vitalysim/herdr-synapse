@@ -15,6 +15,9 @@ the team's canvas is off (``features.require_on`` inside ``canvas``).
 * ``send`` (the operator's "send to member"), ``export``, ``helper`` (the
   standalone ``sketch.py`` for agents' own scripts) and ``mcp`` (the stdio MCP
   server a harness starts at launch) complete the set.
+* ``migrate`` (canvas v2 phase 6, ``canvas_migrate``): what a board drawn before
+  canvas v2 looks like now, and the operator's one fix (``--apply``) or answer
+  (``--dismiss``). ``draw --help`` prints the op table agents get over MCP.
 * Collaboration (canvas v2 phase 5, ``canvas_collab``): ``accept``, ``reject``,
   ``withdraw``, ``freeze``, ``thaw``, ``checkpoint``, ``restore`` and
   ``settings`` build those ops; ``undo --author`` reverts one author's batches;
@@ -30,6 +33,7 @@ import argparse
 import json
 import os
 import sys
+import textwrap
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -335,6 +339,20 @@ def _settings(args: argparse.Namespace) -> int:
     return _apply(args, [op])
 
 
+def _migrate(args: argparse.Namespace) -> int:
+    """``canvas migrate [--apply | --dismiss]`` (canvas v2 phase 6, 2.4): the report for anyone; the answer, the operator's."""
+    from herdr_team import canvas_migrate as M
+
+    if args.apply or args.dismiss:
+        action = "apply" if args.apply else "dismiss"
+        intent = args.intent or ("migrate to canvas v2" if action == "apply" else "dismiss the canvas v2 migration notice")
+        return _apply(args, [{"op": "migrate", "action": action, "intent": intent}])
+    layout, _api, _identity, team, doc, _author = _open(args, write=False)
+    _features.require_on(layout.session, team, doc)
+    found = M.report_for(team)
+    return emit(args, {"migration": found, "summary": M.summary(found)}, M.text(found))
+
+
 def _focus(args: argparse.Namespace) -> int:
     """Presence, not an op (phase 5, 9.1): where this member works, its status and intent, for ``--ttl`` seconds."""
     from herdr_team import canvas_presence as P
@@ -464,13 +482,14 @@ _ACTIONS = {
     "portrait": _portrait, "changes": _changes, "resolve": _resolve, "undo": _undo, "refit": _refit, "lock": _lock, "unlock": _unlock,
     "send": _send, "export": _export, "helper": _helper, "mcp": _mcp, "icons": _icons, "catalog": _catalog,
     "accept": _proposal_op("accept"), "reject": _proposal_op("reject"), "withdraw": _proposal_op("withdraw"), "freeze": _freeze,
-    "thaw": _thaw, "checkpoint": _checkpoint, "restore": _restore, "settings": _settings, "focus": _focus,
+    "thaw": _thaw, "checkpoint": _checkpoint, "restore": _restore, "settings": _settings, "focus": _focus, "migrate": _migrate,
 }
 
 _SPECS = (
     ("look", "the canvas as text (the region in full, the rest one line each), changes since you looked, and optionally an image"),
-    ("check", "layout problems (overlaps, labels that do not fit, marks half in a frame, arrows through shapes, strays), each with a fix to apply"),
-    ("draw", "apply a batch of operations from --file PATH, --file - (stdin) or --op JSON"),
+    ("draw", "apply a batch of operations from --file PATH, --file - (stdin) or --op JSON: name components and their relations"),
+    ("check", "run after every drawing meant for others; apply the listed fixes, check again (overlap, label_overflow and "
+              "arrow_through must be 0)"),
     ("comment", "pin a comment to an element, a comment (a reply) or a point; @name mentions wake that member"),
     ("claim", "tell the team where you are about to draw (expires after 5 minutes)"),
     ("release", "release a claim (K-n), or all of yours"),
@@ -497,16 +516,45 @@ _SPECS = (
     ("restore", "restore a checkpoint (V-n) as one batch; a checkpoint of now is saved first (the operator)"),
     ("settings", "the collaboration settings: --human-edits propose|live, --frozen propose|refuse (the operator); no flags prints them"),
     ("focus", "your presence on the canvas: where you work (REGION or ID), --status, --intent, --ttl; --clear removes it"),
+    ("migrate", "a board drawn before canvas v2: what is drawn differently (anyone); --apply resizes old labels and draws the marks "
+                "in 0.21's sketch style clean in one batch, --dismiss hides the notice (the operator)"),
 )
 
 
+def draw_epilog() -> str:
+    """``canvas draw --help``'s epilog: the MCP ``canvas_draw`` op table and example, one text (canvas v2 phase 6, 3.3)."""
+    from herdr_team import canvas_mcp
+
+    def fill(text: str) -> str:
+        return textwrap.fill(text, width=100, subsequent_indent="  ", break_long_words=False, break_on_hyphens=False)
+
+    return "\n\n".join([fill(canvas_mcp.DRAW_LEAD), fill(canvas_mcp.op_table()), fill(canvas_mcp._EXAMPLE),
+                         fill("Then: {} canvas check, apply the fixes it lists, check again; {} canvas look --image last.".format(CLI, CLI))])
+
+
+def _lazy_parser(base: Any) -> Any:
+    """A parser class whose epilog is built only when its help is printed (the draw op table imports every kind)."""
+
+    class _Lazy(base):  # type: ignore[misc, valid-type]
+        epilog_source: Optional[Any] = None
+
+        def format_help(self) -> str:
+            if self.epilog is None and self.epilog_source is not None:
+                self.epilog = self.epilog_source()
+            return super().format_help()
+
+    return _Lazy
+
+
 def _add_arguments(parser: argparse.ArgumentParser) -> None:
-    sub = parser.add_subparsers(dest="canvas_action", metavar="<action>")
+    sub = parser.add_subparsers(dest="canvas_action", metavar="<action>", parser_class=_lazy_parser(type(parser)))
     parsers: Dict[str, argparse.ArgumentParser] = {}
     for name, help_text in _SPECS:
-        p = sub.add_parser(name, help=help_text, description=help_text, allow_abbrev=False)
+        extra: Dict[str, Any] = {"formatter_class": argparse.RawDescriptionHelpFormatter} if name == "draw" else {}
+        p = sub.add_parser(name, help=help_text, description=help_text, allow_abbrev=False, **extra)
         add_global_arguments(p, nested=True)
         parsers[name] = p
+    parsers["draw"].epilog_source = draw_epilog  # type: ignore[attr-defined]
     p = parsers["look"]
     where = p.add_mutually_exclusive_group()
     where.add_argument("--region", metavar="R", help='"c10r4:c40r22", "x0,y0,x1,y1", [x0,y0,x1,y1] or an element id')
@@ -514,7 +562,7 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
     p.add_argument("--since", metavar="N|last", help="also list the changes after version N, or since you last looked")
     p.add_argument("--image", action="store_true", help="also render a PNG with id marks (needs resvg; the SVG is written either way)")
     p.add_argument("--grid", action="store_true", help="add cell dots and names to the image")
-    p.add_argument("--exact", action="store_true", help="ask an open whiteboard page for the engine's own export (falls back after 5 s)")
+    p.add_argument("--exact", action="store_true", help="ask an open whiteboard page for its own picture of the board (falls back after 5 s)")
     p.add_argument("--theme", choices=("light", "dark"), help="the image's theme (default light)")
     p.add_argument("--block", metavar="REF", help="one block's whole spec (a kanban, a table ...), one item per line")
     p.add_argument("--full", action="store_true", help="also each block's part ids, top-level neighbours and details")
@@ -594,6 +642,12 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
     p.add_argument("--intent", metavar="TEXT", help="one line: what you are doing")
     p.add_argument("--ttl", type=int, metavar="SECONDS", help="how long it shows (60 to 3600, default 600)")
     p.add_argument("--clear", action="store_true", help="remove your presence")
+    p = parsers["migrate"]
+    how = p.add_mutually_exclusive_group()
+    how.add_argument("--apply", action="store_true", help="resize the labels from before canvas v2 and draw the marks in 0.21's sketch "
+                                                          "style clean, in one batch (undo B-n takes it back); the operator")
+    how.add_argument("--dismiss", action="store_true", help="hide the notice and change nothing; the operator")
+    p.add_argument("--intent", metavar="TEXT")
     p = parsers["refit"]
     p.add_argument("--ids", metavar="E-1,E-2", help="the elements to size again (default: every element you may edit, up to 500)")
     p.add_argument("--intent", metavar="TEXT")
@@ -629,7 +683,7 @@ def _run(args: argparse.Namespace) -> int:
 
 
 COMMANDS: List[Command] = [
-    Command("canvas", "the team canvas: look, check, draw, comment, claim, legend, portrait, changes (whiteboard must be on)", _add_arguments, _run,
+    Command("canvas", "the team canvas: look, draw, check, comment, claim, legend, portrait, changes, migrate (whiteboard must be on)", _add_arguments, _run,
             description="Look at, draw on, and point at the team's shared canvas. Agents send Synapse Sketch operations; "
                         "see herdr-synapse skill get --reference canvas."),
 ]

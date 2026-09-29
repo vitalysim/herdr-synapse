@@ -562,7 +562,7 @@ def create(ctx: Any, op: Dict[str, Any]) -> None:
 
 
 OPS = (
-    OpSpec(name="sequence", fields=("title", "participants", "messages", "notes", "groups", "id", "client_id"), create=create, place=True,
+    OpSpec(name="sequence", family="diagram", fields=("title", "participants", "messages", "notes", "groups", "id", "client_id"), create=create, place=True,
            order=74, doc="a sequence diagram: participants, messages, notes and groups in one element",
            mcp="sequence {title, participants [{id, text, icon}], messages [\"a -> b: call\", \"b --> a: reply\"], "
                "notes [{over [ids] | left_of | right_of, text, after}], groups [{kind loop|alt|opt|par, label, from, to}]}"),

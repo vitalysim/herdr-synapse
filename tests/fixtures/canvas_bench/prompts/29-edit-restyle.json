@@ -1,0 +1,19 @@
+{
+  "id": "29-edit-restyle",
+  "category": "edit",
+  "audience": "dev",
+  "live": false,
+  "prompt": "On the architecture diagram, mark Redis as a risk and the auth service as the decision point.",
+  "seed": {"as": "member", "from": "04-arch-web"},
+  "expect": {
+    "kinds_any": ["graph"],
+    "labels": ["Browser", "CDN", "API gateway", "Auth service", "Orders service", "Postgres", "Redis", "Queue", "Email worker", "Backend"],
+    "relations": [["Browser", "CDN"], ["CDN", "API gateway"], ["API gateway", "Auth service"], ["API gateway", "Orders service"], ["Orders service", "Postgres"], ["Orders service", "Redis"], ["Orders service", "Queue"], ["Queue", "Email worker"], ["Backend", "Auth service", "contains"], ["Backend", "Postgres", "contains"], ["Backend", "Email worker", "contains"]],
+    "tones": {"Redis": ["danger", "warning"], "Auth service": "decision"},
+    "stable": true,
+    "changes": []
+  },
+  "reference": [
+   {"op": "patch", "id": "arch", "intent": "flag the risk and the decision point", "update": {"nodes": [{"id": "redis", "tone": "danger"}, {"id": "auth", "tone": "decision"}]}}
+  ]
+}

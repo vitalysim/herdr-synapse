@@ -387,7 +387,7 @@ export function useCollab({
   const neutral = (dl && dl.palettes && dl.palettes[theme] && dl.palettes[theme]["tone.neutral.stroke"]) || "#8b8d98";
 
   const h = React.createElement;
-  const screen = anyFresh ? h(React.Suspense, { fallback: null }, h(Halos, { presence, camera, viewport, bboxOf, chipOf, theme, neutral, layerRef: halosRef })) : null;
+  const screen = anyFresh ? h(React.Suspense, { fallback: null }, h(Halos, { presence, camera, viewport, bboxOf, chipOf, dl, theme, neutral, layerRef: halosRef })) : null;
 
   const reviewProposal = reviewId ? proposals.get(reviewId) : null;
   const ownerOf = (p) => {

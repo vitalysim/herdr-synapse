@@ -10,7 +10,8 @@ actor's ``own`` element, the ``operator``'s, a ``peer``'s, the actor's own eleme
 ``peer_lane``, on the ``operator``'s or a ``peer``'s mark, on its ``own``, in a ``frozen_region`` or a ``locked`` one.
 For ``undo`` (not proposable, but freezes, locks and authority bind it; QA phase 5 H1): the batch that drew the actor's
 ``own`` marks, or its marks now ``frozen_region``, ``frozen_id`` or ``locked``, the ``operator``'s batch or a ``peer``'s.
-An undo row that applies but leaves frozen marks as they are says ``"skipped": "frozen"``.
+An undo row that applies but leaves frozen marks as they are says ``"skipped": "frozen"``; an undo that would take
+nothing back (every mark it touched is frozen) is refused ``op_invalid``, saying why.
 """
 from __future__ import annotations
 

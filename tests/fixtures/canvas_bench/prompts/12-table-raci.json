@@ -1,0 +1,15 @@
+{
+  "id": "12-table-raci",
+  "category": "table",
+  "audience": "nondev",
+  "live": false,
+  "prompt": "Make a RACI table for the website relaunch with the tasks as rows and the columns Task, PM, Dev, QA and Ops. Write the spec: PM R, Dev C, QA C, Ops I. Build the site: PM A, Dev R, QA C, Ops I. Test the release: PM I, Dev C, QA R, Ops I. Deploy: PM A, Dev C, QA I, Ops R.",
+  "expect": {
+    "kinds_any": ["table"],
+    "labels": ["Task", "PM", "Dev", "QA", "Ops", "Write the spec", "Build the site", "Test the release", "Deploy"],
+    "relations": [["Write the spec", "R", "any"], ["Build the site", "A", "any"], ["Test the release", "R", "any"], ["Deploy", "A", "any"]]
+  },
+  "reference": [
+   {"op": "table", "id": "raci", "title": "Website relaunch RACI", "at": [0, 0], "intent": "who does what", "columns": ["Task", {"title": "PM", "align": "center", "width": "s"}, {"title": "Dev", "align": "center", "width": "s"}, {"title": "QA", "align": "center", "width": "s"}, {"title": "Ops", "align": "center", "width": "s"}], "rows": [["Write the spec", "R", "C", "C", "I"], ["Build the site", "A", "R", "C", "I"], ["Test the release", "I", "C", "R", "I"], ["Deploy", "A", "C", "I", "R"]]}
+  ]
+}

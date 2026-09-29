@@ -77,7 +77,8 @@ Focus is presence, never authority.
   `canvas undo --author <you> --since 400` takes back all of yours since then.
   Undo skips what someone else changed later, and what she froze, and says so
   (`3 of 7 reverted; E-12 edited by the operator later`); only the operator
-  may force it. Undoing a batch again retries what it left.
+  may force it. Undoing a batch again retries what it left. An undo that would
+  take nothing back is refused and says what would (often: undo B-n first).
 - Before a big change, save a checkpoint (you keep your last 3):
 
 ```json

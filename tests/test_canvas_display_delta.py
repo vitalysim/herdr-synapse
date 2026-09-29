@@ -54,6 +54,50 @@ class Deltas(CanvasRig):
         self.assertEqual(patched["bbox"], fresh["bbox"])
         self.assertEqual(D.dumps(C.display(self.team)), D.dumps(fresh), "the cached list was patched forward, not rebuilt wrong")
 
+    def test_a_claim_beside_another_stops_its_label_and_a_delta_redraws_both(self):
+        # QA phase 5 L8: a claim's label is a fixed screen size from its top-left, so zoomed out it ran over the label of
+        # the claim beside it. It now stops where that claim begins; a claim that comes or goes redraws the others.
+        self.ok({"op": "claim", "region": [0, 400, 400, 700], "label": "the pricing table and all of its footnotes", "intent": "t"})
+        self.ok({"op": "claim", "region": [0, 3000, 100, 3100], "label": "far away"}, OPERATOR)  # a new author sends the whole list
+        before = C.display(self.team)
+        clip_of = lambda doc, cid: next(i.get("clip") for e in doc["entries"] if e["id"] == cid for i in e["items"] if i["k"] == "group")
+        mine = next(e["id"] for e in before["entries"] if e["kind"] == "claim" and e["bbox"] == [0, 400, 400, 700])
+        self.assertIsNone(clip_of(before, mine), "alone, its label runs on")
+        other = self.ok({"op": "claim", "region": [420, 380, 800, 800], "label": "the funnel", "intent": "t"}, OPERATOR)["ids"][0]
+        delta = C.display_delta(self.team, before["version"])
+        self.assertFalse(delta["full"])
+        self.assertIn(mine, [e["id"] for e in delta["upserts"]])
+        patched = applied(before, delta)
+        self.assertEqual(clip_of(patched, mine), [0, 400, 420 - D.CLAIM_LABEL_GAP, 300])
+        self.assertIsNone(clip_of(patched, other), "nothing beside it on the right")
+        self.assertEqual(D.dumps(patched["entries"]), D.dumps(D.display_list(C.load_scene(self.team), stills=set())["entries"]))
+        # A claim below it, not beside it, stops nothing; one that goes lets the label run on again.
+        version = C.display(self.team)["version"]
+        self.ok({"op": "release", "id": other}, OPERATOR)
+        patched = applied(patched, C.display_delta(self.team, version))
+        self.assertIsNone(clip_of(patched, mine))
+        self.ok({"op": "claim", "region": [420, 900, 800, 1000], "label": "below", "intent": "t"}, OPERATOR)
+        self.assertIsNone(clip_of(C.display(self.team), mine))
+
+    def test_a_claims_label_clears_its_own_dashed_rectangle(self):
+        """QA phase 6, 3.6 saw a claim's label struck through by the claim's own dashes on the page. The list both
+        renderers draw keeps them apart, and this is where that clearance lives: the label hangs from the top-left
+        corner in screen pixels, so the rectangle's 2 px stroke ends 1 px below the corner while the first line's ink
+        starts lower. Both distances are screen pixels, so the gap is the same at every zoom."""
+        self.ok({"op": "claim", "region": [0, 400, 400, 700], "label": "the pricing table", "intent": "t"})
+        entry = next(e for e in C.display(self.team)["entries"] if e["kind"] == "claim" and e["bbox"] == [0, 400, 400, 700])
+        rect = next(i for i in entry["items"] if i["k"] == "rect")
+        group = next(i for i in entry["items"] if i["k"] == "group")
+        self.assertEqual((rect["dash"], group["screen"]), ([8, 6], [rect["x"], rect["y"]]))
+        text = group["items"][0]
+        face = X.face("normal", text["weight"])
+        ink_top = text["lines"][0]["y"] - face.ascender / float(face.units_per_em) * text["size"]
+        self.assertGreaterEqual(ink_top, rect["sw_px"] / 2.0 + 1.0,
+                                "the label's first line runs into the dashes along the claim's top edge")
+        # The other edges are world units, so how far the label reaches into the region depends on the zoom: a
+        # region drawn shorter than one line (about 17 px) would meet its bottom edge, which the page clips sideways
+        # (CLAIM_LABEL_GAP) and nobody has seen vertically.
+
     def test_no_change_is_an_empty_delta(self):
         version = C.display(self.team)["version"]
         delta = C.display_delta(self.team, version)

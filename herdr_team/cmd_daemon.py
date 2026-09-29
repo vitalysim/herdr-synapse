@@ -229,7 +229,11 @@ def _human_status(payload: Dict[str, Any]) -> str:
     lines.append("  herdr: {} protocol {}; plugin {}".format(payload.get("herdr_version") or "?", payload.get("protocol") or "?", payload.get("version") or payload.get("plugin_version")))
     capabilities = payload.get("capabilities") if isinstance(payload.get("capabilities"), dict) else {}
     atomic = capabilities.get("atomic_idle_prompt")
-    lines.append("  safe !: {}".format("ready (atomic idle-only delivery)" if atomic is True else "unavailable; use @name text or explicit !!name text" if atomic is False else "unknown"))
+    # The fallback advice is about the console, where @name and !!name target a pane. A post targets with --to, so it
+    # says which surface it means (QA phase 6, F6).
+    lines.append("  safe !: {}".format("ready (atomic idle-only delivery)" if atomic is True
+                                       else "unavailable; in the console use @name text or explicit !!name text (a post targets with --to)"
+                                       if atomic is False else "unknown"))
     lines.append("  teams: {}".format(", ".join(payload["teams"]) if payload["teams"] else "none"))
     if payload["pending"]:
         lines.append("  pending: " + ", ".join("{}={}".format(k, v) for k, v in payload["pending"].items()))

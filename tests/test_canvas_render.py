@@ -174,6 +174,33 @@ class RenderSvg(CanvasRig):
         no_marks = ET.fromstring(R.render_svg(scene, team=self.team, marks=False))
         self.assertNotIn("E-1", ["".join(t.itertext()) for t in no_marks.iter("{%s}text" % SVG)])
 
+    def test_id_badges_hang_clear_of_the_labels_they_used_to_cover(self):
+        """QA phase 6 F7: a badge is a fixed size in pixels, an element a box in units, so on a whole-board picture a
+        badge inside a short box's corner sat across its label. Every badge now hangs above its element; only a frame,
+        whose own title stands above it at that zoom, keeps its badge inside the corner."""
+        self.assertEqual(R.mark_anchor({"type": "box", "x": 10, "y": 20}), (10.0, 20.0, True))
+        self.assertEqual(R.mark_anchor({"type": "frame", "x": 10, "y": 20}), (10.0, 20.0, False))
+        self.assertEqual(R.mark_anchor({"type": "text", "x": 10, "y": 20})[2], True)
+        arrow = {"type": "arrow", "points": [[0, 0], [200, 0]], "text": "calls", "style": {"size": 20}}
+        pill = R.arrow_label_pill(arrow)[0]
+        self.assertEqual(R.mark_anchor(arrow), (pill[0] + pill[2] / 2.0, pill[1], True), "above the label's pill")
+        # And in the picture itself: at two units to the pixel no badge rectangle touches a label's box.
+        self.drivers()
+        scene = C.load_scene(self.team)
+        svg, box = R.picture(scene, reader="alpha-worker", max_px=300)
+        root = ET.fromstring(svg)
+        unit = (box[2] - box[0]) / int(root.get("width"))
+        self.assertGreater(unit, 1.0, "a whole-board picture is drawn at more than one unit to the pixel")
+        badges = {}
+        for text in root.iter("{%s}text" % SVG):
+            label = "".join(text.itertext())
+            if label in {e["id"] for e in scene["elements"]}:
+                badges[label] = float(text.get("y"))
+        for el in scene["elements"]:
+            if el["type"] in ("frame", "arrow") or el["id"] not in badges:
+                continue
+            self.assertLess(badges[el["id"]], float(el["y"]), "{}'s badge sits above its box".format(el["id"]))
+
     def test_region_and_stills(self):
         scene = self.scene_with_everything()
         chart = next(e for e in scene["elements"] if e["type"] == "chart")

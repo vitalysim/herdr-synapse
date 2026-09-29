@@ -1,0 +1,9 @@
+{
+  "id": "c04-missing-label",
+  "about": "The checkout flow without the confirmation email.",
+  "prompt": "01-flow-checkout",
+  "expect_fail": ["labels"],
+  "reference": [
+   {"op": "graph", "id": "checkout", "title": "Checkout flow", "direction": "right", "intent": "checkout", "groups": [{"id": "core", "title": "Core services"}], "nodes": [{"id": "shopper", "text": "Shopper"}, {"id": "cart", "text": "Cart"}, {"id": "api", "text": "Checkout API", "in": "core"}, {"id": "ok", "text": "Payment approved?", "kind": "diamond", "in": "core"}, {"id": "db", "text": "Orders database", "in": "core"}, {"id": "retry", "text": "Retry payment"}], "edges": ["shopper -> cart", "cart -> api", "api -> ok", "ok -> db", "ok -> retry", "retry --> cart"]}
+  ]
+}

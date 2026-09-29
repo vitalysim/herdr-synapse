@@ -78,11 +78,19 @@ CROWDED_LEGEND_ROWS = 8
 
 
 def op_fields() -> Tuple[str, ...]:
-    """Every field the ``chart`` op takes: the flat spec's (``canvas_charts.fields()``) and the escape hatches'."""
-    return tuple(dict.fromkeys(("title",) + tuple(CC.fields()) + ("spec", "spec_asset", "echarts", "echarts_asset")))
+    """Every field the ``chart`` op takes: the flat spec's (``canvas_charts.fields()``), the escape hatches' and the
+    field aliases, each beside the field it stands for (``kind`` for ``type``, QA phase 6 F8). ``mcp`` still teaches
+    ``type`` alone, and a chart drawn with an alias earns a ``field_alias`` warning."""
+    out: List[str] = []
+    for name in dict.fromkeys(("title",) + tuple(CC.fields()) + ("spec", "spec_asset", "echarts", "echarts_asset")):
+        out.append(name)
+        out.extend(key for key, target in CC.FIELD_ALIASES.items() if target == name)
+    return tuple(out)
 
 
 def settings_fields() -> Tuple[str, ...]:
+    """The fields the block pipeline hands ``normalize``: the op's without the title. The aliases stay in (that is how
+    ``kind`` reaches ``normalize``); nothing stores one, because ``normalize`` resolves it into ``type`` first."""
     return tuple(f for f in op_fields() if f != "title")
 
 
@@ -141,7 +149,9 @@ def normalize(ctx: Any, spec: Dict[str, Any]) -> Dict[str, Any]:
     title = ctx.text(spec, "title", limit="label", one_line=True)
     if title:
         out["title"] = title
-    families = [name for name, keys in (("type", ("type",)), ("spec", ("spec", "spec_asset")), ("echarts", ("echarts", "echarts_asset")))
+    # ``kind`` counts as ``type`` here too, so the alias reaches ``normalize_spec`` instead of being refused as no family.
+    type_keys = ("type",) + tuple(key for key, target in CC.FIELD_ALIASES.items() if target == "type")
+    families = [name for name, keys in (("type", type_keys), ("spec", ("spec", "spec_asset")), ("echarts", ("echarts", "echarts_asset")))
                 if any(spec.get(k) is not None for k in keys)]
     if len(families) != 1:
         known = CC.names()
@@ -1026,7 +1036,7 @@ def _mcp() -> str:
 
 
 def _ops() -> Tuple[OpSpec, ...]:
-    return (OpSpec(name="chart", fields=op_fields() + ("w", "h", "id", "client_id"), create=create, place=True, order=90,
+    return (OpSpec(name="chart", family="data", fields=op_fields() + ("w", "h", "id", "client_id"), create=create, place=True, order=90,
                    doc="a chart: a type over data from artifacts/ or inline rows (Python validates and draws it), or Vega-Lite, or ECharts",
                    mcp=_mcp()),)
 

@@ -1,0 +1,15 @@
+{
+  "id": "16-seq-payment",
+  "category": "sequence",
+  "audience": "dev",
+  "live": false,
+  "prompt": "Draw the payment sequence between the customer, the shop, Stripe and the email service: the customer submits the order to the shop, the shop creates a payment intent at Stripe, Stripe asks the customer to confirm with 3-D Secure, the customer confirms to Stripe, Stripe sends a payment succeeded webhook to the shop asynchronously, and the shop asks the email service to send the receipt.",
+  "expect": {
+    "kinds_any": ["sequence"],
+    "labels": ["Customer", "Shop", "Stripe", "Email service", "Payment intent", "3-D Secure", "Webhook", "Receipt"],
+    "relations": [["Customer", "Shop"], ["Shop", "Stripe"], ["Stripe", "Customer"], ["Customer", "Stripe"], ["Stripe", "Shop"], ["Shop", "Email service"]]
+  },
+  "reference": [
+   {"op": "sequence", "id": "pay", "title": "Payment", "at": [0, 0], "intent": "how a payment flows", "participants": [{"id": "c", "text": "Customer", "icon": "user"}, {"id": "shop", "text": "Shop"}, {"id": "stripe", "text": "Stripe"}, {"id": "mail", "text": "Email service", "icon": "mail"}], "messages": ["c -> shop: submit order", "shop -> stripe: create payment intent", "stripe -> c: confirm with 3-D Secure", "c -> stripe: confirm", "stripe --> shop: payment succeeded webhook (async)", "shop -> mail: send receipt"], "notes": [{"over": ["stripe"], "text": "the webhook is asynchronous"}]}
+  ]
+}

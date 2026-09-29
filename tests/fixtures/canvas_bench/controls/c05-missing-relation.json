@@ -1,0 +1,9 @@
+{
+  "id": "c05-missing-relation",
+  "about": "The login sequence with the replies left out.",
+  "prompt": "15-seq-login",
+  "expect_fail": ["relations"],
+  "reference": [
+   {"op": "sequence", "id": "login", "title": "Login", "at": [0, 0], "intent": "login", "participants": [{"id": "b", "text": "Browser"}, {"id": "api", "text": "API"}, {"id": "auth", "text": "Auth service"}, {"id": "db", "text": "User database"}], "messages": ["b -> api: POST credentials", "api -> auth: verify", "auth -> db: look up user (user row, token, cookie)"]}
+  ]
+}

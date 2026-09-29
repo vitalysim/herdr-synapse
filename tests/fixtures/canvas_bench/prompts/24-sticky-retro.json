@@ -1,0 +1,23 @@
+{
+  "id": "24-sticky-retro",
+  "category": "sticky",
+  "audience": "nondev",
+  "live": true,
+  "prompt": "Run a sprint retro board with three columns: Went well (fast code reviews, the new CI cache), To improve (flaky end-to-end tests, too many meetings) and Actions (quarantine flaky tests, no-meeting Wednesdays). Put each point on its own sticky note.",
+  "expect": {
+    "kinds_any": ["sticky"],
+    "labels": ["Went well", "Fast code reviews", "New CI cache", "To improve", "Flaky end-to-end tests", "Too many meetings", "Actions", "Quarantine flaky tests", "No-meeting Wednesdays"],
+    "relations": [["Went well", "Fast code reviews", "contains"], ["Went well", "New CI cache", "contains"], ["To improve", "Flaky end-to-end tests", "contains"], ["To improve", "Too many meetings", "contains"], ["Actions", "Quarantine flaky tests", "contains"], ["Actions", "No-meeting Wednesdays", "contains"]]
+  },
+  "reference": [
+   {"op": "section", "id": "well", "title": "Went well", "layout": "column", "tone": "success", "at": [0, 0], "intent": "sprint retro"},
+   {"op": "sticky", "in": "well", "text": "Fast code reviews", "tone": "success", "intent": "sprint retro"},
+   {"op": "sticky", "in": "well", "text": "The new CI cache", "tone": "success", "intent": "sprint retro"},
+   {"op": "section", "id": "improve", "title": "To improve", "layout": "column", "tone": "warning", "right_of": "well", "intent": "sprint retro"},
+   {"op": "sticky", "in": "improve", "text": "Flaky end-to-end tests", "tone": "warning", "intent": "sprint retro"},
+   {"op": "sticky", "in": "improve", "text": "Too many meetings", "tone": "warning", "intent": "sprint retro"},
+   {"op": "section", "id": "actions", "title": "Actions", "layout": "column", "tone": "info", "right_of": "improve", "intent": "sprint retro"},
+   {"op": "sticky", "in": "actions", "text": "Quarantine flaky tests", "tone": "info", "intent": "sprint retro"},
+   {"op": "sticky", "in": "actions", "text": "No-meeting Wednesdays", "tone": "info", "intent": "sprint retro"}
+  ]
+}

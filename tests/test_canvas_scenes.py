@@ -7,7 +7,10 @@ and gate logic are checked, without resvg.
 """
 from __future__ import annotations
 
+import argparse
+import contextlib
 import importlib.util
+import io
 import os
 import shutil
 import struct
@@ -15,6 +18,7 @@ import tempfile
 import unittest
 import zlib
 from pathlib import Path
+from unittest import mock
 
 from support import PLUGIN_ROOT, TempState, whiteboard_on
 
@@ -202,6 +206,106 @@ class ToolPieces(unittest.TestCase):
         scene = {"elements": [frame, arrow]}
         self.assertEqual(QA.cut_off(scene, (-40, -40, 440, 400), 4.0), ["E-1", "E-2"], "zoomed out, the title stands above the frame")
         self.assertEqual(QA.cut_off(scene, QA.R.view_box(scene), 1.0), [])
+
+
+class LostBrowser(unittest.TestCase):
+    """``--page`` on a loaded machine: Chrome can be killed mid-run. One lost browser must cost one scene's time, not
+    every scene after it (the first ``--page --engine v2`` gate run of 2026-09-29 reported 2 of 26 for one such event:
+    ``DevTools closed the connection`` on scene 3, then ``BrokenPipeError`` on the remaining 23)."""
+
+    class FakeBrowser:
+        def __init__(self, alive=False):
+            self.alive = alive
+            self.restarts = 0
+
+        def dead(self):
+            return not self.alive
+
+        def restart(self):
+            self.restarts += 1
+            self.alive = True
+
+    def args(self):
+        return argparse.Namespace(scale=QA.PROBE_SCALE, tolerance=QA.TOLERANCE, strict=False, serve=False,
+                                  engine="v2", json=True)
+
+    def report(self, scene, browser, errors):
+        """``scene_report`` with ``evaluate`` answering the given errors in turn, then a passing report."""
+        calls = []
+
+        def evaluate(scene_doc, *rest):
+            calls.append(scene_doc["name"])
+            if len(calls) <= len(errors):
+                raise errors[len(calls) - 1]
+            return {"scene": scene_doc["name"], "gate": {"ok": True, "failed": []}}
+
+        with mock.patch.object(QA, "evaluate", evaluate):
+            return QA.scene_report(scene, Path(tempfile.gettempdir()), self.args(), ["light"], None, browser), calls
+
+    def test_a_page_path_that_is_not_a_browser_stops_the_run(self):
+        """``--page PATH`` must not fall back to the installed Chrome: a quoting slip once put a flag there
+        (``--page "--engine v1"``) and a whole gate ran on the default engine while reading as the other one."""
+        with self.assertRaises(SystemExit) as caught:
+            QA.find_chrome("--engine v1")
+        self.assertIn("not a browser", str(caught.exception))
+        with self.assertRaises(SystemExit):
+            QA.find_chrome(os.path.join(tempfile.gettempdir(), "no-such-browser-canvas-qa"))
+
+    def test_what_counts_as_a_lost_browser(self):
+        alive, gone = self.FakeBrowser(alive=True), self.FakeBrowser()
+        self.assertTrue(QA.browser_lost(gone, RuntimeError("the page never settled: None")), "Chrome exited")
+        self.assertTrue(QA.browser_lost(alive, BrokenPipeError(32, "Broken pipe")))
+        self.assertTrue(QA.browser_lost(alive, RuntimeError("DevTools closed the connection")))
+        self.assertFalse(QA.browser_lost(alive, RuntimeError("the page never settled: None")), "a real page failure")
+        self.assertFalse(QA.browser_lost(None, BrokenPipeError(32, "Broken pipe")), "no --page, no browser")
+
+    def test_a_scene_whose_browser_died_is_tried_again_on_a_fresh_one(self):
+        scene = {"name": "arrow-labels", "file": "arrow-labels.json"}
+        browser = self.FakeBrowser(alive=True)
+        report, calls = self.report(scene, browser, [RuntimeError("DevTools closed the connection")])
+        self.assertEqual((report["gate"]["ok"], browser.restarts, calls), (True, 1, ["arrow-labels"] * 2))
+
+    def test_a_page_failure_is_reported_without_a_restart(self):
+        scene = {"name": "house", "file": "house.json"}
+        browser = self.FakeBrowser(alive=True)
+        report, calls = self.report(scene, browser, [RuntimeError("the page never settled: None")])
+        self.assertEqual((report["gate"]["ok"], browser.restarts, len(calls)), (False, 0, 1))
+        self.assertIn("never settled", report["error"])
+
+    def test_run_scenes_prints_a_line_for_every_scene(self):
+        """The retry sits between ``run_scenes`` and ``evaluate``; this holds the loop around it, which prints one
+        summary line per scene and one ERROR line for a scene that broke."""
+        scenes = [{"name": "house", "file": "house.json"}, {"name": "i18n", "file": "i18n.json"}]
+        calls = []
+
+        def evaluate(scene_doc, *rest):
+            calls.append(scene_doc["name"])
+            if scene_doc["name"] == "i18n":
+                raise RuntimeError("the page never settled: None")
+            return {"scene": scene_doc["name"], "gate": {"ok": True, "failed": []}}
+
+        out = io.StringIO()
+        args = argparse.Namespace(scale=QA.PROBE_SCALE, tolerance=QA.TOLERANCE, strict=False, serve=False,
+                                  engine="v2", json=False)
+        # summary_line formats a whole report (pixels, renders); here only the loop around it is under test.
+        with mock.patch.object(QA, "evaluate", evaluate), \
+                mock.patch.object(QA, "summary_line", lambda r: "{:<16} PASS".format(r["scene"])), \
+                contextlib.redirect_stdout(out):
+            reports = QA.run_scenes(scenes, Path(tempfile.gettempdir()), args, ["light"], None, None)
+        printed = out.getvalue().splitlines()
+        self.assertEqual(calls, ["house", "i18n"])
+        self.assertEqual([r["gate"]["ok"] for r in reports], [True, False])
+        self.assertEqual(len(printed), 2, printed)
+        self.assertIn("house            PASS", printed[0])
+        self.assertRegex(printed[1], r"^i18n +ERROR RuntimeError: the page never settled")
+
+    def test_the_second_loss_in_a_row_is_reported(self):
+        scene = {"name": "i18n", "file": "i18n.json"}
+        browser = self.FakeBrowser(alive=True)
+        lost = [BrokenPipeError(32, "Broken pipe"), BrokenPipeError(32, "Broken pipe")]
+        report, calls = self.report(scene, browser, lost)
+        self.assertEqual((report["gate"]["ok"], browser.restarts, len(calls)), (False, 1, 2))
+        self.assertIn("BrokenPipeError", report["error"])
 
 
 if __name__ == "__main__":

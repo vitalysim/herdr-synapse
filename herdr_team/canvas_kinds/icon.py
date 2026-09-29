@@ -96,7 +96,7 @@ def create(ctx: Any, op: Dict[str, Any]) -> None:
 
 
 OPS = (
-    OpSpec(name="icon", fields=("name", "size", "tone", "label", "id", "client_id"), create=create, place=True, order=42,
+    OpSpec(name="icon", family="block", fields=("name", "size", "tone", "label", "id", "client_id"), create=create, place=True, order=42,
            doc="a Lucide icon by name (canvas icons --search), with an optional label", mcp="icon {name, size s|m|l|xl, tone, label}"),
 )
 

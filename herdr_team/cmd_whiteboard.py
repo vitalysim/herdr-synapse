@@ -49,6 +49,8 @@ from herdr_team.paths import SessionPaths, TeamPaths
 OPEN_BROWSER: Callable[[str], bool] = webbrowser.open
 
 ACTIONS = ("status", "enable", "disable", "team", "viz", "open", "stop", "views", "clear", "purge")
+#: The page's canvas engines (canvas v2 phase 6, 1.4): v2 is the page's default; v1 is the classic Excalidraw canvas.
+ENGINES = ("v1", "v2")
 SWITCH_ACTIONS = ("team", "viz")
 #: The manifest ``[[panes]]`` entry the plugin action hands off to.
 POPUP_ENTRYPOINT = "whiteboard"
@@ -168,6 +170,8 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
                         help="status (default) | enable | disable | team on|off | viz on|off | open | stop | views | clear | purge")
     parser.add_argument("value", nargs="?", choices=("on", "off"), metavar="on|off", help="team and viz: on or off")
     parser.add_argument("--no-browser", dest="no_browser", action="store_true", help="open: print the URL instead of opening a browser")
+    parser.add_argument("--engine", choices=ENGINES, help="open: the canvas engine for this page: v2 (the default) or v1, the classic "
+                                                          "Excalidraw canvas kept for comparison (the link carries ?engine=)")
     parser.add_argument("--popup", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--all-teams", dest="all_teams", action="store_true", help="purge: every team's stored canvas, not only this team's")
     parser.add_argument("--yes", action="store_true", help="purge: do not ask first (nothing is archived)")
@@ -430,6 +434,14 @@ def _run_open(args: argparse.Namespace) -> int:
         raise
 
 
+def with_engine(url: str, engine: Optional[str]) -> str:
+    """The ticket URL with ``engine=`` when one was asked for (the ticket's redirect keeps it); none opens the page's
+    default, canvas v2 (phase 6, 1.4)."""
+    if not url or engine not in ENGINES:
+        return url
+    return "{}{}engine={}".format(url, "&" if "?" in url else "?", engine)
+
+
 def _open(args: argparse.Namespace) -> int:
     from herdr_team import whiteboard_server as _server
 
@@ -444,7 +456,7 @@ def _open(args: argparse.Namespace) -> int:
     _refuse_non_human(layout, team_hint, author, "whiteboard open")
     features.require_layer(layout.session)
     info = _server.start(layout, env, author, open_browser=False)
-    url = str(info.get("url") or "")
+    url = with_engine(str(info.get("url") or ""), getattr(args, "engine", None))
     port = info.get("port")
     over_ssh = ssh_session(env)
     if args.no_browser:
@@ -599,7 +611,7 @@ COMMANDS: List[Command] = [
         _add_arguments,
         _run,
         description=("whiteboard [status] | enable | disable (the operator in person) | team on|off | viz on|off (the operator or a delegate) | "
-                     "open [--no-browser] | stop (people only) | views | clear | purge [--all-teams] --yes. The layer is off by default; "
+                     "open [--no-browser] [--engine v1|v2] | stop (people only) | views | clear | purge [--all-teams] --yes. The layer is off by default; "
                      "once on, a team's canvas is still off until turned on for that team (team on); its live visuals are on unless switched off."),
     ),
     Command("whiteboard-serve", "the whiteboard page server in the foreground (spawned by whiteboard open)", _add_serve_arguments, _run_serve, hidden=True),

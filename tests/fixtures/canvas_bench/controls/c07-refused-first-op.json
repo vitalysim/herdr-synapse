@@ -1,0 +1,10 @@
+{
+  "id": "c07-refused-first-op",
+  "about": "The first op of the batch is refused (a misspelt op): not valid on the first try.",
+  "prompt": "09-kanban-launch",
+  "expect_fail": ["first_try"],
+  "reference": [
+   {"op": "kanbann", "id": "x", "title": "Launch board", "intent": "typo"},
+   {"op": "kanban", "id": "launch", "title": "Launch board", "at": [0, 0], "intent": "track launch tasks", "columns": [{"id": "todo", "title": "Todo", "cards": ["Rotate API keys", {"title": "Landing page copy", "badges": ["P0"]}]}, {"id": "doing", "title": "Doing", "tone": "warning", "cards": [{"title": "Gateway JWT check", "status": "blocked"}]}, {"id": "done", "title": "Done", "tone": "success", "cards": ["Persona research"]}]}
+  ]
+}

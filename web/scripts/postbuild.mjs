@@ -18,8 +18,10 @@
 //                        and 3D primitive against it (canvas-v2-phase3-4.md D19).
 //
 // Gates: no emitted JS chunk may call `new Function(` or `eval(` (the page's CSP refuses both; this
-// also proves ECharts' geo module stayed out and claygl's size expressions were patched), and the
-// lazy chunk sizes are printed (gzip -9) against the phase 3-4 budgets.
+// also proves ECharts' geo module stayed out and claygl's size expressions were patched); the first
+// load (canvas v2, the default engine since 0.22) may not hold the classic canvas (CanvasTab, or any
+// chunk or stylesheet carrying Excalidraw's markers) and may not pass its budget; and the lazy chunk
+// sizes are printed (gzip -9) against the phase 3-4 budgets (canvas-v2-phase6.md 1.3).
 // The bundled Inter and Geist Mono (assets/fonts/) are not copied here: src/fonts.css imports them
 // and Vite hashes them into dist/assets/. This script checks they arrived byte for byte.
 import crypto from "node:crypto";
@@ -294,15 +296,36 @@ const closureOf = (pattern, loaded) => {
 const chartsPart = closureOf(/^echartsCore-/, firstLoad);
 const scenePart = closureOf(/^renderer-/, firstLoad);
 const glPart = closureOf(/^glCharts-/, new Set([...firstLoad, ...chartsPart]));
+// The first load is canvas v2 alone (canvas-v2-phase6.md 1.3, D4). Excalidraw is bundled into the classic canvas's
+// chunks (CanvasTab and what it imports); its code carries its package name (`PKG_NAME:"@excalidraw/excalidraw"`, from
+// its build-time env) and its stylesheet the `excalidraw-tooltip` class. Neither may reach the entry, the Board or
+// their static imports, nor a stylesheet index.html links.
+const EXCALIDRAW_MARKERS = ["@excalidraw/excalidraw", "excalidraw-tooltip"];
+// Phase 5 (2026-09-28); held, not raised, in Phase 6 (D4). The headroom is printed with the table:
+// when it runs short, drop a token block the page never reads (scripts/python-only-tokens.mjs) or
+// make a part of the Board lazy, rather than raising this number.
+const FIRST_LOAD_BUDGET = 121.6 * 1024;
+const classic = [...firstLoad].filter((rel) => /^CanvasTab-/.test(rel) || EXCALIDRAW_MARKERS.some((m) => fs.readFileSync(path.join(DIST, "assets", rel), "utf8").includes(m)));
+const firstCss = [...indexHTML.matchAll(/href="\/?assets\/([^"]+\.css)"/g)].map((m) => m[1]);
+classic.push(...firstCss.filter((rel) => EXCALIDRAW_MARKERS.some((m) => fs.readFileSync(path.join(DIST, "assets", rel), "utf8").includes(m))));
+if (classic.length) throw new Error(`postbuild: the classic canvas (Excalidraw) reached the first load: ${classic.join(", ")}`);
+if (/modulepreload[^>]*CanvasTab-/.test(indexHTML)) throw new Error("postbuild: index.html preloads the classic canvas (CanvasTab)");
+const classicPart = closureOf(/^CanvasTab-/, firstLoad);
 const table = [
   // Raised from 115.2 KB for Phase 5 collaboration (presence, proposals, freeze), which the page needs on load (2026-09-28).
-  ["v2 first load (the entry and the Board, static imports)", sum([...firstLoad]), 121.6 * 1024],
+  ["v2 first load (the entry and the Board, static imports)", sum([...firstLoad]), FIRST_LOAD_BUDGET],
   ["charts (echarts core, SVGRenderer, chart modules)", sum([...chartsPart]), 280 * 1024],
   ["scene3d (three subset, GLTFLoader, OrbitControls, renderer)", sum([...scenePart]), 190 * 1024],
   ["glcharts (CanvasRenderer, echarts-gl subset, claygl; after charts)", sum([...glPart]), 330 * 1024],
 ];
 console.log("postbuild: bundle (gzip -9)");
-for (const [name, size, budget] of table) console.log(`  ${name.padEnd(64)} ${kb(size).padStart(10)}  budget ${kb(budget)}${size > budget ? "  OVER" : ""}`);
+for (const [name, size, budget] of table) {
+  const room = Math.round(budget - size);
+  console.log(`  ${name.padEnd(64)} ${kb(size).padStart(10)}  budget ${kb(budget)}${size > budget ? "  OVER" : `  (${room} bytes to spare)`}`);
+}
+console.log(`  ${"v1 on demand (CanvasTab and its closure)".padEnd(64)} ${kb(sum([...classicPart])).padStart(10)}  no budget`);
+// The first load failing its budget fails the build; the lazy parts only say OVER.
+if (table[0][1] > FIRST_LOAD_BUDGET) throw new Error(`postbuild: the v2 first load is ${kb(table[0][1])}; the budget is ${kb(FIRST_LOAD_BUDGET)} (canvas-v2-phase6.md D4)`);
 
 // -- 5. hash lists -----------------------------------------------------------------------
 

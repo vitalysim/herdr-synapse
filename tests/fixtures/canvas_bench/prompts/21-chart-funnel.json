@@ -1,0 +1,15 @@
+{
+  "id": "21-chart-funnel",
+  "category": "chart",
+  "audience": "nondev",
+  "live": false,
+  "prompt": "Chart our checkout funnel titled Checkout funnel: 10,000 visited the product page, 3,200 added to cart, 1,400 started checkout and 900 paid.",
+  "expect": {
+    "kinds_any": ["chart"],
+    "labels": ["Checkout funnel"],
+    "chart": {"type_any": ["funnel", "bar"], "fields": []}
+  },
+  "reference": [
+   {"op": "chart", "id": "funnel", "title": "Checkout funnel", "type": "funnel", "at": [0, 0], "intent": "where shoppers drop off", "rows": [{"step": "Visited product page", "shoppers": 10000}, {"step": "Added to cart", "shoppers": 3200}, {"step": "Started checkout", "shoppers": 1400}, {"step": "Paid", "shoppers": 900}], "category": "step", "value": "shoppers"}
+  ]
+}

@@ -1045,6 +1045,26 @@ def _add_post_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--force", action="store_true", help="post even when the text looks like a secret")
 
 
+#: ``@name`` at the start of a post's text. In the console that targets; in a post it is plain prose and ``--to`` is the
+#: selector, so a post that opens with one is told, once, rather than quietly waking everybody (QA phase 6, F6).
+_OPENING_MENTION = re.compile(r"^\s*@([A-Za-z][A-Za-z0-9_-]{0,63})\b")
+
+
+def mention_hint(doc: Dict[str, Any], text: str, to: Sequence[str]) -> Optional[str]:
+    """The warning for ``post "@name ..."`` with no ``--to``: whom it woke, and how to target next time."""
+    if list(to) != ["all"]:
+        return None
+    found = _OPENING_MENTION.match(text or "")
+    if not found:
+        return None
+    member = find_member(doc, found.group(1), allow_retired=False)
+    if member is None or member.get("kind") == "human":
+        return None
+    name = str(member.get("name"))
+    return ("@{name} in the text does not target anyone: this post went to the whole team and nudged every member. "
+            "Use --to {name} to reach {name} alone (@name targets in the console, not in a post).".format(name=name))
+
+
 def resolve_recipients(doc: Dict[str, Any], to_args: Optional[List[str]], author: Author, to_any: bool = False) -> Tuple[List[str], Optional[str]]:
     """Expand ``--to`` against the roster; ``role:<r>`` records ``to_role``."""
     roster_names = [m.get("name") for m in agent_members(doc)]
@@ -1215,6 +1235,9 @@ def _run_post(args: argparse.Namespace) -> int:
     notifier = notifier_state(layout.session)
     if notifier == "offline":
         warn(args, "notifier offline: nudges are queued until the daemon runs (herdr-synapse daemon start)")
+    hint = mention_hint(doc, text, to)
+    if hint:
+        warn(args, hint)
     payload = {
         "seq": seq, "team": team_name, "notifier": notifier, "to": to, "to_role": to_role, "kind": args.kind,
         "author": {"name": author.name, "via": author.via, "verified": bool(author.verified)},

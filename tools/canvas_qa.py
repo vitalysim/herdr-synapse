@@ -26,13 +26,14 @@ Each scene file (``tests/fixtures/canvas_scenes/*.json``) is ``{"name", "about",
    arrow-label pills that reach past the picture's edge (``cut_off``).
 
 With ``--page`` it also serves each scene's whiteboard page on loopback, opens it in a throwaway
-headless Chrome (its own profile, killed afterwards), reads the line breaks Excalidraw drew, compares
+headless Chrome (its own profile, killed afterwards), reads the line breaks the page drew, compares
 them with the server's (blank lines and indentation included; emoji differences the server makes on
 purpose, ``canvas_render.render_text``, excused by rule), reads the page's own fit audit
 (``page_overflow``: a label wider or taller than the room its container gives it), and saves light and
-dark screenshots of the page. ``--engine v2`` opens the display-list page (``?engine=v2``, canvas v2 phase 1)
-instead and reads the same things through its QA hook ``window.__synapseV2`` (lines, the fit audit, fit to view),
-and also gates any CSS ``filter`` on the page (AC-4.2: nothing inverts colours in the dark theme). The v2 page is read
+dark screenshots of the page. The page is canvas v2, the display-list page and the page's default since
+canvas v2 phase 6 (``--engine v2``, the default): it reads them through its QA hook ``window.__synapseV2``
+(lines, the fit audit, fit to view), and also gates any CSS ``filter`` on the page (AC-4.2: nothing inverts
+colours in the dark theme). ``--engine v1`` opens the classic Excalidraw page (``?engine=v1``) instead. The v2 page is read
 at full detail (scale 1, above every level-of-detail band), one screen-sized tile at a time, so a board bigger than
 the screen is compared line for line and never against its zoomed-out skeletons. Every entry that draws text is probed
 and compared, a table's cells and a sequence's names and messages included.
@@ -43,8 +44,8 @@ It prints one line per scene (``--json`` for everything) and exits 0 when every 
     python3 tools/canvas_qa.py                          # every golden scene, output under .local/qa/canvas
     python3 tools/canvas_qa.py tests/fixtures/canvas_scenes/house.json --out /tmp/qa --json
     python3 tools/canvas_qa.py house --page-lines page-lines.json   # compare with lines read off the page
-    python3 tools/canvas_qa.py --page                   # also read the page's line breaks in headless Chrome
-    python3 tools/canvas_qa.py --page --engine v2       # the same against the v2 (display-list) page
+    python3 tools/canvas_qa.py --page                   # also read the v2 page's line breaks in headless Chrome
+    python3 tools/canvas_qa.py --page --engine v1       # the same against the classic (Excalidraw) page
     python3 tools/canvas_qa.py house --serve 120        # also serve the scene to a browser for 120 s
 
 Stdlib only; it imports ``herdr_team`` from this checkout.
@@ -767,7 +768,7 @@ def _text_of(el: Dict[str, Any]) -> str:
 
 def evaluate(scene_doc: Dict[str, Any], out: Path, scale: float = PROBE_SCALE, tolerance: float = TOLERANCE,
              themes: Optional[Sequence[str]] = None, page_lines: Optional[Dict[str, List[str]]] = None,
-             strict: bool = False, serve: float = 0.0, browser: Optional[Browser] = None, engine: str = "v1") -> Dict[str, Any]:
+             strict: bool = False, serve: float = 0.0, browser: Optional[Browser] = None, engine: str = "v2") -> Dict[str, Any]:
     """Apply, check, render and probe one scene; its report (``gate.ok`` says whether it passes)."""
     name = scene_doc["name"]
     themes = list(themes or themes_supported())
@@ -1165,13 +1166,20 @@ PAGE_WAIT_S = 20.0
 
 
 def find_chrome(explicit: Optional[str] = None) -> Optional[str]:
-    """``--page PATH``, ``$CHROME``, the macOS app, or a Chrome/Chromium on ``PATH``."""
-    for candidate in ([explicit] if explicit else []) + [os.environ.get("CHROME") or ""] + list(CHROME_PATHS):
+    """``--page PATH``, ``$CHROME``, the macOS app, or a Chrome/Chromium on ``PATH``.
+
+    A path given on the command line must be a browser: falling back from it silently once ran a whole gate on the
+    default engine because a shell quoting slip landed a flag in ``--page`` (``--page "--engine v1"``).
+    """
+    given = [explicit] if explicit else []
+    for candidate in given + [os.environ.get("CHROME") or ""] + list(CHROME_PATHS):
         if not candidate:
             continue
         found = candidate if os.path.isfile(candidate) else shutil.which(candidate)
         if found and os.access(found, os.X_OK):
             return found
+        if candidate in given:
+            raise SystemExit("canvas_qa: --page {!r} is not a browser (a path, or a name on PATH)".format(candidate))
     return None
 
 
@@ -1260,9 +1268,14 @@ class Browser:
     """A throwaway headless Chrome (its own profile under a temp dir); ``close`` kills only this process."""
 
     def __init__(self, binary: str) -> None:
+        self.binary = binary
+        self._start()
+
+    def _start(self) -> None:
         import subprocess
         from urllib.request import urlopen
 
+        binary = self.binary
         self.profile = Path(tempfile.mkdtemp(prefix="canvas-qa-chrome-"))
         #: The page's fit audit, read with the last settled lines.
         self.audit: List[Dict[str, Any]] = []
@@ -1284,12 +1297,12 @@ class Browser:
         self.cdp.call("Page.enable")
         self.cdp.call("Runtime.enable")
 
-    def lines(self, url: str, shot: Optional[Path] = None, engine: str = "v1") -> Dict[str, List[str]]:
+    def lines(self, url: str, shot: Optional[Path] = None, engine: str = "v2") -> Dict[str, List[str]]:
         """Open ``url`` and read the page's line breaks once they hold still (fonts loaded, two equal reads)."""
         v2 = engine == "v2"
         self.filters: List[str] = []
         self.cdp.call("Emulation.setEmulatedMedia", features=[{"name": "prefers-color-scheme", "value": "light"}])
-        self.cdp.call("Page.navigate", url=url + ("&engine=v2" if v2 else ""))
+        self.cdp.call("Page.navigate", url=url + "&engine=" + ("v2" if v2 else "v1"))
         deadline, last = time.monotonic() + PAGE_WAIT_S, None
         while time.monotonic() < deadline:
             time.sleep(0.5)
@@ -1370,6 +1383,15 @@ class Browser:
         data = self.cdp.call("Page.captureScreenshot", format="png").get("data") or ""
         path.write_bytes(base64.b64decode(data))
 
+    def dead(self) -> bool:
+        """The browser is gone: the machine (or an out-of-memory kill under load) took it, not a scene."""
+        return self.proc.poll() is not None
+
+    def restart(self) -> None:
+        """Close this browser and open another one, so one lost Chrome does not fail every scene after it."""
+        self.close()
+        self._start()
+
     def close(self) -> None:
         cdp = getattr(self, "cdp", None)
         if cdp is not None:
@@ -1387,7 +1409,7 @@ class Browser:
 PAGE_DIST: Optional[Path] = None
 
 
-def read_page_lines(qa: QaTeam, browser: Browser, shot: Optional[Path], engine: str = "v1") -> Dict[str, List[str]]:
+def read_page_lines(qa: QaTeam, browser: Browser, shot: Optional[Path], engine: str = "v2") -> Dict[str, List[str]]:
     """The scene's page served on loopback, opened in the browser, and its line breaks read."""
     import threading
     from unittest import mock
@@ -1605,8 +1627,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--strict", action="store_true", help="also gate arrow_through, stray and arrow-label collisions (Phase 2)")
     parser.add_argument("--serve", type=float, default=0.0, metavar="SECONDS", help="serve each scene's page on loopback this long")
     parser.add_argument("--dist", help="serve this page build instead of web/dist (a scratch `vite build --outDir`)")
-    parser.add_argument("--engine", choices=ENGINES, default="v1",
-                        help="the page engine --page opens: v1 (Excalidraw, the default) or v2 (the display-list renderer, ?engine=v2)")
+    parser.add_argument("--engine", choices=ENGINES, default="v2",
+                        help="the page engine --page opens: v2 (the display-list renderer, the page's default) or v1 (the classic "
+                             "Excalidraw page, ?engine=v1)")
     parser.add_argument("--matrix", action="store_true", help="print the canvas v2 phase 5 authority matrix as a table and exit")
     parser.add_argument("--perf", choices=("collab",), help="measure the canvas v2 phase 5 numbers (G9) and exit")
     parser.add_argument("--page", nargs="?", const="", metavar="CHROME",
@@ -1665,19 +1688,54 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     return 0 if doc["ok"] else 1
 
 
+#: What a lost browser looks like from here: Chrome died (a loaded machine, an out-of-memory kill) and the socket went
+#: with it. Without a restart the first scene to meet this fails, and so does every scene after it.
+LOST_BROWSER = ("BrokenPipeError", "ConnectionResetError", "ConnectionAbortedError", "TimeoutError")
+
+
+def browser_lost(browser: Optional[Browser], err: BaseException) -> bool:
+    """The browser, not the scene, is what failed: it exited, or the DevTools socket is gone."""
+    if browser is None:
+        return False
+    return browser.dead() or type(err).__name__ in LOST_BROWSER or "DevTools closed the connection" in str(err)
+
+
+def scene_report(scene: Dict[str, Any], out: Path, args: argparse.Namespace, themes: List[str],
+                 lines: Optional[Dict[str, List[str]]], browser: Optional[Browser]) -> Dict[str, Any]:
+    """One scene's report. A broken scene is a finding, not a crash of the run; a scene whose browser died is tried
+    once more on a fresh one."""
+    for attempt in (1, 2):
+        try:
+            return evaluate(scene, out, args.scale, args.tolerance, themes, lines, args.strict, args.serve, browser, args.engine)
+        except Exception as err:
+            if attempt == 2 or browser is None or not browser_lost(browser, err):
+                return {"scene": scene["name"], "file": scene["file"], "error": "{}: {}".format(type(err).__name__, err),
+                        "gate": {"ok": False, "failed": ["error"]}}
+            if not args.json:
+                print("{:<16} browser lost ({}: {}); starting another and trying again".format(
+                    scene["name"], type(err).__name__, err), flush=True)
+            try:
+                browser.restart()
+            except Exception as restart_err:
+                return {"scene": scene["name"], "file": scene["file"],
+                        "error": "{}: {}".format(type(restart_err).__name__, restart_err),
+                        "gate": {"ok": False, "failed": ["error"]}}
+    raise AssertionError("unreachable")  # pragma: no cover
+
+
 def run_scenes(scenes: List[Dict[str, Any]], out: Path, args: argparse.Namespace, themes: List[str],
                page: Optional[Dict[str, Any]], browser: Optional[Browser]) -> List[Dict[str, Any]]:
-    """Evaluate each scene in turn, printing its summary line as it finishes (unless ``--json``)."""
+    """Evaluate each scene in turn, printing its summary line as it finishes (unless ``--json``).
+
+    A scene whose browser died is tried once more on a fresh one (``Browser.restart``), so an infrastructure event on a
+    loaded machine costs one scene's time instead of failing the whole run from that scene on.
+    """
     reports = []
     for scene in scenes:
         lines = None
         if page is not None:
             lines = page.get(scene["name"]) if isinstance(page.get(scene["name"]), dict) else page
-        try:
-            report = evaluate(scene, out, args.scale, args.tolerance, themes, lines, args.strict, args.serve, browser, args.engine)
-        except Exception as err:  # one broken scene is a finding, not a crash of the run
-            report = {"scene": scene["name"], "file": scene["file"], "error": "{}: {}".format(type(err).__name__, err),
-                      "gate": {"ok": False, "failed": ["error"]}}
+        report = scene_report(scene, out, args, themes, lines, browser)
         reports.append(report)
         if not args.json:
             print(summary_line(report) if "error" not in report else "{:<16} ERROR {}".format(report["scene"], report["error"]), flush=True)

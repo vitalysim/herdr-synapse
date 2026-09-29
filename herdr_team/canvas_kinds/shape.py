@@ -188,7 +188,7 @@ def create(ctx: Any, op: Dict[str, Any]) -> None:
 
 
 OPS = (
-    OpSpec(name="shape", fields=("kind", "text", "w", "h", "icon", "id", "client_id"), create=create, style=True, place=True, order=10,
+    OpSpec(name="shape", family="primitive", fields=("kind", "text", "w", "h", "icon", "id", "client_id"), create=create, style=True, place=True, order=10,
            doc="a box, ellipse, diamond, note or free text, sized from its label (w/h are its minimum)",
            mcp="shape {kind box|ellipse|diamond|note|text, text, at|right_of|below|inside, w, h (minimums: shapes grow to fit their "
                "label), tone neutral|info|success|warning|danger|accent|idea|decision, variant soft|solid|outline, color, fill; a text wraps at w}"),

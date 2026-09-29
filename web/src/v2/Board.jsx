@@ -14,7 +14,7 @@
 //
 // Takes the same props as CanvasTab (App renders one or the other), plus onFallback(reason),
 // which sends this page back to the classic canvas when it cannot draw what the server serves.
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, getJSON, postBytes, postJSON, teamPath } from "../api.js";
 import AuthorChip from "../canvas/AuthorChip.jsx";
 import SidePanel from "../canvas/SidePanel.jsx";
@@ -60,6 +60,10 @@ import {
 import "./interact/board.css";
 import { beginFreezeRegion, beneath, collabOps, resultLines, useCollab, withoutOverlays } from "./collab/index.js";
 import "./collab/collab.css";
+
+// The canvas v2 migration notice (canvas-v2-phase6.md 2.4): loaded only when the server says a board
+// drawn before canvas v2 is pending, and only on the operator's writable page.
+const MigrationBanner = lazy(() => import("./migrate/MigrationBanner.jsx"));
 
 const MEASURE_MAX_LINES = 200;
 const FONT_METRICS_SHA = typeof __SYNAPSE_FONT_METRICS_SHA__ === "string" ? __SYNAPSE_FONT_METRICS_SHA__ : "";
@@ -956,6 +960,12 @@ export default function Board({ team, teamRow, writable, store, bus, visible, to
         </div>
       ) : null}
       {collab.overlays.chrome}
+      {/* the migration notice arrives with the list (dlClient), so it changes only when the list does */}
+      {writable && (client.migration() || {}).pending ? (
+        <Suspense fallback={null}>
+          <MigrationBanner info={client.migration()} send={sendOps} toast={toast} />
+        </Suspense>
+      ) : null}
     </div>
   );
 }

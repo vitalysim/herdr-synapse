@@ -93,10 +93,11 @@ class LeadGuarantees(CollabRig):
         mine = self.ok({"op": "shape", "kind": "box", "text": "Agent", "at": [0, 0], "intent": "t"})["ids"][0]
         agent_batch = self.apply([{"op": "move", "id": mine, "by": [40, 0], "intent": "t"}])["batch"]
         self.ok({"op": "restyle", "id": mine, "tone": "danger"}, LEAD)
-        result = self.apply([{"op": "undo", "author": "alpha-member", "intent": "t"}], LEAD)
-        self.assertEqual(result["applied"][0]["undo"]["skipped"], [{"id": mine, "by": "human", "seq": 3}])
+        refusal = self.refused({"op": "undo", "author": "alpha-member", "intent": "t"}, LEAD)
+        self.assertEqual(refusal["details"]["skipped"], [{"id": mine, "by": "human", "seq": 3}])
+        self.assertIn("edited by you later (v3); undo B-3 first, or force it", refusal["message"], "her own later edit is hers: 'you'")
         self.assertEqual(self.el(mine)["style"]["tone"], "danger", "her later edit stays")
-        self.assertTrue(self.scene()["batches"][agent_batch]["undone"])
+        self.assertFalse(self.scene()["batches"][agent_batch]["undone"], "nothing taken back: not struck")
         # Her own undo reverts hers only; a delegate may not undo her batches.
         hers = self.apply([{"op": "shape", "text": "Hers", "at": [600, 0]}], PAGE)["batch"]
         self.assertEqual(self.refused({"op": "undo", "batch": hers, "intent": "t"}, DEPUTY)["code"], "operator_only")

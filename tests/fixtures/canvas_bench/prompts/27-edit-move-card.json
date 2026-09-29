@@ -1,0 +1,20 @@
+{
+  "id": "27-edit-move-card",
+  "category": "edit",
+  "audience": "dev",
+  "live": false,
+  "prompt": "On the launch board, move the Gateway JWT check card to Done and add a Write release notes card to Todo.",
+  "seed": {"as": "member", "from": "09-kanban-launch"},
+  "expect": {
+    "kinds_any": ["kanban"],
+    "labels": ["Todo", "Doing", "Done", "Rotate API keys", "Landing page copy", "P0", "Gateway JWT check", "Persona research", "Write release notes"],
+    "relations": [["Todo", "Rotate API keys", "contains"], ["Todo", "Landing page copy", "contains"], ["Todo", "Write release notes", "contains"], ["Done", "Gateway JWT check", "contains"], ["Done", "Persona research", "contains"]],
+    "gone_relations": [["Doing", "Gateway JWT check", "contains"]],
+    "stable": true,
+    "changes": ["Gateway JWT check"]
+  },
+  "reference": [
+   {"op": "place", "id": "launch.c3", "in": "launch.done", "intent": "the JWT check is done"},
+   {"op": "patch", "id": "launch", "intent": "a new task", "add": {"cards": [{"title": "Write release notes", "in": "todo"}]}}
+  ]
+}

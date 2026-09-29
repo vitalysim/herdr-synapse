@@ -1,0 +1,18 @@
+{
+  "id": "28-edit-table-row",
+  "category": "edit",
+  "audience": "dev",
+  "live": false,
+  "prompt": "Add Zoho to the CRM comparison: $14 per seat, it has a free tier, API quality fair, verdict cheap option.",
+  "seed": {"as": "member", "from": "11-table-vendors"},
+  "expect": {
+    "kinds_any": ["table"],
+    "labels": ["CRM", "Price per seat", "Free tier", "API quality", "Verdict", "HubSpot", "Pipedrive", "Salesforce", "Shortlist", "Maybe", "Too expensive", "Zoho", "Cheap option"],
+    "relations": [["HubSpot", "$45", "any"], ["HubSpot", "Shortlist", "any"], ["Pipedrive", "$29", "any"], ["Pipedrive", "Maybe", "any"], ["Salesforce", "Excellent", "any"], ["Salesforce", "Too expensive", "any"], ["Zoho", "$14", "any"], ["Zoho", "Cheap option", "any"]],
+    "stable": true,
+    "changes": []
+  },
+  "reference": [
+   {"op": "patch", "id": "crm", "intent": "add Zoho", "add": {"rows": [{"id": "zoho", "cells": ["Zoho", "$14", "Yes", "Fair", "Cheap option"]}]}}
+  ]
+}

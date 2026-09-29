@@ -43,6 +43,30 @@ describe("display client", () => {
     expect(s.calls).toEqual(["/api/teams/t/display", "/api/teams/t/display?since=3"]);
   });
 
+  // The migration notice rides on the list (canvas-v2-phase6.md 2.4): a whole list carries it while it is
+  // pending, a delta carries it or null, and a delta without it leaves it as it was.
+  it("keeps the migration notice the server sends with the list", async () => {
+    const s = fakeServer();
+    const c = createDisplayClient({ team: "t", fetchJSON: s.fetchJSON, applyDelta: realApplyDelta, isSupported: realIsSupported });
+    const notice = { pending: true, refit: 14, overflow: 6, sketch: 3, ids_total: 17 };
+    expect(c.migration()).toBe(null);
+    c.load();
+    await s.answer({ ...full(3, ["E-1"]), migration: notice });
+    expect(c.migration()).toEqual(notice);
+    c.sync();
+    await s.answer({ dl: 1, version: 4, since: 3, full: false, bbox: [0, 0, 1, 1], upserts: [{ id: "E-1", v: 4, layer: "marks", z: 1 }], removes: [] });
+    expect(c.migration()).toEqual(notice); // a delta that says nothing about it keeps it
+    c.sync();
+    await s.answer({ dl: 1, version: 5, since: 4, full: false, bbox: [0, 0, 1, 1], upserts: [], removes: [], migration: null });
+    expect(c.migration()).toBe(null); // settled
+    c.sync();
+    await s.answer({ dl: 1, version: 6, since: 5, full: false, bbox: [0, 0, 1, 1], upserts: [], removes: [], migration: notice });
+    expect(c.migration()).toEqual(notice); // an undo brings it back
+    c.load();
+    await s.answer(full(7, ["E-1"]));
+    expect(c.migration()).toBe(null); // a whole list without it: nothing pending
+  });
+
   it("paths", () => {
     expect(displayPath("a b")).toBe("/api/teams/a%20b/display");
     expect(displayPath("t", 12)).toBe("/api/teams/t/display?since=12");

@@ -137,7 +137,7 @@ token shadow).
 | `text` | `x`, `anchor`, `font` (`sans`/`mono`), `weight`, `size`, `lh`, `fill`, `box`, `lines` | Each line is `{"y", "t", "w", "dir"?}`: `y` its baseline, `w` Python's measured width at `size` (safety factor included), `dir: "rtl"` when its first strong character is right to left. `box` `[x, y, w, h]` is the room the lines were fitted to (it never clips). |
 | `image` | `x y w h`, `src: {"asset": name}` or `{"still": name}`, `fallback`? | Contained in its box. `fallback` is what to draw when the asset cannot be loaded. |
 | `slot` | `slot` (a kind's renderer key: `chart`, `mermaid`, `viz`, `scene3d`), `x y w h`, `ref: {id, v, doc?}`, `still` (a name or null), `fallback`, and since phases 3 and 4 `views`?, `drawn`?, `gl`? | The browser draws the content live; without the browser, the still or else `fallback`. `ref.doc` names an asset the page fetches from `assets/<name>` (`<32 hex>.json`, a chart's datasets; `.glb`, a model), immutable, so cached by name. `views` maps each of the kind's still views to its still or null (`{"iso": "E-9-v12-iso.png", "front": null, "top": null}`), in order; `still` stays the first one's. `drawn: true` says `fallback` is a faithful drawing (a chart's axes and bars, a scene's projection), not a placeholder card. `gl: true` says the live content needs a WebGL context. |
-| `group` | `items`, `t: [a,b,c,d,e,f]`?, `clip: [x,y,w,h]`?, `screen: [ax, ay]`? | With `screen` the children are in screen pixels around the anchor (comment pins, claim and lock labels). |
+| `group` | `items`, `t: [a,b,c,d,e,f]`?, `clip: [x,y,w,h]`?, `screen: [ax, ay]`? | With `screen` the children are in screen pixels around the anchor (comment pins, claim and lock labels). A claim's label sits in a world group clipped at the claim beside it on the right, when there is one, so it never runs over that claim's label; a claim that changes redraws every claim. |
 
 **Paint** is `null`, a literal `"#rrggbb"` (the same in both themes), a token
 reference (`base.<role>`, `tone.<tone>.<role>`, `chip.<0-7|human>.<bg|fg>`,
@@ -175,6 +175,24 @@ Above the frame: the whole title, `lod: [null, 0.75]`,
 draws it at `size_eff = max(size, min_px / scale)`; its block ends at `bottom`,
 each line `lh / size * size_eff` tall with its baseline `base_ratio * size_eff`
 below the line's top.
+
+**Elements drawn before 0.22** (a 0.21 board, replayed from its log, which is
+never rewritten) have no `fit` record. They draw from what was stored, with
+today's rules:
+
+- The label is broken into lines at draw time with the bundled metrics, at
+  the stored text size, inside the stored `w` and `h`. When it no longer fits
+  there, it is laid out in the room its kind would grow to and so runs past
+  the stored box; `canvas check` reports `label_overflow` for it until it is
+  refitted (`canvas refit`, or the operator's `canvas migrate --apply`, which
+  stores a `fit` and grows the box).
+- `rough` is not drawn: every stroke is a clean line. `font: hand` has no
+  bundled face and draws as `sans` (Inter), though it is still measured as the
+  wider hand font until the migration sets `font: normal`.
+- A stored colour with no `tone` goes through the legacy tables (above); an
+  arrow without `label_at` gets its pill placed by today's rules at draw time.
+- A 0.21 `graph` or Mermaid flowchart is the shapes and arrows it was expanded
+  to, not a block entry; a 0.21 Vega-Lite chart is a `slot` like any chart.
 
 ## Numbers
 
@@ -237,7 +255,12 @@ Both writers produce exactly this, with no whitespace between elements:
   wraps each `dir: "rtl"` line in a right-to-left isolate (U+2067 … U+2069:
   resvg ignores `unicode-bidi`, so the agent reads the line in the page's order),
   inlines assets and stills, names `font-family="Inter, sans-serif"` on the
-  root, and adds id badges and the labelled grid (never display-list items).
+  root, and adds id badges and the labelled grid (never display-list items). A
+  badge is a fixed size in pixels while an element is a box in canvas units, so
+  it hangs above its element's top edge, above an arrow label's pill and above a
+  comment's pin - clearance in the same pixels it is drawn in (a frame keeps its
+  badge inside the corner, because a frame's own title stands above it when the
+  picture is zoomed out).
   The page uses the families `"Synapse Sans"` and `"Synapse Mono"`, each followed
   by the script faces resvg falls back to (`SCRIPT_FALLBACKS` in
   `web/src/v2/render/svgAttrs.js`: Arial Hebrew, Geeza Pro), and real urls.

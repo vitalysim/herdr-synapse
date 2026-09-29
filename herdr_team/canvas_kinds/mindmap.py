@@ -79,6 +79,24 @@ def topic_item(ctx: Any, raw: Any, field: str) -> Dict[str, Any]:
     return out
 
 
+def _refuse_topic_dict(ctx: Any, value: Mapping[str, Any], field: str) -> None:
+    """A ``topics`` entry passed inside ``tree`` is refused, not walked (QA phase 6, F2 and 3.3).
+
+    ``tree``'s objects are ``{branch text: children}``, so a ``{"id", "text", "tone"}`` topic put there would have its
+    own **field names** added as topics and its content hung under them: 110 nonsense marks that ``check`` calls clean.
+    What gives a topic away is **two or more** topic fields whose own values are texts rather than children (the run
+    that found this also passed a ``children`` key, which is no topic field, so only the topic fields are read here).
+    A branch may honestly be called ``id`` or ``text`` - a mind map of a data model or a JSON schema - and that one
+    still draws, because those keys hold the lists and objects of a tree (3.3).
+    """
+    named = [key for key in value if key in TOPIC_FIELDS]
+    if len(named) < 2 or any(isinstance(value[key], (list, dict)) for key in named):
+        return
+    raise ctx.invalid(field, "{} is a topic ({}), not a branch: a tree holds {{branch text: children}} and lists of "
+                             "topic texts; pass topics like this one with topics: [{{{}}}]".format(
+                                 field, ", ".join(sorted(named)), ", ".join(TOPIC_FIELDS)))
+
+
 def _from_tree(ctx: Any, tree: Any) -> List[Dict[str, Any]]:
     """A nested tree as topics in depth-first order, ids ``t1``, ``t2`` ... in that order."""
     out: List[Dict[str, Any]] = []
@@ -107,6 +125,7 @@ def _from_tree(ctx: Any, tree: Any) -> List[Dict[str, Any]]:
                 else:
                     raise ctx.invalid("{}[{}]".format(field, index), "a tree list holds topic texts or objects")
         elif isinstance(value, dict):
+            _refuse_topic_dict(ctx, value, field)
             for key, children in value.items():
                 tid = add(key, under, "{}.{}".format(field, key))
                 walk(children, tid, "{}.{}".format(field, key), depth + 1)
@@ -424,7 +443,7 @@ def create(ctx: Any, op: Dict[str, Any]) -> None:
 
 
 OPS = (
-    OpSpec(name="mindmap", fields=("title", "root", "tree", "topics", "side", "branch_tones", "route", "id", "client_id"), create=create, place=True,
+    OpSpec(name="mindmap", family="diagram", fields=("title", "root", "tree", "topics", "side", "branch_tones", "route", "id", "client_id"), create=create, place=True,
            order=72, doc="a mind map from a nested tree of topics, laid out as a tidy tree around its root",
            mcp="mindmap {title, root, tree {\"Topic\": [\"sub\", ...]} | topics [{id, text, under, tone, icon}], side both|right, "
                "branch_tones auto|none}"),

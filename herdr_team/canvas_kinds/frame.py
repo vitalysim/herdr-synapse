@@ -117,7 +117,7 @@ def create(ctx: Any, op: Dict[str, Any]) -> None:
 
 
 OPS = (
-    OpSpec(name="frame", fields=("title", "w", "h", "children", "region", "id", "client_id"), create=create, style=True, place=True, order=30,
+    OpSpec(name="frame", family="primitive", fields=("title", "w", "h", "children", "region", "id", "client_id"), create=create, style=True, place=True, order=30,
            doc="a titled area around children, over a region, or placed with a size", mcp="frame {title, at+w+h | children | region}"),
 )
 

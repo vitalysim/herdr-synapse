@@ -53,6 +53,10 @@ ALL_TYPES = _data.TYPES
 #: Every op field a flat chart takes whatever its type (the type's channels and options join them).
 COMMON = ("type", "data", "rows", "columns", "aggregate", "filter", "sort", "top", "other", "labels", "legend", "format", "units", "types",
           "highlight", "annotations", "caption")
+#: ``kind`` is read as ``type``: every other op in the language names its variant ``kind``, and a chart is the one that
+#: names it ``type``, which cost a live agent its first try (QA phase 6, F8). The accepted name is still ``type``, and
+#: a chart drawn with ``kind`` says so in a ``field_alias`` warning.
+FIELD_ALIASES = {"kind": "type"}
 #: Fields that change only how a chart looks, never its model: a patch of them needs no data (the stored model is re-framed).
 VISUAL = ("title", "caption", "labels", "legend", "highlight", "annotations", "horizontal", "smooth", "points", "palette", "orient", "inner",
           "shading", "wireframe")
@@ -357,6 +361,35 @@ RULES: Dict[str, Callable[[Any, str], Any]] = {
 CHANNEL_ALIASES = {"pie": {"x": "category", "y": "value"}, "donut": {"x": "category", "y": "value"}, "funnel": {"x": "category", "y": "value"}}
 
 
+#: Words that name a *shape* of a chart rather than a type, and the fields that draw it (QA phase 6, F8). A grouped bar
+#: chart is the most ordinary business request there is, and ``invalid type "grouped"`` used to list the types without
+#: saying how to get one.
+NOT_TYPES = {
+    "grouped": 'type "bar" with color: <the column that splits the bars>; side by side is the default',
+    "grouped_bar": 'type "bar" with color: <the column that splits the bars>; side by side is the default',
+    "stacked": 'type "bar" with color: <column> and stack: true (or stack: "percent")',
+    "stacked_bar": 'type "bar" with color: <column> and stack: true (or stack: "percent")',
+    "multi": 'type "line" (or "bar") with color: <the column that splits the series>',
+    "multi_line": 'type "line" with color: <the column that splits the series>',
+    "horizontal": 'type "bar" with horizontal: true',
+    "horizontal_bar": 'type "bar" with horizontal: true',
+    "combo": "two charts side by side; one element draws one type",
+    "table": 'not a chart: the "table" op draws columns and rows',
+    "gauge": 'not a chart type; a single number is a "badge" or a "card"',
+}
+
+
+def _not_a_type(word: str) -> str:
+    """The hint for a word that describes a chart's shape, normalised over spaces, dashes and a trailing noun."""
+    key = " ".join(word.strip().lower().split()).replace("-", " ").replace(" ", "_")
+    for suffix in ("_chart", "_bars", "_bar", "_charts"):
+        if key.endswith(suffix) and key[: -len(suffix)] in NOT_TYPES:
+            key = key[: -len(suffix)]
+            break
+    found = NOT_TYPES.get(key)
+    return "; {} is {}".format(word, found) if found else ""
+
+
 def resolve_type(value: Any) -> Tuple[ChartType, Dict[str, Any]]:
     """The chart type an op names (an alias is normalised: ``column`` is ``bar``, ``bubble`` is ``scatter`` with ``size``
     required), and the fields the alias implies; ``invalid type`` with the list and the nearest name otherwise."""
@@ -364,8 +397,9 @@ def resolve_type(value: Any) -> Tuple[ChartType, Dict[str, Any]]:
     known = names()
     if not isinstance(value, str) or get(value) is None:
         word = str(value) if value is not None else ""
-        raise invalid("type", "invalid type {}; one of: {}{}".format(json.dumps(value, ensure_ascii=False), ", ".join(known),
-                                                                     _data.did_you_mean(word, known + sorted(_ALIASES))),
+        raise invalid("type", "invalid type {}; one of: {}{}{}".format(json.dumps(value, ensure_ascii=False), ", ".join(known),
+                                                                       _data.did_you_mean(word, known + sorted(_ALIASES)),
+                                                                       _not_a_type(word)),
                       types=known, nearest=_data.nearest(word, known + sorted(_ALIASES)))
     chart = get(value)
     assert chart is not None
@@ -414,16 +448,19 @@ def _type_rule(value: Any, name: str) -> str:
 def normalize_spec(raw: Mapping[str, Any]) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     """A flat chart spec checked for shape (every field, no data needed) and canonical (aliases resolved), with the
     warnings it earned (``channel_alias``). Idempotent: its readback normalizes to itself."""
-    chart, implied = resolve_type(raw.get("type"))
+    aliased = [key for key, target in FIELD_ALIASES.items() if raw.get(key) is not None and raw.get(target) is None]
+    chart, implied = resolve_type(raw.get("type") if raw.get("type") is not None else
+                                  next((raw[key] for key in aliased if FIELD_ALIASES[key] == "type"), None))
     spec: Dict[str, Any] = {"type": chart.name}
-    warnings: List[Dict[str, Any]] = []
+    warnings: List[Dict[str, Any]] = [{"code": "field_alias", "message": "a chart's type is type, not {}; read {} as type".format(key, key)}
+                                      for key in aliased]
     renames = CHANNEL_ALIASES.get(chart.name, {})
     taken = {c.name: c for c in chart.channels}
     all_channels = channel_names()
     all_options = option_names()
     for key, value in raw.items():
         if value is None or key in ("type", "op", "id", "title", "intent", "if_version", "client_id", "w", "h", "spec", "echarts",
-                                    "spec_asset") or key.startswith("_"):
+                                    "spec_asset") or key in FIELD_ALIASES or key.startswith("_"):
             continue
         target = key
         if key in renames and renames[key] not in raw:

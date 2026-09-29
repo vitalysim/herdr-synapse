@@ -29,7 +29,7 @@ def readback(el: Element, full: bool) -> str:
 
 
 OPS = (
-    OpSpec(name="image", fields=("path", "asset", "w", "h", "id", "client_id"), create=create, place=True, order=110,
+    OpSpec(name="image", family="primitive", fields=("path", "asset", "w", "h", "id", "client_id"), create=create, place=True, order=110,
            doc="a PNG or JPEG from a file under artifacts/, whiteboard/renders/ or your working directory", mcp="image {path}"),
 )
 

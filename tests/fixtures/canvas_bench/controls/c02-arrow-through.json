@@ -1,0 +1,15 @@
+{
+  "id": "c02-arrow-through",
+  "about": "A straight arrow drawn through a box it does not connect.",
+  "expect_fail": ["arrow_through"],
+  "expect": {
+    "labels": ["Client", "Middle box", "Server"],
+    "relations": [["Client", "Server"]]
+  },
+  "reference": [
+   {"op": "shape", "kind": "box", "id": "c", "text": "Client", "at": [0, 0], "intent": "ends"},
+   {"op": "shape", "kind": "box", "id": "m", "text": "Middle box", "at": [300, 0], "intent": "in the way"},
+   {"op": "shape", "kind": "box", "id": "s", "text": "Server", "at": [600, 0], "intent": "ends"},
+   {"op": "arrow", "from": "c", "to": "s", "route": "straight", "intent": "straight through"}
+  ]
+}

@@ -93,7 +93,7 @@ def readback(el: Element, full: bool) -> str:
 
 
 OPS = (
-    OpSpec(name="mermaid", fields=("source", "w", "h", "title", "id", "client_id"), create=create_mermaid, style=True, place=True, order=80,
+    OpSpec(name="mermaid", family="diagram", fields=("source", "w", "h", "title", "id", "client_id"), create=create_mermaid, style=True, place=True, order=80,
            doc="a Mermaid diagram: a flowchart becomes a graph block of native shapes, anything else the page renders", mcp="mermaid {source}"),
 )
 

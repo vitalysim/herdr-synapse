@@ -21,16 +21,23 @@ next to it:
 - assets/fonts/geist-mono/: Geist Mono 1.7.2 (https://github.com/vercel/geist-font),
   SIL Open Font License 1.1, in assets/fonts/geist-mono/OFL.txt.
 
-The whiteboard page (web/dist/, built from web/) also bundles these npm
-packages, minified and tree-shaken; their licence and notice texts are copied
-into web/dist/licenses/ by the build:
+The whiteboard page (web/dist/, built from web/) also bundles npm packages,
+minified and tree-shaken: React, the canvas v2 renderer's charting and 3D
+libraries, Mermaid, Vega, d3 and p5 for live visuals, and Excalidraw with its
+dependencies for the classic canvas (v1). web/dist/MANIFEST.json lists every
+bundled package with its version, and the build copies each one's licence and
+notice texts into web/dist/licenses/. Of the Apache-2.0 packages among them,
+only echarts ships a NOTICE file, quoted below; browser-fs-access and crc-32
+(Apache-2.0) and dompurify (MPL-2.0 or Apache-2.0) ship none, and their
+licences are in web/dist/licenses/. The packages that call for a note here:
 
 - echarts 6.1.0 (https://echarts.apache.org), Apache License 2.0; its NOTICE:
   "Apache ECharts, Copyright 2017-2026 The Apache Software Foundation. This
   product includes software developed at The Apache Software Foundation
   (https://www.apache.org/)."
 - zrender 6.1.0 (a dependency of echarts), BSD 3-Clause License.
-- tslib 2.3.0 (a dependency of echarts), 0BSD.
+- tslib 2.3.0 (a dependency of echarts), 0BSD; tslib 2.8.1 is bundled for
+  other packages under the same licence.
 - echarts-gl 2.1.0 (https://github.com/ecomfe/echarts-gl), BSD 3-Clause
   License per its LICENSE file (its package.json says MIT; the LICENSE text is
   what ships).
@@ -38,3 +45,10 @@ into web/dist/licenses/ by the build:
   replaces one `new Function` in claygl/src/compositor/createCompositor.js with
   an arithmetic evaluator so the page's Content-Security-Policy holds.
 - three 0.186.1 (https://threejs.org), MIT License.
+- d3-scale-chromatic 3.1.0 (https://d3js.org/d3-scale-chromatic/), ISC License,
+  Copyright 2010-2024 Mike Bostock. It is not an Apache-2.0 package, but it
+  embeds ColorBrewer's colour schemes, Copyright 2002 Cynthia Brewer, Mark
+  Harrower and The Pennsylvania State University, under an "Apache-Style
+  Software License ... Apache License, Version 2.0"; both texts ship in
+  web/dist/licenses/d3-scale-chromatic.txt, so a reader auditing the
+  Apache-2.0 list above finds this one here.

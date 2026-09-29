@@ -1,0 +1,26 @@
+{
+  "id": "11-table-vendors",
+  "category": "table",
+  "audience": "dev",
+  "live": true,
+  "prompt": "Compare three CRMs in a table with the columns CRM, Price per seat, Free tier, API quality and Verdict. HubSpot costs $45, has a free tier, API quality good, verdict shortlist. Pipedrive costs $29, no free tier, API quality fair, verdict maybe. Salesforce costs $80, no free tier, API quality excellent, verdict too expensive.",
+  "expect": {
+    "kinds_any": ["table"],
+    "labels": ["CRM", "Price per seat", "Free tier", "API quality", "Verdict", "HubSpot", "Pipedrive", "Salesforce", "Shortlist", "Maybe", "Too expensive"],
+    "relations": [["HubSpot", "$45", "any"], ["HubSpot", "Shortlist", "any"], ["Pipedrive", "$29", "any"], ["Pipedrive", "Maybe", "any"], ["Salesforce", "Excellent", "any"], ["Salesforce", "Too expensive", "any"]]
+  },
+  "reference": [
+   {"op": "table", "id": "crm", "title": "CRM comparison", "at": [0, 0], "intent": "compare the CRMs", "columns": ["CRM", "Price per seat", "Free tier", "API quality", "Verdict"], "rows": [["HubSpot", "$45", "Yes", "Good", "Shortlist"], ["Pipedrive", "$29", "No", "Fair", "Maybe"], ["Salesforce", "$80", "No", "Excellent", "Too expensive"]]}
+  ],
+  "reference_v1": [
+   {"op": "frame", "id": "crm", "title": "CRM comparison", "at": [0, 0], "w": 1000, "h": 300, "intent": "CRM table"},
+   {"op": "shape", "kind": "box", "id": "h1", "text": "CRM", "in": "crm", "intent": "CRM table"},
+   {"op": "shape", "kind": "box", "id": "h2", "text": "Price per seat", "right_of": "h1", "intent": "CRM table"},
+   {"op": "shape", "kind": "box", "id": "h3", "text": "Free tier", "right_of": "h2", "intent": "CRM table"},
+   {"op": "shape", "kind": "box", "id": "h4", "text": "API quality", "right_of": "h3", "intent": "CRM table"},
+   {"op": "shape", "kind": "box", "id": "h5", "text": "Verdict", "right_of": "h4", "intent": "CRM table"},
+   {"op": "shape", "kind": "box", "id": "r1", "text": "HubSpot / $45 / Yes / Good / Shortlist", "below": "h1", "intent": "CRM table"},
+   {"op": "shape", "kind": "box", "id": "r2", "text": "Pipedrive / $29 / No / Fair / Maybe", "below": "r1", "intent": "CRM table"},
+   {"op": "shape", "kind": "box", "id": "r3", "text": "Salesforce / $80 / No / Excellent / Too expensive", "below": "r2", "intent": "CRM table"}
+  ]
+}

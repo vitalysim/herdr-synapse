@@ -12,7 +12,7 @@ gate, proposals, freezes, settings, undo and checkpoints) and
 
 | Actor | In code | May |
 |---|---|---|
-| The lead | `canvas_collab.is_lead(author)`: `is_human and operator` (the writable page, the console, a trusted shell) | everything; never refused by the collaboration layer; the only one who accepts, rejects, freezes, thaws, restores, changes the settings or forces an undo |
+| The lead | `canvas_collab.is_lead(author)`: `is_human and operator` (the writable page, the console, a trusted shell) | everything; never refused by the collaboration layer; the only one who accepts, rejects, freezes, thaws, restores, changes the settings, forces an undo or applies the 0.22 migration (`migrate`) |
 | A delegate | `is_member and operator` (an operator grant) | agents' work like the lead; her marks follow `human_edits` like anyone's; bound by freezes; exempt from locks and lanes |
 | The manager | `is_member and manager` | agents' elements live; exempt from lanes |
 | A member | `is_member` | its own elements and its lane; everything else is a proposal |
@@ -130,21 +130,35 @@ id `collab`), logged and undoable. `human_edits`: `propose` (the default) or
 `live`; `frozen`: `propose` (the default) or `refuse`. The scene carries
 `settings.collab`.
 
+`migrate {action: apply | dismiss}` (the lead, 0.22; `docs/cli.md`, `canvas
+migrate`) moves a board drawn before canvas v2 in one batch: `apply` refits
+its old labels and draws the marks in 0.21's sketch style clean, then records a
+`migration` setting `{action, seq, by}`; `dismiss` records only the setting.
+Like `settings` it goes the lead's path: never proposable, and refused
+`operator_only` for delegates, members and a read-only page. Pins and freezes
+do not stop it. Undoing its batch puts the elements back and removes the
+setting, so the notice returns.
+
 ## Undo and revert
 
 `undo {batch}` or `undo {author, since?}` (every not-undone batch of that
 author after `since`, its own undo batches aside, newest first). An element is
 written back only when every change to it after that batch came from batches
-reverted in the same op; otherwise it is skipped, and the result's `undo`
-lists `{id, by, seq}` and the warning says `3 of 7 reverted; E-12 edited by the
-operator later (v415)`. `force: true` (the lead) writes back anyway. A member
-undoes its own batches; the manager and delegates any agent's; the lead
-anything.
+reverted in the same op, or the later changes cancel out (a newer batch undone
+since, so undoing twice in a row works); otherwise it is skipped, and the
+result's `undo` lists `{id, by, seq}` and the warning says `3 of 7 reverted;
+E-12 edited by the operator later (v415)` ("you" for the reader's own later
+batch, with `undo B-n first`). Claims renewed since are skipped without a word.
+`force: true` (the lead) writes back anyway. A member undoes its own batches;
+the manager and delegates any agent's; the lead anything. An undo that would
+take nothing back is refused `op_invalid`, saying why and what would work
+(`details.skipped`); it writes no event, so the batch is not struck through.
 
 An undo is not proposable, but for anyone but the lead (delegates too) a freeze
 binds it like any op: a write-back to a frozen mark, or one that would put a
 mark back into a frozen region, is skipped as `{id, reason: "frozen", freeze}`
-in either `frozen` setting, and an undo that would touch the element the
+in either `frozen` setting (with `by` and `seq` too when it was also edited
+later: the freeze is named first), and an undo that would touch the element the
 operator is editing on any of her pages is refused `element_busy`. What an undo
 leaves (skipped, frozen, or not the undoer's to change) stays on the batch as
 `left`: `undo {batch}` again tries those keys once more (refused, saying why,
@@ -190,7 +204,11 @@ region is `reading` with no region (no halo round the whole board). It feeds
 the `busy` rule, the `operator_selected` warning, `look` (`operator:` and
 `here:` lines, `--region operator`) and every member's apply result
 (`operator: {viewport, selection, editing, pointing_at, age_s}`). The page's
-stream sends it as `presence`. Presence is a view, never authority.
+stream sends it as `presence`. Presence is a view, never authority. On the
+page an agent's pill and the operator's cursor label never cover a label the
+board draws or each other: a pill goes under its halo, else above it, else
+inside it, else further out, then shrinks to its chip, and a label with no
+clear place is left out (the halo and the dot stay).
 
 ## Readback
 
@@ -210,8 +228,9 @@ checkpoints: V-3 "before pricing rework" v400; V-4 auto v431
 
 Element lines gain ` [frozen]` and ` [proposal P-3]`; `look --proposals`
 prints each open proposal in full. The display list draws ghosts and freezes
-(`docs/display-list.md`). The v1 (Excalidraw) page shows none of it: review
-proposals on the v2 page (`?engine=v2`) or with `canvas accept|reject`.
+(`docs/display-list.md`). The classic (Excalidraw, v1) page at `?engine=v1`
+shows none of it: review proposals on the default page or with `canvas
+accept|reject`.
 
 ## Files
 

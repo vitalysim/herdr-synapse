@@ -64,9 +64,10 @@ When your team is linked to another, you are its voice: `herdr-synapse post
 
 ## The canvas
 
-When `me` says `whiteboard: on`, keep one frame on the canvas with the plan
-current (who does what, what is next), so the operator and the team see it at
-a glance: `herdr-synapse skill get --reference canvas` shows how.
+When `me` says `whiteboard: on`, keep the plan on the canvas as one `kanban`
+(who does what, what is next) and keep it current with `patch`, so the operator
+and the team see it at a glance: `herdr-synapse skill get --reference canvas`
+shows how.
 
 ## References
 

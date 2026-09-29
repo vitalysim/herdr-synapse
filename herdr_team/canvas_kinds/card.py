@@ -418,7 +418,7 @@ def create(ctx: Any, op: Dict[str, Any]) -> None:
 
 
 OPS = (
-    OpSpec(name="card", fields=("title", "body", "icon", "badges", "owner", "status", "detail", "size", "tone", "variant", "w", "h", "id", "client_id"),
+    OpSpec(name="card", family="block", fields=("title", "body", "icon", "badges", "owner", "status", "detail", "size", "tone", "variant", "w", "h", "id", "client_id"),
            create=create, place=True, order=36, doc="a titled card with a body, an icon, badges, an owner and a status, sized to its content",
            mcp="card {title, body (- bullets), icon, badges [text|{text,tone}], owner, status todo|doing|review|blocked|done, detail, "
                "size s|m|l, tone, variant soft|outline|solid}"),

@@ -120,10 +120,12 @@ class Settings(CollabRig):
         self.assertIn("#0 settings - · human edits: live · frozen: refuse", C.apply_text(second), "QA phase 5 L15: says what they are now")
         self.assertEqual(self.refused({"op": "settings"}, LEAD)["details"]["field"], "human_edits")
         self.assertEqual(self.refused({"op": "settings", "human_edits": "maybe"}, LEAD)["details"]["field"], "human_edits")
-        # It is undoable like any batch; an older setting changed later since is skipped like any element.
+        # It is undoable like any batch; an older setting changed later since is skipped like any element (an undo that
+        # would take nothing back is refused, saying so).
         self.ok({"op": "undo", "batch": second["batch"]}, LEAD)
         self.assertEqual(self.scene()["settings"]["collab"], {"human_edits": "live", "frozen": "propose"})
-        skipped = self.apply([{"op": "undo", "batch": result["batch"]}], LEAD)
-        self.assertEqual(skipped["applied"][0]["undo"]["skipped"][0]["id"], "collab")
+        self.apply([{"op": "settings", "frozen": "refuse"}], LEAD)
+        refusal = self.refused({"op": "undo", "batch": result["batch"]}, LEAD)
+        self.assertEqual(refusal["details"]["skipped"][0]["id"], "collab")
         look = C.look(self.layout, self.team, "human")
-        self.assertIn("settings: your marks: live with revert · frozen: proposals", look["text"])
+        self.assertIn("settings: your marks: live with revert · frozen: refused", look["text"])

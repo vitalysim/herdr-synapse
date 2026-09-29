@@ -1,7 +1,8 @@
 // The v2 board's CDP interaction tests (canvas-v2-phase1.md 5.3, E1 to E12, plus the Q phase 1 QA
 // regressions; canvas-v2-phase2.md 8.3, P1 to P12 in phase2.mjs; canvas-v2-phase3-4.md 8.4, the
 // charts' K1 to K7 in charts.mjs and the 3D S1 to S10 in scene3d.mjs; canvas-v2-phase5.md 14.3,
-// the collaboration C1 to C12 in collab.mjs): `npm run test:e2e`.
+// the collaboration C1 to C12 in collab.mjs; canvas-v2-phase6.md 1.6, the cut-over U1 to U4 in
+// cutover.mjs): `npm run test:e2e`.
 //
 // Each rig is tools/canvas_rig.py (a throwaway team on loopback, never the real session) with a
 // golden scene; one headless Chrome started here drives the page with real mouse and key events
@@ -16,6 +17,7 @@ import path from "node:path";
 import { MOD, findChrome, launchChrome, openPage, sleep } from "./cdp.mjs";
 import { CHART_SCENARIOS } from "./charts.mjs";
 import { COLLAB_SCENARIOS } from "./collab.mjs";
+import { CUTOVER_SCENARIOS, openRaw } from "./cutover.mjs";
 import { PHASE2_SCENARIOS } from "./phase2.mjs";
 import { REPO, rigAvailable, startRig } from "./rig.mjs";
 import { SCENE3D_SCENARIOS } from "./scene3d.mjs";
@@ -700,6 +702,7 @@ const SCENARIOS = [
   ...CHART_SCENARIOS,
   ...SCENE3D_SCENARIOS,
   ...COLLAB_SCENARIOS,
+  ...CUTOVER_SCENARIOS,
 ];
 
 // A scene the Python side has not written yet: its scenarios are reported as skipped, not run.
@@ -709,6 +712,8 @@ const SCENE_DIR = process.env.SYNAPSE_E2E_SCENES || "";
 const sceneOf = (name) => {
   if (path.isAbsolute(name)) return fs.existsSync(name) ? name : null; // a scene of this folder (scenes/)
   if (fs.existsSync(path.join(REPO, "tests", "fixtures", "canvas_scenes", `${name}.json`))) return name;
+  // A board 0.21.2 drew (canvas_rig.py v021-<name>, canvas-v2-phase6.md 1.5).
+  if (/^v021-/.test(name) && fs.existsSync(path.join(REPO, "tests", "fixtures", "migration", "v021", name.slice(5), "events.jsonl"))) return name;
   const local = SCENE_DIR ? path.join(SCENE_DIR, `${name}.json`) : "";
   return local && fs.existsSync(local) ? local : null;
 };
@@ -743,10 +748,15 @@ async function main() {
         }
         continue;
       }
-      const rig = await startRig(scene, { writable: group.writable, out: path.join(OUT, `${label}-${group.writable ? "rw" : "ro"}`) });
+      const rig = await startRig(scene, {
+        writable: group.writable,
+        out: path.join(OUT, `${label}-${group.writable ? "rw" : "ro"}`),
+        ...(group.engine !== undefined ? { engine: group.engine } : {}),
+      });
       let board = null;
       try {
-        board = await Board.open(browser.port, rig);
+        // A raw group (the cut-over) opens its page itself: it may not be the v2 board at all.
+        board = group.raw ? await openRaw(browser.port, rig) : await Board.open(browser.port, rig);
         const state = {};
         for (const [name, fn] of wanted) {
           const started = Date.now();
@@ -774,7 +784,7 @@ async function main() {
         await rig.stop();
       }
     }
-    for (const [name, during] of [["E12", "E1-E11"], ["P12", "P1-P11"], ["S10", "K1-K7 and S1-S9"], ["C13", "C1-C12"]]) {
+    for (const [name, during] of [["E12", "E1-E11"], ["P12", "P1-P11"], ["S10", "K1-K7 and S1-S9"], ["C13", "C1-C12"], ["U5", "U1-U4"]]) {
       if (!wants(name)) continue;
       const ok = csp.length === 0;
       results.push({ name, ok, detail: ok ? `no CSP violation during ${during}` : csp.join("\n") });

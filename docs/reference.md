@@ -1106,7 +1106,7 @@ herdr-synapse remote [-h] [--json] [--team NAME|PATH] [--session NAME] [--socket
 <summary><code>whiteboard</code> — the visual layer: switches (enable, team, viz), the local page (open, stop), team views, clear, purge</summary>
 
 ```text
-herdr-synapse whiteboard [-h] [--json] [--team NAME|PATH] [--session NAME] [--socket PATH] [--session-mismatch-ok] [--no-browser] [--all-teams] [--yes] [ACTION] [on|off]
+herdr-synapse whiteboard [-h] [--json] [--team NAME|PATH] [--session NAME] [--socket PATH] [--session-mismatch-ok] [--no-browser] [--engine {v1,v2}] [--all-teams] [--yes] [ACTION] [on|off]
 ```
 
 </details>
@@ -1114,7 +1114,7 @@ herdr-synapse whiteboard [-h] [--json] [--team NAME|PATH] [--session NAME] [--so
 #### Canvas
 
 <details>
-<summary><code>canvas</code> — the team canvas: look, check, draw, comment, claim, legend, portrait, changes (whiteboard must be on)</summary>
+<summary><code>canvas</code> — the team canvas: look, draw, check, comment, claim, legend, portrait, changes, migrate (whiteboard must be on)</summary>
 
 ```text
 herdr-synapse canvas [-h] [--json] [--team NAME|PATH] [--session NAME] [--socket PATH] [--session-mismatch-ok] <action> ...
@@ -1259,31 +1259,28 @@ Every op also takes `op`, `intent` (required from agents) and `if_version`. Ops 
 
 | Op | Fields | What it does |
 | --- | --- | --- |
-| `shape` | `kind`, `text`, `w`, `h`, `icon`, `id`, `client_id`; *style*, *place* | a box, ellipse, diamond, note or free text, sized from its label (w/h are its minimum) |
-| `arrow` | `from`, `to`, `points`, `label`, `head`, `tail`, `curve`, `id`, `client_id`; *style* | a line or connector between two elements or points, with an optional label |
-| `frame` | `title`, `w`, `h`, `children`, `region`, `id`, `client_id`; *style*, *place* | a titled area around children, over a region, or placed with a size |
+| **Components** | | |
 | `section` | `title`, `layout`, `cols`, `padding`, `align`, `grid`, `children`, `region`, `w`, `h`, `tone`, `variant`, `id`, `client_id`; *place* | a titled zone that lays out what is put in it: a row, column or grid, or free (with a local grid) |
 | `card` | `title`, `body`, `icon`, `badges`, `owner`, `status`, `detail`, `size`, `tone`, `variant`, `w`, `h`, `id`, `client_id`; *place* | a titled card with a body, an icon, badges, an owner and a status, sized to its content |
 | `sticky` | `text`, `tone`, `size`, `w`, `h`, `id`, `client_id`; *place* | a sticky: square paper with a thought on it (tone idea by default) |
 | `callout` | `kind`, `title`, `body`, `icon`, `w`, `id`, `client_id`; *place* | a note, tip, important point, warning, danger, decision or question, set apart in its tone |
 | `heading` | `text`, `level`, `tone`, `align`, `w`, `id`, `client_id`; *place* | a title at level 1 (display), 2 or 3 |
-| `pen` | `points`, `closed`, `style`, `width`, `color`, `fill`, `opacity`, `dash`, `id`, `client_id`, `in` | a freehand stroke through points, smooth or straight |
 | `badge` | `text`, `tone`, `variant`, `icon`, `size`, `id`, `client_id`; *place* | a small pill holding a status word, in a tone |
 | `icon` | `name`, `size`, `tone`, `label`, `id`, `client_id`; *place* | a Lucide icon by name (canvas icons --search), with an optional label |
 | `table` | `title`, `columns`, `rows`, `header`, `zebra`, `max_lines`, `size`, `id`, `client_id`; *place* | a table: columns and rows held in one element, every cell editable |
 | `kanban` | `title`, `columns`, `tone`, `id`, `client_id`; *place* | a kanban board: columns of cards (move a card with place in, or patch) |
 | `timeline` | `title`, `events`, `scale`, `tone`, `id`, `client_id`; *place* | events on a horizontal axis, dated (YYYY-MM-DD) or in order, with spans and milestones |
-| `path` | `d`, `scale`, `id`, `client_id`; *style*, *place* | SVG path data drawn as one shape |
-| `svg` | `svg`, `w`, `h`, `sketchy`, `title`, `id`, `client_id`; *place* | a sanitised SVG block, stored and drawn as an image |
+| **Diagrams** | | |
 | `graph` | `nodes`, `edges`, `layout`, `direction`, `title`, `id`, `groups`, `same_rank`, `order`, `route`, `client_id`; *style*, *place* | nodes, groups and edges laid out by a registered layout and routed around each other (a block you patch) |
 | `mindmap` | `title`, `root`, `tree`, `topics`, `side`, `branch_tones`, `route`, `id`, `client_id`; *place* | a mind map from a nested tree of topics, laid out as a tidy tree around its root |
 | `sequence` | `title`, `participants`, `messages`, `notes`, `groups`, `id`, `client_id`; *place* | a sequence diagram: participants, messages, notes and groups in one element |
 | `mermaid` | `source`, `w`, `h`, `title`, `id`, `client_id`; *style*, *place* | a Mermaid diagram: a flowchart becomes a graph block of native shapes, anything else the page renders |
-| `chart` | `title`, `type`, `data`, `rows`, `columns`, `aggregate`, `filter`, `sort`, `top`, `other`, `labels`, `legend`, `format`, `units`, `types`, `highlight`, `annotations`, `caption`, `x`, `y`, `color`, `category`, `value`, `size`, `label`, `path`, `source`, `target`, `z`, `stack`, `horizontal`, `smooth`, `points`, `inner`, `trend`, `palette`, `bins`, `whiskers`, `depth`, `orient`, `shading`, `wireframe`, `spec`, `spec_asset`, `echarts`, `echarts_asset`, `w`, `h`, `id`, `client_id`; *place* | a chart: a type over data from artifacts/ or inline rows (Python validates and draws it), or Vega-Lite, or ECharts |
-| `scene3d` | `title`, `objects`, `links`, `units`, `camera`, `lights`, `ground`, `labels`, `w`, `h`, `id`, `client_id`; *place* | a 3D scene: objects placed by relations (on, right_of, inside ...), links, camera; glTF from artifacts/ |
+| **Data** | | |
+| `chart` | `title`, `type`, `kind`, `data`, `rows`, `columns`, `aggregate`, `filter`, `sort`, `top`, `other`, `labels`, `legend`, `format`, `units`, `types`, `highlight`, `annotations`, `caption`, `x`, `y`, `color`, `category`, `value`, `size`, `label`, `path`, `source`, `target`, `z`, `stack`, `horizontal`, `smooth`, `points`, `inner`, `trend`, `palette`, `bins`, `whiskers`, `depth`, `orient`, `shading`, `wireframe`, `spec`, `spec_asset`, `echarts`, `echarts_asset`, `w`, `h`, `id`, `client_id`; *place* | a chart: a type over data from artifacts/ or inline rows (Python validates and draws it), or Vega-Lite, or ECharts |
 | `viz` | `html`, `libs`, `data`, `data_path`, `title`, `w`, `h`, `id`, `client_id`; *place* | a sealed live visual (d3, three, p5) the page runs |
-| `image` | `path`, `asset`, `w`, `h`, `id`, `client_id`; *place* | a PNG or JPEG from a file under artifacts/, whiteboard/renders/ or your working directory |
-| `comment` | `at`, `text`, `mentions`, `reply_to`, `client_id` | a comment pin on a point or an element; @mentions wake the members it names |
+| **3D** | | |
+| `scene3d` | `title`, `objects`, `links`, `units`, `camera`, `lights`, `ground`, `labels`, `w`, `h`, `id`, `client_id`; *place* | a 3D scene: objects placed by relations (on, right_of, inside ...), links, camera; glTF from artifacts/ |
+| **Any element** | | |
 | `claim` | `region`, `label` | an advisory claim on a region you are about to draw in (expires after 5 minutes) |
 | `release` | `id` | release your claim (or all of them) |
 | `legend` | `symbol`, `meaning`, `remove` | say what a symbol means, or remove a legend entry |
@@ -1295,7 +1292,7 @@ Every op also takes `op`, `intent` (required from agents) and `if_version`. Ops 
 | `resolve` | `id` | resolve a comment |
 | `lock` | `region`, `label` | the operator locks a region against agents |
 | `unlock` | `id` | the operator lifts a lock |
-| `undo` | `batch`, `author`, `since`, `force` | undo a batch, or every batch of one author since a version; it skips what someone else changed later and what a freeze holds, and undoing it again retries what it left (force: the operator) |
+| `undo` | `batch`, `author`, `since`, `force` | undo a batch, or every batch of one author since a version; it skips what someone else changed later and what a freeze holds (refused when that is all of it), and undoing it again retries what it left (force: the operator) |
 | `refit` | `id`, `ids` | size labels again from their minimum, under the fonts and the page's measurements (none named: all you may edit) |
 | `patch` | `id`, `add`, `update`, `remove`, `set`, `relayout` | add, update, remove or re-set items inside a block (a kanban's cards, a table's rows); it re-lays out |
 | `place` | `id`, `ids`, `right_of`, `left_of`, `below`, `above`, `in`, `at`, `gap`, `align`, `index` | move elements as one group beside another, to a point, or into a container at an index |
@@ -1309,6 +1306,16 @@ Every op also takes `op`, `intent` (required from agents) and `if_version`. Ops 
 | `settings` | `human_edits`, `frozen` | the operator's collaboration settings: agents' changes to her marks (propose or live) and in frozen areas |
 | `checkpoint` | `label`, `remove` | save the canvas as a named checkpoint (V-n), or remove one of yours |
 | `restore` | `id` | the operator restores a checkpoint as one batch (a checkpoint of now is saved first; comments stay) |
+| `migrate` | `action` | the operator answers the canvas v2 migration notice: apply (size labels from before 0.22 again and draw the marks in 0.21's sketch style clean, in one batch undo takes back) or dismiss |
+| **Primitives (when no component fits)** | | |
+| `shape` | `kind`, `text`, `w`, `h`, `icon`, `id`, `client_id`; *style*, *place* | a box, ellipse, diamond, note or free text, sized from its label (w/h are its minimum) |
+| `arrow` | `from`, `to`, `points`, `label`, `head`, `tail`, `curve`, `id`, `client_id`; *style* | a line or connector between two elements or points, with an optional label |
+| `frame` | `title`, `w`, `h`, `children`, `region`, `id`, `client_id`; *style*, *place* | a titled area around children, over a region, or placed with a size |
+| `pen` | `points`, `closed`, `style`, `width`, `color`, `fill`, `opacity`, `dash`, `id`, `client_id`, `in` | a freehand stroke through points, smooth or straight |
+| `path` | `d`, `scale`, `id`, `client_id`; *style*, *place* | SVG path data drawn as one shape |
+| `svg` | `svg`, `w`, `h`, `sketchy`, `title`, `id`, `client_id`; *place* | a sanitised SVG block, stored and drawn as an image |
+| `image` | `path`, `asset`, `w`, `h`, `id`, `client_id`; *place* | a PNG or JPEG from a file under artifacts/, whiteboard/renders/ or your working directory |
+| `comment` | `at`, `text`, `mentions`, `reply_to`, `client_id` | a comment pin on a point or an element; @mentions wake the members it names |
 <!-- END GENERATED: canvas-ops -->
 
 ## Maintaining this reference

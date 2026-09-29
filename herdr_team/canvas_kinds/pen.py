@@ -80,7 +80,7 @@ def resize(el: Element, w: Any, h: Any, ctx: Any) -> Dict[str, Any]:
 
 OPS = (
     # ``in`` (phase 2): a stroke drawn in a free section, its points in the section's local grid.
-    OpSpec(name="pen", fields=("points", "closed", "style", "width", "color", "fill", "opacity", "dash", "id", "client_id", "in"), create=create,
+    OpSpec(name="pen", family="primitive", fields=("points", "closed", "style", "width", "color", "fill", "opacity", "dash", "id", "client_id", "in"), create=create,
            order=40, doc="a freehand stroke through points, smooth or straight",
            mcp='pen {points [cells, "x,y" or [x,y]], closed, style smooth|straight, color, in (a free section: its local grid)}'),
 )

@@ -115,7 +115,7 @@ def create(ctx: Any, op: Dict[str, Any]) -> None:
 
 
 OPS = (
-    OpSpec(name="badge", fields=("text", "tone", "variant", "icon", "size", "id", "client_id"), create=create, place=True, order=41,
+    OpSpec(name="badge", family="block", fields=("text", "tone", "variant", "icon", "size", "id", "client_id"), create=create, place=True, order=41,
            doc="a small pill holding a status word, in a tone", mcp="badge {text, tone, variant soft|solid|outline, icon, size s|m}"),
 )
 

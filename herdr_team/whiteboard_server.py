@@ -3,10 +3,10 @@
 Contract: ``.local/prd/canvas-contracts.md`` section 13. A stdlib
 ``ThreadingHTTPServer`` bound to ``127.0.0.1`` on a random free port, one
 per Herdr session, recorded in ``<session>/whiteboard.json``. It serves the
-prebuilt page from ``web/dist/`` (Vite, React and Excalidraw; Python users
-never need Node), a small JSON API over the team's canvas, views and
-activity, one Server-Sent Events stream per open page, and the sealed frames
-agent ``viz`` code runs in.
+prebuilt page from ``web/dist/`` (Vite, React and our v2 renderer; the
+classic Excalidraw page at ``?engine=v1``; Python users never need Node), a
+small JSON API over the team's canvas, views and activity, one Server-Sent
+Events stream per open page, and the sealed frames agent ``viz`` code runs in.
 
 Who may use it (a speed bump against the obvious routes, not a sandbox; any
 process running as this user can read the state directory):
@@ -208,6 +208,12 @@ _LOCAL: Dict[str, "WhiteboardServer"] = {}
 
 def _canvas() -> Any:
     from herdr_team import canvas as _module
+
+    return _module
+
+
+def _migrate() -> Any:
+    from herdr_team import canvas_migrate as _module
 
     return _module
 
@@ -1172,7 +1178,16 @@ class _Handler(BaseHTTPRequestHandler):
             since = _int(raw) if raw else 0
             if since is None or since < 0:
                 raise HerdrTeamError("usage", "since must be a version number", EXIT_REFUSED)
-            return self._send_json(200, cv.display(team) if since == 0 else cv.display_delta(team, since))
+            doc = cv.display(team) if since == 0 else cv.display_delta(team, since)
+            if session["writable"]:
+                # The canvas v2 migration notice (phase 6, 2.4), for the operator's writable page only: a whole list carries
+                # it while it is pending; a delta carries it, or null once it is settled, so the page drops its banner.
+                found = _migrate().report_for(team)
+                if found.get("pending"):
+                    doc = dict(doc, migration=_migrate().summary(found))
+                elif since > 0:
+                    doc = dict(doc, migration=None)
+            return self._send_json(200, doc)
         if rest == "measure":
             self._need(method, "POST")
             now = time.monotonic()

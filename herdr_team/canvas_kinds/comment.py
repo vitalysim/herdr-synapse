@@ -134,7 +134,7 @@ def resize(el: Element, w: Any, h: Any, ctx: Any) -> Dict[str, Any]:
 
 
 OPS = (
-    OpSpec(name="comment", fields=("at", "text", "mentions", "reply_to", "client_id"), create=create, order=120,
+    OpSpec(name="comment", family="primitive", fields=("at", "text", "mentions", "reply_to", "client_id"), create=create, order=120,
            doc="a comment pin on a point or an element; @mentions wake the members it names", mcp="comment {at, text, mentions}",
            proposable=False),
 )

@@ -1,0 +1,15 @@
+{
+  "id": "23-3d-warehouse",
+  "category": "3d",
+  "audience": "nondev",
+  "live": false,
+  "prompt": "Show our warehouse floor plan in 3D: a loading dock at the front, three rows of shelves behind it, a packing station to the right of the shelves, and the office on the far side. Label each part.",
+  "expect": {
+    "kinds_any": ["scene3d"],
+    "labels": ["Loading dock", "Shelves", "Packing station", "Office"],
+    "scene3d": {"objects_min": 6, "links_min": 0}
+  },
+  "reference": [
+   {"op": "scene3d", "id": "warehouse", "title": "Warehouse floor plan", "at": [0, 0], "camera": "iso", "intent": "the warehouse layout", "objects": [{"id": "floor", "shape": "plane", "tone": "neutral"}, {"id": "dock", "shape": "box", "size": [4, 0.3, 1.2], "tone": "warning", "label": "Loading dock", "on": "floor"}, {"id": "shelves", "shape": "group", "layout": "row", "gap": 0.8, "on": "floor", "behind": "dock", "label": "Shelves"}, {"id": "s1", "shape": "box", "size": [0.6, 2, 3], "tone": "info", "label": "Shelves A", "in": "shelves"}, {"id": "s2", "shape": "box", "size": [0.6, 2, 3], "tone": "info", "label": "Shelves B", "in": "shelves"}, {"id": "s3", "shape": "box", "size": [0.6, 2, 3], "tone": "info", "label": "Shelves C", "in": "shelves"}, {"id": "pack", "shape": "box", "size": [1.5, 1, 1.5], "tone": "accent", "label": "Packing station", "on": "floor", "right_of": "shelves", "gap": 1}, {"id": "office", "shape": "box", "size": [3, 2.5, 2], "tone": "success", "label": "Office", "on": "floor", "behind": "shelves", "gap": 1.5}]}
+  ]
+}

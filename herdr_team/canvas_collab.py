@@ -47,7 +47,7 @@ from herdr_team.paths import check_not_symlink
 #: False (a comment is a request, always live).
 PROPOSABLE_CORE = ("move", "restyle", "edit", "delete", "refit", "patch", "place", "pin", "unpin")
 #: The decisions that are the operator's in person (1.2 guarantee 3): delegates, managers and members are refused.
-LEAD_ONLY_OPS = ("accept", "reject", "freeze", "thaw", "settings", "restore")
+LEAD_ONLY_OPS = ("accept", "reject", "freeze", "thaw", "settings", "restore", "migrate")
 #: The collaboration settings (5.3) and their defaults.
 SETTINGS_KEY = "collab"
 SETTINGS_DEFAULTS = {"human_edits": "propose", "frozen": "propose"}
@@ -77,6 +77,8 @@ AUTO_CHECKPOINT_OPS = 30
 #: Proposal ghosts (4.6) and freeze outlines (5.2) in the display list.
 PROPOSAL_Z = 1_000_000
 GHOST_OPACITY = 0.5
+#: An in-place ghost is drawn beside its host, this far clear of it, with a dashed leader between them (QA phase 6, F3).
+GHOST_ASIDE_GAP = 40.0
 FREEZE_Z = -3
 FREEZE_BAND = 12
 #: An id freeze whose outline would be this many times the area of its marks' own outlines draws one round each instead.
@@ -265,7 +267,7 @@ def _whose(el: Optional[Mapping[str, Any]], reader: Optional[str] = None) -> str
     if el is None:
         return "?"
     if el.get("author_kind") == C.KIND_HUMAN or el.get("author") == C.HUMAN:
-        return "the operator's"
+        return "yours" if reader == C.HUMAN else "the operator's"  # her own look says "(yours)" (QA phase 5 verdict)
     name = str(el.get("author") or "?")
     return "yours" if reader is not None and name == reader else "{}'s".format(name)
 
@@ -566,8 +568,35 @@ def _style(el: Mapping[str, Any]) -> Mapping[str, Any]:
     return el.get("style") if isinstance(el.get("style"), dict) else {}
 
 
+#: Words of shared opening a change is allowed to spend before both sides are quoted from where they differ.
+PREFIX_ROOM = 12
+
+
+def _changed_text(old: str, new: str, limit: int = 40) -> str:
+    """``"a" → "b"``, quoted from the word the two stop sharing.
+
+    A rewrite of a card's body or a sticky's detail usually keeps its opening, and quoting both sides from character
+    zero then spends the whole line on text that did not change - which is how a full rewrite of the operator's words
+    read as nothing but ``resized 300x160 → 320x200`` (QA phase 6, F3).
+    """
+    one, two = " / ".join(old.split("\n")), " / ".join(new.split("\n"))
+    same = 0
+    while same < min(len(one), len(two)) and one[same] == two[same]:
+        same += 1
+    if same <= PREFIX_ROOM:
+        return "{} → {}".format(C._q(one, limit), C._q(two, limit))
+    cut = one.rfind(" ", 0, same) + 1
+    return "…{} → …{}".format(C._q(one[cut:], limit), C._q(two[cut:], limit))
+
+
 _STYLE_KEYS = (("tone", "tone"), ("variant", "variant"), ("color", "stroke"), ("fill", "fill"), ("width", "width"), ("dash", "dash"),
                ("route", "route"))
+#: Element fields that hold words the reader sees beside ``text`` (a card's body, a sticky's detail, an owner, a
+#: status): a proposal that rewrites one of them says so instead of naming only the box it grew (QA phase 6, F3).
+_WORD_KEYS = ("body", "detail", "label", "owner", "status")
+#: Inline collections a block holds in its own element (phase 2, D1): their contents are parts, so a change names the
+#: collection and how many items it holds now, never the whole table.
+_ITEM_KEYS = ("columns", "rows", "badges", "notes", "messages", "participants", "objects", "links", "groups", "order")
 
 
 def diff_lines(before: Optional[Mapping[str, Any]], after: Optional[Mapping[str, Any]], parts: int = 0) -> List[str]:
@@ -596,7 +625,16 @@ def diff_lines(before: Optional[Mapping[str, Any]], after: Optional[Mapping[str,
         lines.append("resized {}x{} → {}x{}".format(_num_text(size_before[0]), _num_text(size_before[1]), _num_text(size_after[0]),
                                                   _num_text(size_after[1])))
     if str(before.get("text") or "") != str(after.get("text") or ""):
-        lines.append("text {} → {}".format(C._q(before.get("text") or "", 40), C._q(after.get("text") or "", 40)))
+        lines.append("text " + _changed_text(str(before.get("text") or ""), str(after.get("text") or "")))
+    for key in _WORD_KEYS:
+        old_word, new_word = before.get(key), after.get(key)
+        if (isinstance(old_word, str) or isinstance(new_word, str)) and str(old_word or "") != str(new_word or ""):
+            lines.append("{} {}".format(key, _changed_text(str(old_word or ""), str(new_word or ""))))
+    for key in _ITEM_KEYS:
+        old_items, new_items = before.get(key), after.get(key)
+        if isinstance(old_items, list) and isinstance(new_items, list) and old_items != new_items:
+            lines.append("{}: {} → {}".format(key, len(old_items), len(new_items)) if len(old_items) != len(new_items)
+                         else "{} rewritten ({} item{})".format(key, len(new_items), "" if len(new_items) == 1 else "s"))
     old_style, new_style = _style(before), _style(after)
     for name, key in _STYLE_KEYS:
         if old_style.get(key) != new_style.get(key):
@@ -1352,6 +1390,13 @@ def read_checkpoint(team: Any, vid: str) -> Dict[str, Any]:
     return doc
 
 
+def _unchanged(before: Optional[Mapping[str, Any]], now: Optional[Mapping[str, Any]]) -> bool:
+    """Whether a key's value is what it was (both gone, or the same bar the write stamps)."""
+    if before is None or now is None:
+        return before is None and now is None
+    return _same(before, now)
+
+
 def _same(a: Mapping[str, Any], b: Mapping[str, Any]) -> bool:
     skip = ("updated_seq", "updated_at")
     return {k: v for k, v in a.items() if k not in skip} == {k: v for k, v in b.items() if k not in skip}
@@ -1506,7 +1551,11 @@ class _UndoGuard:
         if eid in self.editing:
             raise C._error("element_busy", "{} is being edited by the operator right now; try the undo again in a few seconds".format(eid),
                            retry_after_s=BUSY_RETRY_S, id=eid, reason="busy", ids=[eid])
-        if not self.freezes:
+        return self.held(eid, current, value)
+
+    def held(self, eid: str, current: Optional[Dict[str, Any]], value: Optional[Dict[str, Any]]) -> Optional[str]:
+        """The freeze (``X-n``) that holds this write, or None (no busy check: for a write skipped anyway)."""
+        if not self.freezes or (current is None and value is None):
             return None
         action = "add" if current is None else ("delete" if value is None else "update")
         hits = frozen_hits([Change(eid, action, current, value, True)], self.freezes, self.frozen)
@@ -1542,6 +1591,33 @@ def _open_made(state: Any, by_batch: Mapping[str, List[Dict[str, Any]]], batches
                 if record is not None and record.get("status") == "open" and pid not in out:
                     out.append(pid)
     return out
+
+
+def _force_hint(skip: Mapping[str, Any], reader: str, later_batch: Mapping[str, str], lead: bool) -> str:
+    """What gets past a skip for an edit made later: the reader's own later batch undone first, or the lead's ``force``."""
+    force = "force it with \"force\": true" if lead else "force it with \"force\": true (the operator)"
+    if (skip.get("by") or C.HUMAN) == reader and later_batch.get(skip["id"]):
+        return "undo {} first, or {}".format(later_batch[skip["id"]], force)
+    return force
+
+
+def _nothing_why(skips: Sequence[Mapping[str, Any]], refused: Sequence[str], reader: str, later_batch: Mapping[str, str], lead: bool) -> str:
+    """Why an undo would take nothing back, from its first skip, and what would."""
+    more = len(skips) + len(refused) - 1
+    tail = " (and {} more)".format(more) if more > 0 else ""
+    if not skips:
+        return "{} {} not yours to change{}".format(C._ids_text(refused), "is" if len(refused) == 1 else "are", tail) if refused else \
+            "it changed nothing that is still there to take back"
+    first = skips[0]
+    later = "{} later (v{})".format(C._who(first.get("by") or C.HUMAN, reader), first["seq"]) if first.get("seq") is not None else ""
+    if first.get("reason") == "frozen":
+        text = "{} is frozen ({}){}{}".format(first["id"], first["freeze"], " and was edited by " + later if later else "", tail)
+        return text + ("; force it with \"force\": true" if lead else "; the operator may force it (\"force\": true)")
+    text = "{} was edited by {}{}".format(first["id"], later, tail)
+    if (first.get("by") or C.HUMAN) == reader and later_batch.get(first["id"]):
+        return text + "; undo {} first{}".format(later_batch[first["id"]], ", or force it with \"force\": true" if lead else
+                                                 ", or the operator may force it (\"force\": true)")
+    return text + ("; force it with \"force\": true" if lead else "; the operator may force it (\"force\": true)")
 
 
 def op_undo(ctx: Any, op: Dict[str, Any]) -> None:
@@ -1646,6 +1722,7 @@ def op_undo(ctx: Any, op: Dict[str, Any]) -> None:
     skipped: Dict[str, Dict[str, Any]] = {}
     refused: List[str] = []
     left: Dict[str, List[Tuple[str, str]]] = {}
+    later_batch: Dict[str, str] = {}
     counted: Set[Tuple[str, str]] = set()
     for bid in ordered:
         seqs = [int(e["seq"]) for e in by_batch[bid]]
@@ -1663,17 +1740,30 @@ def op_undo(ctx: Any, op: Dict[str, Any]) -> None:
         counted.update(touched)
         for key in touched:
             timeline = history.get(key) or []
-            later = next((entry for entry in timeline if entry[0] > last and entry[1] not in ours), None)
-            if later is not None and not force:
-                skipped.setdefault(key[1], {"id": key[1], "by": later[2] or None, "seq": later[0]})
-                if key[0] != "claim":  # a claim renewed since is bookkeeping, not something to come back for
-                    left.setdefault(bid, []).append(key)
-                continue
+            others = [entry for entry in timeline if entry[0] > last and entry[1] not in ours]
+            # Later changes that cancel out (a newer batch undone since, ours or not: undo twice in a row) leave the key as
+            # this batch left it; it is not "edited later". Named: the first later change still in effect, else the first.
+            later = None if others and _unchanged(next((e[3] for e in reversed(timeline) if e[0] <= last), None), timeline[-1][3]) else \
+                next((e for e in others if not (state.batches.get(e[1]) or {}).get("undone")), others[0] if others else None)
             value = None
             for entry in timeline:
                 if entry[0] >= first:
                     break
                 value = entry[3]
+            if later is not None and not force:
+                if key[0] == "claim":
+                    # A claim renewed since is bookkeeping: not reported, not something to come back for (QA phase 5 verdict).
+                    continue
+                skip: Dict[str, Any] = {"id": key[1], "by": later[2] or None, "seq": later[0]}
+                # Frozen and edited later: the freeze is named first, it is what an agent cannot get past (QA phase 5 verdict).
+                held = guard.held(key[1], ctx.el(key[1]), value) if guard is not None and key[0] == "element" else None
+                if held is not None:
+                    skip = {"id": key[1], "reason": "frozen", "freeze": held, "by": later[2] or None, "seq": later[0]}
+                skipped.setdefault(key[1], skip)
+                if isinstance(later[1], str) and not (state.batches.get(later[1]) or {}).get("undone"):
+                    later_batch.setdefault(key[1], later[1])
+                left.setdefault(bid, []).append(key)
+                continue
             if key[0] == "element":
                 current = ctx.el(key[1])
                 if not (_undo_may(author, current) and _undo_may(author, value)):
@@ -1692,15 +1782,18 @@ def op_undo(ctx: Any, op: Dict[str, Any]) -> None:
             writes[key] = value
             if key not in order:
                 order.append(key)
-    if retry and not order and not force and all(b in retry for b in ordered) and not _open_made(state, by_batch, ordered):
-        # Trying again what an earlier undo left changes nothing: say why, and what would.
-        first_left = next(iter(skipped.values()), None)
-        why = ("{} is frozen ({})".format(first_left["id"], first_left["freeze"]) if first_left and first_left.get("reason") == "frozen" else
-               "{} was edited by {} later (v{})".format(first_left["id"], C._who(first_left["by"] or C.HUMAN, author.name), first_left["seq"]) if first_left
-               else "{} is not yours to change".format(C._ids_text(refused)))
-        raise C._invalid("batch", "{} is already undone; it left {} as {}: {}{}".format(
-            ordered[0], C._ids_text([k[1] for k in retry[ordered[0]]]), "it is" if len(retry[ordered[0]]) == 1 else "they are", why,
-            "; the operator may force it (\"force\": true)" if not lead else "; force it with \"force\": true"))
+    if _counted(order, counted) == 0 and not _open_made(state, by_batch, ordered):
+        # An undo that would take nothing back is refused, saying why and what would (QA phase 5 verdict): it writes no
+        # event, so History does not strike the batch, and ``undo`` again tries the whole batch once more.
+        skips = [skipped[k] for k in sorted(skipped, key=lambda i: (C._id_number(i), i))]
+        why = _nothing_why(skips, refused, author.name, later_batch, lead)
+        field = "batch" if op.get("batch") is not None else "author"
+        if retry and all(b in retry for b in ordered):
+            keys = retry[ordered[0]]
+            raise C._invalid(field, "{} is already undone; it left {} as {}: {}".format(
+                ordered[0], C._ids_text([k[1] for k in keys]), "it is" if len(keys) == 1 else "they are", why), skipped=skips, refused=refused)
+        raise C._invalid(field, "{} {} not undone, nothing in {} can be taken back now: {}".format(
+            C._ids_text(ordered), "was" if len(ordered) == 1 else "were", "it" if len(ordered) == 1 else "them", why), skipped=skips, refused=refused)
     boxes = []
     restored: List[str] = []
     dropped: Set[str] = set()
@@ -1735,6 +1828,7 @@ def op_undo(ctx: Any, op: Dict[str, Any]) -> None:
             ctx.other(target, "update" if current_other is not None else "add", ident, value)
             if target != "setting":
                 ctx.changed.append(ident)
+    ctx.undo_restored.update(restored)
     if dropped:
         C._unbind(ctx, ctx.live(), dropped)
     C._unbind(ctx, [el for el in (ctx.el(ident) for ident in restored) if el is not None])
@@ -1762,14 +1856,16 @@ def op_undo(ctx: Any, op: Dict[str, Any]) -> None:
     frozen_skips = [s for s in skips if s.get("reason") == "frozen"]
     if later_skips:
         first_skip = later_skips[0]
-        who = "the operator" if first_skip["by"] in (None, C.HUMAN) else first_skip["by"]
-        ctx.warn("undo_skipped", "{} of {} reverted; {} edited by {} later (v{}){}: force it with \"force\": true (the operator)".format(
-            done, of, first_skip["id"], who, first_skip["seq"], " and {} more".format(len(later_skips) - 1) if len(later_skips) > 1 else ""),
+        ctx.warn("undo_skipped", "{} of {} reverted; {} edited by {} later (v{}){}: {}".format(
+            done, of, first_skip["id"], C._who(first_skip["by"] or C.HUMAN, author.name), first_skip["seq"],
+            " and {} more".format(len(later_skips) - 1) if len(later_skips) > 1 else "", _force_hint(first_skip, author.name, later_batch, lead)),
             [s["id"] for s in later_skips])
     if frozen_skips:
         ids = [s["id"] for s in frozen_skips]
-        ctx.warn("undo_skipped", "{} of {} reverted; {} {} frozen ({}): the operator holds {} as {} {}; ask her in a comment".format(
+        also = next((s for s in frozen_skips if s.get("seq") is not None), None)
+        ctx.warn("undo_skipped", "{} of {} reverted; {} {} frozen ({}){}: the operator holds {} as {} {}; ask her in a comment".format(
             done, of, C._ids_text(ids), "is" if len(ids) == 1 else "are", ", ".join(dict.fromkeys(s["freeze"] for s in frozen_skips)),
+            "; {} was also edited by {} later (v{})".format(also["id"], C._who(also["by"] or C.HUMAN, author.name), also["seq"]) if also else "",
             "it" if len(ids) == 1 else "them", "it" if len(ids) == 1 else "they", "is" if len(ids) == 1 else "are"), ids)
     if refused:
         ctx.warn("undo_skipped", "undo left {} as {} now: changing {} is for its editor".format(
@@ -1828,6 +1924,42 @@ def _ghost_of(value: Mapping[str, Any], env: Mapping[str, Any]) -> Tuple[List[Di
     return hit
 
 
+def _aside_shift(record: Mapping[str, Any], elements: Mapping[str, Mapping[str, Any]]) -> float:
+    """How far right an in-place ghost is drawn from its host, or 0 to draw it where it lands (QA phase 6, F3).
+
+    A proposal that rewrites a mark without moving it used to ghost it at the host's own origin: the ghost's words ran
+    through the host's, and the two author chips sat on each other, so neither could be read. Such a ghost is drawn
+    beside its host instead, with the host still visible for comparison. A proposal that keeps the origin but grows the
+    mark counts as in place too, since that is what a longer label does. Every other proposal (an addition, a move, a
+    delete) keeps drawing where the change lands, because there the position *is* the proposal.
+
+    The shift is only taken when it really moves every ghosted box - an arrow, a pen stroke or a path is drawn from its
+    own points, so shifting its origin would leave it where it was, and those keep their in-place ghost.
+    """
+    values: List[Tuple[Mapping[str, Any], Box]] = []
+    for change in record.get("changes") or []:
+        if not isinstance(change, dict) or change.get("action") == "delete":
+            return 0.0
+        value = change.get("value") if isinstance(change.get("value"), dict) else None
+        current = elements.get(change.get("id")) if isinstance(change.get("id"), str) else None
+        if value is None or current is None or change.get("action") != "update":
+            return 0.0
+        here, there = D.box_of(current), D.box_of(value)
+        if (here[0], here[1]) != (there[0], there[1]):
+            return 0.0  # the proposal moves it: the ghost belongs where it lands
+        values.append((value, there))
+    if not values:
+        return 0.0
+    x0 = min(box[0] for _value, box in values)
+    x1 = max(box[2] for _value, box in values)
+    shift = C._r2(x1 - x0 + GHOST_ASIDE_GAP)
+    for value, box in values:
+        moved = D.box_of(dict(value, x=C._r2(float(value.get("x") or 0) + shift)))
+        if abs(moved[0] - (box[0] + shift)) > 0.51:
+            return 0.0  # its box does not follow its origin (points, a route): leave it in place
+    return shift
+
+
 def proposal_entry(record: Mapping[str, Any], elements: Mapping[str, Mapping[str, Any]], env: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
     """One open proposal's ghost (4.6): the proposed elements' own primitives at half opacity, a dashed line for each
     move, a dashed box for each delete, an outline around it all and a label pill, in the author's chip colours."""
@@ -1838,6 +1970,7 @@ def proposal_entry(record: Mapping[str, Any], elements: Mapping[str, Mapping[str
     moves: List[Dict[str, Any]] = []
     deletes: List[Dict[str, Any]] = []
     boxes: List[Box] = []
+    aside = _aside_shift(record, elements)
     for change in record.get("changes") or []:
         if not isinstance(change, dict):
             continue
@@ -1852,12 +1985,19 @@ def proposal_entry(record: Mapping[str, Any], elements: Mapping[str, Mapping[str
             continue
         if value is None:
             continue
+        if aside:
+            value = dict(value, x=C._r2(float(value.get("x") or 0) + aside), y=value.get("y"))
         ghost, bbox = _ghost_of(value, env)
         items.extend(ghost)
         boxes.append(bbox)  # type: ignore[arg-type]
         if change.get("action") == "update" and current is not None:
             old, new = D.box_of(current), D.box_of(value)
-            if (old[0], old[1]) != (new[0], new[1]) and value.get("type") not in ("arrow", "comment"):
+            if aside:
+                # The leader ties the ghost to the host it rewrites: edge to edge, so it crosses neither box.
+                moves.append({"k": "line", "points": [[D.r2(old[2]), D.r2((old[1] + old[3]) / 2)],
+                                                      [D.r2(new[0]), D.r2((new[1] + new[3]) / 2)]],
+                              "stroke": "tone.accent.stroke", "sw_px": 1, "dash": [6, 4], "op": 0.6})
+            elif (old[0], old[1]) != (new[0], new[1]) and value.get("type") not in ("arrow", "comment"):
                 moves.append({"k": "line", "points": [[D.r2((old[0] + old[2]) / 2), D.r2((old[1] + old[3]) / 2)],
                                                       [D.r2((new[0] + new[2]) / 2), D.r2((new[1] + new[3]) / 2)]],
                               "stroke": "tone.accent.stroke", "sw_px": 1, "dash": [6, 4], "op": 0.6})
@@ -2128,6 +2268,16 @@ DIFF_CASES: Tuple[Tuple[str, Optional[Dict[str, Any]], Optional[Dict[str, Any]],
     ("everything", _BOX, dict(_BOX, x=120, y=60, w=180, text="Plans", frame="E-2", style=dict(_BOX["style"], tone="info"),
                               pin={"by": "agent", "who": "alpha"}), 1),
     ("nothing", _BOX, dict(_BOX), 0),
+    # QA phase 6 F3: a card's body, status and owner are words the reader sees, and a rewrite that keeps the opening
+    # is quoted from where the two stop sharing, so the line is not spent on the part that did not change.
+    ("body rewritten", dict(_BOX, type="card", body="- store credit only after 30 days\n- no cash back"),
+     dict(_BOX, type="card", w=320, h=200, body="- store credit only after 45 days\n- no cash back\n- damaged goods refunded"), 0),
+    ("body added", dict(_BOX, type="card"), dict(_BOX, type="card", body="Ask the vendor first"), 0),
+    ("owner and status", dict(_BOX, type="card", owner="ana", status="todo"), dict(_BOX, type="card", owner="ben", status="doing"), 0),
+    ("rows added", dict(_BOX, type="table", rows=[{"id": "r1"}, {"id": "r2"}]),
+     dict(_BOX, type="table", rows=[{"id": "r1"}, {"id": "r2"}, {"id": "r3"}]), 0),
+    ("a cell rewritten", dict(_BOX, type="table", rows=[{"id": "r1", "cells": {"c1": "EMEA"}}]),
+     dict(_BOX, type="table", rows=[{"id": "r1", "cells": {"c1": "EMEA and UK"}}]), 0),
 )
 
 

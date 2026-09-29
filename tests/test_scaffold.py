@@ -181,11 +181,22 @@ class HookGateTests(unittest.TestCase):
         run([os.fspath(HOOK), "agent_detected"], env=self.hook_env())
         t0 = time.monotonic()
         result = run([os.fspath(HOOK), "agent_detected"], env=self.hook_env())
-        elapsed = time.monotonic() - t0
+        gate = time.monotonic() - t0
         self.assertEqual(result.returncode, 0)
         self.assertEqual(result.stdout, b"")
         self.assertEqual(result.stderr, b"")
-        self.assertLess(elapsed, 0.2, "gate took {:.3f}s".format(elapsed))
+        # A regression guard, not a wall-clock limit. A loaded machine slows the gate and the path it exists to avoid
+        # alike, so the two are measured here, one after the other, and compared: falling through starts the
+        # interpreter, which the short circuit never does. A fixed 0.2 s ceiling failed at load average 40 while the
+        # gate was still doing its job.
+        self.write_daemon_json(2 ** 22 - 1, "Thu Jan  1 00:00:00 2026")
+        run([os.fspath(HOOK), "agent_detected"], env=self.hook_env())
+        t0 = time.monotonic()
+        fell_through = run([os.fspath(HOOK), "agent_detected"], env=self.hook_env())
+        through = time.monotonic() - t0
+        self.assert_reconciler_ran(fell_through)
+        self.assertLess(gate * 3, through, "gate {:.3f}s, fall-through {:.3f}s".format(gate, through))
+        self.assertLess(gate, 2.0, "gate took {:.3f}s".format(gate))
 
     def assert_reconciler_ran(self, result):
         # The slow path runs `herdr-synapse hook-event`, which exits 0 in every non-bug case and prints one JSON line.

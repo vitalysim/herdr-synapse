@@ -415,7 +415,7 @@ def resize(el: Element, w: Any, h: Any, ctx: Any) -> Dict[str, Any]:
 
 
 OPS = (
-    OpSpec(name="arrow", fields=("from", "to", "points", "label", "head", "tail", "curve", "id", "client_id"), create=create, style=True,
+    OpSpec(name="arrow", family="primitive", fields=("from", "to", "points", "label", "head", "tail", "curve", "id", "client_id"), create=create, style=True,
            order=20, doc="a line or connector between two elements or points, with an optional label",
            mcp="arrow {from, to (element or point), label}"),
 )

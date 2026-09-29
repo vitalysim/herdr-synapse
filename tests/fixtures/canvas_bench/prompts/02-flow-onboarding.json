@@ -1,0 +1,28 @@
+{
+  "id": "02-flow-onboarding",
+  "category": "flowchart",
+  "audience": "nondev",
+  "live": false,
+  "prompt": "Sketch our new-hire onboarding: HR sends the offer letter and then sets up payroll. After that the team takes over: the manager assigns a buddy, IT ships the laptop, and the new hire joins the first team standup. Show HR's two steps in a group called HR and the rest in a group called Team.",
+  "expect": {
+    "kinds_any": ["graph"],
+    "labels": ["Offer letter", "Payroll", "Buddy", "Laptop", "First team standup", "HR", "Team"],
+    "relations": [["Offer letter", "Payroll"], ["Payroll", "Buddy"], ["Buddy", "Laptop"], ["Laptop", "First team standup"], ["HR", "Offer letter", "contains"], ["HR", "Payroll", "contains"], ["Team", "Buddy", "contains"], ["Team", "Laptop", "contains"]]
+  },
+  "reference": [
+   {"op": "graph", "id": "onboarding", "title": "New-hire onboarding", "direction": "right", "intent": "the onboarding steps", "groups": [{"id": "hr", "title": "HR", "tone": "accent"}, {"id": "team", "title": "Team", "tone": "info"}], "nodes": [{"id": "offer", "text": "Send the offer letter", "in": "hr"}, {"id": "payroll", "text": "Set up payroll", "in": "hr"}, {"id": "buddy", "text": "Assign a buddy", "in": "team"}, {"id": "laptop", "text": "Ship the laptop", "in": "team"}, {"id": "standup", "text": "First team standup", "in": "team", "tone": "success"}], "edges": ["offer -> payroll", "payroll -> buddy", "buddy -> laptop", "laptop -> standup"]}
+  ],
+  "reference_v1": [
+   {"op": "frame", "id": "hr", "title": "HR", "at": [0, 0], "w": 520, "h": 200, "intent": "onboarding"},
+   {"op": "shape", "kind": "box", "id": "offer", "text": "Send the offer letter", "in": "hr", "intent": "onboarding"},
+   {"op": "shape", "kind": "box", "id": "payroll", "text": "Set up payroll", "in": "hr", "intent": "onboarding"},
+   {"op": "frame", "id": "team", "title": "Team", "right_of": "hr", "w": 760, "h": 200, "intent": "onboarding"},
+   {"op": "shape", "kind": "box", "id": "buddy", "text": "Assign a buddy", "in": "team", "intent": "onboarding"},
+   {"op": "shape", "kind": "box", "id": "laptop", "text": "Ship the laptop", "in": "team", "intent": "onboarding"},
+   {"op": "shape", "kind": "box", "id": "standup", "text": "First team standup", "in": "team", "intent": "onboarding"},
+   {"op": "arrow", "from": "offer", "to": "payroll", "intent": "onboarding"},
+   {"op": "arrow", "from": "payroll", "to": "buddy", "intent": "onboarding"},
+   {"op": "arrow", "from": "buddy", "to": "laptop", "intent": "onboarding"},
+   {"op": "arrow", "from": "laptop", "to": "standup", "intent": "onboarding"}
+  ]
+}

@@ -2,9 +2,11 @@
 // event stream per open page. Everything comes from the local server; nothing is fetched
 // from anywhere else.
 //
-// The Canvas tab runs one of two engines (web/src/v2/interact/engine.js): v1, the Excalidraw
-// canvas (the default), or v2, the display-list board, with ?engine=v2 or the top bar toggle.
-// Both load lazily, so a v2 page never downloads Excalidraw and a v1 page never the board.
+// The Canvas tab runs one of two engines (web/src/v2/interact/engine.js): v2, the display-list
+// board (the default since 0.22), or v1, the classic Excalidraw canvas, kept for comparison and
+// reached with ?engine=v1 or the top bar chip. Both load lazily, so a v2 page never downloads
+// Excalidraw and a v1 page never the board. Nothing here imports from ./canvas/ or @excalidraw/*:
+// the build fails when Excalidraw reaches the first load (scripts/postbuild.mjs).
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getJSON, setCsrf } from "./api.js";
 import { createBus } from "./bus.js";
@@ -14,7 +16,7 @@ import { applyTheme } from "./theme/tokens.js";
 import ActivityTab from "./views/ActivityTab.jsx";
 import DiagramsTab from "./views/DiagramsTab.jsx";
 import TeamTab from "./views/TeamTab.jsx";
-import { engineFromQuery, engineOf, engineToggleVisible, setEngine, withEngine } from "./v2/interact/engine.js";
+import { engineFromQuery, engineOf, setEngine, withEngine } from "./v2/interact/engine.js";
 
 const CanvasTab = lazy(() => import("./canvas/CanvasTab.jsx"));
 const Board = lazy(() => import("./v2/Board.jsx"));
@@ -94,7 +96,7 @@ function browserStorage() {
   }
 }
 
-// The canvas engine: the URL's, else the stored choice, else v1. A v2 page whose server or
+// The canvas engine: the URL's, else the stored choice, else v2. A v2 page whose server or
 // display list it cannot draw falls back to v1 for this session only (Board's onFallback).
 function useEngine() {
   const [engine, setEngineState] = useState(() => engineOf(window.location, browserStorage()));
@@ -106,13 +108,6 @@ function useEngine() {
     setEngineState(next);
   }, []);
   return [fallback ? "v1" : engine, choose, setFallback, fallback];
-}
-
-// Whether this page shows the engine toggle: decided once when the page opens, so turning back to
-// v1 from ?engine=v2 leaves the toggle there for the rest of the visit.
-function useEngineToggle() {
-  const [visible] = useState(() => engineToggleVisible(window.location, browserStorage(), { dev: !!import.meta.env?.DEV }));
-  return visible;
 }
 
 function Toasts({ toasts, dismiss }) {
@@ -141,7 +136,6 @@ export default function App() {
   const [toasts, setToasts] = useState([]);
   const [theme, setTheme] = useTheme();
   const [engine, chooseEngine, fallBack, fallbackReason] = useEngine();
-  const showEngineToggle = useEngineToggle();
   const toastId = useRef(0);
   const store = useMemo(() => createSceneStore(), []);
   const bus = useMemo(() => createBus(), []);
@@ -242,17 +236,16 @@ export default function App() {
         <span className={`status ${streamStatus}`} title={`stream: ${streamStatus}`}>
           {streamStatus}
         </span>
-        {showEngineToggle ? (
-          <button
-            type="button"
-            className={engine === "v2" ? "chip on engine-toggle" : "chip engine-toggle"}
-            title={engine === "v2" ? "Back to the classic canvas" : "Try the new canvas (v2 preview)"}
-            aria-pressed={engine === "v2"}
-            onClick={() => chooseEngine(engine === "v2" ? "v1" : "v2")}
-          >
-            v2 preview
-          </button>
-        ) : null}
+        {/* The engine chip, always shown while both engines ship (canvas-v2-phase6.md D3). To hide it again, render it
+            only when engineToggleVisible(window.location, storage, { dev }) says so (v2/interact/engine.js). */}
+        <button
+          type="button"
+          className="chip engine-toggle"
+          title={engine === "v2" ? "Open the classic canvas (Excalidraw, v1). Canvas v2 is the default." : "Back to canvas v2"}
+          onClick={() => chooseEngine(engine === "v2" ? "v1" : "v2")}
+        >
+          {engine === "v2" ? "Classic canvas" : "Canvas v2"}
+        </button>
         <span className="muted small">v{session.server_version}</span>
         <button
           type="button"
@@ -272,6 +265,16 @@ export default function App() {
       {!layerOn ? <div className="banner warn">{BYE.disabled}</div> : null}
       {bye ? <div className="banner warn">{BYE[bye] || BYE.stopped}</div> : null}
       {fallbackReason ? <div className="banner warn">{fallbackReason}</div> : null}
+      {/* What the classic canvas really loses, measured on the same board (QA phase 6, 3.1), and the same words as
+          README.md and docs/capabilities.md. It says nothing about the theme: CanvasTab is handed `theme` and follows
+          the page (a light board on light, a near-black one on dark). Charts draw there, so the banner does not list
+          them. Its claims are gated by App.test.jsx and web/test/e2e/cutover.mjs U2 against the page's own kind
+          registry (src/canvas/kinds/names.js), so a new v1 builder fails the gate instead of dating the wording. */}
+      {engine === "v1" && !fallbackReason ? (
+        <div className="banner">
+          Classic canvas (v1): frozen in 0.22, for comparison. A block keeps its title but loses its body, badges and counters, and a table or a 3D scene is a captioned placeholder. <button type="button" className="chip" onClick={() => chooseEngine("v2")}>Canvas v2</button>
+        </div>
+      ) : null}
       <main className="content">
         <div className={tab === "canvas" ? "pane" : "pane hidden"}>
           {teamRow ? (

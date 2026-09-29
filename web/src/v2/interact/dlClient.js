@@ -5,6 +5,10 @@
 //
 // Injected: fetchJSON (api.js getJSON), applyDelta and isSupported (render/index.js), so this
 // module is pure enough to test with a fake fetch.
+//
+// migration() is the canvas v2 migration notice the server sends a writable page (canvas-v2-phase6.md
+// 2.4): a whole list carries it only while it is pending, a delta carries it or null once settled,
+// and a delta without it leaves it as it was.
 
 export function displayPath(team, since = 0) {
   const base = `/api/teams/${encodeURIComponent(team)}/display`;
@@ -17,7 +21,12 @@ export function createDisplayClient({ team, fetchJSON, applyDelta, isSupported =
   let again = false;
   let wantFull = false;
   let closed = false;
+  let migration = null;
   const listeners = new Set();
+  const noteMigration = (doc) => {
+    if ("migration" in doc) migration = doc.migration || null;
+    else if (doc.full !== false) migration = null;
+  };
 
   const emit = () => {
     for (const fn of listeners) fn(dl);
@@ -47,6 +56,7 @@ export function createDisplayClient({ team, fetchJSON, applyDelta, isSupported =
       if (!forced && dl && Number.isFinite(doc.version) && Number.isFinite(dl.version) && doc.version < dl.version) return false;
       dl = doc;
     }
+    noteMigration(doc);
     emit();
     return true;
   }
@@ -84,6 +94,7 @@ export function createDisplayClient({ team, fetchJSON, applyDelta, isSupported =
   return {
     current: () => dl,
     version: () => (dl && Number.isFinite(dl.version) ? dl.version : 0),
+    migration: () => migration,
     // The whole list (mount, and after a `scene` event: a reset).
     load() {
       wantFull = true;

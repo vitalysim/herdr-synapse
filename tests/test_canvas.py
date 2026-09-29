@@ -302,7 +302,25 @@ class SpaceAndIds(CanvasRig):
         self.assertFalse(C._intersects(C.bounds(a), C.bounds(b)))
         self.assertGreaterEqual(c["x"], 1000)
         self.assertEqual(a["style"]["stroke"], T.resolve("neutral")["stroke"], "authorship is not a colour (0.22)")
-        self.assertEqual(self.refused({"op": "shape", "text": "x"}, OPERATOR)["details"]["field"], "at", "the operator has no home")
+
+    def test_the_operator_draws_without_coordinates_too(self):
+        """QA phase 6 F4: hers was the only author whose op had to carry coordinates. Her index is -1, so her home
+        lane sits immediately left of the first member's, and an unanchored op lands in it like any member's."""
+        self.ok({"op": "shape", "text": "one", "intent": "t"})  # a member takes lane 0 first
+        ident = self.ok({"op": "shape", "text": "mine", "intent": "t"}, OPERATOR)["ids"][0]
+        scene = self.scene()
+        self.assertEqual(scene["homes"]["human"], [-1000, -1000, -200, -400])
+        self.assertTrue(C._contains((-1000, -1000, -200, -400), C.bounds(self.el(ident))))
+        self.assertFalse(C._intersects((-1000, -1000, -200, -400), (0, -1000, 800, -400)), "the lanes do not overlap")
+        second = self.ok({"op": "shape", "text": "again", "intent": "t"}, OPERATOR)["ids"][0]
+        self.assertFalse(C._intersects(C.bounds(self.el(ident)), C.bounds(self.el(second))))
+
+    def test_a_home_is_registered_even_when_the_first_op_carries_coordinates(self):
+        """The home does not depend on the op that registers the author needing it: a board whose operator has only
+        ever drawn at explicit points still has her lane, so her next unanchored op is not refused."""
+        self.ok({"op": "shape", "text": "placed", "at": [4000, 400], "intent": "t"}, OPERATOR)
+        self.assertEqual(self.scene()["homes"]["human"], [-1000, -1000, -200, -400])
+        self.ok({"op": "shape", "text": "free", "intent": "t"}, OPERATOR)
 
     def test_relative_placement_and_frames(self):
         result = self.drivers()

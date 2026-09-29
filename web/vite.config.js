@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { PYTHON_ONLY_TOKEN_BLOCKS } from "./scripts/python-only-tokens.mjs";
 
 const NODE_MODULES = "node_modules/";
 const REPO = path.resolve(import.meta.dirname, "..");
@@ -66,11 +67,9 @@ function bundledPackages() {
   };
 }
 
-// The token document as the page bundles it: every block but those only the Python side reads.
-// `mat` (the 3D projection shades, canvas-v2-phase3-4.md 1.5) reaches the page already resolved in
-// the display list's palettes (mat.<tone>.<shade>); the page's own 3D materials colour from
-// tone.<t>.solid. Leaving it out keeps the first-load chunk inside its budget (9.2).
-const PYTHON_ONLY_TOKEN_BLOCKS = ["mat"];
+// The token document as the page bundles it: every block but those only the Python side reads
+// (scripts/python-only-tokens.mjs says which, and why each one never reaches the browser). Leaving
+// them out keeps the first-load chunk inside its budget (9.2, canvas-v2-phase6.md D4).
 function pageTokens() {
   const file = tokenFile().split(path.sep).join("/");
   return {

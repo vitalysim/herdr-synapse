@@ -2,14 +2,18 @@
 
 Contract ``.local/prd/canvas-contracts.md`` sections 4 to 9, 16 and 17;
 rationale in ``freestyle-canvas.md``. Agents never draw pixels: they send
-Synapse Sketch operations (``shape``, ``arrow``, ``frame``, ``pen``, ``svg``,
-``graph``, ``mermaid``, ``chart``, ``viz``, ``comment``, ``claim`` ...), each
-with a one-line ``intent``. This module validates them, applies a batch in
-order under ``whiteboard/canvas.lock``, appends one event per applied
-operation to ``whiteboard/events.jsonl`` (the source of truth) and rewrites
+Synapse Sketch operations, components first (``card``, ``section``,
+``kanban``, ``table``, ``timeline``, ``graph``, ``mindmap``, ``sequence``,
+``chart``, ``scene3d`` ...) and the 0.21 primitives when no component fits
+(``shape``, ``arrow``, ``frame``, ``pen``, ``svg`` ...), each with a one-line
+``intent``. This module validates them, applies a batch in order under
+``whiteboard/canvas.lock``, appends one event per applied operation to
+``whiteboard/events.jsonl`` (the source of truth) and rewrites
 ``whiteboard/scene.json`` (the folded scene). The canonical scene belongs to
-Synapse, not to the engine: Excalidraw only displays and edits it through the
-page's adapter, and the human's edits come back as the same operations.
+Synapse, not to a renderer: the page (canvas v2, and the classic Excalidraw
+canvas at ``?engine=v1``) only displays and edits it, and the human's edits
+come back as the same operations. A board drawn before canvas v2 replays as it
+is; ``canvas_migrate`` reports what v2 draws differently (canvas v2 phase 6).
 
 Authority is set here from the verified origin, never by the operation:
 members change their own elements, the manager any agent's, the operator
@@ -136,7 +140,8 @@ RATE_WINDOW_S = 60.0
 #: The ops that act on any element rather than create one kind: ``canvas`` handles these itself. Every other op comes from
 #: the kind registry (``canvas_kinds``: each module's ``OPS``); ``OPS`` is theirs by ``order``, then these (phase 1, 2.4).
 CORE_OPS = ("claim", "release", "legend", "move", "restyle", "edit", "delete", "portrait", "resolve", "lock", "unlock", "undo", "refit",
-            "patch", "place", "pin", "unpin", "accept", "reject", "withdraw", "freeze", "thaw", "settings", "checkpoint", "restore")
+            "patch", "place", "pin", "unpin", "accept", "reject", "withdraw", "freeze", "thaw", "settings", "checkpoint", "restore",
+            "migrate")
 #: Ids: elements (E), comments (C), claims (K), locks and freezes (X), legend entries (G), batches (B), and since canvas v2
 #: phase 5 proposals (P) and checkpoints (V).
 ID_PATTERN = r"^(E|C|K|X|G|B|P|V)-([1-9][0-9]{0,6})\Z"
@@ -217,6 +222,13 @@ def _collab() -> Any:
     from herdr_team import canvas_collab
 
     return canvas_collab
+
+
+def _migrate() -> Any:
+    """``canvas_migrate``, the canvas v2 migration report and op (it imports this module; imported late)."""
+    from herdr_team import canvas_migrate
+
+    return canvas_migrate
 
 
 def _presence() -> Any:
@@ -622,9 +634,18 @@ class _State:
             # Canvas v2 phase 5 (I-4): open proposals then the newest decided, freezes, the settings, checkpoints.
             "proposals": self.scene_proposals(),
             "freezes": sorted(self.freezes.values(), key=lambda item: _id_number(item.get("id"))),
-            "settings": {"collab": _collab().settings_of(self)},
+            "settings": self.scene_settings(),
             "checkpoints": sorted(self.checkpoints.values(), key=lambda item: _id_number(item.get("id"))),
         }
+
+    def scene_settings(self) -> Dict[str, Any]:
+        """The settings a scene carries: the collaboration settings (defaults filled in), and the operator's answer to the
+        canvas v2 migration notice once she gave one (phase 6, 2.4)."""
+        out: Dict[str, Any] = {"collab": _collab().settings_of(self)}
+        migration = self.settings.get("migration")
+        if isinstance(migration, dict):
+            out["migration"] = dict(migration)
+        return out
 
     def scene_proposals(self) -> List[Dict[str, Any]]:
         by_number = sorted(self.proposals.values(), key=lambda item: _id_number(item.get("id")))
@@ -1209,6 +1230,9 @@ class _Ctx:
         self.files: Dict[str, Optional[bytes]] = {}
         self.entry_extra: Dict[str, Any] = {}
         self.proposed: Optional[Dict[str, Any]] = None
+        #: What an undo wrote back as it was (canvas v2 phase 6, 2.4): its labels and comments are not placed again, so
+        #: an undo restores exactly what the batch changed (an arrow from before 0.22 gets no label spot it never had).
+        self.undo_restored: Set[str] = set()
 
     # ids, z, lookups ----------------------------------------------------
 
@@ -1310,21 +1334,29 @@ class _Ctx:
     # the author ----------------------------------------------------------
 
     def author_color(self) -> str:
-        """The author's colour; registers the author (and a member's home) on its first applied op."""
+        """The author's colour; registers the author and its home on its first applied op.
+
+        The operator gets a home like every other author (QA phase 6, F4): without one, hers was the only author whose
+        op had to carry coordinates, which is the opposite of what the language teaches. Her index is -1, so her lane
+        sits immediately left of the first member's; a board she has already drawn on is given hers on her next op.
+        """
         name = self.author.name
         info = self.state.authors.get(name) or self.new_author
-        if info:
-            return str(info.get("color") or HUMAN_COLOR)
-        if self.author.is_human:
-            info = {"color": HUMAN_COLOR, "index": -1, "kind": KIND_HUMAN, "agent": None}
-        else:
-            index = sum(1 for entry in self.state.authors.values() if isinstance(entry, dict) and entry.get("kind") == KIND_MEMBER)
-            info = {"color": AUTHOR_PALETTE[index % len(AUTHOR_PALETTE)], "index": index, "kind": KIND_MEMBER, "agent": self.author.agent}
-            if name not in self.state.homes:
-                self.other("home", "add", name, [index * HOME_STRIDE, HOME_TOP, index * HOME_STRIDE + HOME_W, HOME_TOP + HOME_H])
-        self.other("author", "add", name, info)
-        self.new_author = info
-        return str(info["color"])
+        fresh = info is None
+        if fresh:
+            if self.author.is_human:
+                info = {"color": HUMAN_COLOR, "index": -1, "kind": KIND_HUMAN, "agent": None}
+            else:
+                index = sum(1 for entry in self.state.authors.values() if isinstance(entry, dict) and entry.get("kind") == KIND_MEMBER)
+                info = {"color": AUTHOR_PALETTE[index % len(AUTHOR_PALETTE)], "index": index, "kind": KIND_MEMBER, "agent": self.author.agent}
+        assert info is not None
+        index = info.get("index")
+        if self.home() is None and isinstance(index, int):
+            self.other("home", "add", name, [index * HOME_STRIDE, HOME_TOP, index * HOME_STRIDE + HOME_W, HOME_TOP + HOME_H])
+        if fresh:
+            self.other("author", "add", name, info)
+            self.new_author = info
+        return str(info.get("color") or HUMAN_COLOR)
 
     def author_fill(self) -> str:
         info = self.state.authors.get(self.author.name) or self.new_author or {}
@@ -1711,14 +1743,14 @@ def _host_chain(ctx: _Ctx, el: Dict[str, Any]) -> List[str]:
     return chain
 
 
-def _riders(ctx: _Ctx, el: Dict[str, Any]) -> List[str]:
-    """What moves with ``el``: a frame's children, or the marks drawn on a hosting mark (inside it, above it).
-    An arrow bound to an element is left out: it is rerouted instead."""
+def _riders(ctx: _Ctx, el: Dict[str, Any], box: Optional[Sequence[float]] = None) -> List[str]:
+    """What moves with ``el``: a frame's children, or the marks drawn on a hosting mark (inside it, above it; inside
+    ``box`` when given, the box it rode in). An arrow bound to an element is left out: it is rerouted instead."""
     if el.get("type") == "frame":
         return _descendants(ctx, [el["id"]])
     if not _kinds.hosts(el):
         return []
-    box, z = bounds(el), int(el.get("z") or 0)
+    box, z = (tuple(box) if box is not None else bounds(el)), int(el.get("z") or 0)
     return [other["id"] for other in ctx.live()
             if other["id"] != el["id"] and other.get("type") != "frame" and int(other.get("z") or 0) > z and _contains(box, bounds(other))
             and not (other.get("type") == "arrow" and (other.get("from") or other.get("to")))]
@@ -1810,7 +1842,10 @@ def _push_from(ctx: _Ctx, grower: Dict[str, Any], old: Sequence[float], depth: i
                                   ("up", new[1] < old[1])) if grew]
     if not ways:
         return
-    carried = {grower["id"]} | set(_riders(ctx, grower)) | set(_host_chain(ctx, grower))
+    # What rides on it is what sat inside it before it grew (its old box, carried along where it moved): a neighbour its
+    # growth now covers is pushed, not taken for a rider (canvas v2 phase 6: a 0.21 board refitted in one batch).
+    ridden = (old[0] + new[0] - old[0], old[1] + new[1] - old[1], old[2] + new[0] - old[0], old[3] + new[1] - old[1])
+    carried = {grower["id"]} | set(_riders(ctx, grower, ridden)) | set(_host_chain(ctx, grower))
     mine = _author_box(ctx, grower)
     neighbours = sorted((o for o in ctx.live() if o.get("type") in _check.solid_kinds() and o["id"] not in carried),
                         key=lambda o: (int(o.get("created_seq") or 0), _id_number(o["id"])))
@@ -2045,7 +2080,7 @@ def _place(ctx: _Ctx, op: Dict[str, Any], w: float, h: float,
     if not keys:
         home = ctx.home()
         if home is None:
-            raise _invalid("at", "the operator has no home region: pass at, or right_of/below/inside an element")
+            raise _invalid("at", "this author has no home region yet: pass at, or right_of/below/inside an element")
         x, y = _free_slot(ctx, (home[0] + FRAME_PAD, home[1] + FRAME_PAD, home[2] - FRAME_PAD, home[3] - FRAME_PAD), w, h,
                           reserve=[_portrait_corner(ctx, home)])
         return x, y, None
@@ -2323,6 +2358,8 @@ def _follow_comments(ctx: _Ctx) -> None:
     if not moved and not placed:
         return
     for comment in [el for el in ctx.live() if el.get("type") == "comment" and isinstance(el.get("on"), str)]:
+        if comment["id"] in ctx.undo_restored:
+            continue  # an undo put it back where it was, with its element
         target = ctx.el(comment["on"])
         if target is None:
             continue
@@ -2356,7 +2393,8 @@ def _settle_labels(ctx: _Ctx) -> None:
     arrows = sorted((el for el in live if el.get("type") == "arrow" and str(el.get("text") or "") and len(el.get("points") or []) >= 2),
                     key=lambda el: (int(el.get("created_seq") or 0), _id_number(el["id"])))
     rough = {el["id"]: _label_reach(el, (_LABEL_BOUND, _LABEL_BOUND)) for el in arrows}
-    todo = [el for el in arrows if el["id"] in ctx.pending or any(_check._intersects(box, rough[el["id"]]) for box in dirty)]
+    todo = [el for el in arrows if el["id"] not in ctx.undo_restored and
+            (el["id"] in ctx.pending or any(_check._intersects(box, rough[el["id"]]) for box in dirty))]
     if not todo:
         return
     sizes: Dict[str, Optional[Tuple[float, float]]] = {}
@@ -2433,7 +2471,7 @@ CORE_OP_DOCS = {
     "delete": "delete elements (a frame with its children when asked)", "portrait": "your plan as a frame of steps in your home",
     "resolve": "resolve a comment", "lock": "the operator locks a region against agents", "unlock": "the operator lifts a lock",
     "undo": "undo a batch, or every batch of one author since a version; it skips what someone else changed later and what a "
-            "freeze holds, and undoing it again retries what it left (force: the operator)",
+            "freeze holds (refused when that is all of it), and undoing it again retries what it left (force: the operator)",
     "refit": "size labels again from their minimum, under the fonts and the page's measurements (none named: all you may edit)",
     "patch": "add, update, remove or re-set items inside a block (a kanban's cards, a table's rows); it re-lays out",
     "place": "move elements as one group beside another, to a point, or into a container at an index",
@@ -2447,6 +2485,8 @@ CORE_OP_DOCS = {
     "settings": "the operator's collaboration settings: agents' changes to her marks (propose or live) and in frozen areas",
     "checkpoint": "save the canvas as a named checkpoint (V-n), or remove one of yours",
     "restore": "the operator restores a checkpoint as one batch (a checkpoint of now is saved first; comments stay)",
+    "migrate": "the operator answers the canvas v2 migration notice: apply (size labels from before 0.22 again and draw the marks in "
+               "0.21's sketch style clean, in one batch undo takes back) or dismiss",
 }
 #: The fields of the core ops; a kind module's op takes ``_COMMON`` + its ``OpSpec.fields`` (+ placement, + style).
 CORE_FIELDS: Dict[str, Tuple[str, ...]] = {
@@ -2476,6 +2516,7 @@ CORE_FIELDS: Dict[str, Tuple[str, ...]] = {
     "settings": _COMMON + ("human_edits", "frozen"),
     "checkpoint": _COMMON + ("label", "remove"),
     "restore": _COMMON + ("id",),
+    "migrate": _COMMON + ("action",),
 }
 
 
@@ -3259,6 +3300,13 @@ CORE_HANDLERS: Dict[str, Callable[[_Ctx, Dict[str, Any]], None]] = {
 CORE_HANDLERS.update({name: _op_collab(name) for name in ("accept", "reject", "withdraw", "freeze", "thaw", "settings", "checkpoint", "restore")})
 
 
+def _op_migrate(ctx: _Ctx, op: Dict[str, Any]) -> None:
+    _migrate().op_migrate(ctx, op)
+
+
+CORE_HANDLERS["migrate"] = _op_migrate
+
+
 # --------------------------------------------------------------------------
 # the kind registry's ops (canvas v2 phase 1, 2): a kind module draws through ``_KindCtx``, never through ``canvas``
 
@@ -3716,9 +3764,97 @@ def apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: C
 
     Labels are measured under the team's browser corrections (``measure.json``, canvas v2 phase 1). ``base`` is the
     version the author last read (a number or ``"last"``, canvas v2 phase 5 3.1): an op aimed at what the operator changed
-    since is refused ``stale_base``, one aimed at what another agent changed applies with a warning."""
-    with _corrected(team):
-        return _apply_ops(layout, team, ops, author, atomic, doc, now, base)
+    since is refused ``stale_base``, one aimed at what another agent changed applies with a warning.
+
+    While the benchmark's switch file (``bench.on``) is in the canvas folder, every call is also recorded in
+    ``attempts.jsonl`` once it is decided, a refused batch included (canvas v2 phase 6, 6.7)."""
+    tracing = _attempts_on(team)
+    started = time.monotonic()
+    try:
+        with _corrected(team):
+            result = _apply_ops(layout, team, ops, author, atomic, doc, now, base)
+    except HerdrTeamError as err:
+        if tracing:
+            _record_attempt(team, author, ops, base, None, err, started)
+        raise
+    if tracing:
+        _record_attempt(team, author, ops, base, result, None, started)
+    return result
+
+
+# --------------------------------------------------------------------------
+# the benchmark's attempt trace (canvas v2 phase 6, 6.7): off unless ``bench.on`` exists; never raises
+
+ATTEMPTS_SWITCH = "bench.on"
+ATTEMPTS_FILE = "attempts.jsonl"
+#: The trace stops growing past this size (the benchmark removes it between runs).
+MAX_ATTEMPTS_BYTES = 5 * 1024 * 1024
+
+
+def _attempts_on(team: TeamPaths) -> bool:
+    """One ``stat``: whether the benchmark switched the trace on for this team's canvas."""
+    try:
+        return os.path.isfile(_file(team, ATTEMPTS_SWITCH))
+    except (OSError, ValueError, HerdrTeamError):
+        return False
+
+
+def _record_attempt(team: TeamPaths, author: CanvasAuthor, ops: Any, base: Any, result: Optional[Dict[str, Any]],
+                    error: Optional[HerdrTeamError], started: float) -> None:
+    """Append one line for a decided call: who, through what, which ops, what applied, what was refused and why."""
+    try:
+        batch = ops if isinstance(ops, list) else []
+        names = [op.get("op") if isinstance(op, dict) and isinstance(op.get("op"), str) else None for op in batch][:MAX_BATCH_OPS]
+        refused_src: Any = (result or {}).get("refused") if result is not None else (error.details.get("refused") if error is not None else None)
+        refused = [{"index": item.get("index"), "op": item.get("op"), "code": item.get("code")}
+                   for item in (refused_src if isinstance(refused_src, list) else []) if isinstance(item, dict)]
+        if result is not None:
+            base = result.get("base", base)  # "last" as the cursor it resolved to
+            version = result.get("version")
+            applied = len(result.get("applied") or [])
+            proposed = len(result.get("proposed") or [])
+            batch_id = result.get("batch")
+        else:
+            version = current_version(team)
+            applied = proposed = 0
+            batch_id = None
+        record = {"ts": _iso(time.time()), "author": author.name, "via": author.via, "ops": len(batch), "names": names,
+                  "applied": applied, "proposed": proposed, "refused": refused, "error": error.code if error is not None else None,
+                  "batch": batch_id, "version": version, "base": base if base is None or isinstance(base, (int, str)) else str(base),
+                  "ms": int(round((time.monotonic() - started) * 1000))}
+        path = _file(team, ATTEMPTS_FILE)
+        try:
+            if path.stat().st_size > MAX_ATTEMPTS_BYTES:
+                return
+        except FileNotFoundError:
+            pass
+        store.append_line(path, json.dumps(record, ensure_ascii=False, separators=(",", ":"), default=str).encode("utf-8"), fsync=False)
+    except (OSError, ValueError, TypeError, HerdrTeamError) as err:
+        _log.debug("canvas attempt not recorded for %s: %s", team.name, err)
+
+
+def read_attempts(team: TeamPaths, since_ts: Any = None) -> List[Dict[str, Any]]:
+    """The attempt trace (6.7), oldest first; ``since_ts`` (epoch seconds, or an ISO time) keeps the records at or after it."""
+    since: Optional[float] = None
+    if isinstance(since_ts, (int, float)) and not isinstance(since_ts, bool):
+        since = float(since_ts)
+    elif isinstance(since_ts, str):
+        since = _parse_iso(since_ts)
+    data = store.read_bytes(_file(team, ATTEMPTS_FILE)) or b""
+    out: List[Dict[str, Any]] = []
+    for line in data.splitlines():
+        try:
+            record = json.loads(line.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
+            continue
+        if not isinstance(record, dict):
+            continue
+        if since is not None:
+            at = _parse_iso(record.get("ts"))
+            if at is None or at < since:
+                continue
+        out.append(record)
+    return out
 
 
 def _run_op(ctx: _Ctx, handler: Callable[[_Ctx, Dict[str, Any]], None], op: Dict[str, Any]) -> None:
@@ -4541,6 +4677,8 @@ def summarize(event: Dict[str, Any], state: Optional[_State] = None) -> str:
         return "removed checkpoint {}".format(_ids_text([c.get("id") for c in changes if c.get("target") == "checkpoint"]))
     if op == "restore":
         return "restored {} ({} elements changed)".format(event.get("restores") or "a checkpoint", len(ids))
+    if op == "migrate":
+        return _migrate().summarize(event)
     verbs = {"release": "released", "move": "moved", "restyle": "restyled", "edit": "edited", "delete": "deleted",
              "resolve": "resolved", "unlock": "unlocked", "patch": "patched", "place": "placed", "pin": "pinned", "unpin": "unpinned"}
     return "{} {}".format(verbs.get(str(op), str(op)), _ids_text(ids)).strip()
@@ -4618,6 +4756,9 @@ def look_text(result: Dict[str, Any]) -> str:
     lines = ["canvas of {} · v{} · {} elements · you are {}".format(
         result.get("team"), result.get("version"), result.get("total", len(result.get("elements") or [])),
         "the operator" if reader == HUMAN else reader)]
+    migration = result.get("migration")
+    if isinstance(migration, dict) and migration.get("line"):
+        lines.append(str(migration["line"]))
     claims = result.get("claims") or []
     if claims:
         lines.append("claims: " + "; ".join("{} {} {} {} ({})".format(c.get("id"), _who(c.get("author"), reader), _q(c.get("label"), 60),
@@ -4678,7 +4819,7 @@ def look_text(result: Dict[str, Any]) -> str:
 
 
 def _exact_export(layout: Any, team: TeamPaths, region: Sequence[float], grid: bool, reader: str) -> Optional[str]:
-    """Ask an open page for Excalidraw's own export and wait up to ``EXACT_WAIT_S``; None when no page answers."""
+    """Ask an open page for its own picture of the board and wait up to ``EXACT_WAIT_S``; None when no page answers."""
     if not (layout.session.root / "whiteboard.json").is_file():
         return None  # no page server, so nobody could answer
     request = request_export(team, list(region), True, grid, reader)
@@ -4851,6 +4992,11 @@ def _look(layout: Any, team: TeamPaths, reader: str, region: Any, around: Option
     result["freezes"] = scene["freezes"]
     result["settings"] = scene["settings"]["collab"]
     result["checkpoints"] = scene["checkpoints"][-5:]
+    if reader == HUMAN and (author is None or _collab().is_lead(author)):
+        # The canvas v2 migration notice (phase 6, 2.4): the operator in person only, one line while it is pending.
+        found = _migrate().report_for(team)
+        if found.get("pending"):
+            result["migration"] = dict(_migrate().summary(found), line=_migrate().look_line(found))
     result["proposals_full"] = bool(show_proposals)
     result["_tags"] = collab.tags(scene)
     result["_by_id"] = by_id
@@ -4992,6 +5138,11 @@ def apply_text(result: Dict[str, Any]) -> str:
         if settings:
             # Not "#0 settings -" (QA phase 5 L15): what the settings are now.
             extra += " · human edits: {} · frozen: {}".format(settings.get("human_edits"), settings.get("frozen"))
+        migrate = entry.get("migrate") if isinstance(entry.get("migrate"), dict) else None
+        if migrate:
+            # Not "#0 migrate E-1, E-2 … (and 40 more)": what the migration did and how to take it back (phase 6, 2.4).
+            lines.append("#{} migrate · {}".format(entry.get("index"), _migrate().result_text(migrate)))
+            continue
         restore = entry.get("restore") if isinstance(entry.get("restore"), dict) else None
         if restore:
             extra += " · restored {}: {} added, {} changed, {} deleted".format(restore.get("from"), restore.get("added"), restore.get("changed"),
@@ -5153,10 +5304,14 @@ def _changed_ids(team: TeamPaths, since: int) -> Optional[Tuple[int, Set[str]]]:
 
 def _related(entries: Sequence[Dict[str, Any]], ids: Set[str]) -> Set[str]:
     """The proposal and freeze entries an element change redraws (phase 5): a proposal aimed at it may now be outdated,
-    and an id freeze's outline follows its elements."""
+    and an id freeze's outline follows its elements; and every claim when one changes (a label stops at its neighbour)."""
     found: Set[str] = set()
+    # A claim's label stops at the claim beside it (QA phase 5 L8): a claim that changes redraws every claim.
+    claims = any(i.startswith("K-") for i in ids)
     for item in entries:
-        if item.get("kind") == "proposal" and isinstance(item.get("proposal"), dict):
+        if claims and item.get("kind") == "claim":
+            found.add(item["id"])
+        elif item.get("kind") == "proposal" and isinstance(item.get("proposal"), dict):
             record = item["proposal"]
             if ids & set(record.get("targets") or []) or ids & set(record.get("deleted") or []):
                 found.add(item["id"])
@@ -5482,7 +5637,7 @@ def viz_source(team: TeamPaths, element_id: str) -> Dict[str, Any]:
 
 
 def request_export(team: TeamPaths, region: List[float], marks: bool, grid: bool, by: str) -> str:
-    """Ask an open page for Excalidraw's own export of ``region``; the request id (contract 8.5)."""
+    """Ask an open page (either engine) for its own export of ``region``; the request id (contract 8.5)."""
     _team_dir_exists(team)
     if not isinstance(region, (list, tuple)) or len(region) != 4 or not all(_is_number(v) for v in region):
         raise _invalid("region", "an export region is [x0, y0, x1, y1]")

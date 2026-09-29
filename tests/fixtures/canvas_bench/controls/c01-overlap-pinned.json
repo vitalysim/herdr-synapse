@@ -1,0 +1,15 @@
+{
+  "id": "c01-overlap-pinned",
+  "about": "Two cards pinned on one cell: the overlap must be counted as hard.",
+  "expect_fail": ["overlap"],
+  "expect": {
+    "labels": ["Vendor call", "Budget review"]
+  },
+  "reference": [
+   {"op": "card", "id": "a", "title": "Vendor call", "at": [0, 0], "intent": "one"},
+   {"op": "pin", "ids": ["a"], "intent": "hold it"},
+   {"op": "card", "id": "b", "title": "Budget review", "at": [400, 0], "intent": "two"},
+   {"op": "pin", "ids": ["b"], "intent": "hold it"},
+   {"op": "move", "id": "b", "to": [40, 20], "intent": "pile it on"}
+  ]
+}

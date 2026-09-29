@@ -1,0 +1,62 @@
+{
+ "agent-board": {
+  "applied": 14,
+  "dropped": [],
+  "refused": [],
+  "skipped": []
+ },
+ "arrow-labels": {
+  "applied": 12,
+  "dropped": [],
+  "refused": [],
+  "skipped": []
+ },
+ "flowchart": {
+  "applied": 2,
+  "dropped": [],
+  "refused": [],
+  "skipped": []
+ },
+ "font-sizes": {
+  "applied": 11,
+  "dropped": [],
+  "refused": [],
+  "skipped": []
+ },
+ "frame-children": {
+  "applied": 32,
+  "dropped": [],
+  "refused": [],
+  "skipped": []
+ },
+ "house": {
+  "applied": 10,
+  "dropped": [],
+  "refused": [],
+  "skipped": []
+ },
+ "i18n": {
+  "applied": 11,
+  "dropped": [],
+  "refused": [],
+  "skipped": []
+ },
+ "legacy-mix": {
+  "applied": 24,
+  "dropped": [],
+  "refused": [],
+  "skipped": []
+ },
+ "sketch": {
+  "applied": 9,
+  "dropped": [],
+  "refused": [],
+  "skipped": []
+ },
+ "text-notes": {
+  "applied": 8,
+  "dropped": [],
+  "refused": [],
+  "skipped": []
+ }
+}

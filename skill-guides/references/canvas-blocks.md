@@ -62,7 +62,7 @@ batch's `geometry` and `check` say where everything ended and what reads badly.
 A kanban, then a move:
 
 ```json
-{"op": "kanban", "id": "work", "title": "Launch work", "at": [0, 0], "intent": "track launch tasks",
+{"op": "kanban", "id": "work", "title": "Launch work", "intent": "track launch tasks",
  "columns": [
   {"id": "todo", "title": "Todo", "cards": ["Rotate API keys", {"title": "Landing page copy v3", "owner": "alpha-worker", "badges": ["P0"]}]},
   {"id": "doing", "title": "Doing", "tone": "warning", "limit": 3, "cards": [{"title": "Gateway JWT check", "owner": "human", "status": "blocked"}]},

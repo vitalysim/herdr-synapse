@@ -55,8 +55,12 @@ _WS_RE = re.compile(r"[\s\x00-\x1f\x7f]+")
 #: agent kind is typed on joining, so it is where a new member learns it can draw: ``me`` and
 #: ``orient`` say so too, but only to an agent that runs them. Found live on 2026-09-27: an OpenCode
 #: agent given a canvas of its own from ``prefix+t`` never heard of it.
+#: The canvas line of a briefing. It names the MCP tools as well as the CLI because a live run found every unprompted
+#: call going through the shell while the eight tools sat unused: the briefing handed out a CLI path and nothing else,
+#: so a model had no reason to prefer them (QA phase 6, F5).
 CANVAS_BRIEFING = ("{marker} Your team has a shared whiteboard canvas: you can draw on it and read what "
-                   "teammates and the operator drew. Learn how once: {cli} skill get --reference canvas")
+                   "teammates and the operator drew. Use your canvas_draw/canvas_look tools if you have them, else "
+                   "{cli} canvas. Learn how once: {cli} skill get --reference canvas")
 
 BRIEFING_TAIL = (
     " This is context, not a task. Run {cli} --skill once, then {cli} orient, "

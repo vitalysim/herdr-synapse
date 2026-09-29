@@ -1,0 +1,22 @@
+{
+  "id": "30-edit-operator",
+  "category": "edit",
+  "audience": "nondev",
+  "live": false,
+  "prompt": "Change the operator's budget card from $40k to $45k.",
+  "seed": {"as": "operator", "ops": [
+   {"op": "section", "id": "q4", "title": "Q4 marketing plan", "layout": "row", "at": [0, 0], "intent": "the operator's plan"},
+   {"op": "card", "id": "budget", "in": "q4", "title": "Budget: $40k", "body": "Paid ads, events and content", "icon": "wallet", "intent": "the budget"},
+   {"op": "card", "id": "owner", "in": "q4", "title": "Owner: Maya", "body": "Signs off every spend over $5k", "intent": "who owns it"}
+  ]},
+  "expect": {
+    "labels": ["Budget: $40k", "Owner: Maya", "Q4 marketing plan"],
+    "absent_labels": ["$45k"],
+    "proposal": {"count": 1, "about": "Budget", "text": "45k"},
+    "stable": true,
+    "changes": []
+  },
+  "reference": [
+   {"op": "edit", "id": "budget", "text": "Budget: $45k", "intent": "raise the budget to $45k"}
+  ]
+}

@@ -73,7 +73,7 @@ def create(ctx: Any, op: Dict[str, Any]) -> None:
 
 
 OPS = (
-    OpSpec(name="sticky", fields=("text", "tone", "size", "w", "h", "id", "client_id"), create=create, place=True, order=37,
+    OpSpec(name="sticky", family="block", fields=("text", "tone", "size", "w", "h", "id", "client_id"), create=create, place=True, order=37,
            doc="a sticky: square paper with a thought on it (tone idea by default)", mcp="sticky {text, tone, size s|m|l}"),
 )
 

@@ -1,0 +1,11 @@
+{
+  "id": "c09-edit-moves-everything",
+  "about": "The card move done by dragging the whole board away: nothing stayed put.",
+  "prompt": "27-edit-move-card",
+  "expect_fail": ["stable"],
+  "reference": [
+   {"op": "move", "id": "launch", "by": [600, 400], "intent": "move it all"},
+   {"op": "place", "id": "launch.c3", "in": "launch.done", "intent": "the JWT check is done"},
+   {"op": "patch", "id": "launch", "intent": "a new task", "add": {"cards": [{"title": "Write release notes", "in": "todo"}]}}
+  ]
+}

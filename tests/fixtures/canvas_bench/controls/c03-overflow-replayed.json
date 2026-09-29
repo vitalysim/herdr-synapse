@@ -1,0 +1,11 @@
+{
+  "id": "c03-overflow-replayed",
+  "about": "A box drawn before 0.22 sized labels (replayed from a 0.21 log): its label overflows.",
+  "expect_fail": ["label_overflow"],
+  "expect": {
+    "labels": ["Quarterly revenue reconciliation"]
+  },
+  "events": [
+   {"id": "E-1", "type": "box", "alias": null, "client_id": null, "x": 0, "y": 0, "w": 120, "h": 40, "text": "Quarterly revenue reconciliation with the finance team", "frame": null, "group": null, "role": null, "z": 1, "intent": "a 0.21 box", "batch": null, "style": {"stroke": "#1e1e1e", "fill": null, "width": 2, "dash": "solid", "opacity": 100, "font": "hand", "size": 20, "rough": 1}}
+  ]
+}
