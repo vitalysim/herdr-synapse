@@ -598,7 +598,13 @@ def run(ctx: Any, kind_name: str, op: Mapping[str, Any]) -> Element:
         _may_change(ctx, existing)
         _check_version(ctx, existing, op)
     spec = normalized(kctx, kind, op)
-    return build(ctx, kind, spec, op, existing if upsert else None, upsert=upsert)
+    # ``relayout`` is a field of a kind's own op where that kind declares it (today: ``graph``), and it means there
+    # what it already means on ``patch``: ``full`` drops every seed and every stored route and draws the block again.
+    # Re-issuing the whole drawing was the one repair an agent would reach for, and it was byte for byte a no-op: the
+    # seeds held every box and legality held every stale route, so the agent on the rejected board re-issued its
+    # graph twice and nothing happened.
+    mode = C._choice(op.get("relayout"), "relayout", RELAYOUTS, "incremental")
+    return build(ctx, kind, spec, op, existing if upsert else None, upsert=upsert, mode=mode)
 
 
 def build(ctx: Any, kind: _kinds.Kind, spec: Dict[str, Any], op: Mapping[str, Any], root: Optional[Element], upsert: bool = False,

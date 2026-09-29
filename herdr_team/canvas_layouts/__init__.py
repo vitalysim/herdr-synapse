@@ -404,7 +404,31 @@ def run(name: str, request: LayoutRequest, seconds: Optional[float] = None) -> L
     xs1 = [positions[n][0] + size[n][0] for n in positions] + [b[2] for b in groups.values()]
     ys1 = [positions[n][1] + size[n][1] for n in positions] + [b[3] for b in groups.values()]
     bbox = (_r2(min(xs0)), _r2(min(ys0)), _r2(max(xs1)), _r2(max(ys1)))
-    return LayoutResult(positions=positions, groups=groups,
-                        hints={eid: [_r2p(p) for p in points] for eid, points in result.hints.items()},
-                        ports=dict(result.ports), labels={eid: _r2p(p) for eid, p in result.labels.items()}, bbox=bbox,
-                        notes=tuple(notes) + tuple(result.notes), stats=dict(result.stats))
+    out = LayoutResult(positions=positions, groups=groups,
+                       hints={eid: [_r2p(p) for p in points] for eid, points in result.hints.items()},
+                       ports=dict(result.ports), labels={eid: _r2p(p) for eid, p in result.labels.items()}, bbox=bbox,
+                       notes=tuple(notes) + tuple(result.notes), stats=dict(result.stats))
+    return replace(out, stats=_readability_stats(request, out))
+
+
+def _readability_stats(request: LayoutRequest, result: LayoutResult) -> Dict[str, float]:
+    """``result.stats`` plus the readability figures the drawing already decides (canvas v2 layout clarity, L-10).
+
+    A layout's own crossing count used to be whatever its ordering pass happened to measure - for the layered layout,
+    crossings over its dummy chains and group borders, a number nothing else in the tree could reproduce - and
+    ``crossings_high`` compared it against the geometric crossings of the drawn routes. Two different quantities, one
+    name: that is part of why the check called the rejected board clean. So the geometric count is computed here, once,
+    for every layout, from what the layout actually drew, and the ordering pass's own count keeps its own name.
+
+    Bounded by ``canvas_readability``'s own limits because this runs on the arrange path: past them the stats simply do
+    not carry the figures, and a caller that needs them says so.
+    """
+    from herdr_team import canvas_readability
+
+    stats = dict(result.stats)
+    if "crossings" in stats:
+        stats["layer_crossings"] = float(stats["crossings"])
+    if len(request.nodes) > canvas_readability.MAX_NODES or len(request.edges) > canvas_readability.MAX_EDGES:
+        return stats
+    stats.update(canvas_readability.layout_stats(canvas_readability.from_layout(request, result)))
+    return stats

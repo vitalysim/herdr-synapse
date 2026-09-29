@@ -206,6 +206,41 @@ async function c1Halo(b) {
   return `halo after ${shown} ms, gone after ${(gone / 1000).toFixed(1)} s`;
 }
 
+// C14 (V3): a peer focuses a region in the middle of the drawing. Its pill must not be drawn over any
+// mark the board draws - the demo board had one across the diagram, over nodes and edges - so it takes
+// the margin outside the work, with a leader back to its halo. The overlay layer is not the work: a
+// claim, a lock or a freeze is a region drawn *round* marks, and presence lives in that layer itself.
+async function c14PillClearOfTheWork(b) {
+  await reset(b);
+  const dl = await b.dl();
+  const [x0, y0, x1, y1] = dl.bbox;
+  // The middle third of the board: every candidate round a halo there is on somebody's mark.
+  const region = [Math.round(x0 + (x1 - x0) * 0.4), Math.round(y0 + (y1 - y0) * 0.4),
+                  Math.round(x0 + (x1 - x0) * 0.6), Math.round(y0 + (y1 - y0) * 0.6)];
+  const peer = await nameOf(b, "peer");
+  const ok = await b.rig.control({ as: "peer", focus: { region, intent: "reading the middle", status: "reading", ttl_s: 10 } });
+  assert(ok && ok.ok, `focus: ${JSON.stringify(ok)}`);
+  await b.page.waitFor(`!!document.querySelector('.cv2-halo[data-name="${peer}"]')`, { timeoutMs: 2000, what: "the peer's halo" });
+  const found = await b.page.eval(`(() => {
+    const boxes = (nodes) => [...nodes].map((n) => { const r = n.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height, id: n.getAttribute("data-id"), name: n.getAttribute("data-name") }; }).filter((r) => r.width > 0 && r.height > 0);
+    const pills = boxes(document.querySelectorAll(".cv2-halo-pill"));
+    const content = [...document.querySelectorAll(".sv2-svg g[data-layer]")].filter((g) => !["ui", "overlays"].includes(g.getAttribute("data-layer")));
+    const marks = boxes(content.flatMap((g) => [...g.querySelectorAll("g[data-id]")]));
+    const over = [];
+    for (const p of pills) {
+      for (const m of marks) {
+        if (p.left < m.right && m.left < p.right && p.top < m.bottom && m.top < p.bottom) over.push([p.name, Math.round(p.left), Math.round(p.top), m.id, Math.round(m.left), Math.round(m.top), Math.round(m.right), Math.round(m.bottom)]);
+      }
+    }
+    return { pills: pills.map((p) => [p.name, Math.round(p.left), Math.round(p.top), Math.round(p.right), Math.round(p.bottom)]),
+             marks: marks.length, over, leaders: document.querySelectorAll(".cv2-halo-leader").length };
+  })()`);
+  assert(found.pills.length >= 1, `a pill is drawn (${JSON.stringify(found.pills)})`);
+  assert(found.marks > 3, `the board draws marks to avoid (${found.marks})`);
+  assert(found.over.length === 0, `pills ${JSON.stringify(found.pills)} over ${JSON.stringify(found.over)}`);
+  return `${found.pills.length} pill(s) clear of ${found.marks} marks, ${found.leaders} leader(s)`;
+}
+
 // C2: the page pans, then selects an element; drawer's look shows the operator's view and
 // selection within 1.5 s.
 async function c2OperatorContext(b) {
@@ -576,6 +611,7 @@ export const COLLAB_SCENARIOS = [
       ["C9", c9CommentFollows],
       ["C10", c10StaleBase],
       ["C12", c12LiveRevert],
+      ["C14", c14PillClearOfTheWork],
     ],
   },
   { rig: "collab", writable: false, list: [["C11", c11ReadOnly]] },

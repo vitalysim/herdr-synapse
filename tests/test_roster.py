@@ -578,6 +578,34 @@ class RehydrationTests(unittest.TestCase):
         self.assertEqual(result.unbound[0]["member"], "alpha-x")
         self.assertFalse(roster.AUTO_BIND_FINGERPRINT)
 
+    def test_a_missing_members_own_empty_pane_is_reported_but_never_bound(self) -> None:
+        """H3 (live 2026-09-28): an opencode member did not come back from a Herdr restart.
+
+        Its ``session.json`` pane carried only a label -- no ``agent_name``, no
+        ``managed_agent_kind``, no ``agent_session`` -- because opencode's
+        session identity comes from its integration and none was installed. So
+        step (0) had nothing to match, the roster said ``missing``, and
+        ``restore`` opened a new tab next to the member's own empty split. The
+        pane is evidence about *geometry*, never about identity, which is why
+        this is a note in its own field and not a binding.
+        """
+        member = roster.Member("alpha-oc", "opencode-dev", "opencode", None, pane_id="w1:p4", workspace_id="w1", label="alpha-opencode-dev")
+        pane = {"terminal_id": "term_4", "pane_id": "w1:p4", "label": "alpha-opencode-dev", "tab_id": "w1:t1", "workspace_id": "w1"}
+        result = roster.rehydrate_match([member], [], [pane])
+        self.assertEqual(result.bindings, [])
+        self.assertEqual(result.missing, ["alpha-oc"])
+        self.assertEqual(result.empty_panes, [{"member": "alpha-oc", "pane": pane}])
+        # a label two panes claim identifies neither
+        twin = dict(pane, terminal_id="term_5", pane_id="w1:p5")
+        self.assertEqual(roster.rehydrate_match([member], [], [pane, twin]).empty_panes, [])
+        # a pane with an agent in it belongs to steps (a) to (e), not here
+        bound = roster.rehydrate_match([member], [fake_agent("w1:p4", "term_4", "opencode", None)], [pane])
+        self.assertEqual([b.how for b in bound.bindings], [roster.MATCH_LABEL])
+        self.assertEqual(bound.empty_panes, [])
+        # and a member that bound by any step is never reported as having one
+        live = roster.Member("alpha-oc", "opencode-dev", "opencode", "term_4", pane_id="w1:p4", workspace_id="w1", label="alpha-opencode-dev")
+        self.assertEqual(roster.rehydrate_match([live], [fake_agent("w1:p4", "term_4", "opencode", None)], [pane]).empty_panes, [])
+
     def test_left_and_human_members_are_skipped(self) -> None:
         gone = roster.Member("alpha-x", "x", "codex", "term_1", status="left")
         human = roster.Member("human", "operator", "human", None)

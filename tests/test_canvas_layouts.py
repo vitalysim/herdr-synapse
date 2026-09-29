@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import layout_conformance as conformance
 from layout_conformance import LayoutConformance, close
 from registry_conformance import assert_contains_in_order, assert_discovery_order, assert_registered_in_place
 
@@ -83,6 +84,34 @@ class Conformance(LayoutConformance, unittest.TestCase):
         for layout in CL.layouts():
             with self.subTest(layout=layout.name):
                 self.check_layout(layout.name)
+
+    def test_every_layout_that_draws_edges_keeps_the_quality_rules(self):
+        for layout in CL.layouts():
+            with self.subTest(layout=layout.name):
+                self.check_layout_quality(layout.name)
+
+    def test_the_readability_corpus_stays_inside_its_budgets(self):
+        """The gate behind "make the auto layout clearer": the nine committed boards, drawn and routed and measured.
+
+        Thirty-one of these bounds were red on 19f9f469 - the commit the owner rejected the drawing on - and they are
+        the proof that this suite is not a rubber stamp."""
+        for layout in CL.layouts():
+            with self.subTest(layout=layout.name):
+                self.check_readability(layout.name)
+
+    def test_no_boards_own_budget_is_looser_than_the_ceiling(self):
+        """A budget may only ever be tighter than the ceiling in ``layout_conformance.CEILINGS``, so the only way to
+        loosen a gate is to loosen it in one place, where the next reader sees it."""
+        for board in conformance.corpus_names():
+            fixture = conformance.corpus(board)
+            edges = len(fixture["passes"][-1]["edges"])
+            for metric, bound in sorted((fixture.get("budget") or {}).items()):
+                with self.subTest(board=board, metric=metric):
+                    self.assertIn(metric, conformance.CEILINGS, "a budget for a metric no gate reads")
+                    how, ceiling = conformance.ceiling_of(metric, edges)
+                    self.assertTrue(conformance.holds(how, float(bound), ceiling),
+                                    "{}: budget {} {} is looser than the ceiling {} {}".format(
+                                        board, metric, bound, how, ceiling))
 
 
 class DroppedInLayout(LayoutConformance, unittest.TestCase):

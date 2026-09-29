@@ -524,11 +524,11 @@ def _meets(entry: Mapping[str, Any], box: Sequence[float]) -> bool:
 
 def write(dl: Mapping[str, Any], *, theme: str = "light", box: Optional[Sequence[float]] = None, max_px: int = 1024,
           families: Optional[Mapping[str, str]] = None, urls: Optional[Mapping[str, Callable[[str], str]]] = None,
-          embed: Optional[Embed] = None, resvg_text: bool = False, marks: Optional[Sequence[Tuple[str, float, float, bool]]] = None,
+          embed: Optional[Embed] = None, resvg_text: bool = False, marks: Optional[Sequence[Tuple[str, float, float]]] = None,
           grid: bool = False) -> str:
     """``dl`` (or the ``box`` of it) as one SVG document; canonical with the defaults (1.8).
 
-    ``embed``, ``resvg_text``, ``marks`` (``(id, x, y, above)`` badges) and ``grid`` make the agent's
+    ``embed``, ``resvg_text``, ``marks`` (``(id, x, y)`` badges, top-left corners) and ``grid`` make the agent's
     picture instead (``canvas_render.render_svg``): assets and stills inlined, text rewritten for
     resvg, the fonts named on the root, id badges and grid dots on top.
     """
@@ -564,8 +564,8 @@ def write(dl: Mapping[str, Any], *, theme: str = "light", box: Optional[Sequence
     if grid:
         out.extend(grid_marks(area, u, palette))
     out.extend(body)
-    for ident, x, y, above in marks or ():
-        out.append(badge(ident, x, y, above, u))
+    for ident, x, y in marks or ():
+        out.append(badge(ident, x, y, u))
     out.append("</svg>")
     return "".join(out)
 
@@ -574,20 +574,29 @@ def write(dl: Mapping[str, Any], *, theme: str = "light", box: Optional[Sequence
 # the agent's extras: id badges and the labelled grid (D9)
 
 
-def badge(ident: str, x: float, y: float, above: bool, u: float) -> str:
-    """An id badge at an element's anchor (Set-of-Mark), hanging above that point when ``above``, else drawn from just inside it.
+#: An id badge's text size, the room its rectangle keeps around that text, and its height - all in screen pixels,
+#: because a badge must stay legible at any zoom (Set-of-Mark).
+BADGE_SIZE_PX = 11.0
+BADGE_PAD_PX = 6.0
+BADGE_HEIGHT_PX = 15.0
 
-    ``canvas_render.mark_anchor`` picks the anchor and that flag (QA phase 6, F7): a badge is a fixed size in pixels
-    while an element is a box in canvas units, so it hangs above the element - above its top edge, above an arrow
-    label's pill, above a comment's pin - with the clearance measured in the pixels it is drawn in. A frame is the one
-    type whose badge stays inside its corner (``canvas_render.BADGE_INSIDE``), because a frame's own title stands
-    above it when the picture is zoomed out. ``docs/display-list.md`` states the rule.
+
+def badge_box(ident: str, u: float) -> Tuple[float, float]:
+    """``(w, h)`` a badge takes in canvas units at this zoom (``u`` units to the pixel)."""
+    return (_ctext.measure(ident, size=BADGE_SIZE_PX, weight=700).width + BADGE_PAD_PX) * u, BADGE_HEIGHT_PX * u
+
+
+def badge(ident: str, x: float, y: float, u: float) -> str:
+    """An id badge (Set-of-Mark) with its top-left corner at ``(x, y)`` in canvas units.
+
+    Where that corner goes is ``canvas_render.badge_marks``' decision: a badge is a fixed size in pixels while an
+    element is a box in canvas units, so on a whole-board picture one put inside a short box's corner is taller than
+    the room its label leaves (QA phase 6, F7), and one put above a claimed region's corner lands on the claim's own
+    pill (V1). The solver measures every line of text the picture will draw and picks a corner clear of all of them,
+    or leaves the badge out. ``docs/display-list.md`` states the rule.
     """
-    size = 11.0 * u
-    width = (_ctext.measure(ident, size=11.0, weight=700).width + 6.0) * u
-    height = 15.0 * u
-    x -= 2 * u
-    y -= (height + 2 * u) if above else 2 * u
+    size = BADGE_SIZE_PX * u
+    width, height = badge_box(ident, u)
     return ('<rect x="{}" y="{}" width="{}" height="{}" rx="{}" fill="#1e1e1e" opacity="0.85"/>'
             '<text x="{}" y="{}" font-size="{}" font-family="Inter" font-weight="bold" fill="#ffffff">{}</text>').format(
         fmt(x), fmt(y), fmt(width), fmt(height), fmt(3 * u), fmt(x + 3 * u), fmt(y + 11.5 * u), fmt(size), escape(_render_text(ident)))

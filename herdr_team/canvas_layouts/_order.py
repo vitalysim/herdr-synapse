@@ -40,7 +40,7 @@ class Model:
 
     def __init__(self, layers: Layers, up: Adj, down: Adj, group_of: Mapping[str, Optional[str]], parent: Mapping[str, Optional[str]],
                  borders: Mapping[str, Mapping[int, Tuple[str, str]]], tie: Mapping[str, int],
-                 order_lists: Sequence[Sequence[str]] = ()) -> None:
+                 order_lists: Sequence[Sequence[str]] = (), group_order: Sequence[str] = ()) -> None:
         self.layers = [list(layer) for layer in layers]
         self.up = up
         self.down = down
@@ -49,6 +49,8 @@ class Model:
         self.borders = borders
         self.tie = tie
         self.order_lists = [list(members) for members in order_lists if len(members) > 1]
+        #: The groups in the order the author declared them: sibling bands are drawn in this order across the flow.
+        self.group_order: Dict[str, int] = {g: i for i, g in enumerate(group_order)}
         self.border_keys: Set[str] = {k for per in borders.values() for pair in per.values() for k in pair}
         self.rank_of: Dict[str, int] = {k: r for r, layer in enumerate(self.layers) for k in layer}
 
@@ -136,6 +138,7 @@ def reconcile(model: Model, layers: Layers) -> Layers:
     and every rank takes it in the slots its groups already hold; items keep
     their slots. Layers already consistent come back unchanged.
     """
+    declared = model.group_order
     wins: Dict[Tuple[str, str], int] = {}
     spot: Dict[str, List[float]] = {}
     for layer in layers:
@@ -151,7 +154,9 @@ def reconcile(model: Model, layers: Layers) -> Layers:
             for a_i, a in enumerate(row):
                 for b in row[a_i + 1:]:
                     wins[(a, b)] = wins.get((a, b), 0) + 1
-    if not any((b, a) in wins for (a, b) in wins):
+    conflicting = any((b, a) in wins for (a, b) in wins)
+    out_of_order = any(declared.get(a, -1) > declared.get(b, -1) for (a, b) in wins if a in declared and b in declared)
+    if not conflicting and not out_of_order:
         return layers
     score: Dict[str, float] = {}
     for (a, b), count in wins.items():
@@ -159,8 +164,15 @@ def reconcile(model: Model, layers: Layers) -> Layers:
         score[b] = score.get(b, 0.0) - count
     mean = {g: sum(v) / len(v) for g, v in spot.items()}
 
-    def rank_of(g: str) -> Tuple[float, float, str]:
-        return (-score.get(g, 0.0), mean.get(g, 0.0), g)
+    def rank_of(g: str) -> Tuple[float, float, float, str]:
+        """Where a band sits among its siblings: the order its author declared, then the sweeps' own preference.
+
+        Declaration first, because a band is a sentence the author wrote: asked to split a flow into "Create a link"
+        and "Open a link", the drawing put the second one first, because the order came from the mean rank of each
+        band's members and nothing else. Two bands are two lanes and their order is the author's to choose; inside a
+        band, ordering still minimises crossings exactly as before.
+        """
+        return (float(declared.get(g, len(declared))), -score.get(g, 0.0), mean.get(g, 0.0), g)
 
     out: Layers = []
     for layer in layers:

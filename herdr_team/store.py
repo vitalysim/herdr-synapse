@@ -286,6 +286,12 @@ SYSTEM_EVENTS = (
     # 0.21: the whiteboard (``features``, ``canvas``): coalesced drawing awareness, a named
     # canvas wake (a comment's @mention, the operator's "send to member"), a switch flip
     "canvas_changed", "canvas_sent", "whiteboard_state",
+    # 0.22: a member Synapse adopted rather than launched. ``launch_flags_missing``
+    # is the notice that Herdr's own session restore rebuilt the command line
+    # without Synapse's flags (no approval bypass, no canvas MCP server, no
+    # pane-local flag), and ``pane_recovered`` names a member's own empty pane so
+    # the operator knows where ``restore`` will put it back.
+    "launch_flags_missing", "pane_recovered",
 )
 #: Every key of a stored record in file order (docs/cli.md section 10).
 RECORD_KEYS = (

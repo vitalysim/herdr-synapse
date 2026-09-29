@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Mapping, Optional, Sequence, Set, Tuple
 
 from herdr_team import canvas as C
+from herdr_team import canvas_check as _check
 from herdr_team import canvas_display as D
 from herdr_team import canvas_kinds as _kinds
 from herdr_team import store
@@ -223,6 +224,9 @@ class Review:
     stale: Tuple[StaleChange, ...]
     #: Element id -> the freeze (``X-n``) that covers it, as the canvas stood before this op.
     frozen: Mapping[str, str] = field(default_factory=dict)
+    #: Element id -> the element as the *stored* scene holds it, for a rule that must resolve a container chain
+    #: (``hosts``, A1) from what is there rather than from what the op says about it.
+    scene: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
     #: An element as this op would leave it (a container a new element joins), or None.
     lookup: Callable[[str], Optional[Dict[str, Any]]] = lambda _eid: None
     #: The version the batch was made against (``base``), or None.
@@ -427,12 +431,102 @@ def _rule_human_made(review: Review) -> Optional[Verdict]:
     return Verdict("propose", "human_made", message, ids)
 
 
+#: A1 (5.6): the fields a container's author may change on a peer's mark inside it without asking - where the mark
+#: is, how big it is and how it stacks - and, on a bound arrow, the route and label spot its ends imply.
+GEOMETRY_KEYS = frozenset(("x", "y", "w", "h", "z"))
+ARROW_GEOMETRY_KEYS = frozenset(("points", "label_at"))
+#: What every applied change rewrites whatever it did: when it happened, and the label size a box's own size implies.
+GEOMETRY_TAIL_KEYS = frozenset(("updated_seq", "updated_at", "fit"))
+#: What ``diff_lines`` calls a geometry change, so the words a reader is shown and the rule can never disagree.
+GEOMETRY_LINES = ("moved by ", "resized ")
+#: How far up a ``frame``/``group`` chain ``hosts`` looks before it gives up (a cycle cannot outlast it either).
+MAX_CONTAINER_DEPTH = 16
+
+
+def is_geometry_only(before: Optional[Mapping[str, Any]], after: Optional[Mapping[str, Any]]) -> bool:
+    """Whether the only difference between two values of one element is where it is drawn (A1, 5.6).
+
+    True when nothing but ``GEOMETRY_KEYS`` and, on a bound arrow, the route and label spot its ends imply, differ -
+    plus the bookkeeping every change rewrites. An add, a delete, a restyle, a reword, a repin and a move out of its
+    container are never geometry-only. ``diff_lines`` answers the same question in words, so this asks it too and
+    every line it would print must be a move or a resize: the two read one set of keys and cannot drift apart.
+    """
+    if not isinstance(before, Mapping) or not isinstance(after, Mapping):
+        return False  # an add or a delete changes whether the mark exists, which is not its geometry
+    geometry = GEOMETRY_KEYS
+    if after.get("type") == "arrow" and (after.get("from") or after.get("to")):
+        geometry = geometry | ARROW_GEOMETRY_KEYS
+    changed = {key for key in set(before) | set(after) if before.get(key) != after.get(key)}
+    if changed - (geometry | GEOMETRY_TAIL_KEYS):
+        return False
+    if "fit" in changed and not changed & geometry:
+        return False  # a refit on its own changes how the words are drawn, which is not where the mark is
+    return all(line.startswith(GEOMETRY_LINES) for line in diff_lines(before, after))
+
+
+def hosts(name: Optional[str], el: Optional[Mapping[str, Any]], by_id: Mapping[str, Mapping[str, Any]]) -> Optional[str]:
+    """The container of ``el`` that ``name`` made (its ``frame``/``group`` chain), or None.
+
+    Read from the stored scene and never from the op, so an op cannot claim a container it does not own by naming one.
+    """
+    if not name or not isinstance(el, Mapping):
+        return None
+    seen: Set[str] = set()
+    current: Mapping[str, Any] = el
+    for _depth in range(MAX_CONTAINER_DEPTH):
+        parent_id = next((current.get(key) for key in ("frame", "group") if isinstance(current.get(key), str)), None)
+        if not isinstance(parent_id, str) or parent_id in seen:
+            return None
+        seen.add(parent_id)
+        parent = by_id.get(parent_id)
+        if not isinstance(parent, Mapping):
+            return None
+        if parent.get("author_kind") == C.KIND_MEMBER and str(parent.get("author") or "") == name:
+            return parent_id
+        current = parent
+    return None
+
+
+def hosted_geometry(review: Review) -> Dict[str, str]:
+    """``element id -> container id`` for every change that only moves a peer's mark inside a container of the
+    author's own (A1): what the author may do live, and what ``_rule_peer`` therefore does not propose."""
+    name = getattr(review.author, "name", None)
+    if not name or not getattr(review.author, "is_member", False):
+        return {}
+    by_id = review.scene
+    out: Dict[str, str] = {}
+    for change in review.changes:
+        if not change.primary or change.before is None or change.before.get("author_kind") != C.KIND_MEMBER:
+            continue
+        if change.before.get("author") == name or not is_geometry_only(change.before, change.after):
+            continue
+        # The container as the scene holds it, and the mark as it stood: moving a mark out of its host is not hosted.
+        container = hosts(name, change.before, by_id)
+        if container is not None and hosts(name, change.after, by_id) == container:
+            out[change.id] = container
+    return out
+
+
+def _rule_host_geometry(review: Review) -> Optional[Verdict]:
+    """A1: inside a frame or a group its author made, that author may move and resize a peer's marks, live.
+
+    Tidying your own drawing stops being possible the moment a peer's contribution lands in it - the demo spent three
+    operator decisions on pure re-layout - while rewriting what a peer's mark *says* is exactly what proposals are
+    for. So the host right is geometry and nothing else; everything a reader would be told in words stays a proposal.
+    """
+    hosted = hosted_geometry(review)
+    if not hosted:
+        return None
+    return Verdict("live", "host_geometry", "", tuple(hosted), details={"hosted": dict(hosted)})
+
+
 def _rule_peer(review: Review) -> Optional[Verdict]:
     if not review.raised:
         return None
     name = getattr(review.author, "name", None)
+    hosted = hosted_geometry(review)
     theirs = [(c.id, c.before) for c in review.changes if c.primary and c.before is not None and c.before.get("author_kind") == C.KIND_MEMBER
-              and c.before.get("author") != name]
+              and c.before.get("author") != name and c.id not in hosted]
     if not theirs:
         return None
     owners = list(dict.fromkeys(str(el.get("author")) for _i, el in theirs if el is not None))
@@ -457,7 +551,8 @@ def _rule_foreign_lane(review: Review) -> Optional[Verdict]:
 
 
 for _name, _fn, _order in (("busy", _rule_busy, 10), ("locked", _rule_locked, 20), ("frozen", _rule_frozen, 30),
-                           ("stale_base", _rule_stale, 40), ("human_made", _rule_human_made, 50), ("peer", _rule_peer, 60),
+                           ("stale_base", _rule_stale, 40), ("human_made", _rule_human_made, 50),
+                           ("host_geometry", _rule_host_geometry, 55), ("peer", _rule_peer, 60),
                            ("foreign_lane", _rule_foreign_lane, 70)):
     register_rule(_name, _fn, _order)
 
@@ -483,14 +578,16 @@ def gate(review: Review) -> Verdict:
         reasons = tuple(dict.fromkeys(v.reason for v in proposals))
         ids = tuple(dict.fromkeys(i for v in proposals for i in v.ids))
         return dataclasses.replace(first, ids=ids, reasons=reasons, details=dict(first.details, base_note=bool(refusals)))
-    touched = next((v for v in found if v.outcome == "live" and v.reason == "human_made"), None)
+    # A raised run goes live only for a reason that names itself: the operator's own ``human_edits: live`` for her
+    # marks, or a host tidying a peer's mark inside its own container (A1). Anything else is the safety net for D2.
+    touched = next((v for v in found if v.outcome == "live" and v.reason in ("human_made", "host_geometry")), None)
     if review.raised and touched is None:
         human = [c.id for c in review.changes if c.before is not None and c.before.get("author_kind") == C.KIND_HUMAN]
         reason = "human_made" if human else "peer"
         what = C._ids_text(human) + " is the operator's" if human else "it changes marks that are not yours"
         return Verdict("propose", reason, what, tuple(human), reasons=(reason,))
     if touched is not None:
-        return Verdict("live", "human_made", "", touched.ids, reasons=("human_made",))
+        return Verdict("live", touched.reason, "", touched.ids, reasons=(touched.reason,), details=dict(touched.details))
     return Verdict("live", "live")
 
 
@@ -844,7 +941,7 @@ def build_review(ctx: Any, raised: bool) -> Review:
         author=batch.author, lead=batch.lead, op=ctx.op_name, raised=raised, changes=_changes(ctx), settings=settings_of(state),
         freezes=freezes, locks=tuple(dict(lock) for lock in state.locks.values()), lanes=batch.lanes, territory=batch.territory,
         human=batch.human, stale=stale_of(ctx), frozen=frozen_map(state.elements, freezes) if freezes else {},
-        lookup=lambda eid: ctx.el(eid) if isinstance(eid, str) else None, base=batch.base)
+        scene=state.elements, lookup=lambda eid: ctx.el(eid) if isinstance(eid, str) else None, base=batch.base)
 
 
 def may_raise(ctx: Any, op_name: str, err: HerdrTeamError) -> bool:
@@ -906,11 +1003,27 @@ def _live(ctx: Any, verdict: Optional[Verdict], review: Optional[Review]) -> Non
             ctx.warn("operator_selected", "the operator has {} selected right now".format(C._ids_text(hits)), hits)
     if verdict is not None and verdict.reason == "human_made" and verdict.ids:
         ctx.extra["touched_human"] = list(verdict.ids)
+    if verdict is not None and verdict.reason == "host_geometry":
+        _record_host_move(ctx, verdict.details.get("hosted") or {})
     _renew(ctx)
     author = batch.author
     drawing = proposable(ctx.op_name) or _kinds.op(ctx.op_name) is not None  # an undo that brings marks back claims nothing
     if drawing and getattr(author, "is_member", False) and not getattr(author, "manager", False) and not getattr(author, "operator", False):
         _auto_claim(ctx)
+
+
+def _record_host_move(ctx: Any, hosted: Mapping[str, str]) -> None:
+    """Write ``moved_by`` on every peer mark a host just tidied (A1), so attribution stays honest.
+
+    The mark's ``author`` never changes - the words in it are still theirs - but per-author undo, the author chips
+    and the layout engine all have to know that where it sits now is somebody else's doing (``moved_by``, and
+    ``pin.by`` for the operator's own placements, are what exempt a route from being re-cut).
+    """
+    name = str(getattr(ctx.collab.author, "name", "") or "")
+    for eid in hosted:
+        el = ctx.pending.get(eid)
+        if isinstance(el, dict) and name:
+            el["moved_by"] = name
 
 
 def _boxes(ctx: Any) -> List[Box]:
@@ -941,6 +1054,18 @@ def _snap(box: Sequence[float]) -> List[int]:
             int(math.ceil((box[2] + grid) / grid) * grid), int(math.ceil((box[3] + grid) / grid) * grid)]
 
 
+def _claim_fit(ctx: Any, region: Sequence[float]) -> List[int]:
+    """An automatic claim's region, grown outward so its dashed edge is not drawn through a mark it holds most of.
+
+    The same rule the ``claim`` op follows (``canvas_check.claim_snap``, V2), applied here because an automatic claim
+    is drawn exactly like an asked-for one: the operator saw one cut a chart's axis labels off. It grows over a mark
+    it holds more than half of and never over one it merely reaches into, so whose lane a mark is in barely moves.
+    """
+    marks = [el for el in ctx.live() if el.get("type") not in ("frame", "comment", "arrow")]
+    snapped, _over = _check.claim_snap([float(v) for v in region], marks)
+    return snapped
+
+
 def _near_auto_claim(ctx: Any, name: str, region: Sequence[int], lanes: Lanes) -> Optional[Tuple[Dict[str, Any], List[int]]]:
     """The newest automatic claim of ``name``'s within ``AUTO_CLAIM_JOIN`` of ``region`` that can grow over it (no side
     past ``AUTO_CLAIM_MAX``, no other author's lane inside), and its grown region; or None."""
@@ -951,7 +1076,7 @@ def _near_auto_claim(ctx: Any, name: str, region: Sequence[int], lanes: Lanes) -
         old = claim.get("region")
         if not isinstance(old, list) or len(old) != 4 or not C._intersects(reach, old):
             continue
-        grown = [min(old[0], region[0]), min(old[1], region[1]), max(old[2], region[2]), max(old[3], region[3])]
+        grown = _claim_fit(ctx, [min(old[0], region[0]), min(old[1], region[1]), max(old[2], region[2]), max(old[3], region[3])])
         if grown[2] - grown[0] > AUTO_CLAIM_MAX or grown[3] - grown[1] > AUTO_CLAIM_MAX:
             continue
         if any(author != name and C._intersects(grown, other) for author, other, _what in lanes.regions):
@@ -976,11 +1101,11 @@ def _auto_claim(ctx: Any) -> None:
     if not boxes:
         return
     union = (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
-    region = _snap(union)
+    region = _claim_fit(ctx, _snap(union))
     current = ctx.state.claims.get(batch.auto_claim) if batch.auto_claim else None
     if current is not None and not C._expired(current, ctx.now):
         old = current.get("region") or region
-        grown = [min(old[0], region[0]), min(old[1], region[1]), max(old[2], region[2]), max(old[3], region[3])]
+        grown = _claim_fit(ctx, [min(old[0], region[0]), min(old[1], region[1]), max(old[2], region[2]), max(old[3], region[3])])
         if grown != list(old):
             ctx.other("claim", "update", current["id"], dict(current, region=grown, expires_at=C._iso(ctx.now + C.CLAIM_TTL_S)))
         ctx.entry_extra["auto_claim"] = current["id"]

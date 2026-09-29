@@ -95,6 +95,38 @@ class Checks(unittest.TestCase):
         self.assertEqual(codes(K.problems(near + [far])), [("stray", ["E-9"])])
         self.assertEqual(K.problems(near[:2] + [far]), [], "too few marks to call one stray")
 
+    def test_a_claim_drawn_through_a_mark_it_holds_most_of(self):
+        """V2: at 41% zoom a claim's lower edge ran across a chart's x-axis labels and read as the chart being cut
+        off, and check called the board clean - the overlay class the agent's only feedback loop could not see."""
+        chart = el("E-1", "box", 0, 0, 400, 300, "Revenue")
+        beside = el("E-2", "box", 900, 0, 400, 300, "Signups")
+        claim = {"id": "K-1", "author": "alpha-worker", "region": [-100, -100, 300, 200], "label": "the charts"}
+        [problem] = K.problems([chart, beside], "alpha-worker", claims=[claim])
+        self.assertEqual((problem["code"], problem["ids"]), ("claim_edge", ["K-1", "E-1"]))
+        self.assertIn("claim K-1's edge cuts across E-1 box \"Revenue\"", problem["message"])
+        self.assertEqual(problem["fix"]["op"], "claim")
+        self.assertEqual(problem["fix"]["region"], [-100, -100, 400, 300], "the region that holds it whole")
+        self.assertEqual(K.problems([chart, beside], "alpha-worker", claims=[dict(claim, region=problem["fix"]["region"])]), [])
+        self.assertEqual(K.problems([chart, beside], "alpha-worker"), [], "without the scene's claims it finds none")
+        # A claim that reaches into a mark is beside it, not through it: an edge always ends somewhere, and the
+        # margin of the next mark along is not worth an agent's turn.
+        self.assertEqual(K.problems([chart, beside], "alpha-worker", claims=[dict(claim, region=[-100, -100, 40, 40])]), [])
+        # Another author's claim is theirs to correct; the reader is told, and given no operation.
+        [theirs] = K.problems([chart, beside], "alpha-worker", claims=[dict(claim, author="alpha-reviewer")])
+        self.assertIsNone(theirs["fix"])
+        self.assertIn("ask alpha-reviewer", theirs["message"])
+
+    def test_claim_snap_grows_outward_and_stays_bounded(self):
+        marks = [el("E-1", "box", 0, 0, 400, 300, "Revenue"), el("E-2", "box", 900, 0, 400, 300, "Signups")]
+        self.assertEqual(K.claim_snap([-100, -100, 300, 200], marks), ([-100, -100, 400, 300], ["E-1"]))
+        self.assertEqual(K.claim_snap([0, 0, 400, 300], marks), ([0, 0, 400, 300], []), "it holds it whole already")
+        # A claim never grows past ``CLAIM_SNAP_MAX_AREA`` times what was asked for. With the default that rail
+        # rarely binds, because a mark the claim holds half of is at most twice its area; it is there for the board
+        # where several marks each stick out, so a claim can tidy its edge and never annex a neighbourhood.
+        self.assertEqual(K.claim_snap([-100, -100, 300, 200], marks, max_area=1.0), ([-100, -100, 300, 200], []))
+        self.assertEqual(K.claim_snap([0, 0, 200, 150], [el("E-1", "box", 0, 0, 4000, 3000, "Board")]), ([0, 0, 200, 150], []),
+                         "a claim on the corner of one big diagram holds a corner of it")
+
     def test_order_region_and_the_readers_own_first(self):
         mine = [el("E-1", "box", 0, 0, 160, 80, "A"), el("E-2", "box", 100, 40, 160, 80, "B", seq=2)]
         theirs = [el("E-3", "box", 1000, 0, 160, 80, "C", author="alpha-reviewer"),

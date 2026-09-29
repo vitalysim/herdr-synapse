@@ -1,18 +1,26 @@
 // The presence layer (canvas-v2-phase5.md 12.2): a halo per agent at work, in its chip colour, with
 // a pill naming it and what it says it is doing; and, for the operator's other pages, her viewport
-// as a dotted rect and her cursor as a dot with a label. Pills and the cursor label never cover a
-// label the board draws or each other (QA phase 5 L10, labels.js): a pill goes under its halo, else
-// above it, else inside it, else further out; when no place is clear it shrinks to its chip, and
-// then (like a cursor label with no clear place) it is left out. Screen space, above the drawing,
-// never takes a pointer event, and never part of the display list, so it reaches no still, export
-// or agent picture. Every string is React text: an agent's intent can never become markup.
+// as a dotted rect and her cursor as a dot with a label.
+//
+// Pills and the cursor label never cover the board's work (QA phase 5 L10 for its labels; the canvas
+// v2 demo, V3, for its ink: a chip lay across the middle of a diagram, over nodes and edges). The
+// obstacles are therefore every label the board draws *and* the box of every content entry, plus the
+// pills already placed. A pill goes under its halo, else above it, else inside it, else further out;
+// then in the nearest clear margin outside the whole drawing, with a leader back to its halo; then
+// it shrinks to its chip; and if nothing is clear it is left out, like a cursor label with no place.
+// The halo rectangle itself is unchanged: it is an outline round the work and is meant to be seen.
+//
+// Screen space, above the drawing, never takes a pointer event, and never part of the display list,
+// so it reaches no still, export or agent picture. Every string is React text: an agent's intent can
+// never become markup.
 import React, { useMemo } from "react";
-import { CHIP_W, CURSOR_LABEL, PILL_H, labelBoxes, placeLabel, pillWidth, textLines } from "./labels.js";
+import { CHIP_W, CURSOR_LABEL, PILL_H, entryBoxes, labelBoxes, placeLabel, pillWidth, textLines } from "./labels.js";
 import { MAX_HALOS, MAX_INTENT, clipText } from "./presence.js";
 
 const PAD_PX = 6;
 
 const inter = (a, b) => a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1];
+const clamp = (v, lo, hi) => (hi < lo ? v : Math.min(Math.max(v, lo), hi));
 
 function unionOf(boxes) {
   const list = boxes.filter((b) => Array.isArray(b) && b.length === 4 && b.every(Number.isFinite));
@@ -28,6 +36,31 @@ function pillSpots(h, w) {
   const spots = [[h.x, below], [right, below], [h.x, above], [right, above], [h.x + 6, h.y + h.h - PILL_H - 6], [h.x + 6, h.y + 6]];
   for (let k = 1; k <= 3; k += 1) spots.push([h.x, below + k * (PILL_H + 2)], [h.x, above - k * (PILL_H + 2)]);
   return spots;
+}
+
+// Screen px kept between a pill in the margin and the drawing it stands clear of.
+const MARGIN_PX = 8;
+
+// Where a pill of `w` may go outside the whole drawing `union`, nearest the halo `h` first: along the
+// halo's own row or column, so the leader back to it is short and the eye follows it.
+function marginSpots(h, w, union, viewport) {
+  if (!union) return [];
+  const cx = h.x + h.w / 2;
+  const cy = h.y + h.h / 2;
+  const spots = [
+    [clamp(h.x, 0, viewport.w - w), union[3] + MARGIN_PX],
+    [clamp(h.x, 0, viewport.w - w), union[1] - MARGIN_PX - PILL_H],
+    [union[2] + MARGIN_PX, clamp(cy - PILL_H / 2, 0, viewport.h - PILL_H)],
+    [union[0] - MARGIN_PX - w, clamp(cy - PILL_H / 2, 0, viewport.h - PILL_H)],
+  ];
+  return spots.sort((a, b) => Math.hypot(a[0] - cx, a[1] - cy) - Math.hypot(b[0] - cx, b[1] - cy));
+}
+
+// A 1 px leader from a pill in the margin to the nearest point of its halo, so the pill still says
+// whose it is. From the pill's own nearest edge, never across the pill.
+function leaderTo(spot, w, h) {
+  const from = [clamp(h.x + h.w / 2, spot[0], spot[0] + w), clamp(h.y + h.h / 2, spot[1], spot[1] + PILL_H)];
+  return [from[0], from[1], clamp(from[0], h.x, h.x + h.w), clamp(from[1], h.y, h.y + h.h)];
 }
 
 // Where the cursor label may go around the cursor `c`, best first.
@@ -47,7 +80,7 @@ function cursorSpots(c) {
  *   bboxOf(id) -> [x0, y0, x1, y1] | null (the display list's entry bbox); chipOf(name) -> {bg, fg, initials};
  *   labels: the screen boxes of the board's own labels (labelBoxes), which nothing here covers.
  */
-export function haloShapes({ members = [], operators = [], camera, viewport, bboxOf = () => null, chipOf = () => ({ bg: "#888888", fg: "#ffffff", initials: "?" }), labels = [] }) {
+export function haloShapes({ members = [], operators = [], camera, viewport, bboxOf = () => null, chipOf = () => ({ bg: "#888888", fg: "#ffffff", initials: "?" }), labels = [], ink = [] }) {
   const out = { halos: [], operators: [] };
   if (!camera || !viewport || !(viewport.w > 0) || !(viewport.h > 0)) return out;
   const s = camera.scale;
@@ -77,17 +110,26 @@ export function haloShapes({ members = [], operators = [], camera, viewport, bbo
       status: m.status,
     });
   }
-  // Pills in order (the newest first), each clear of the board's labels and of the pills before it.
-  const taken = [...labels];
+  // Pills in order (the newest first), each clear of the board's labels and ink and of the pills before it.
+  const taken = [...labels, ...ink];
+  const union = unionOf(ink);
   for (const h of out.halos) {
     const w = pillWidth(h.label);
+    let leader = null;
     let spot = placeLabel(pillSpots(h, w), [w, PILL_H], taken, viewport);
     let size = [w, PILL_H];
+    if (!spot) {
+      const found = placeLabel(marginSpots(h, w, union, viewport), size, taken, viewport);
+      if (found) {
+        spot = found;
+        leader = leaderTo([found.x, found.y], w, h);
+      }
+    }
     if (!spot) {
       size = [CHIP_W, PILL_H];
       spot = placeLabel(pillSpots(h, CHIP_W), size, taken, viewport);
     }
-    h.pill = spot ? { x: spot.x, y: spot.y, compact: size[0] === CHIP_W } : null;
+    h.pill = spot ? { x: spot.x, y: spot.y, compact: size[0] === CHIP_W, leader } : null;
     if (spot) taken.push([spot.x, spot.y, spot.x + size[0], spot.y + size[1]]);
   }
   for (const o of operators) {
@@ -107,9 +149,10 @@ export function haloShapes({ members = [], operators = [], camera, viewport, bbo
 
 export default function Halos({ presence, camera, viewport, bboxOf, chipOf, dl = null, theme = "light", neutral = "#8b8d98", layerRef = null }) {
   const labels = useMemo(() => labelBoxes(textLines(dl), camera, viewport), [dl, camera, viewport]);
+  const ink = useMemo(() => entryBoxes(dl, camera, viewport), [dl, camera, viewport]);
   const shapes = useMemo(
-    () => haloShapes({ members: presence ? presence.members : [], operators: presence ? presence.operators : [], camera, viewport, bboxOf, chipOf, labels }),
-    [presence, camera, viewport, bboxOf, chipOf, labels],
+    () => haloShapes({ members: presence ? presence.members : [], operators: presence ? presence.operators : [], camera, viewport, bboxOf, chipOf, labels, ink }),
+    [presence, camera, viewport, bboxOf, chipOf, labels, ink],
   );
   const fillAlpha = theme === "dark" ? 0.1 : 0.06;
   return (
@@ -141,6 +184,21 @@ export default function Halos({ presence, camera, viewport, bboxOf, chipOf, dl =
         )}
         {shapes.operators.map((o) =>
           o.cursor ? <circle key={`cur:${o.page}`} className="cv2-operator-cursor" cx={o.cursor[0]} cy={o.cursor[1]} r={4} fill={neutral} opacity={o.opacity} /> : null,
+        )}
+        {shapes.halos.map((h) =>
+          h.pill && h.pill.leader ? (
+            <line
+              key={`lead:${h.name}`}
+              className="cv2-halo-leader"
+              x1={h.pill.leader[0]}
+              y1={h.pill.leader[1]}
+              x2={h.pill.leader[2]}
+              y2={h.pill.leader[3]}
+              stroke={h.stroke}
+              strokeWidth={1}
+              opacity={h.opacity}
+            />
+          ) : null,
         )}
       </svg>
       {shapes.halos.map((h) =>

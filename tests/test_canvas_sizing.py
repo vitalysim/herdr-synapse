@@ -212,8 +212,8 @@ class GrowthAndNeighbours(CanvasRig):
 
 
 class CheckRegistry(unittest.TestCase):
-    def test_the_six_checks_are_registered_in_severity_order(self):
-        self.assertEqual([c.code for c in K.CHECKS], ["overlap", "label_overflow", "frame_edge", "arrow_through", "stray"])
+    def test_the_checks_are_registered_in_severity_order(self):
+        self.assertEqual([c.code for c in K.CHECKS], ["overlap", "label_overflow", "frame_edge", "arrow_through", "stray", "claim_edge"])
         self.assertEqual([c.severity for c in K.CHECKS], sorted(c.severity for c in K.CHECKS))
 
     def test_a_new_check_is_one_function_and_one_line(self):

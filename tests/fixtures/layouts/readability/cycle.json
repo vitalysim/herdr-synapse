@@ -1,0 +1,153 @@
+{
+ "name": "cycle",
+ "about": "a retry loop with a back edge and a thin aspect",
+ "direction": "right",
+ "layout": "layers",
+ "gap": 40,
+ "rank_gap": 80,
+ "clearance": 20,
+ "radius": 8,
+ "port_spacing": 12,
+ "group_pad": [
+  20,
+  40,
+  20,
+  20
+ ],
+ "passes": [
+  {
+   "nodes": [
+    {
+     "id": "submit",
+     "w": 160,
+     "h": 60,
+     "group": null
+    },
+    {
+     "id": "queue",
+     "w": 160,
+     "h": 60,
+     "group": null
+    },
+    {
+     "id": "run",
+     "w": 160,
+     "h": 60,
+     "group": null
+    },
+    {
+     "id": "check",
+     "w": 160,
+     "h": 60,
+     "group": null
+    },
+    {
+     "id": "retry",
+     "w": 220,
+     "h": 60,
+     "group": null
+    },
+    {
+     "id": "done",
+     "w": 160,
+     "h": 60,
+     "group": null
+    },
+    {
+     "id": "fail",
+     "w": 160,
+     "h": 60,
+     "group": null
+    }
+   ],
+   "edges": [
+    {
+     "id": "e:submit->queue",
+     "a": "submit",
+     "b": "queue",
+     "label": [
+      84.97,
+      24.0
+     ],
+     "name": "enqueue"
+    },
+    {
+     "id": "e:queue->run",
+     "a": "queue",
+     "b": "run",
+     "label": [
+      73.56,
+      24.0
+     ],
+     "name": "pick up"
+    },
+    {
+     "id": "e:run->check",
+     "a": "run",
+     "b": "check",
+     "label": [
+      59.26,
+      24.0
+     ],
+     "name": "finish"
+    },
+    {
+     "id": "e:check->done",
+     "a": "check",
+     "b": "done",
+     "label": [
+      35.17,
+      24.0
+     ],
+     "name": "ok"
+    },
+    {
+     "id": "e:check->retry",
+     "a": "check",
+     "b": "retry",
+     "label": [
+      54.75,
+      24.0
+     ],
+     "name": "error"
+    },
+    {
+     "id": "e:retry->queue",
+     "a": "retry",
+     "b": "queue",
+     "label": [
+      81.43,
+      24.0
+     ],
+     "name": "requeue"
+    },
+    {
+     "id": "e:retry->fail",
+     "a": "retry",
+     "b": "fail",
+     "label": [
+      105.04,
+      24.0
+     ],
+     "name": "no tries left"
+    }
+   ],
+   "groups": []
+  }
+ ],
+ "budget": {
+  "length_ratio": 1.02,
+  "crossings_seen": 0,
+  "mdetour_median": 1.0,
+  "mdetour_max": 1.1,
+  "reversals_max": 1,
+  "reversals_total": 1,
+  "bends_max": 4,
+  "label_misattributed": 0,
+  "label_orphan_max": 0.3,
+  "edge_on_edge_len": 0,
+  "entry_cross_offset_max": 24,
+  "screen_use": 0.19,
+  "parallel_bundle_len": 100
+ }
+}

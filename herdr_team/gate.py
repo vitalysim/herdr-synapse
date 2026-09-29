@@ -99,6 +99,11 @@ HOLD_PANE_STUCK = "pane_stuck"
 HOLD_NAME_MISMATCH = "name_mismatch"
 #: Daemon-side hold (plan 12, SK-08): a Claude Stop-hook block covering the pending seqs within 10 min.
 HOLD_STOP_BLOCKED = "stop_blocked"
+#: Daemon-side hold (H4): the posts landed and were not read, so the next attempt waits out
+#: ``daemon.RENUDGE_AFTER_S``. Named because it was the gap nobody could see: a three-minute
+#: silence in ``daemon.log`` with no hold recorded anywhere, which is how the live run read as
+#: "the notifier stopped" when it was in fact counting.
+HOLD_RENUDGE_WAIT = "renudge_wait"
 
 #: Reasons that end the pending work for this member instead of pausing it.
 DROP_REASONS = frozenset({

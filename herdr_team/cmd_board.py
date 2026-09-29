@@ -1196,8 +1196,11 @@ def _run_post(args: argparse.Namespace) -> int:
         raise HerdrTeamError("author_mismatch", "hooks and startup processes cannot post as themselves", EXIT_REFUSED)
     if args.relayed_for and not author.is_member:
         raise HerdrTeamError("author_mismatch", "--relayed-for human is for member panes; you are already human", EXIT_REFUSED)
-    if args.name and not author.verified and author.is_human:
-        warn(args, "--name ignored: author is not verified")
+    if args.name:
+        _refuse_member_label(author)
+        note = _identity.ignored_label_note(author)
+        if note:
+            warn(args, note)
     to, to_role = resolve_recipients(doc, args.to, author, args.to_any)
     link_target = next((t for t in to if _links.is_team_recipient(t)), None)
     interrupt = bool(getattr(args, "interrupt", False))
@@ -1400,7 +1403,7 @@ def _add_board_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--max-bytes", dest="max_bytes", type=int)
     parser.add_argument("--max", dest="max_posts", type=int)
     parser.add_argument("--ascii", action="store_true")
-    parser.add_argument("--name", metavar="LABEL", help="human label for the cursor file")
+    parser.add_argument("--name", metavar="LABEL", help="the operator's label, which names the human cursor over your own inbox; not for members")
 
 
 def _thread_of(records: List[Dict[str, Any]], root: int) -> List[Dict[str, Any]]:
@@ -1468,8 +1471,45 @@ def copy_payloads_for_sandboxed(layout: Layout, team: TeamPaths, doc: Dict[str, 
                 continue
 
 
+def _unread_sentence(team: TeamPaths, reader: str) -> str:
+    """``ack``'s unread sentence, or an empty string; never raises on a torn cursor file."""
+    try:
+        unshown = store.Cursors(team).unshown(reader)
+    except (HerdrTeamError, OSError):
+        return ""
+    if not unshown:
+        return "; nothing unread"
+    return "; {} unread post{} you have not been shown ({}{}); run herdr-synapse board --new".format(
+        len(unshown), "" if len(unshown) == 1 else "s",
+        ", ".join("#{}".format(seq) for seq in unshown[:5]),
+        "" if len(unshown) <= 5 else ", …")
+
+
+def _refuse_member_label(author: Author) -> None:
+    """A member passing ``--name`` is refused, because it used to be ignored.
+
+    ``--name`` names the operator behind a verified human pane. A roster member
+    already *is* an identity, so the label could never apply to it -- and for a
+    member reading the board that mattered: ``board --new --name <peer>`` read
+    the member's *own* inbox under its own cursor and said so only in the
+    footer's reader name, which a scripted agent does not parse. One turn of the
+    live l6 run went that way. Refusing is louder than a warning and cannot be
+    mistaken for somebody else's mail.
+    """
+    if author.is_member:
+        raise UsageError(
+            "--name names a human cursor and is not for a member: drop it; you read and write as {}. "
+            "A teammate's inbox is theirs to read; to narrow your own, use --from or --to".format(author.name)
+        )
+
+
 def _run_board(args: argparse.Namespace) -> int:
     layout, api, author, team_name, team, doc = _open_team(args, require_server=False, label=args.name)
+    if args.name:
+        _refuse_member_label(author)
+        note = _identity.ignored_label_note(author)
+        if note:
+            warn(args, note)
     fmt = args.format or ("json" if args.json else "text")
     reader = reader_id(author)
     is_human = author.is_human or author.name == AUTHOR_SYSTEM
@@ -1557,9 +1597,16 @@ def _run_board(args: argparse.Namespace) -> int:
         text = render_board(shown, ascii_only=args.ascii, receipts=int_receipts)
         footer = "-- {} post{}".format(len(shown), "" if len(shown) == 1 else "s")
         if args.new or args.peek:
-            footer += " for {} (cursor {} -> {})".format(reader, cursor_before, highest if advance else cursor_before)
+            after = highest if advance else cursor_before
+            footer += " for {} (cursor {}{})".format(reader, cursor_before, " -> {}".format(after) if advance else ", held")
         if truncated:
             footer += "; more pending, run: herdr-synapse board --new"
+        if args.new and not shown:
+            # An empty read used to print "0 posts ... (cursor 135 -> 135)" and nothing else,
+            # which reads like "your inbox is empty" even when posts are waiting behind a
+            # filter or a hold. Say which cursor is being held and name what is unread, in
+            # the same words ``ack`` uses, so one line answers "then where is my mail".
+            footer += _unread_sentence(team, reader)
         out.write(text + "\n" + footer + "\n")
     out.flush()
     if advance:

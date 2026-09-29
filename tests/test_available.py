@@ -206,7 +206,7 @@ class ProfileArgvTests(unittest.TestCase):
         self.assertEqual(models.launch_args("opencode", "opencode/x", None, "yolo", "plan"), ["--agent", "plan", "-m", "opencode/x", "--auto"])
         self.assertEqual(models.launch_args("claude", None, None, "native", "reviewer"), ["--agent", "reviewer"])
         self.assertEqual(models.resume_argv("codex", session, None, None, "yolo", "fast"),
-                         ["codex", "resume", "0199", "-p", "fast", "--dangerously-bypass-approvals-and-sandbox"])
+                         ["codex", "resume", "0199", "-p", "fast", "--no-daemon", "--dangerously-bypass-approvals-and-sandbox"])
         live = ["codex", "resume", "0199", "-p", "old", "--profile", "older", "--search"]
         self.assertEqual(models.preserved_launch_args("codex", live), ["-p", "old", "--profile", "older", "--search"])
         self.assertEqual(models.preserved_launch_args("codex", live, "yolo", "fast"), ["--search"])

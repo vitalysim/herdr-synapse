@@ -13,9 +13,11 @@ from unittest import mock
 from test_canvas import OPERATOR, PNG_MAGIC, CanvasRig, fake_resvg, png
 
 from herdr_team import canvas as C
+from herdr_team import canvas_display as D
 from herdr_team import canvas_layout as L
 from herdr_team import canvas_mermaid as M
 from herdr_team import canvas_render as R
+from herdr_team import canvas_svg as S
 from herdr_team import canvas_theme as T
 from herdr_team.errors import HerdrTeamError
 
@@ -176,15 +178,22 @@ class RenderSvg(CanvasRig):
 
     def test_id_badges_hang_clear_of_the_labels_they_used_to_cover(self):
         """QA phase 6 F7: a badge is a fixed size in pixels, an element a box in units, so on a whole-board picture a
-        badge inside a short box's corner sat across its label. Every badge now hangs above its element; only a frame,
-        whose own title stands above it at that zoom, keeps its badge inside the corner."""
+        badge inside a short box's corner sat across its label. Every badge now hangs above its element, and that
+        corner is still the first one ``badge_spots`` tries; a frame, whose own title stands in its band, takes the
+        band's top-right corner instead (V1)."""
         self.assertEqual(R.mark_anchor({"type": "box", "x": 10, "y": 20}), (10.0, 20.0, True))
         self.assertEqual(R.mark_anchor({"type": "frame", "x": 10, "y": 20}), (10.0, 20.0, False))
         self.assertEqual(R.mark_anchor({"type": "text", "x": 10, "y": 20})[2], True)
         arrow = {"type": "arrow", "points": [[0, 0], [200, 0]], "text": "calls", "style": {"size": 20}}
         pill = R.arrow_label_pill(arrow)[0]
         self.assertEqual(R.mark_anchor(arrow), (pill[0] + pill[2] / 2.0, pill[1], True), "above the label's pill")
-        # And in the picture itself: at two units to the pixel no badge rectangle touches a label's box.
+        box = {"id": "E-1", "type": "box", "x": 100, "y": 200, "w": 160, "h": 80}
+        spots = R.badge_spots(box, (30.0, 15.0), 1.0)
+        self.assertEqual(spots[0], (98.0, 183.0), "first: hanging above the top-left corner, as it was drawn before")
+        self.assertEqual(spots[1:5], [(232.0, 183.0), (98.0, 282.0), (232.0, 282.0), (228.0, 202.0)])
+        frame = R.badge_spots({"id": "E-2", "type": "frame", "x": 0, "y": 0, "w": 400, "h": 300}, (30.0, 15.0), 1.0)
+        self.assertEqual(frame[0], (368.0, 2.0), "a frame's badge takes the band's top-right corner, never its title's")
+        # And in the picture itself: at two units to the pixel no badge rectangle touches a line of text.
         self.drivers()
         scene = C.load_scene(self.team)
         svg, box = R.picture(scene, reader="alpha-worker", max_px=300)
@@ -196,10 +205,50 @@ class RenderSvg(CanvasRig):
             label = "".join(text.itertext())
             if label in {e["id"] for e in scene["elements"]}:
                 badges[label] = float(text.get("y"))
-        for el in scene["elements"]:
-            if el["type"] in ("frame", "arrow") or el["id"] not in badges:
-                continue
-            self.assertLess(badges[el["id"]], float(el["y"]), "{}'s badge sits above its box".format(el["id"]))
+        above = [el for el in scene["elements"] if el["type"] not in ("frame", "arrow", "comment") and el["id"] in badges]
+        self.assertTrue(above, "the picture carries badges")
+        self.assertGreaterEqual(sum(1 for el in above if badges[el["id"]] < float(el["y"])), len(above) - 1,
+                                "a badge moves off its own corner only when that corner is on words")
+
+    def test_no_badge_is_ever_drawn_on_the_words_the_picture_draws(self):
+        """V1: the residual of the F7 round. A badge that had nowhere to hang landed on a claim's pill or on a
+        frame's own title - the two labels the display list draws from a corner rather than inside a box. The solver
+        measures every line the picture will draw at this zoom, including those, and takes the first corner clear of
+        all of them; when nothing is clear the badge is left out and the listing says which marks carry none."""
+        self.drivers()
+        scene = C.load_scene(self.team)
+        first = R._bounds(scene["elements"][0])
+        # A claim whose corner is exactly where the first mark's badge wants to hang: its pill is drawn from there.
+        scene = dict(scene, claims=[{"id": "K-1", "author": "alpha-worker", "label": "the left half",
+                                     "region": [first[0], first[1], first[2] + 200, first[3] + 200]}])
+        elements = sorted(scene["elements"], key=lambda el: (int(el.get("z") or 0), str(el.get("id"))))
+        for max_px in (2600, 1400, 1024, 700, 400):
+            dl = D.display_list(scene)
+            box = tuple(float(v) for v in dl["bbox"])
+            u = R.units_per_px(box, max_px)
+            marks, omitted = R.badge_marks(elements, dl, box, u)
+            words = R.text_boxes(dl, u, box)
+            self.assertTrue(words, "the picture draws text at {} px".format(max_px))
+            for ident, x, y in marks:
+                w, h = S.badge_box(ident, u)
+                hit = next(((ident, t) for t in words if x < t[2] and t[0] < x + w and y < t[3] and t[1] < y + h), None)
+                self.assertIsNone(hit, "at {} px a badge is drawn on a line of text: {}".format(max_px, hit))
+            self.assertEqual(len(marks) + len(omitted), len(elements), "every mark is either badged or named as unbadged")
+
+    def test_a_badge_with_nowhere_clear_is_left_out_and_said_so(self):
+        """A fully blocked ladder returns "omitted", never a collision: one line of text as wide and tall as the
+        whole picture leaves no corner, and the answer names the marks the picture cannot label."""
+        scene = {"elements": [{"id": "E-1", "type": "box", "x": 0, "y": 0, "w": 200, "h": 100, "text": "Alone"}],
+                 "claims": [], "locks": [], "authors": {}}
+        dl = D.display_list(scene)
+        box = (-1000.0, -1000.0, 1200.0, 1100.0)
+        u = R.units_per_px(box, 200)
+        blocked = {"entries": [{"id": "E-1", "kind": "box", "layer": "marks", "z": 0, "bbox": list(box),
+                                "items": [{"k": "text", "x": box[0], "size": 100.0, "weight": 400,
+                                           "lines": [{"t": "x" * 40, "y": y, "w": box[2] - box[0]}
+                                                     for y in range(int(box[1]), int(box[3]), 50)]}]}]}
+        marks, omitted = R.badge_marks(scene["elements"], blocked, box, u)
+        self.assertEqual((marks, omitted), ([], ["E-1"]))
 
     def test_region_and_stills(self):
         scene = self.scene_with_everything()

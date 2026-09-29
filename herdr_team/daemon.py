@@ -244,6 +244,14 @@ SAY_VIAS = ("console",)
 #: Kinds verified live to queue text typed into a running turn (``!!``); other kinds are typed but flagged.
 FORCE_VERIFIED_KINDS = ("claude", "codex", "opencode", "pi")
 RENUDGE_AFTER_S = (120.0, 300.0, 600.0)
+#: A post batch that arrived *after* a landing is new information, so it earns one
+#: immediate attempt instead of inheriting the previous post's place on
+#: ``RENUDGE_AFTER_S``. This bounds how many such attempts one landing schedule may
+#: spend; the *time* floor is deliberately not duplicated here -- gate 11's
+#: ``min_interval_ms`` (20 s by default, per team) is the one floor between two
+#: nudges, it already has its own single-use exception, and a second floor next to
+#: it would hide the gate's own reason for waiting.
+FOLLOW_UP_MAX = 3
 # The post TTL (plan 8.3, 30 min of target-active time) is ``gate.POST_TTL_MS``, per team via ``config.gate.post_ttl_ms``.
 BRIEF_ACK_S = 90.0
 DIALOG_TOAST_AFTER_S = 600.0
@@ -1258,6 +1266,11 @@ class Pending:
     follow_up_due: bool = False
     #: The one immediate follow-up of this landing schedule was spent (gate 11); a regular landing resets it.
     follow_up_used: bool = False
+    #: How many immediate follow-ups this landing schedule has spent (``FOLLOW_UP_MAX``).
+    follow_ups_used: int = 0
+    #: The highest seq that has already earned a follow-up, so one batch of new posts
+    #: earns one attempt however many records arrive in it.
+    follow_up_batch_max: int = 0
     #: Board seqs addressed to the member while this briefing was pending (HP-10, 2026-09-05: they were
     #: dropped and never nudged); they become a nudge when the briefing is acknowledged or given up.
     deferred_seqs: List[int] = field(default_factory=list)
@@ -1299,6 +1312,12 @@ class MemberRuntime:
     last_nudge_cursor_seq: Optional[int] = None
     #: Terminal id of the fingerprint candidate last logged for an unbound member (rehydration step e).
     unbound_candidate: Optional[str] = None
+    #: Launch flags the live command line lacks (``models.missing_launch_flags``), and the
+    #: terminal that was audited, so the notice is raised once per adoption and not per poll.
+    missing_launch_flags: List[str] = field(default_factory=list)
+    flags_audited_terminal: Optional[str] = None
+    #: Pane id of the member's own empty pane last reported (rehydration step f).
+    empty_pane: Optional[str] = None
     #: Detection-read digest and when it last changed (gate 10: unchanged for 3 s after the max-hold).
     detection_hash: Optional[str] = None
     detection_stable_since_ms: Optional[float] = None
@@ -2382,8 +2401,8 @@ class Daemon:
                 pending.landed_seq_max = max([int(s) for s in (last.get("seqs") or []) if isinstance(s, int)] or [0])
                 pending.attempts = max(1, int(last.get("attempts") or 1))
                 pending.attempt_id = str(last.get("id"))
-                if pending.attempts == 1 and any(s > pending.landed_seq_max for s in seqs):
-                    pending.follow_up_due = True  # posts arrived after that landing: the one follow-up still applies
+                if any(s > pending.landed_seq_max for s in seqs):
+                    self._arm_follow_up(pending, now)  # posts arrived after that landing: deliver them, not the ladder
                 self.log("{}: rebuilt pending for {}: {} (nudged {:.0f} s ago as {}, unread)".format(team.name, name, sorted(seqs), age_ms / 1000.0, last.get("id")))
             else:
                 self.log("{}: rebuilt pending for {}: {} (never nudged)".format(team.name, name, sorted(seqs)))
@@ -2574,6 +2593,13 @@ class Daemon:
                                 # RT-02: a rebind to another terminal leaves the old pane behind as a plain shell; it must not keep the team label.
                                 self._clear_stale_label(team, member, old_pane)
                             self._stamp_tokens(team, dict(member, **update), self.clock())
+                        if "terminal_id" in update:
+                            # Synapse did not start this process: it found it and adopted it. That is
+                            # the one moment its command line can be wrong, so it is the one moment
+                            # worth a socket call to look at (H2, live 2026-09-28).
+                            self._audit_launch_flags(team, dict(member, **update))
+                for entry in result.empty_panes:
+                    self._note_empty_pane(team, str(entry.get("member")), entry.get("pane") if isinstance(entry.get("pane"), dict) else {})
                 for entry in result.kind_changed:
                     member = by_name.get(str(entry.get("member")))
                     if member is None or not isinstance(entry.get("agent"), dict) or not entry["agent"].get("agent"):
@@ -2647,6 +2673,67 @@ class Daemon:
             members.append(member)
             by_name[name] = raw
         return members, by_name
+
+    def _audit_launch_flags(self, team: TeamState, member: Dict[str, Any]) -> None:
+        """One notice when an adopted member's command line lacks a flag Synapse would have passed.
+
+        Herdr's own session restore rebuilds ``codex resume <id>`` or ``claude
+        --resume <id>`` from the session reference alone, so a member it brings
+        back has no approval-bypass flag, no ``mcp_servers.synapse_canvas`` and
+        no pane-local flag. It looks healthy on the roster and then asks
+        permission for every canvas command, or has no canvas door at all.
+
+        Deliberately a *notice*, not a repair: quitting and relaunching a pane
+        the operator may be reading, to fix flags, is worse than telling them.
+        The record names the one command that does fix it. Raised once per
+        adopted terminal, because the audit costs a ``pane.process_info``.
+        """
+        name = str(member.get("name") or "")
+        terminal = str(member.get("terminal_id") or "")
+        rt = team.rt(name)
+        if not name or not terminal or rt.flags_audited_terminal == terminal:
+            return
+        rt.flags_audited_terminal = terminal
+        from herdr_team import features as _features
+
+        try:
+            mcp = _features.mcp_spec(self.layout, team.paths, write=False)
+            policy = _permissions.effective(team.roster.get("config"), member)
+            missing = _models.missing_launch_flags(member.get("kind"), self._foreground_argv(member), policy, mcp)
+        except (HerdrTeamError, OSError, ValueError):
+            return
+        rt.missing_launch_flags = list(missing)
+        if not missing:
+            return
+        self.who_dirty = True
+        self.log("{}: {} was adopted without {}".format(team.name, name, ", ".join(missing)))
+        self._append_system(
+            team, "launch_flags_missing",
+            "{} is running without {}; Herdr's own restore rebuilds the command line without Synapse's flags. "
+            "Repair it with: herdr-synapse --team {} restore --refresh-flags".format(name, ", ".join(missing), team.name),
+            ["human"], {"member": name, "missing": list(missing), "terminal_id": terminal,
+                        "repair": "herdr-synapse --team {} restore --refresh-flags".format(team.name)})
+
+    def _note_empty_pane(self, team: TeamState, name: str, pane: Dict[str, Any]) -> None:
+        """A missing member's own labelled pane is still there and empty (rehydration step f).
+
+        Never a binding -- an empty pane says nothing about identity. It is
+        recorded so the operator knows the split is still theirs and
+        ``restore`` will put the member back in it rather than in a new tab.
+        One record per pane, so a member that stays missing does not narrate.
+        """
+        pane_id = pane.get("pane_id")
+        rt = team.rt(name)
+        if not name or not isinstance(pane_id, str) or not pane_id or rt.empty_pane == pane_id:
+            return
+        rt.empty_pane = pane_id
+        self.who_dirty = True
+        self.log("{}: {}'s own pane {} is still there and empty".format(team.name, name, pane_id))
+        self._append_system(
+            team, "pane_recovered",
+            "{} is missing but its pane {} is still there and empty; herdr-synapse --team {} restore puts it back in it".format(
+                name, pane_id, team.name),
+            ["human"], {"member": name, "pane_id": pane_id, "terminal_id": pane.get("terminal_id")})
 
     def _kind_changed_update(self, team: TeamState, member: Dict[str, Any], match: Dict[str, Any]) -> Dict[str, Any]:
         """The member's terminal now hosts another kind: ``kind_changed`` once, tokens cleared."""
@@ -3760,9 +3847,17 @@ class Daemon:
             try:
                 expected_exit = _models.exit_keystroke(kind)
                 safe_preserved = _models.preserved_launch_args(kind, [kind] + preserved, mode, profile)
+                # ``restore --refresh-flags`` is the one restart whose whole purpose is that
+                # the live command line lacks the canvas flags, so it cannot carry them over
+                # and says so with ``mcp: true``. The spec is read here, from this team's own
+                # switch, never from the record: a record that could name its own MCP server
+                # would be a way to point a member's tools somewhere else.
+                from herdr_team import features as _features_restart
+
+                spec = _features_restart.mcp_spec(self.layout, team.paths, write=False) if control_doc.get("mcp") else None
                 expected_argv = _models.restart_argv(
                     kind, member.get("session"), control_doc.get("model"), control_doc.get("effort"),
-                    [kind] + preserved, permissions=mode, profile=profile,
+                    [kind] + preserved, permissions=mode, profile=profile, mcp=spec,
                 )
             except HerdrTeamError:
                 expected_exit, expected_argv, safe_preserved = "", [], []
@@ -4385,8 +4480,16 @@ class Daemon:
                 continue
             name = str(member.get("name") or "")
             terminal = member.get("terminal_id")
-            if not name or not terminal or name in team.pending:
-                continue  # the normal path owns a member that already has work
+            if not name or not terminal:
+                continue
+            if name in team.pending:
+                # The normal path owns a member that already has work -- with one
+                # exception (E4): a nudge that landed, was never read, and is sitting on
+                # a pane that has been idle ever since. That is the case the ladder's
+                # "wait for a completed turn" precondition could not see, and the sweep
+                # is the backstop for it.
+                self._sweep_landed_pending(team, name, str(terminal), now)
+                continue
             last = team.swept_ms.get(name)
             if last is not None and now - last < IDLE_SWEEP_AFTER_S * 1000.0:
                 continue
@@ -4411,6 +4514,64 @@ class Daemon:
             self.log("{}: {} is idle with {} unread post(s) nothing woke it for; sweeping {}".format(
                 team.name, name, len(unread), unread[:6]))
 
+    def _sweep_landed_pending(self, team: TeamState, name: str, terminal: str, now: float) -> None:
+        """Make a landed-but-unread nudge eligible again when its pane has simply been idle.
+
+        Bounded by the same ``IDLE_SWEEP_AFTER_S`` interval and the same
+        per-member ``swept_ms`` stamp as the ordinary sweep, and it bypasses no
+        gate: it only records that there is no turn left to wait for and makes
+        the work eligible, then the normal path decides as usual. The re-nudge
+        ladder still counts, so this can happen at most as often as the ladder
+        already allows.
+        """
+        pending = team.pending.get(name)
+        if pending is None or pending.kind != "nudge" or pending.landed_ms is None:
+            return
+        if now - pending.landed_ms < IDLE_SWEEP_AFTER_S * 1000.0:
+            return
+        last = team.swept_ms.get(name)
+        if last is not None and now - last < IDLE_SWEEP_AFTER_S * 1000.0:
+            return
+        stability = self.stability.get(terminal)
+        if stability is None or stability.idle_since_ms is None or stability.idle_since_ms > pending.landed_ms:
+            return  # it did go working since; the ordinary schedule already sees that
+        agent = self.agents.get(terminal) or {}
+        if agent.get("agent_status") not in ("idle", "done"):
+            return
+        team.swept_ms[name] = now
+        pending.turn_completed_since_landing = True
+        pending.next_eligible_ms = min(pending.next_eligible_ms, now)
+        self.who_dirty = True
+        self.log("{}: {} has been idle since {} landed unread; letting the gate look again".format(
+            team.name, name, pending.seqs[:6]))
+
+    def _arm_follow_up(self, pending: Pending, now: float) -> None:
+        """Posts arrived after a landing: let them go out now rather than on the ladder.
+
+        The condition is *evidence* -- a seq above ``landed_seq_max`` -- and no
+        longer ``attempts == 1 and not renudges``, which is what broke in the
+        live run: the operator's brand-new, non-urgent request landed on a
+        pending that had already been re-nudged once, so the exception did not
+        apply and the request waited out ``RENUDGE_AFTER_S[1]``. The counter was
+        never the point; the point is whether the member has been told about
+        *these* posts.
+
+        Bounded twice, because the ladder exists for a reason: one attempt per
+        batch (``follow_up_batch_max``) and ``FOLLOW_UP_MAX`` per landing
+        schedule. Arming only lifts the *schedule*; every gate still runs, so
+        gate 11's ``min_interval_ms`` remains the floor between two nudges and
+        the hold it records stays visible. With no new seq nothing here fires
+        and the 120/300/600 s ladder holds unchanged.
+        """
+        if pending.kind != "nudge" or pending.landed_ms is None or pending.follow_ups_used >= FOLLOW_UP_MAX:
+            return
+        newest = max(pending.seqs) if pending.seqs else 0
+        if newest <= pending.follow_up_batch_max:
+            return
+        pending.follow_up_batch_max = newest
+        pending.follow_up_due = True
+        pending.next_eligible_ms = now
+
     def _add_pending(self, team: TeamState, name: str, seq: int, urgent: bool, author: str, now: float, interrupt: bool = False) -> None:
         pending = team.pending.get(name)
         if pending is None or pending.kind != "nudge":
@@ -4433,10 +4594,18 @@ class Daemon:
         if interrupt:
             pending.interrupt = True
             pending.interrupt_authors.add(author)
-        if pending.landed_ms is not None and seq > pending.landed_seq_max and pending.attempts == 1 and not pending.renudges:
-            # One immediate follow-up is allowed when posts arrived after a landing.
-            pending.follow_up_due = True
-            pending.next_eligible_ms = now
+        if pending.landed_ms is not None and seq > pending.landed_seq_max:
+            if urgent:
+                # ``--urgent`` on a post the target has not been shown is the operator
+                # saying "now". A brand-new request must not inherit the previous post's
+                # place on the re-nudge ladder, which is exactly what the live run saw:
+                # 300.04 s of silence, to the centisecond ``RENUDGE_AFTER_S[1]``.
+                pending.landed_ms = None
+                pending.renudges = 0
+                pending.turn_completed_since_landing = False
+                pending.next_eligible_ms = now
+            else:
+                self._arm_follow_up(pending, now)
 
     # -- jobs -------------------------------------------------------------------------
 
@@ -4743,15 +4912,28 @@ class Daemon:
         # landed but unread: re-nudge only after a completed turn and the schedule
         if pending.landed_ms is not None:
             stability = self.stability.get(str(member.get("terminal_id") or ""))
-            if stability is not None and stability.idle_since_ms is not None and stability.idle_since_ms > pending.landed_ms:
-                pending.turn_completed_since_landing = True
+            if stability is not None and stability.idle_since_ms is not None:
+                if stability.idle_since_ms > pending.landed_ms:
+                    pending.turn_completed_since_landing = True
+                elif now - pending.landed_ms >= team.gate_config.stable_ms_screen:
+                    # The pane was already idle when the text landed and has not moved since:
+                    # there is no turn to wait for, and waiting for the next
+                    # ``agent_status_changed`` edge means waiting for one that will never come.
+                    # This is the other half of the live stall: the ladder's precondition could
+                    # not be met, so a pending on a quiet pane was held forever (the sweep was
+                    # its only recovery). The unbroken idle observation is the evidence -- a
+                    # sample gap deletes the window, so nothing is claimed after a blind spell.
+                    pending.turn_completed_since_landing = True
             if pending.renudges >= len(RENUDGE_AFTER_S):
                 self._finish_pending(team, name, pending, "abandoned", "gave up nudging {} for {}".format(name, pending.seqs))
                 return
             wait_s = RENUDGE_AFTER_S[pending.renudges]
             if now - pending.landed_ms < wait_s * 1000.0 or not pending.turn_completed_since_landing:
-                # Only the one explicit follow-up (posts that arrived after the landing) may go earlier.
-                if not (pending.kind == "nudge" and pending.follow_up_due and pending.attempts == 1):
+                # Only a batch that arrived after the landing (``_arm_follow_up``) may go earlier.
+                if not (pending.kind == "nudge" and pending.follow_up_due and now >= pending.next_eligible_ms):
+                    self._note_hold(team, name, pending, gate.HOLD_RENUDGE_WAIT, "{:.0f}/{:.0f} s{}".format(
+                        (now - pending.landed_ms) / 1000.0, wait_s,
+                        "" if pending.turn_completed_since_landing else "; no completed turn yet"), now)
                     return
         if now < pending.next_eligible_ms:
             return
@@ -5173,7 +5355,7 @@ class Daemon:
             response = self.api.request("agent.prompt", params, timeout=PROMPT_TIMEOUT_S)
         except HerdrTeamError as err:
             elapsed_ms = (time.monotonic() - t0) * 1000.0
-            return self._classify_error(team, member, err, elapsed_ms, text)
+            return self._classify_error(team, member, err, elapsed_ms, text, gate_seq)
         elapsed_ms = (time.monotonic() - t0) * 1000.0
         self.counters["nudges"] += 1
         agent = response.get("agent") if isinstance(response, dict) else None
@@ -5199,7 +5381,8 @@ class Daemon:
             return RESULT_LANDED_IN_TURN, {"elapsed_ms": elapsed_ms, "status": status, "seq": seq, "gate_seq": gate_seq}
         return RESULT_LANDED_WORKING, {"elapsed_ms": elapsed_ms, "status": status, "seq": seq, "gate_seq": gate_seq}
 
-    def _classify_error(self, team: TeamState, member: Dict[str, Any], err: HerdrTeamError, elapsed_ms: float, text: str) -> Tuple[str, Dict[str, Any]]:
+    def _classify_error(self, team: TeamState, member: Dict[str, Any], err: HerdrTeamError, elapsed_ms: float, text: str,
+                        gate_seq: Optional[int] = None) -> Tuple[str, Dict[str, Any]]:
         code = err.code
         message = (err.message or "").lower()
         details: Dict[str, Any] = {"elapsed_ms": elapsed_ms, "code": code, "message": err.message}
@@ -5212,6 +5395,19 @@ class Daemon:
             if line and line.strip() and line.strip()[:20] in text:
                 details["note"] = "text still on the prompt line"
                 return RESULT_NOT_SUBMITTED, details
+            # "The prompt line is clear" was read as "a turn ran and finished so fast
+            # that the wait missed it". On an already-idle pane it means the opposite:
+            # nothing happened at all. A turn moves ``state_change_seq`` twice, so an
+            # unchanged seq with an idle status is positive evidence of a non-delivery,
+            # and scoring it as a landing is what put the operator's request on the
+            # re-nudge ladder for five minutes (H4, live 2026-09-28). A transient
+            # failure retries in seconds; a landing waits minutes.
+            fresh = self.fresh_agent(str(member.get("pane_id"))) if gate_seq is not None else None
+            if isinstance(fresh, dict) and str(fresh.get("agent_status") or "") in gate.IDLE_STATUSES \
+                    and int(fresh.get("state_change_seq") or 0) == int(gate_seq or 0):
+                details.update(note="idle and unchanged since the send; nothing landed",
+                               state_change_seq=int(fresh.get("state_change_seq") or 0))
+                return RESULT_TRANSIENT, details
             details["note"] = "fast turn"
             return RESULT_LANDED_WORKING, details
         if code == "agent_prompt_failed":
@@ -5237,6 +5433,11 @@ class Daemon:
         name = str(member["name"])
         rt = team.rt(name)
         self.log("{}: {} -> {} {}".format(team.name, name, result, json.dumps(details, ensure_ascii=False)[:300]))
+        # Whether *this* attempt was the immediate delivery of a batch that arrived after
+        # the last landing. Read before it is cleared, because the bound on those
+        # deliveries (``FOLLOW_UP_MAX``) is the only thing standing between H4's fix and
+        # the loop the re-nudge ladder exists to prevent.
+        was_follow_up = pending.follow_up_due
         pending.follow_up_due = False
         # In-turn text is queued by every supported harness (Claude, Codex,
         # OpenCode, Pi steering), so it is a landing: re-nudged on the
@@ -5257,8 +5458,15 @@ class Daemon:
             pending.turn_completed_since_landing = False
             pending.transient_failures = 0
             pending.focus_hold_since_ms = None  # a re-nudge on a focused pane waits the full max-hold again
-            if pending.attempts > 1 and not follow_up:
-                pending.renudges += 1  # the one immediate follow-up is not a re-nudge on the schedule
+            if was_follow_up:
+                pending.follow_ups_used += 1
+            else:
+                # A first landing or a re-nudge of the same range opens a fresh schedule,
+                # so the allowance for posts that arrive after it opens with it.
+                pending.follow_ups_used = 0
+            pending.follow_up_batch_max = max(pending.follow_up_batch_max, pending.landed_seq_max)
+            if pending.attempts > 1 and not follow_up and not was_follow_up:
+                pending.renudges += 1  # an immediate follow-up is not a re-nudge on the schedule
             for author in pending.authors:
                 key = (min(author, name), max(author, name))
                 self.pair_exchanges.setdefault(key, []).append(now)
@@ -5798,6 +6006,8 @@ class Daemon:
                     "model_effective": _models.effective_setting(team.roster.get("config"), member)[0],
                     "setting": _models.label(*_models.effective_setting(team.roster.get("config"), member)),
                     "restarting": isinstance(rt.restart, dict),
+                    "missing_launch_flags": list(rt.missing_launch_flags) or None,
+                    "empty_pane": rt.empty_pane if member.get("status") in ("missing", "unbound") else None,
                 "context": rt.context,
                 })
             try:

@@ -39,6 +39,10 @@ Send `--base last` (MCP `base: "last"`, or the version `look` printed):
   - a change to a peer's marks;
   - a new mark in a peer's lane or home;
   - anything in a frozen area.
+- One exception: **inside a frame or group you made, you may move and resize a
+  peer's marks** (the reply is live and the mark records who moved it).
+  Changing what a peer's mark *says* is still a proposal. So tidying your own
+  drawing after the operator accepts somebody's addition to it needs nobody.
 - A proposal changes nothing yet. The operator sees it as a ghost with your
   name and intent ("alpha suggests: …") and accepts or rejects it.
 - Put what depends on a proposed mark in the same op: a later op naming it is

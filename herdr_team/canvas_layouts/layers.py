@@ -33,10 +33,11 @@ from __future__ import annotations
 
 import math
 
-from typing import Dict, List, Mapping, Optional, Sequence, Set, Tuple
+from dataclasses import replace
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 from herdr_team.canvas_layouts import MAX_SIZE, LEdge, LNode, Layout, LayoutRequest, LayoutResult, Point
-from herdr_team.canvas_layouts import _order, _position, _rank, _util
+from herdr_team.canvas_layouts import _budget, _order, _position, _rank, _util
 
 #: Its place in the registration order.
 ORDER = 10
@@ -44,6 +45,9 @@ ORDER = 10
 MOVED = 20.0
 #: The closest ranks come when a drawing would otherwise run past ``MAX_SIZE`` along its ranks.
 MIN_RANK_GAP = 40.0
+#: Past this many nodes (or ranked edges) an incremental run does not also try the fresh order and compare the two
+#: drawings: it is two more order passes and two quadratic crossing counts, and a graph that big is on a budget.
+WIRE_CHOICE_MAX = 60
 
 
 class _Graph:
@@ -183,7 +187,8 @@ def layers(request: LayoutRequest) -> LayoutResult:
     base_layers: List[List[str]] = [[] for _ in range(depth)]
     for key in sorted(graph.rank, key=lambda k: graph.tie[k]):
         base_layers[graph.rank[key]].append(key)
-    model = _order.Model(base_layers, graph.up, graph.down, graph.group, group_parent, borders, graph.tie, request.order)
+    model = _order.Model(base_layers, graph.up, graph.down, graph.group, group_parent, borders, graph.tie, request.order,
+                         [g.id for g in request.groups])
 
     # -- wanted coordinates of an incremental run ---------------------------------------------------------------
     seeds: Dict[str, Point] = {}
@@ -196,27 +201,312 @@ def layers(request: LayoutRequest) -> LayoutResult:
     coords = {k: x + graph.w[k] / 2.0 for k, x in wanted.items()} if wanted else None
     first = _order.initial(model, [], coords)
 
-    def place(order_layers: List[List[str]]) -> Tuple[Dict[str, float], Dict[str, float]]:
-        return _place(graph, order_layers, request, rank_gap, pads, chain, wanted, seeds)
+    # Which connected run every item belongs to, nodes and the dummy chains and label spots of their edges alike:
+    # an incremental run lines each run up with its own seeds (``_place``).
+    component_of: Dict[str, int] = {}
+    for index, members in enumerate(_util.components([n.id for n in nodes], [(e.a, e.b) for e in edges if e.a != e.b])):
+        for member in members:
+            component_of[member] = index
+    for e in ranked:
+        for key in chains.get(e.id, ()):
+            if e.a in component_of:
+                component_of[key] = component_of[e.a]
 
-    sweeps = 0
+    def place_with(order_layers: List[List[str]], gap: float, ranks: float) -> Tuple[Dict[str, float], Dict[str, float]]:
+        return _place(graph, order_layers, replace(request, gap=gap), ranks, pads, chain, wanted, seeds, component_of)
+
+    def place_fresh(order_layers: List[List[str]], gap: float, ranks: float) -> Tuple[Dict[str, float], Dict[str, float]]:
+        """The same order laid out from scratch: the shape the graph *would* have, whatever the seeds say."""
+        return _place(graph, order_layers, replace(request, gap=gap), ranks, pads, chain, None, {}, component_of)
+
+    best, crossings, sweeps = _order.improve(model, first, incremental=bool(seeds))
+    # How far apart the lanes are. A fresh layout picks the spacing that makes the drawing a shape a view can fit;
+    # an incremental one recovers the spacing the board was already drawn with, from the seeds themselves. Both
+    # matter: picking it fresh every time re-spread a twelve-node pipeline the moment one node was added (every box
+    # moved, which is the churn the seeds exist to prevent), and ignoring it on a redraw laid the wire out against a
+    # spacing the boxes do not have, which pushed them off their seeds through the separation pass.
+    xs, ys = place_with(best, request.gap, rank_gap)
+    lane_gap = request.gap * (_seeded_lane_scale(place_fresh, best, request, rank_gap, graph, seeds) if seeds
+                              else _lane_scale(place_fresh, best, request, rank_gap, graph, notes, xs, ys))
+    if lane_gap != request.gap:
+        xs, ys = place_with(best, lane_gap, rank_gap)
+    if not seeds and len(nodes) <= WIRE_CHOICE_MAX:
+        best, xs, ys = _align_entries(place_with, best, request, graph, chains, lane_gap, rank_gap, xs, ys, notes)
+    if seeds and len(nodes) <= WIRE_CHOICE_MAX and len(ranked) <= WIRE_CHOICE_MAX:
+        # An incremental run derives its first order from the seeds, which is right for the boxes and can be badly
+        # wrong for the wire. The boxes are held on their seeds either way, so the ordering pass's own crossing count
+        # over dummy chains stops describing the picture, and it can settle in a local optimum whose long edges run
+        # between the nodes where a fresh drawing would have run them past the side.
+        #
+        # So two more candidates are tried, both with the same node order (it must stay the seeds' order, or the
+        # boxes would be pushed off their seeds): the dummy chains slotted by the depth-first walk instead of by
+        # interpolation, which is where a fresh drawing starts from, and the seed order before the sweeps touched it.
+        # The wire that crosses less - then, at equal crossings, the shorter one - wins. Nothing here moves a box.
+        node_coords = {k: c for k, c in (coords or {}).items() if graph.kind[k] == "node"}
+        hybrid, hybrid_crossings, hybrid_sweeps = _order.improve(model, _order.initial(model, [], node_coords))
+        sweeps += hybrid_sweeps
+
+        def cost_of(order_layers: List[List[str]], found_xs: Dict[str, float], found_ys: Dict[str, float]) -> Tuple[int, float]:
+            """What this candidate's wire costs in the result the caller will actually get.
+
+            Measured on the finished ``LayoutResult``, not on the frame coordinates: the component shift and the pin
+            settle in ``_result`` can still move a dummy chain by a rank, and a candidate chosen on the coordinates
+            before them was not always the drawing that came out (1 crossing became 2 on the nested-group sample)."""
+            done = _result(request, graph, order_layers, found_xs, found_ys, chains, label_key, flat, loops,
+                           reversed_ids, list(notes), sweeps, 0.0)
+            return _wire_cost_of(request, done)
+
+        cost = cost_of(best, xs, ys)
+        for candidate, candidate_crossings in ((hybrid, hybrid_crossings), (first, _order.cross_count(first, graph.down))):
+            found_xs, found_ys = place_with(candidate, lane_gap, rank_gap)
+            found = cost_of(candidate, found_xs, found_ys)
+            if found < cost:
+                best, xs, ys, crossings, cost = candidate, found_xs, found_ys, candidate_crossings, found
+                notes = [n for n in notes if not n.startswith("wire_rerouted")]
+                notes.append("wire_rerouted: the drawing keeps every box where it was and slots its long edges the "
+                             "way a fresh layout would, because the stored order's wire crossed more")
     if seeds and _util.all_seeded(request):
-        xs, ys = place(first)
+        # Nothing new and nothing moved: the boxes stay exactly on their seeds. The order and the wire are still the
+        # improved ones, not the seed order's - a re-draw of an unchanged graph used to return the seeds with the
+        # dummy chains of the *unimproved* first order, so re-issuing the same drawing kept the boxes and made the
+        # wire worse (2 crossings became 9 on the conformance sample). The shortcut is about not moving boxes.
         if _seeds_hold(request, graph, seeds) or \
                 all(abs(xs[n] - seeds[n][0]) < 0.005 and abs(ys[n] - seeds[n][1]) < 0.005 for n in seeds):
-            return _result(request, graph, first, xs, ys, chains, label_key, flat, loops, reversed_ids, notes, 0,
-                           _order.cross_count(first, graph.down), fixed_point=True)
-    best, crossings, sweeps = _order.improve(model, first, incremental=bool(seeds))
-    xs, ys = place(best)
+            return _result(request, graph, best, xs, ys, chains, label_key, flat, loops, reversed_ids, notes, sweeps,
+                           crossings, fixed_point=True)
     # A long chain of ranks (200 nodes in a chain, drawn to the right) can run past the drawing limit: the ranks close up
     # toward ``MIN_RANK_GAP`` until it fits, or as far as they can (QA phase 2, R4).
     extent = max(ys[k] + graph.h[k] for k in ys) - min(ys.values()) if ys else 0.0
     if extent > MAX_SIZE and depth > 1 and rank_gap > MIN_RANK_GAP:
         squeezed = max(MIN_RANK_GAP, rank_gap - (extent - MAX_SIZE) / float(depth - 1))
-        ys = _rank_tops(graph, best, request, squeezed, pads, chain, seeds)  # only the ranks move: along them nothing changes
+        ys = _rank_tops(graph, best, replace(request, gap=lane_gap), squeezed, pads, chain, seeds)  # only the ranks move: along them nothing changes
         notes.append("ranks_closed_up {:g}: ranks {:g} apart instead of {:g}, to keep the drawing within {}".format(
             squeezed, squeezed, rank_gap, MAX_SIZE))
     return _result(request, graph, best, xs, ys, chains, label_key, flat, loops, reversed_ids, notes, sweeps, crossings)
+
+
+def _wire_cost_of(request: LayoutRequest, result: LayoutResult) -> Tuple[int, float]:
+    """``(crossings a reader sees, total length)`` of a finished result's wire, as ``canvas_readability`` sees it."""
+    from herdr_team import canvas_readability
+
+    drawn = canvas_readability.from_layout(request, result)
+    return (int(canvas_readability.count_crossings(drawn)["crossings_seen"]),
+            math.fsum(canvas_readability.poly_len(e[2]) for e in drawn.usable()))
+
+
+def _wire_cost(request: LayoutRequest, graph: _Graph, chains: Mapping[str, List[str]], xs: Mapping[str, float],
+               ys: Mapping[str, float]) -> Tuple[int, float]:
+    """``(crossings a reader sees, total length)`` of the drawing on the lines a router will follow: the wire's cost.
+
+    In the ``down`` frame, which is enough: a crossing survives the rotation into any direction, and a length is a
+    length. These are the numbers the picture has, as opposed to the ordering pass's count over its own dummy chains
+    and group borders, which stops describing the picture as soon as the boxes are held on seeds instead of placed by
+    the order. Crossings first, then wire: a reader forgives a longer line sooner than a line through another line.
+    """
+    from herdr_team import canvas_readability
+
+    boxes = {n.id: (xs[n.id], ys[n.id], xs[n.id] + graph.w[n.id], ys[n.id] + graph.h[n.id]) for n in request.nodes}
+
+    def centre(key: str) -> Point:
+        return xs[key] + graph.w[key] / 2.0, ys[key] + graph.h[key] / 2.0
+
+    drawn = []
+    for e in request.edges:
+        if e.a == e.b or e.a not in boxes or e.b not in boxes:
+            continue
+        keys = chains.get(e.id) or []
+        via = [centre(k) for k in keys]
+        if keys and graph.up[keys[0]][0][0] != e.a:
+            via = via[::-1]
+        drawn.append((e.a, e.b, [centre(e.a)] + via + [centre(e.b)], None, None, e.id))
+    found = canvas_readability.Drawn(boxes, drawn)
+    # ``crossings_seen``, not the strict count: two wires that leave the same node and cross each other further out
+    # are a crossing to the reader, and nine of the eleven on the rejected board were of exactly that kind.
+    return (int(canvas_readability.count_crossings(found)["crossings_seen"]),
+            math.fsum(canvas_readability.poly_len(e[2]) for e in drawn))
+
+
+#: The shape a drawing is fitted to on screen. A 16:9 view fits a 16:9 drawing biggest, and every step away from it
+#: costs size on both axes, so this is what "the drawing is small" is measured against.
+SCREEN_ASPECT = 16.0 / 9.0
+#: Past this ratio the lanes are worth spreading (below it the drawing already fits a view well enough).
+BALANCE_FROM = 2.5
+#: How much more wire a swap that puts an entry point on its own line may cost. A reader follows a drawing from its
+#: entry points, so their first step running straight is worth a few per cent of wire - and never a crossing.
+ENTRY_WIRE_SLACK = 0.12
+#: The furthest an entry point is pulled onto its successors' line, in lane gaps. A nudge is a refinement; a long
+#: haul is a re-ordering in disguise, and on a 30-node graph it moved every box on the next redraw.
+SOURCE_PULL_MAX = 3.0
+#: How much of its own density a drawing may give up to gain a better shape. Below this the lanes stop spreading.
+#:
+#: Chosen by looking at the pictures, not only at the number. At 0.55 the owner's flow scores better on shape (68 %
+#: of a view against 53 %) and reads worse: the boxes shrink, two routes end up sharing 23 units of line instead of
+#: 8, and the two-band version of the same graph becomes a good shape made mostly of the corridor between its bands.
+FILL_KEEP = 0.75
+#: Past this many nodes the shape is left alone: each candidate spacing is another coordinate pass, and a graph that
+#: big is already against its time budget (a 500-node layout has 2 s, and six more passes do not fit in it).
+BALANCE_MAX_NODES = 120
+#: How far the lanes may be spread from the spacing the theme asked for. Beyond this the drawing stops looking like
+#: the rest of the canvas, which is a worse problem than a long drawing.
+#:
+#: Only **wider**, and only across the flow. Closing the ranks up was tried and does not hold: the rank tops of a
+#: drawn board are what an incremental redraw seeds its ranks from, so a drawing laid out with closer ranks came
+#: back with its ranks pushed apart again on the next redraw - the fixed point broke, which is the one thing a
+#: layout may not do. And scaling the lane gap *down* put two boxes closer than ``gap``, which is the separation
+#: every caller relies on. Widening the lanes has neither failure mode: it only ever adds room.
+BALANCE_STEPS = (1.0, 1.25, 1.5, 2.0, 2.5, 3.0)
+
+
+def _seeded_lane_scale(place_fresh, order_layers: List[List[str]], request: LayoutRequest, rank_gap: float,
+                       graph: _Graph, seeds: Mapping[str, Point]) -> float:
+    """Which lane spacing the seeded board was drawn with, recovered by laying each candidate out and comparing.
+
+    A board carries its own spacing in its boxes, but not in a form that can be read off directly: the closest two
+    neighbours in a rank are not reliably one lane gap apart, because coordinate assignment spreads them further to
+    straighten the long edges. Reading the smallest gap and rounding it came out at 100 units for a board drawn at
+    80 and the separation pass then shoved four boxes off their seeds.
+
+    So the candidates are laid out and measured instead: the one whose drawing is the same width across the flow as
+    the seeds are is the one the board was drawn with. That is exact while the graph is unchanged - which is the case
+    that has to be exact, because it is the fixed point - and it is the nearest fit once a node has been added.
+    """
+    if not graph.rank or len(set(graph.rank.values())) < 2 or len(request.nodes) > BALANCE_MAX_NODES:
+        return 1.0
+    keys = [n.id for n in request.nodes if n.id in seeds]
+    if len(keys) < 2:
+        return 1.0
+    drawn = max(seeds[k][0] + graph.w[k] for k in keys) - min(seeds[k][0] for k in keys)
+    best = (float("inf"), 1.0)
+    budget = _budget.active()
+    for gap_scale in BALANCE_STEPS:
+        if budget.over():
+            break
+        found_xs, _found_ys = place_fresh(order_layers, request.gap * gap_scale, rank_gap)
+        placed = [k for k in keys if k in found_xs]
+        if not placed:
+            continue
+        across = max(found_xs[k] + graph.w[k] for k in placed) - min(found_xs[k] for k in placed)
+        found = abs(across - drawn)
+        if found < best[0] - 1e-9:
+            best = (found, gap_scale)
+    return best[1]
+
+
+def _lane_scale(place_fresh, order_layers: List[List[str]], request: LayoutRequest, rank_gap: float,
+                graph: _Graph, notes: List[str], base_xs: Mapping[str, float],
+                base_ys: Mapping[str, float]) -> float:
+    """How much to spread the lanes so the drawing is a shape a screen can fit: 1.0 when it already is.
+
+    Nothing in the pipeline bounded the drawing's shape: ``gap`` and ``rank_gap`` were fixed, so a graph only ever
+    grew along the flow. The owner's flow came out 4.8:1 and the page fitted it at 51%, which is the whole of "the
+    drawing is small" - every box is drawn at half the size it could have been, and the reader is the one who pays.
+
+    Wider lanes only, never closer ranks, and never narrower lanes. Closing the ranks up was tried and does not
+    hold: the rank tops of a drawn board are what an incremental redraw seeds its ranks from, so a drawing laid out
+    with closer ranks came back with its ranks pushed apart again on the next redraw, and the fixed point broke,
+    which is the one thing a layout may not do. Narrowing the lanes put two boxes closer than ``gap``, which is the
+    separation every caller relies on. Widening has neither failure mode: it only ever adds room.
+
+    Only a drawing that is long *along its own flow* is spread. A shape gate alone would widen a square four-node
+    diamond toward 16:9 and give it 180-unit lanes, which is not what "the drawing is small" meant: the complaint is
+    a graph that grew along the flow and nowhere else, and the lanes are the only room there is to give it.
+
+    The shape is measured on a **fresh** placement of this order, never on the seeded one, so an incremental redraw
+    of a board spreads its lanes exactly as the board was drawn and the same graph keeps redrawing the same way.
+
+    The smallest scale that reaches the target wins, not the biggest gain: spreading further than the shape needs
+    lengthens every cross-flow wire, and there is nothing to buy once a view fits the drawing.
+    """
+    if not graph.rank or len(set(graph.rank.values())) < 2 or len(request.nodes) > BALANCE_MAX_NODES:
+        return 1.0
+    if _flow_aspect(request, graph, base_xs, base_ys) <= BALANCE_FROM:
+        return 1.0
+    good = _screen_use_at(BALANCE_FROM)
+    was = _screen_use(request, graph, base_xs, base_ys)
+    if was >= good:
+        return 1.0  # already a shape a view fits: leave it exactly as it was
+    floor = _fill(request, graph, base_xs, base_ys) * FILL_KEEP
+    best = (was, 1.0)
+    budget = _budget.active()
+    for gap_scale in BALANCE_STEPS:
+        if gap_scale == 1.0 or budget.over():
+            continue
+        found_xs, found_ys = place_fresh(order_layers, request.gap * gap_scale, rank_gap)
+        if _fill(request, graph, found_xs, found_ys) < floor:
+            break  # past here the drawing is a better shape made of more empty space
+        score = _screen_use(request, graph, found_xs, found_ys)
+        if score > best[0] + 1e-6:
+            best = (score, gap_scale)
+        if score >= good:
+            break
+    score, gap_scale = best
+    if gap_scale != 1.0:
+        notes.append("shape_balanced: the lanes are {:g}x their usual spacing, so the drawing fits a view at "
+                     "{:.0%} of it instead of {:.0%}".format(gap_scale, score, was))
+    return gap_scale
+
+
+def _flow_aspect(request: LayoutRequest, graph: _Graph, xs: Mapping[str, float], ys: Mapping[str, float]) -> float:
+    """How much longer the drawing is along its flow than across it: what spreading the lanes can shorten."""
+    keys = [n.id for n in request.nodes if n.id in xs]
+    if not keys:
+        return 1.0
+    across = max(xs[k] + graph.w[k] for k in keys) - min(xs[k] for k in keys)
+    along = max(ys[k] + graph.h[k] for k in keys) - min(ys[k] for k in keys)
+    return along / max(across, 1.0)
+
+
+def _fill(request: LayoutRequest, graph: _Graph, xs: Mapping[str, float], ys: Mapping[str, float]) -> float:
+    """How much of the drawing's own box the boxes cover: the guard on spreading the lanes.
+
+    ``screen_use`` measures the drawing's shape and nothing else, so spreading the lanes always "improves" it - a
+    square of white space with eight boxes in it scores beautifully. On the two-band version of the owner's board
+    that is exactly what happened: the corridor between the bands, which is the cross axis, tripled and the drawing
+    became a good shape made of empty space. Density is the other half of the answer.
+    """
+    keys = [n.id for n in request.nodes if n.id in xs]
+    if not keys:
+        return 1.0
+    area = math.fsum(graph.w[k] * graph.h[k] for k in keys)
+    across = max(xs[k] + graph.w[k] for k in keys) - min(xs[k] for k in keys)
+    along = max(ys[k] + graph.h[k] for k in keys) - min(ys[k] for k in keys)
+    return area / max(across * along, 1.0)
+
+
+def _screen_use_at(aspect: float) -> float:
+    """How much of a 16:9 view a drawing of this aspect fills once it is fitted to it."""
+    if aspect <= 1e-9:
+        return 0.0
+    return min(1.0, SCREEN_ASPECT / aspect) * min(1.0, aspect / SCREEN_ASPECT)
+
+
+def _screen_use(request: LayoutRequest, graph: _Graph, xs: Mapping[str, float], ys: Mapping[str, float]) -> float:
+    """How much of a 16:9 view this drawing would fill: the number "the drawing is small" is a complaint about."""
+    keys = [n.id for n in request.nodes if n.id in xs]
+    if not keys:
+        return 1.0
+    across = max(xs[k] + graph.w[k] for k in keys) - min(xs[k] for k in keys)
+    along = max(ys[k] + graph.h[k] for k in keys) - min(ys[k] for k in keys)
+    if request.direction in ("right", "left"):
+        along, across = across, along  # the frame's rank axis is the world's x
+    return _screen_use_at(across / max(along, 1.0))
+
+
+# A serpentine fold for a path - nine ranks drawn as three rows, alternate rows reversed - is **not shipped**, and
+# this is the record of why rather than a gap nobody wrote down. It was built and measured: it takes the nine-step
+# pipeline of the readability corpus from 24.7:1 and 7% of a view to 1.1:1 and 63%, with 0 crossings, 0 misattributed
+# labels and a third of the wire, which is a large win on exactly the complaint it addresses.
+#
+# It does not ship because it cannot be stable. A fold is a different drawing, not a nudge: the moment one more node
+# joins the chain and some rank holds two nodes, no fold exists any more and every box has to go back into a line.
+# The stability contract (``test_layout_layers`` G8: adding one node moves at most a quarter of the boxes) then fails
+# outright - twelve of twelve boxes moved on the ``pipeline-crossed`` fixture - and a drawing that rearranges itself
+# whenever its author adds a step is a worse thing to look at than a long one.
+#
+# What would make it shippable is recognising a folded board from its own boxes and extending the serpentine by one
+# slot instead of unfolding it, which is a real piece of work and not a tuning change. Until then a long chain is
+# drawn as a long chain, and ``graph_thin`` does not ship either, because a check whose fix does not work is worse
+# than no check.
 
 
 def _seeds_hold(request: LayoutRequest, graph: _Graph, seeds: Mapping[str, Point]) -> bool:
@@ -253,7 +543,11 @@ def _seeds_hold(request: LayoutRequest, graph: _Graph, seeds: Mapping[str, Point
 
 def _wanted(graph: _Graph, chains: Mapping[str, List[str]], seeds: Mapping[str, Point]) -> Dict[str, float]:
     """Wanted left edges for an incremental run: seeded nodes at their seeds, dummies between their ends, new
-    nodes at the barycentre of their placed neighbours, anything else next to its rank's neighbours."""
+    nodes at the barycentre of their placed neighbours, anything else next to its rank's neighbours.
+
+    Only the node entries are used as wants. A dummy's place comes from Brandes-Koepf instead (``_place``), because
+    interpolating a long edge between its two ends gives a staircase where the coordinate pass gives a straight
+    line; the interpolation stays because ``_order.initial`` orders a rank by these coordinates."""
     centre: Dict[str, float] = {k: seeds[k][0] + graph.w[k] / 2.0 for k in seeds}
     for keys in chains.values():
         if not keys:
@@ -289,7 +583,7 @@ def _wanted(graph: _Graph, chains: Mapping[str, List[str]], seeds: Mapping[str, 
 
 def _place(graph: _Graph, order_layers: List[List[str]], request: LayoutRequest, rank_gap: float,
            pads: Mapping[str, Tuple[float, float, float, float]], chain, wanted: Optional[Mapping[str, float]],
-           seeds: Mapping[str, Point]) -> Tuple[Dict[str, float], Dict[str, float]]:
+           seeds: Mapping[str, Point], component_of: Optional[Mapping[str, int]] = None) -> Tuple[Dict[str, float], Dict[str, float]]:
     """Left edges and tops of every item in the ``down`` frame."""
     gap = request.gap
 
@@ -305,18 +599,56 @@ def _place(graph: _Graph, order_layers: List[List[str]], request: LayoutRequest,
         return (spacing(u) + spacing(v)) / 2.0
 
     unify = {k: "\x01{}\x00{}".format(side, g) for k, (g, side) in graph.border_of.items()}
+    centres = _position.brandes_koepf(order_layers, graph.up, graph.down, graph.w,
+                                      {k: graph.kind[k] in ("dummy", "border", "label") for k in graph.w},
+                                      lambda u, v: graph.w[u] / 2.0 + graph.w[v] / 2.0 + offset(u, v),
+                                      {k: side for k, (_g, side) in graph.border_of.items()})
+    straight = {k: c - graph.w[k] / 2.0 for k, c in centres.items() if graph.kind[k] != "border"}
+
     if wanted is None:
-        centres = _position.brandes_koepf(order_layers, graph.up, graph.down, graph.w,
-                                          {k: graph.kind[k] in ("dummy", "border", "label") for k in graph.w},
-                                          lambda u, v: graph.w[u] / 2.0 + graph.w[v] / 2.0 + offset(u, v),
-                                          {k: side for k, (_g, side) in graph.border_of.items()})
-        want = {k: c - graph.w[k] / 2.0 for k, c in centres.items() if graph.kind[k] != "border"}
+        want = straight
     else:
-        # Incremental: nodes hold their seeds; dummies and label spots only fill in (they never push a node).
+        # Incremental: the nodes hold their seeds, and the wire between them is drawn as straight as if the whole
+        # graph had been laid out fresh. Interpolating a long edge's dummies between its two ends - which is what
+        # this used to do - gives a staircase where Brandes-Koepf gives one straight line, so an incremental redraw
+        # lost the straightening of exactly the long edges that cross the picture.
+        #
+        # The fresh drawing of this order is lined up with the seeds and its dummy and label spots become what the
+        # fill-in aims for. The lining up is **per component**, because ``_result`` anchors each connected run on its own seeds: one
+        # median over the whole drawing put the dummies of every run but one in the wrong place, which on the grouped
+        # conformance sample turned 13 crossings into 44. When the seeds already are this layout every shift is 0.
+        fresh = _position.constrain(order_layers, graph.w, straight, offset, unify)
+        by_component: Dict[Any, List[float]] = {}
+        for k in seeds:
+            if k in fresh and k in wanted:
+                by_component.setdefault((component_of or {}).get(k), []).append(wanted[k] - fresh[k])
+        shifts = {which: _util.median(found) for which, found in by_component.items()}
+        every = [d for found in by_component.values() for d in found]
+        default = _util.median(every) if every else 0.0
         want = {k: x for k, x in wanted.items() if graph.kind[k] == "node"}
+        aim = {k: fresh[k] + shifts.get((component_of or {}).get(k), default)
+               for k in straight if graph.kind[k] != "node"}
+        # A dummy asks for its straightened spot only as far as the room between its rank neighbours' own wanted
+        # places: past that it would push the node after it off its seed, and adding one node to a graph then moves
+        # boxes the author was not asking about.
+        for layer in order_layers:
+            for index, key in enumerate(layer):
+                if key not in aim:
+                    continue
+                low = float("-inf")
+                if index:
+                    before = layer[index - 1]
+                    low = want.get(before, aim.get(before, float("-inf"))) + graph.w[before] + offset(before, key)
+                high = float("inf")
+                if index + 1 < len(layer):
+                    after = layer[index + 1]
+                    high = want.get(after, aim.get(after, float("inf"))) - offset(key, after) - graph.w[key]
+                if low <= high:
+                    want[key] = min(max(aim[key], low), high)
     xs = _position.constrain(order_layers, graph.w, want, offset, unify)
     if wanted is not None:
-        _settle_soft(graph, order_layers, xs, wanted, offset)
+        _settle_soft(graph, order_layers, xs, want, offset)
+    _settle_sources(graph, order_layers, xs, request, offset)
     return xs, _rank_tops(graph, order_layers, request, rank_gap, pads, chain, seeds)
 
 
@@ -353,6 +685,129 @@ def _rank_tops(graph: _Graph, order_layers: List[List[str]], request: LayoutRequ
             wanted_tops.append(_util.median(found) if found else None)
     tops = _position.rank_tops(thickness, between, wanted_tops)
     return {k: tops[r] + (thickness[r] - graph.h[k]) / 2.0 for r, layer in enumerate(order_layers) for k in layer}
+
+
+def _align_entries(place_with, order_layers: List[List[str]], request: LayoutRequest, graph: _Graph,
+                   chains: Mapping[str, List[str]], lane_gap: float, rank_gap: float, xs: Dict[str, float],
+                   ys: Dict[str, float], notes: List[str]) -> Tuple[List[List[str]], Dict[str, float], Dict[str, float]]:
+    """Swap an entry point past the neighbour standing between it and the line its own first step continues.
+
+    ``_settle_sources`` can only spend the slack the order leaves, and when two nodes in one rank feed the same
+    successor there is none: one of them gets the line and the other is pushed a whole lane off it. On the owner's
+    board that is "Paste long URL sits above the flow it starts, with its edge reaching down and across". Which of
+    the two gets the line is an *ordering* question, and the ordering pass has no reason to care - both orders cross
+    the same number of times - so it is settled here, on the one thing that distinguishes them.
+
+    A swap is kept only when it crosses no more than before, costs at most ``ENTRY_WIRE_SLACK`` more wire, and leaves
+    every entry point measurably nearer its own line. Anything else is left exactly as the ordering pass left it: a
+    little wire is worth paying for the first arrow of a drawing running straight, a crossing is not.
+    """
+    sources = _entry_offsets(request, graph, xs)
+    if not sources:
+        return order_layers, xs, ys
+    slot = {k: (r, i) for r, layer in enumerate(order_layers) for i, k in enumerate(layer)}
+    cost = _wire_cost(request, graph, chains, xs, ys)
+    worst = max(offset for _node, offset in sources)
+    for node, offset in sorted(sources, key=lambda item: -item[1]):
+        if offset <= lane_gap / 2.0 or node not in slot:
+            continue
+        r, i = slot[node]
+        layer = order_layers[r]
+        aim = _entry_aim(request, graph, xs, node)
+        if aim is None:
+            continue
+        step = -1 if aim < xs[node] else 1
+        j = i + step
+        if not 0 <= j < len(layer) or graph.kind[layer[j]] != "node":
+            continue
+        candidate = [list(one) for one in order_layers]
+        candidate[r][i], candidate[r][j] = candidate[r][j], candidate[r][i]
+        found_xs, found_ys = place_with(candidate, lane_gap, rank_gap)
+        found_cost = _wire_cost(request, graph, chains, found_xs, found_ys)
+        found_worst = max([o for _n, o in _entry_offsets(request, graph, found_xs)] or [0.0])
+        if found_cost[0] <= cost[0] and found_cost[1] <= cost[1] * (1.0 + ENTRY_WIRE_SLACK) and found_worst < worst - 1.0:
+            notes.append("entry_aligned {}: it swapped places with {} so its first step runs straight".format(
+                node, layer[j]))
+            order_layers, xs, ys, cost, worst = candidate, found_xs, found_ys, found_cost, found_worst
+            slot = {k: (rr, ii) for rr, one in enumerate(order_layers) for ii, k in enumerate(one)}
+    return order_layers, xs, ys
+
+
+def _entry_aim(request: LayoutRequest, graph: _Graph, xs: Mapping[str, float], node: str) -> Optional[float]:
+    """The left edge an entry point wants: the median of its direct successors' centres, less half its own width."""
+    successors = [e.b for e in request.edges if e.a == node and e.b != node and e.b in xs]
+    if not successors:
+        return None
+    return _util.median([xs[t] + graph.w[t] / 2.0 for t in successors]) - graph.w[node] / 2.0
+
+
+def _entry_offsets(request: LayoutRequest, graph: _Graph, xs: Mapping[str, float]) -> List[Tuple[str, float]]:
+    """Each entry point and how far it sits off the line its own first step continues."""
+    indegree = {n.id: 0 for n in request.nodes}
+    for e in request.edges:
+        if e.a != e.b:
+            indegree[e.b] = indegree.get(e.b, 0) + 1
+    out: List[Tuple[str, float]] = []
+    for n in request.nodes:
+        if indegree.get(n.id, 0) or n.pin is not None or n.id not in xs:
+            continue
+        aim = _entry_aim(request, graph, xs, n.id)
+        if aim is not None:
+            out.append((n.id, abs(aim - xs[n.id])))
+    return out
+
+
+def _settle_sources(graph: _Graph, order_layers: List[List[str]], xs: Dict[str, float], request: LayoutRequest,
+                    offset) -> None:
+    """Each entry point pulled onto the line its own first step continues, as far as its rank leaves room.
+
+    The owner's "Paste long URL sits above the flow it starts": that node is not *behind* its flow, it is beside it,
+    128 units off the line of its own first successor, so the arrow that starts the drawing has to reach down and
+    across before it can go anywhere. Nothing in the pipeline was looking at that.
+
+    Ordering is not touched: it decides who is beside whom, and this only spends the slack the rank already leaves
+    between the neighbours the order chose, so it can neither introduce a crossing nor break the separation rule.
+    Asking for the move *before* the separation pass instead was measured and is worse: ``constrain`` only ever
+    pushes right, so a leftward aim was ignored and a rightward one shoved the whole rank along, which took the
+    two-batch board from 1 crossing to 3.
+
+    What it cannot fix, and the metric records rather than hides: when two nodes in one rank feed the same
+    successor, only one of them can sit on its line. On the owner's board ``paste`` and ``counter`` both feed the
+    API node, so ``paste`` ends 91 units off instead of 128 - better, and not 0.
+
+    A pinned node is left out, because a pin is the operator's placement and holding it is the whole point.
+
+    It runs on an incremental drawing as well as a fresh one, and it has to. A pass that only runs on one of them
+    makes the two disagree: the fresh drawing pulls its entry point onto the line, the redraw leaves it where the
+    separation pass puts it, the box drifts back, and the median its whole component is anchored on moves with it -
+    which moved all thirty boxes of the 30-node conformance fixture when one node was added. The aim is the same on
+    both paths (the median of the successors, which are on their seeds), so the box lands where it already is.
+    """
+    pinned = {n.id for n in request.nodes if n.pin is not None}
+    indegree = {n.id: 0 for n in request.nodes}
+    successors: Dict[str, List[str]] = {n.id: [] for n in request.nodes}
+    for e in request.edges:
+        if e.a == e.b:
+            continue
+        indegree[e.b] = indegree.get(e.b, 0) + 1
+        successors[e.a].append(e.b)
+    slot = {k: (r, i) for r, layer in enumerate(order_layers) for i, k in enumerate(layer)}
+    for n in request.nodes:
+        if indegree.get(n.id, 0) or n.id in pinned or not successors[n.id] or n.id not in xs:
+            continue
+        where = slot.get(n.id)
+        centres = [xs[t] + graph.w[t] / 2.0 for t in successors[n.id] if t in xs]
+        if where is None or not centres:
+            continue
+        r, i = where
+        layer = order_layers[r]
+        aim = _util.median(centres) - graph.w[n.id] / 2.0
+        lo = xs[layer[i - 1]] + graph.w[layer[i - 1]] + offset(layer[i - 1], n.id) if i > 0 else float("-inf")
+        hi = xs[layer[i + 1]] - offset(n.id, layer[i + 1]) - graph.w[n.id] if i + 1 < len(layer) else float("inf")
+        if lo <= hi:
+            found = min(max(aim, lo), hi)
+            if abs(found - xs[n.id]) <= SOURCE_PULL_MAX * max(request.gap, 1.0):
+                xs[n.id] = found
 
 
 def _settle_soft(graph: _Graph, order_layers: List[List[str]], xs: Dict[str, float], wanted: Mapping[str, float], offset) -> None:

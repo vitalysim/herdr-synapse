@@ -49,7 +49,8 @@ class OneModuleRule(CollabRig):
 
     def test_rules_are_ordered_and_named_once(self):
         names = [name for _order, name, _fn in K.rules()]
-        self.assertEqual(names[:7], ["busy", "locked", "frozen", "stale_base", "human_made", "peer", "foreign_lane"])
+        self.assertEqual(names[:8], ["busy", "locked", "frozen", "stale_base", "human_made", "host_geometry", "peer",
+                                     "foreign_lane"], "host_geometry (A1) runs between the operator's marks and a peer's")
 
 
 class ProposalsAreInert(CollabRig):

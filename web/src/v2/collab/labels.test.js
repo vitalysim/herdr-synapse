@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
 import { haloShapes } from "./Halos.jsx";
-import { CURSOR_LABEL, PILL_H, labelBoxes, pillWidth, placeLabel, textLines } from "./labels.js";
+import { CURSOR_LABEL, PILL_H, entryBoxes, labelBoxes, pillWidth, placeLabel, textLines } from "./labels.js";
 
 const GOLDEN = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, "../../../../tests/fixtures/display/collab.json"), "utf8"));
 const VIEWPORT = { w: 1400, h: 900 };
@@ -89,7 +89,7 @@ describe("placing", () => {
 
   test("a pill under its halo when that is clear (the default)", () => {
     const { halos } = haloShapes({ members: [{ name: "a", status: "drawing", region: [0, 0, 100, 50], ids: [], opacity: 1 }], camera: { x: 0, y: 0, scale: 1 }, viewport: VIEWPORT, bboxOf, chipOf });
-    expect(halos[0].pill).toEqual({ x: 0, y: 50 + 6 + 2, compact: false }); // under it, pulled 6 px into the view
+    expect(halos[0].pill).toEqual({ x: 0, y: 50 + 6 + 2, compact: false, leader: null }); // under it, pulled 6 px into the view
   });
 
   test("a pill goes where no label is, then shrinks to its chip, then is left out", () => {
@@ -103,9 +103,45 @@ describe("placing", () => {
     // Everything around the halo but the halo's own inside corner is taken: the chip fits there.
     const around = [[0, 0, 1400, 96], [0, 200, 1400, 900], [0, 100, 94, 200], [306, 100, 1400, 200], [124, 100, 306, 200], [100, 130, 124, 200]];
     ({ halos } = haloShapes({ members: [member], camera, viewport: VIEWPORT, labels: around }));
-    expect(halos[0].pill).toEqual({ x: 100, y: 100, compact: true });
+    expect(halos[0].pill).toEqual({ x: 100, y: 100, compact: true, leader: null });
     ({ halos } = haloShapes({ members: [member], camera, viewport: VIEWPORT, labels: [[-5000, -5000, 5000, 5000]] }));
     expect(halos[0].pill).toBeNull();
+  });
+
+  test("a pill never covers the board's ink, and takes the margin outside it when it must", () => {
+    // The canvas v2 demo, V3: the chip lay across the middle of the diagram, over nodes and edges.
+    // The halo here is a region in the middle of one big drawing, so every candidate round it is on ink.
+    const dl = { entries: [{ id: "E-1", layer: "marks", bbox: [0, 0, 600, 400], items: [] },
+                            { id: "K-1", layer: "overlays", bbox: [0, 0, 600, 400], items: [] }] };
+    const camera = { x: 0, y: 0, scale: 1 };
+    const ink = entryBoxes(dl, camera, VIEWPORT);
+    expect(ink).toEqual([[0, 0, 600, 400]]); // the overlay is where presence itself lives, not content
+    const member = { name: "agent", status: "drawing", region: [200, 150, 400, 250], ids: [], intent: "", opacity: 1 };
+    const { halos } = haloShapes({ members: [member], camera, viewport: VIEWPORT, ink });
+    const w = pillWidth(halos[0].label);
+    const box = [halos[0].pill.x, halos[0].pill.y, halos[0].pill.x + w, halos[0].pill.y + PILL_H];
+    expect(halos[0].pill.compact).toBe(false);
+    expect(meets(box, ink[0])).toBe(false);
+    expect(halos[0].pill.y).toBe(400 + 8); // the nearest margin: under the whole drawing
+    // The leader runs from the pill to its halo, and never across the pill.
+    const [x1, y1, x2, y2] = halos[0].pill.leader;
+    expect([x1 >= box[0], x1 <= box[2], y1 >= box[1], y1 <= box[3]]).toEqual([true, true, true, true]);
+    expect([x2 >= halos[0].x, x2 <= halos[0].x + halos[0].w, y2, y2 <= halos[0].y + halos[0].h]).toEqual([true, true, 250 + 6, true]);
+    // A halo round its own marks keeps its pill beside it: its own ink is inside the halo, not under it.
+    const beside = haloShapes({ members: [{ ...member, region: [0, 0, 600, 400] }], camera, viewport: VIEWPORT, ink });
+    expect(beside.halos[0].pill.leader).toBeNull();
+    expect(beside.halos[0].pill.y).toBe(400 + 6 + 2);
+  });
+
+  test("entryBoxes follows the camera, culls what is far off screen, and is memoised", () => {
+    const dl = { entries: [{ id: "E-1", layer: "marks", bbox: [0, 0, 100, 50], items: [] },
+                            { id: "E-2", layer: "zones", bbox: [9000, 9000, 9100, 9050], items: [] },
+                            { id: "E-3", layer: "marks", bbox: [0, 0, 0, 50], items: [] },
+                            { id: "E-4", layer: "marks", items: [] }] };
+    expect(entryBoxes(dl, { x: 10, y: 20, scale: 2 }, VIEWPORT)).toEqual([[-20, -40, 180, 60]]);
+    expect(entryBoxes(dl, { x: 8900, y: 8900, scale: 1 }, VIEWPORT)).toEqual([[100, 100, 200, 150]]);
+    expect(entryBoxes(dl, null, VIEWPORT)).toEqual([]);
+    expect(entryBoxes(dl, { x: 0, y: 0, scale: 1 }, VIEWPORT)).toEqual(entryBoxes(dl, { x: 0, y: 0, scale: 1 }, VIEWPORT));
   });
 
   test("the cursor label moves off a label, and is left out when it has no clear place", () => {

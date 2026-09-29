@@ -6,6 +6,9 @@
 //   in screen-anchored groups (claim, freeze and proposal labels) in px from their anchor, with the
 //   rects those groups draw behind their text (a proposal label's chip).
 // labelBoxes(lines, camera, viewport) -> [[x0, y0, x1, y1]] in screen px, the lines on screen now.
+// entryBoxes(dl, camera, viewport) -> the same for the *ink* of the board: the box of every entry in
+//   a content layer. A pill over a node's fill or over an arrow covers work as surely as one over a
+//   word (QA canvas v2 demo, V3), so presence avoids the drawing, not only its labels.
 // placeLabel(candidates, [w, h], obstacles, viewport) -> {x, y} of the first candidate clear of
 //   every obstacle (inside the view first, then anywhere), or null when none is clear.
 //
@@ -137,6 +140,42 @@ export function labelBoxes(lines, camera, viewport) {
       const found = within(boxOf(m, anchor, left, base - ASCENT * layout.size, left + w, base + DESCENT * layout.size), cut);
       if (found) out.push(found);
     });
+  }
+  return out;
+}
+
+// The layers the board draws the work in. Overlays - claims, locks, freezes, proposal ghosts - are
+// where presence itself belongs, and their labels are obstacles already through textLines.
+const CONTENT_LAYERS = new Set(["zones", "marks", "labels"]);
+const inkCache = new WeakMap();
+
+// Every content entry's world box, once per display list (the same memo textLines uses): this runs
+// per presence tick and per camera change, so a pan must not walk the entries again.
+function inkWorld(dl) {
+  if (!dl || typeof dl !== "object") return [];
+  if (inkCache.has(dl)) return inkCache.get(dl);
+  const out = [];
+  for (const entry of Array.isArray(dl.entries) ? dl.entries : []) {
+    if (!entry || typeof entry !== "object") continue;
+    const box = entry.bbox;
+    if (!CONTENT_LAYERS.has(entry.layer === undefined ? "marks" : entry.layer)) continue;
+    if (!Array.isArray(box) || box.length !== 4 || !finite(...box) || box[2] <= box[0] || box[3] <= box[1]) continue;
+    out.push(box);
+  }
+  inkCache.set(dl, out);
+  return out;
+}
+
+/** The screen boxes of the board's own ink at this camera (the entries on screen now). */
+export function entryBoxes(dl, camera, viewport) {
+  const out = [];
+  if (!camera || !viewport || !(camera.scale > 0)) return out;
+  const s = camera.scale;
+  const view = [-viewport.w, -viewport.h, viewport.w * 2, viewport.h * 2];
+  for (const box of inkWorld(dl)) {
+    const found = [(box[0] - camera.x) * s, (box[1] - camera.y) * s, (box[2] - camera.x) * s, (box[3] - camera.y) * s];
+    if (found[2] < view[0] || found[0] > view[2] || found[3] < view[1] || found[1] > view[3]) continue;
+    out.push(found);
   }
   return out;
 }

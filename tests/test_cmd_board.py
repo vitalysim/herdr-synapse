@@ -397,6 +397,50 @@ class Cursors(unittest.TestCase):
         self.assertEqual(payload["count"], 0)
         self.assertFalse(payload["cursor"]["advanced"])
 
+    def test_a_member_passing_name_is_refused_instead_of_silently_read_as_itself(self):
+        """H5/E1 (live 2026-09-28): ``board --new --name <peer>`` read the member's own inbox.
+
+        The label was dropped -- ``--name`` names the operator behind a verified
+        human pane, and a member already is an identity -- and the only sign was
+        the reader name in the footer, which a scripted agent does not parse. The
+        agent believed it had read a peer's mail and moved on. A refusal cannot
+        be mistaken for an empty inbox.
+        """
+        code, err = run_cli(["--json", "board", "--new", "--name", "alpha-worker"], self.member_env, self.api)[::2]
+        self.assertEqual(code, 2, err)
+        self.assertIn("--name names a human cursor", err)
+        self.assertFalse(self.ts.team.cursor("alpha-reviewer").exists(), "a refused read moves no cursor")
+        # the same refusal on ``post``, where the label was equally ignored
+        code, _, err = run_cli(["--json", "post", "hi", "--to", "human", "--name", "alpha-worker"], self.member_env, self.api)
+        self.assertEqual(code, 2, err)
+
+    def test_a_name_a_human_path_cannot_use_is_reported_from_one_place(self):
+        """Dropping the label silently is what made H5 invisible; ``identity`` owns the sentence."""
+        from herdr_team import identity
+
+        code, _out, err = run_cli(["--team", "alpha", "board", "--new", "--name", "vitaly"], self.ts.env, self.api)
+        self.assertEqual(code, 0, err)
+        self.assertIn(identity.IGNORED_LABEL_NOTE, err)
+        self.assertIn("'vitaly'", err)
+
+    def test_an_empty_new_read_says_which_cursor_it_is_holding_and_what_is_unread(self):
+        """The live footer read ``0 posts for l6-coder (cursor 135 -> 135)`` and nothing else.
+
+        The cursor did not in fact move -- ``board`` cannot advance past a post
+        it did not print -- but the line reads like "your inbox is empty" while
+        posts are waiting behind a filter, so it was read as a lost request.
+        """
+        code, out, _ = run_cli(["board", "--new", "--from", "nobody"], self.member_env, self.api)
+        self.assertEqual(code, 0)
+        footer = out.strip().splitlines()[-1]
+        self.assertIn("cursor 0, held", footer)
+        self.assertIn("3 unread posts you have not been shown (#1, #2, #3)", footer)
+        self.assertIn("board --new", footer)
+        # with the inbox genuinely empty it says so, rather than leaving the reader guessing
+        run_cli(["board", "--new"], self.member_env, self.api)
+        code, out, _ = run_cli(["board", "--new"], self.member_env, self.api)
+        self.assertIn("nothing unread", out.strip().splitlines()[-1])
+
     def test_peek_never_advances(self):
         code, payload, _ = json_out(run_cli(["--json", "board", "--peek"], self.member_env, self.api))
         self.assertEqual(payload["count"], 3)

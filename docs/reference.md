@@ -491,7 +491,7 @@ herdr-synapse brief [-h] [--json] [--team NAME|PATH] [--session NAME] [--socket 
 <summary><code>restore</code> — restore missing team agents in new tabs (human only)</summary>
 
 ```text
-herdr-synapse restore [-h] [--json] [--team NAME|PATH] [--session NAME] [--socket PATH] [--session-mismatch-ok] [--workspace ID] [--dry-run] team
+herdr-synapse restore [-h] [--json] [--team NAME|PATH] [--session NAME] [--socket PATH] [--session-mismatch-ok] [--workspace ID] [--dry-run] [--refresh-flags] team
 ```
 
 </details>
@@ -1271,7 +1271,7 @@ Every op also takes `op`, `intent` (required from agents) and `if_version`. Ops 
 | `kanban` | `title`, `columns`, `tone`, `id`, `client_id`; *place* | a kanban board: columns of cards (move a card with place in, or patch) |
 | `timeline` | `title`, `events`, `scale`, `tone`, `id`, `client_id`; *place* | events on a horizontal axis, dated (YYYY-MM-DD) or in order, with spans and milestones |
 | **Diagrams** | | |
-| `graph` | `nodes`, `edges`, `layout`, `direction`, `title`, `id`, `groups`, `same_rank`, `order`, `route`, `client_id`; *style*, *place* | nodes, groups and edges laid out by a registered layout and routed around each other (a block you patch) |
+| `graph` | `nodes`, `edges`, `layout`, `direction`, `title`, `id`, `groups`, `same_rank`, `order`, `route`, `relayout`, `client_id`; *style*, *place* | nodes, groups and edges laid out by a registered layout and routed around each other (a block you patch) |
 | `mindmap` | `title`, `root`, `tree`, `topics`, `side`, `branch_tones`, `route`, `id`, `client_id`; *place* | a mind map from a nested tree of topics, laid out as a tidy tree around its root |
 | `sequence` | `title`, `participants`, `messages`, `notes`, `groups`, `id`, `client_id`; *place* | a sequence diagram: participants, messages, notes and groups in one element |
 | `mermaid` | `source`, `w`, `h`, `title`, `id`, `client_id`; *style*, *place* | a Mermaid diagram: a flowchart becomes a graph block of native shapes, anything else the page renders |

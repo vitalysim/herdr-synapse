@@ -6,7 +6,7 @@ from unittest import mock
 from herdr_team import cmd_restore, cmd_roster, paths, picker, roster, store, tui_model
 from herdr_team.errors import EXIT_REFUSED, HerdrTeamError
 from herdr_team.restore_ui import RestoreProcess
-from support import TempState, fake_agent
+from support import TempState, fake_agent, fake_pane
 from test_cmd_roster import live_api, run_cli, json_out, env_no_daemon
 
 
@@ -68,7 +68,7 @@ class RestoreTests(unittest.TestCase):
         before = cursor.read_bytes()
         code, out, err = self.run_restore()
         self.assertEqual(code, 0, err)
-        self.assertEqual(out["counts"], {"fresh": 2, "resumed": 0, "skipped": 0, "failed": 0})
+        self.assertEqual(out["counts"], {"fresh": 2, "resumed": 0, "relaunch": 0, "skipped": 0, "failed": 0})
         member = roster.load_team(self.ts.team).find("alpha-reviewer")
         self.assertEqual((member.generation, member.manager, member.role, member.brief, member.model, member.effort),
                          (8, True, "reviewer", "Review carefully", "configured-model", "high"))
@@ -113,6 +113,116 @@ class RestoreTests(unittest.TestCase):
         code, out, _err = self.run_restore()
         self.assertEqual((code, len(out["members"]), out["counts"]["failed"]), (1, 1, 1))
         self.assertEqual(self.api.rows, [])
+
+    # ----------------------------------------------------------------------
+    # H3: a member's own pane is still standing
+
+    def kept_panes(self, *extra):
+        """Panes that survive a Herdr restart with no agent in them.
+
+        They are in ``pane.list`` and not in ``agent.list``, which is the whole
+        point: an empty split is not an agent. ``_shell`` marks them for this
+        rig's own ``agent.list``; Herdr distinguishes them by not listing them.
+        """
+        for pane in extra:
+            pane["_shell"] = True
+            pane.setdefault("name", None)
+            self.api.rows.append(pane)
+        self.api.set_response("agent.list", lambda p: {"type": "agent_list", "agents": [dict(r) for r in self.api.rows if not r.get("_shell")]})
+
+    def control_jobs(self):
+        return [store.read_json(path) for path in sorted(self.ts.team.jobs_dir.glob("*.json"))
+                if (store.read_json(path) or {}).get("kind") == "control"]
+
+    def test_a_member_whose_own_pane_survived_goes_back_into_it(self):
+        """H3: an opencode member restored into a new tab beside its own empty split.
+
+        Its pane was still there, still labelled and empty, because Herdr drew
+        the split and Synapse labelled it; only the agent did not come back
+        (opencode's session identity needs its integration, which was not
+        installed). Reusing the pane is the difference between the team coming
+        back in place and coming back somewhere else.
+        """
+        self.ts.members[0]["terminal_id"] = None  # Herdr restarted: the terminal id is gone
+        self.ts.write_team_json()
+        self.kept_panes(fake_pane("w9:p1", "term_kept", None, "team:alpha/reviewer"))
+        code, out, err = self.run_restore()
+        self.assertEqual(code, 0, err)
+        reviewer = next(m for m in out["members"] if m["name"] == "alpha-reviewer")
+        self.assertEqual((reviewer["status"], reviewer["pane_id"]), ("fresh", "w9:p1"))
+        # the other member has no surviving pane, so it still gets one from the layout
+        worker = next(m for m in out["members"] if m["name"] == "alpha-worker")
+        self.assertNotEqual(worker["pane_id"], "w9:p1")
+        self.assertEqual(roster.load_team(self.ts.team).find("alpha-reviewer").pane_id, "w9:p1")
+
+    def test_a_label_claimed_by_two_panes_is_not_reused(self):
+        self.ts.members[0]["terminal_id"] = None
+        self.ts.write_team_json()
+        self.kept_panes(fake_pane("w9:p1", "term_kept", None, "team:alpha/reviewer"),
+                        fake_pane("w9:p7", "term_twin", None, "team:alpha/reviewer"))
+        code, out, err = self.run_restore()
+        self.assertEqual(code, 0, err)
+        reviewer = next(m for m in out["members"] if m["name"] == "alpha-reviewer")
+        self.assertNotIn(reviewer["pane_id"], ("w9:p1", "w9:p7"))
+
+    # ----------------------------------------------------------------------
+    # H2: a member Herdr restored has none of Synapse's launch flags
+
+    def _running_codex(self, argv):
+        """The reviewer alive in its pane with ``argv`` as its foreground process."""
+        from support import fake_process_info
+
+        self.ts.members[0]["session"] = {"source": "herdr:codex", "kind": "id", "value": "session-123", "agent": "codex"}
+        self.ts.write_team_json()
+        self.api.rows.append(fake_agent("w2:p1", "term_r1", "codex", "alpha-reviewer", cwd=str(self.ts.home)))
+        self.api.set_response("pane.process_info", fake_process_info("w2:p1", processes=[{"pid": 5, "name": "codex", "argv": argv}]))
+
+    def test_a_running_member_with_every_flag_is_left_alone(self):
+        from herdr_team import models
+
+        self._running_codex(["codex", "resume", "session-123"] + models.launch_args("codex", None, None))
+        code, out, err = self.run_restore("--refresh-flags")
+        self.assertEqual(code, 0, err)
+        reviewer = next(m for m in out["members"] if m["name"] == "alpha-reviewer")
+        self.assertEqual(reviewer["status"], "skipped")
+        self.assertNotIn("missing_launch_flags", reviewer)
+        self.assertEqual(self.control_jobs(), [])
+
+    def test_a_herdr_rebuilt_member_is_planned_as_a_relaunch_the_notifier_carries_out(self):
+        """H2: Herdr relaunched ``codex resume <id>`` with none of Synapse's flags.
+
+        The member is running, so the ordinary plan skips it and the operator
+        has no way to repair it short of quitting it by hand. ``--refresh-flags``
+        records the controlled restart the notifier already knows how to
+        perform -- it waits for the member to be idle and revalidates the whole
+        control block -- and ``restore`` itself never types into a pane.
+        """
+        self._running_codex(["codex", "resume", "session-123"])
+        code, out, err = self.run_restore("--refresh-flags")
+        self.assertEqual(code, 0, err)
+        reviewer = next(m for m in out["members"] if m["name"] == "alpha-reviewer")
+        self.assertEqual((reviewer["status"], reviewer["mode"]), ("relaunch", "relaunch"))
+        self.assertEqual(reviewer["missing_launch_flags"], ["--no-daemon", "--dangerously-bypass-approvals-and-sandbox"])
+        control = reviewer["control"]
+        self.assertEqual((control["action"], control["exit"], control["mcp"]), ("restart", "/quit", False))
+        self.assertEqual(control["argv"][:3], ["codex", "resume", "session-123"])
+        self.assertIn("--no-daemon", control["argv"])
+        self.assertIn("--dangerously-bypass-approvals-and-sandbox", control["argv"])
+        record = next(r for r in store.BoardStore(self.ts.team).read() if r.get("seq") == reviewer["record_seq"])
+        self.assertEqual((record["kind"], record["to"], record["control"]["action"]), ("direct", ["alpha-reviewer"], "restart"))
+        self.assertEqual(len(self.control_jobs()), 1)
+        # nothing was typed and no pane was taken from the member
+        self.assertFalse(any(method == "agent.prompt" for method, _ in self.api.calls))
+        self.assertEqual(roster.load_team(self.ts.team).find("alpha-reviewer").pane_id, "w2:p1")
+
+    def test_without_the_flag_nothing_is_audited_and_nothing_is_asked_of_the_server(self):
+        self._running_codex(["codex", "resume", "session-123"])
+        code, out, err = self.run_restore()
+        self.assertEqual(code, 0, err)
+        reviewer = next(m for m in out["members"] if m["name"] == "alpha-reviewer")
+        self.assertEqual(reviewer["status"], "skipped")
+        self.assertNotIn("missing_launch_flags", reviewer)  # nothing was audited, so nothing was read
+        self.assertEqual(self.control_jobs(), [])
 
     def test_busy_restore_refuses_before_allocating(self):
         with store.FileLock(self.ts.team.root / "restore.lock"):

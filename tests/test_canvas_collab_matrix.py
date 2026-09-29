@@ -7,7 +7,8 @@ atomic batch with a failing second op, so nothing it does stays: one board per s
 Actors: ``lead`` (the operator in person), ``deputy`` (a delegate), ``manager``, ``member``. Targets for an edit op: the
 actor's ``own`` element, the ``operator``'s, a ``peer``'s, the actor's own element in a ``frozen_region``, frozen by id
 (``frozen_id``) or in a ``locked`` region. For a create op: ``free`` space, the actor's ``own_lane`` (its claim), a
-``peer_lane``, on the ``operator``'s or a ``peer``'s mark, on its ``own``, in a ``frozen_region`` or a ``locked`` one.
+``peer_lane``, on the ``operator``'s or a ``peer``'s mark, on its ``own``, in a ``frozen_region`` or a ``locked`` one. ``peer_hosted`` is a peer's mark inside a container the actor
+made (A1): the actor may move it live and still only propose a change to what it says.
 For ``undo`` (not proposable, but freezes, locks and authority bind it; QA phase 5 H1): the batch that drew the actor's
 ``own`` marks, or its marks now ``frozen_region``, ``frozen_id`` or ``locked``, the ``operator``'s batch or a ``peer``'s.
 An undo row that applies but leaves frozen marks as they are says ``"skipped": "frozen"``; an undo that would take
@@ -29,6 +30,10 @@ SETTINGS = {"default": {"human_edits": "propose", "frozen": "propose"}, "live_re
 COLUMN = {"deputy": 2000, "manager": 3200, "member": 4400}
 FROZEN_REGION = [6000, 0, 7600, 400]
 LOCKED_REGION = [6000, 1000, 7600, 1400]
+#: Where the ``peer_hosted`` frames stand, and the free row the peer's marks are drawn in before the lead puts them
+#: inside: far from every lane above, so the peer's own draw is live and nothing else lands in it.
+HOSTED_X = 11000
+HOSTED_FREE_Y = 4000
 KANBAN = {"op": "kanban", "title": "Work", "columns": [{"id": "todo", "title": "Todo", "cards": ["One", "Two"]}]}
 ROWS = [{"day": "d{}".format(i), "v": v} for i, v in enumerate((3, 5, 4), 1)]
 
@@ -44,6 +49,8 @@ class Board:
         self.rig = rig
         self.ids: Dict[Any, str] = {}
         self.batches: Dict[Any, str] = {}
+        #: A1: actor -> a peer's mark inside a container that actor made (``peer_hosted``).
+        self.hosted: Dict[str, str] = {}
         ops = rig.apply([
             dict(op="shape", kind="box", text="Operator", at=[0, 0], id="op_box"),
             dict(KANBAN, id="op_kan", at=[0, 400]),
@@ -54,6 +61,7 @@ class Board:
         assert not ops["refused"], ops["refused"]
         for what in ("own", "frozen_region", "frozen_id", "locked"):
             self.batches[("lead", what)] = ops["batch"]
+        self.host_marks(rig)
         peer = rig.apply([dict(op="shape", kind="box", text="Peer", at=[600, 0], id="peer_box", intent="t"),
                           dict(KANBAN, id="peer_kan", at=[600, 400], intent="t")], PEER)
         assert not peer["refused"] and not peer["proposed"], peer
@@ -90,6 +98,24 @@ class Board:
         self.checkpoint = found["checkpoints"][0]["id"]
         assert not rig.apply([{"op": "settings", **settings}], LEAD)["refused"]
 
+    def host_marks(self, rig: CollabRig) -> None:
+        """A1: a peer's mark inside a container each actor made (``peer_hosted``), which is the state an accepted
+        proposal leaves behind. The peer draws them in free space in one batch (one lane, so the claims the rows
+        above depend on are not pushed out) and the lead, who is never refused, puts each one inside."""
+        hosts = (("lead", LEAD), ("deputy", DEPUTY), ("manager", MANAGER), ("member", MEMBER))
+        frames = {}
+        for index, (name, author) in enumerate(hosts):
+            made = rig.apply([dict(op="frame", title="Host " + name, at=[HOSTED_X + index * 1600, 0], w=700, h=500, intent="t")], author)
+            assert not made["refused"] and not made["proposed"], (name, made)
+            frames[name] = made["applied"][0]["ids"][0]
+        marks = rig.apply([dict(op="shape", kind="box", text="Peer inside " + name, at=[HOSTED_X + index * 1600, HOSTED_FREE_Y], intent="t")
+                           for index, (name, _author) in enumerate(hosts)], PEER)
+        assert not marks["refused"] and not marks["proposed"], marks
+        ids = [eid for applied in marks["applied"] for eid in applied["ids"]]
+        put = rig.apply([dict(op="move", id=eid, inside=frames[name], intent="t") for eid, (name, _a) in zip(ids, hosts)], LEAD)
+        assert not put["refused"] and not put["proposed"], put
+        self.hosted = {name: eid for eid, (name, _author) in zip(ids, hosts)}
+
     def element(self, actor: str, target: str) -> str:
         """The element an edit op aims at for this actor and target."""
         name = ACTORS[actor].name
@@ -97,6 +123,8 @@ class Board:
             return self.ids[("human", "op_box")]
         if target == "peer":
             return self.ids[(PEER.name, "peer_box")]
+        if target == "peer_hosted":
+            return self.hosted[actor]
         if actor == "lead":
             return self.ids[("human", {"own": "op_box", "frozen_region": "lead_fr", "frozen_id": "lead_fid", "locked": "lead_lk"}[target])]
         return self.ids[(name, {"own": "own_box", "frozen_region": "fr_box", "frozen_id": "fid_box", "locked": "lk_box"}[target])]

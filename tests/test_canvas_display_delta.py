@@ -83,12 +83,17 @@ class Deltas(CanvasRig):
         """QA phase 6, 3.6 saw a claim's label struck through by the claim's own dashes on the page. The list both
         renderers draw keeps them apart, and this is where that clearance lives: the label hangs from the top-left
         corner in screen pixels, so the rectangle's 2 px stroke ends 1 px below the corner while the first line's ink
-        starts lower. Both distances are screen pixels, so the gap is the same at every zoom."""
+        starts lower. Both distances are screen pixels, so the gap is the same at every zoom. Since V2 the border is
+        drawn ``CLAIM_BORDER_OUT`` units outside the region as well, so its stroke lands on nothing the region holds;
+        the label still hangs from the region's own corner, which is where the authority begins."""
         self.ok({"op": "claim", "region": [0, 400, 400, 700], "label": "the pricing table", "intent": "t"})
         entry = next(e for e in C.display(self.team)["entries"] if e["kind"] == "claim" and e["bbox"] == [0, 400, 400, 700])
         rect = next(i for i in entry["items"] if i["k"] == "rect")
         group = next(i for i in entry["items"] if i["k"] == "group")
-        self.assertEqual((rect["dash"], group["screen"]), ([8, 6], [rect["x"], rect["y"]]))
+        self.assertEqual((rect["dash"], group["screen"]), ([8, 6], [0, 400]))
+        self.assertEqual([rect["x"], rect["y"], rect["w"], rect["h"]],
+                         [-D.CLAIM_BORDER_OUT, 400 - D.CLAIM_BORDER_OUT, 400 + 2 * D.CLAIM_BORDER_OUT, 300 + 2 * D.CLAIM_BORDER_OUT],
+                         "the dashed border is drawn outside the region it holds (V2)")
         text = group["items"][0]
         face = X.face("normal", text["weight"])
         ink_top = text["lines"][0]["y"] - face.ascender / float(face.units_per_em) * text["size"]

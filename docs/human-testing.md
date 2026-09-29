@@ -37,6 +37,21 @@ meets your real one.
 
 For team recovery in an existing test session, close the team's agent panes while keeping its saved team, open a shell tab, press `Ctrl+B`, `T`, highlight the team and press `s`. Expect a new named tab, saved roles/manager/settings, exact conversation resumption when a session was recorded, and fresh starts otherwise. Repeat restore to check that existing panes are skipped. A login or first-use folder-trust prompt should appear as a per-member failure with its pane preserved; other agents should still start. Partial results wrap and scroll; `g` opens the restored tab and `Esc` returns to the team tree.
 
+Two recovery cases are worth exercising on purpose, because both cost a live
+run a wasted turn. Restart Herdr itself with a team running: a member whose
+labelled pane survives should come back **in that pane**, not in a new tab
+beside its own empty one, and any member whose conversation Herdr restored on
+its own should produce one `launch_flags_missing` record on the board naming
+the flags it lost and the `restore --refresh-flags` that repairs them. Run that
+command and watch the notifier exit the member when it is idle and resume it;
+afterwards a canvas command from that member must not ask for permission, and
+`herdr-synapse` run inside its pane must not fail `pane_mismatch`. For a codex
+member, confirm its command line carries `--no-daemon`: without it every
+command it runs is a child of a machine-wide daemon rather than of its pane,
+and neither its identity nor the TUI's second view of the conversation works.
+For opencode, pi, omp, kilo, kimi and mastracode, install the Herdr integration
+first; without it a restart costs a fresh conversation and a briefing turn.
+
 The plugin runs on the Herdr you already have installed (0.8.2); the fork
 only holds its source. To try it without touching your real session at all,
 use the sandbox: a named Herdr session with its own config directory, its own

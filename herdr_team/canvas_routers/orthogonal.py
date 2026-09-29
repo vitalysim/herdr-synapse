@@ -12,16 +12,20 @@
    stubs and waypoints (``4 x clearance`` past them), grown once when nothing
    is found.
 4. **Search**: A* over ``(point, heading)`` (``_astar``): length, a turn costs
-   ``2 x clearance``, running alongside a placed route costs three times its
-   length. Each waypoint is its own leg.
+   ``2 x clearance``, running alongside a placed route costs six times its
+   length, and crossing one costs three turns. Each waypoint is its own leg.
 5. **Budget**: 20,000 expanded states per leg, and never more than the budget
    in force has left (``canvas_layouts._budget``: a graph routes all its edges
    under one); past that the straight route comes back with ``blocked``. A
    ``quick`` request (a graph's detour) searches greedily (``QUICK_WEIGHT``)
    on a grid without corridor midlines: a quarter of the states.
 6. **Clean-up**: collinear points merged, zero-length pieces dropped.
-7. **Label**: the centre of the longest inner piece, slid along it (or onto
-   the next-longest piece) until the pill meets no obstacle.
+7. **Label**: on the route, as near its source end as a clear spot allows,
+   clear of the obstacles, of its own two ends, of the other routes and of the
+   other pills, and near enough its own ends to read as theirs (``_label``);
+   None when no spot on the line is clear, which leaves it to
+   ``canvas_labels``. ``route_many`` places every pill in a second pass, so
+   each one sees every line of the batch and not only its predecessors.
 8. **Self-loop**: out of ``e``, up and over, into ``n``, in five points.
 """
 from __future__ import annotations
@@ -295,8 +299,11 @@ def _simple(start: Point, start_heading: int, goal: Point, goal_heading: int, ob
         cost = math.fsum(abs(b[0] - a[0]) + abs(b[1] - a[1]) for a, b in zip(points, points[1:])) + bend * turns
         for a, b in zip(points, points[1:]):
             horizontal = abs(a[1] - b[1]) < 1e-6
-            cost += _astar.ALONGSIDE_COST * alongside.overlap(horizontal, a[1] if horizontal else a[0], min(a[0], b[0]) if horizontal else min(a[1], b[1]),
-                                                             max(a[0], b[0]) if horizontal else max(a[1], b[1]))
+            at = a[1] if horizontal else a[0]
+            lo = min(a[0], b[0]) if horizontal else min(a[1], b[1])
+            hi = max(a[0], b[0]) if horizontal else max(a[1], b[1])
+            cost += _astar.ALONGSIDE_COST * alongside.overlap(horizontal, at, lo, hi)
+            cost += _astar.CROSS_COST * bend * alongside.crossings(horizontal, at, lo, hi)
         if best is None or cost < best[0] - 1e-9:
             best = (cost, points, headings[-1])
     if best is None:
@@ -455,33 +462,136 @@ def route(request: RouteRequest) -> Route:
     return Route(points=points, label_at=_label(points, request, raw) if request.label else None, corner=request.radius)
 
 
+#: How far a label pill stays clear of another route's line and of another pill.
+PILL_GAP = 2.0
+
+
 def _label(points: Sequence[Point], request: RouteRequest, obstacles: Sequence[Box]) -> Optional[Point]:
-    """The pill's centre: the middle of the longest inner piece, slid along it until the pill is clear."""
+    """The pill's centre: on this route, as near its **source** end as a clear spot allows.
+
+    Why the source and not the middle. A reader follows an arrow from where it starts, so a label read near the
+    start is read as this arrow's label; the same pill at the dead centre of a long route can be 600 units from
+    either end with two other wires in the same corridor, and then it reads as floating in space next to whichever
+    node happens to be nearest. That is what the owner saw as "cached, original address and save sit mid-air", and
+    ``canvas_readability.measure`` counts it as ``label_misattributed`` and ``label_orphan``.
+
+    What it avoids. Three obstacle sets, not one: the boxes the route already keeps clear of, the routes already
+    placed in this batch (``request.others``, within ``PILL_GAP`` of their lines) and the pills already placed
+    (``request.pills``). A pill that lands in a neighbour's corridor, or on another pill, belongs to nothing.
+
+    When nothing on the line is clear it returns None: ``canvas_labels`` places the pill beside the line instead,
+    which is the one thing the router cannot do without leaving the polyline it drew.
+
+    The order it tries. Piece by piece from the source end, sliding out from the end of the piece nearest the
+    source, and the spot the layout kept room for last (``_label_candidates`` says why that one is last). A candidate
+    that is clear **and reads as this arrow's** - nearer one of its own two ends than to any third box - wins
+    outright; a merely clear candidate is kept as the runner-up. The pill never leaves its own line.
+    """
     if request.label is None:
         return None
     w, h = request.label
     pieces = list(zip(points, points[1:]))
     inner = pieces[1:-1] if len(pieces) > 2 else pieces
-    ranked = sorted(range(len(inner)), key=lambda i: (-(abs(inner[i][1][0] - inner[i][0][0]) + abs(inner[i][1][1] - inner[i][0][1])), i))
+    if not inner:
+        return None
+    own = [box for box in (request.a.box, request.b.box) if box[2] > box[0] or box[3] > box[1]]
+    # The route's own two ends are obstacles **for the pill** though not for the line: a label drawn over the shape
+    # it comes from covers that shape's words. ``canvas_labels`` has always held that rule, and a router that did
+    # not would have every source-anchored pill it placed moved back to the middle of the route by the canvas's own
+    # label settle - which is exactly what happened, and why it looked as if this pass had not landed.
+    blockers = list(obstacles) + own
 
     def clear(cx: float, cy: float) -> bool:
-        pill = (cx - w / 2.0, cy - h / 2.0, cx + w / 2.0, cy + h / 2.0)
-        return not any(pill[0] < o[2] and o[0] < pill[2] and pill[1] < o[3] and o[1] < pill[3] for o in obstacles)
+        pill = (cx - w / 2.0 - PILL_GAP, cy - h / 2.0 - PILL_GAP, cx + w / 2.0 + PILL_GAP, cy + h / 2.0 + PILL_GAP)
+        if any(pill[0] < o[2] and o[0] < pill[2] and pill[1] < o[3] and o[1] < pill[3] for o in blockers):
+            return False
+        if any(pill[0] < o[2] and o[0] < pill[2] and pill[1] < o[3] and o[1] < pill[3] for o in request.pills):
+            return False
+        for route in request.others:
+            for a, b in zip(route, route[1:]):
+                if _meets(pill, a, b):
+                    return False
+        return True
 
-    for index in ranked:
-        (ax, ay), (bx, by) = inner[index]
-        mx, my = (ax + bx) / 2.0, (ay + by) / 2.0
+    def attributed(cx: float, cy: float) -> bool:
+        if not own:
+            return True
+        mine = min(_outside(cx, cy, box) for box in own)
+        return all(_outside(cx, cy, o) >= mine - 1e-9 for o in obstacles)
+
+    runner_up: Optional[Point] = None
+    for cx, cy in _label_candidates(points, inner, request):
+        if not clear(cx, cy):
+            continue
+        if attributed(cx, cy):
+            return cx, cy
+        if runner_up is None:
+            runner_up = (cx, cy)
+    # Nothing on the line is clear - seven wires off one small hub, and every spot is in a neighbour's corridor. The
+    # router says so by returning None, which is what ``Route.label_at`` means: the arrow's own label placement
+    # (``canvas_labels``) decides, and it is the one that knows how to put a pill *beside* a line. A router that
+    # guessed here would put the pill on a wire and call it placed.
+    return runner_up
+
+
+def _label_candidates(points: Sequence[Point], inner: Sequence[Tuple[Point, Point]],
+                      request: RouteRequest) -> List[Point]:
+    """Every spot the pill may take, in the order it is preferred: out from the source, the layout's own spot last.
+
+    The layout's spot goes last, and that is a measured decision rather than a guess. It was tried first, which is
+    what the room the layered layout reserves on the middle rank seems to be for, and it is worse on every board of
+    the corpus: it is the middle of the route by construction, so it re-creates the very symptom being fixed (the
+    orphan distance on ``two-flows`` went from 0.04 back to 0.27 and a band label was misattributed again). It stays
+    in the ladder because when nothing on the route is clear it is the one spot the layout guaranteed was free of
+    every other rank's item, and that is a better last resort than an arbitrary point.
+    """
+    out: List[Point] = []
+    # Which end of the route is the source: ``points`` runs from ``a`` to ``b``, so the pieces are already in order.
+    for (ax, ay), (bx, by) in inner:
         length = abs(bx - ax) + abs(by - ay)
-        ux, uy = ((bx - ax) / length, (by - ay) / length) if length else (0.0, 0.0)
-        for step in range(0, 21):
-            for sign in ((1,) if step == 0 else (1, -1)):
-                t = sign * step * length / 40.0
-                cx, cy = mx + ux * t, my + uy * t
-                if clear(cx, cy):
-                    return cx, cy
-    (ax, ay), (bx, by) = inner[ranked[0]] if ranked else (points[0], points[-1])
-    return (ax + bx) / 2.0, (ay + by) / 2.0
+        if length <= 0:
+            continue
+        ux, uy = (bx - ax) / length, (by - ay) / length
+        # Out from the start of the piece (the end nearer the source), never quite at the corner.
+        for step in range(1, 21):
+            t = step * length / 20.0
+            out.append((ax + ux * t, ay + uy * t))
+    seed = request.label_at
+    if seed is not None and _on_route(points, seed):
+        out.append((float(seed[0]), float(seed[1])))
+    return out
 
 
-ROUTERS = (Router(name="orthogonal", route=route, aliases=("elbow",),
+def _on_route(points: Sequence[Point], at: Sequence[float], slack: float = 2.0) -> bool:
+    """Whether ``at`` lies on the polyline: a label spot the layout kept room for is only usable while it does."""
+    for a, b in zip(points, points[1:]):
+        lo_x, hi_x = min(a[0], b[0]) - slack, max(a[0], b[0]) + slack
+        lo_y, hi_y = min(a[1], b[1]) - slack, max(a[1], b[1]) + slack
+        if lo_x <= at[0] <= hi_x and lo_y <= at[1] <= hi_y:
+            return True
+    return False
+
+
+def _meets(pill: Box, a: Point, b: Point) -> bool:
+    """Whether the axis-aligned piece from ``a`` to ``b`` touches the box ``pill``."""
+    x0, x1 = min(a[0], b[0]), max(a[0], b[0])
+    y0, y1 = min(a[1], b[1]), max(a[1], b[1])
+    return pill[0] < x1 and x0 < pill[2] and pill[1] < y1 and y0 < pill[3]
+
+
+def _outside(cx: float, cy: float, box: Sequence[float]) -> float:
+    """How far the point lies outside ``box`` (0 inside it): what ``label_misattributed`` is measured with."""
+    dx = max(box[0] - cx, 0.0, cx - box[2])
+    dy = max(box[1] - cy, 0.0, cy - box[3])
+    return math.hypot(dx, dy)
+
+
+def relabel(request: RouteRequest, found: Route) -> Optional[Point]:
+    """Where this route's label goes, given the finished route: ``route_many``'s second pass (see its docstring)."""
+    if request.label is None or len(found.points) < 2:
+        return None
+    return _label(found.points, request, [box for _id, box, _outline in request.obstacles])
+
+
+ROUTERS = (Router(name="orthogonal", route=route, aliases=("elbow",), relabel=relabel,
                   doc="axis-aligned pieces around obstacles, with rounded elbows and spread ports"),)

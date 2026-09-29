@@ -140,6 +140,10 @@ MATCH_LABEL = "label"
 MATCH_PANE = "pane_id"
 MATCH_NAME = "name"
 MATCH_FINGERPRINT = "fingerprint"
+#: Not a binding: a pane still carrying the member's label with no agent in it.
+#: Reported so ``restore`` can put the member back where it was instead of
+#: opening a new tab, and never used to claim a member is present.
+MATCH_EMPTY_PANE = "empty_pane"
 #: Owner decision 16.5 is open: fingerprint matches wait for ``bind`` by default.
 AUTO_BIND_FINGERPRINT = False
 
@@ -1254,6 +1258,10 @@ class RehydrationResult:
     unbound: List[Dict[str, Any]] = field(default_factory=list)  # {"member", "candidate", "how"}
     missing: List[str] = field(default_factory=list)
     kind_changed: List[Dict[str, Any]] = field(default_factory=list)  # {"member", "agent"}
+    #: ``{"member", "pane"}`` for a missing member whose labelled pane is still
+    #: there and empty. A note for ``restore``, not a binding: an empty pane is
+    #: evidence about *geometry*, never about who the member is.
+    empty_panes: List[Dict[str, Any]] = field(default_factory=list)
 
 
 def _agent_kind(row: Dict[str, Any]) -> Optional[str]:
@@ -1278,6 +1286,11 @@ def rehydrate_match(members: Sequence[Member], agent_list_rows: Sequence[Dict[st
     binds by terminal with ``kind_matches`` false and never flags
     ``kind_changed``, the same rule ``hooks._reconcile_detected`` applies
     (``live_kind and live_kind != member.kind``).
+
+    (f) is a *note*, not a step: for a member still unresolved after (e), a
+    ``pane list`` row that carries its label and holds no agent is reported in
+    ``empty_panes`` so ``restore`` can put it back in its own split. It never
+    binds and never changes ``missing``.
     """
     result = RehydrationResult()
     agents = [dict(a) for a in agent_list_rows if isinstance(a, dict) and a.get("terminal_id")]
@@ -1377,6 +1390,31 @@ def rehydrate_match(members: Sequence[Member], agent_list_rows: Sequence[Dict[st
                 result.unbound.append({"member": member.name, "candidate": candidates[0], "how": MATCH_FINGERPRINT})
         else:
             result.missing.append(member.name)
+
+    # (f) the member's own empty pane, as a note. A Herdr restart that could not
+    # bring an agent back (no integration installed, so no session identity to
+    # resume) leaves the split it drew and the label Synapse applied, with a
+    # plain shell in it. That pane is where the member belongs, and ``restore``
+    # reusing it is the difference between the team coming back in place and
+    # coming back in a new tab beside its own empty one. A label two panes claim
+    # identifies neither: geometry is only worth reusing when it is unambiguous.
+    unresolved = {name for name in result.missing} | {str(e.get("member")) for e in result.unbound}
+    if unresolved:
+        label_counts: Dict[str, int] = {}
+        for pane in panes_by_terminal.values():
+            label = pane.get("label")
+            if isinstance(label, str) and label:
+                label_counts[label] = label_counts.get(label, 0) + 1
+        for member in members:
+            if member.name not in unresolved or not member.label or label_counts.get(member.label) != 1:
+                continue
+            for terminal_id, pane in panes_by_terminal.items():
+                if terminal_id in used or pane.get("label") != member.label:
+                    continue
+                if any(a["terminal_id"] == terminal_id for a in agents):
+                    break  # an agent lives there; steps (a) to (e) already had their say
+                result.empty_panes.append({"member": member.name, "pane": dict(pane)})
+                break
     return result
 
 

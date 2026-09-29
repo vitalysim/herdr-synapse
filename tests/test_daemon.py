@@ -22,6 +22,8 @@ from support import FAKE_AGENTS, FakeApi, FakeError, FakeHerdrServer, TempState,
 
 PLUGIN_ROOT = paths.plugin_root()
 
+MEMBER = "alpha-reviewer"   # codex, w2:p1, term_r1
+
 DETACH_SCRIPT = """
 import json, os, sys
 sys.path.insert(0, {root!r})
@@ -1717,7 +1719,12 @@ class GateConfigAndFollowUpTests(unittest.TestCase):
         # another post and another read inside the interval: no second follow-up
         post(self.ts, "alpha-reviewer", "three")
         d.tick()
-        self.assertFalse(pending.follow_up_due)
+        # H4: a new batch arms the *schedule* exception on evidence (a seq above
+        # ``landed_seq_max``), where it used to need ``attempts == 1``. That lift only
+        # gets the pending to the gate; gate 11 is what refuses it, on the spent
+        # ``follow_up_used`` and the 20 s interval, and that refusal is the assertion below.
+        self.assertTrue(pending.follow_up_due)
+        self.assertEqual(pending.follow_ups_used, 1)
         store.Cursors(self.ts.team).advance("alpha-reviewer", second, "term_r1", "cli")
         ticks(d, clock, 8, step=1)
         self.assertEqual(len(prompts_of(api)), 2)
@@ -1930,6 +1937,310 @@ class LoopBoundaryTests(unittest.TestCase):
         self.assertFalse(d.stop_requested)
         self.assertGreaterEqual(d.counters["phase_errors"], 1)
         self.assertTrue(any("evaluate alpha-reviewer failed: IndexError: boom" in line for line in d.logged), d.logged)
+
+
+class AdoptedPaneTests(unittest.TestCase):
+    """H2 and H3: what Synapse can see about a pane Herdr brought back, and what it says about it."""
+
+    def setUp(self):
+        self.ts = TempState()
+        self.addCleanup(self.ts.cleanup)
+        self.d, self.api, self.clock = make_daemon(self.ts)
+
+    def records(self, event):
+        return [r for r in store.BoardStore(self.ts.team).read() if r.get("event") == event]
+
+    def process_info(self, argv):
+        from support import fake_process_info
+
+        self.api.set_response("pane.process_info", fake_process_info("w2:p1", processes=[{"pid": 9, "name": "codex", "argv": argv}]))
+
+    def adopt(self, argv):
+        """The reviewer's terminal is gone and its conversation reappears on a new one.
+
+        That is the shape of a Herdr session restore: the pane and the process
+        are new, only the conversation id survives, so Synapse adopts a process
+        it did not start -- the one moment its command line can be wrong.
+        """
+        session = {"source": "herdr:codex", "kind": "id", "value": "0199", "agent": "codex"}
+        doc = store.read_json(self.ts.team.team_json)
+        doc["members"][0]["session"] = session
+        store.write_json(self.ts.team.team_json, doc)
+        self.process_info(argv)
+        self.api.set_response("agent.rename", {"type": "ok"})
+        self.api.set_response("pane.rename", {"type": "ok"})
+        self.api.set_response("agent.list", {"type": "agent_list", "agents": [dict(FAKE_AGENTS[1]), dict(FAKE_AGENTS[2])]})
+        self.d.on_connected()
+        self.clock.advance(31)
+        self.d.reconcile_due = True
+        self.d.tick()
+        back = fake_agent("w2:p1", "term_r9", "codex", None)
+        back["agent_session"] = session
+        self.api.set_response("agent.list", {"type": "agent_list", "agents": [back, dict(FAKE_AGENTS[1]), dict(FAKE_AGENTS[2])]})
+        self.d.handle_event({"event": "pane_agent_detected", "data": {"pane_id": "w2:p1"}})
+        self.clock.advance(1)
+        self.d.tick()
+        self.assertEqual(self.d.teams["alpha"].member("alpha-reviewer")["terminal_id"], "term_r9")
+
+    def test_a_herdr_restored_member_gets_one_notice_naming_the_flags_and_the_repair(self):
+        self.adopt(["codex", "resume", "0199"])
+        notices = self.records("launch_flags_missing")
+        self.assertEqual(len(notices), 1, [r.get("event") for r in store.BoardStore(self.ts.team).read()])
+        self.assertEqual(notices[0]["to"], ["human"])
+        self.assertEqual(notices[0]["missing"], ["--no-daemon", "--dangerously-bypass-approvals-and-sandbox"])
+        self.assertEqual(notices[0]["member"], "alpha-reviewer")
+        self.assertIn("restore --refresh-flags", notices[0]["text"])
+        row = next(m for m in self.d.build_who()["teams"]["alpha"]["members"] if m["name"] == "alpha-reviewer")
+        self.assertEqual(row["missing_launch_flags"], ["--no-daemon", "--dangerously-bypass-approvals-and-sandbox"])
+        # one per adoption, not one per poll: the audit costs a pane.process_info
+        for _ in range(4):
+            self.clock.advance(1)
+            self.d.reconcile_due = True
+            self.d.tick()
+        self.assertEqual(len(self.records("launch_flags_missing")), 1)
+
+    def test_an_adopted_member_with_every_flag_is_not_narrated(self):
+        from herdr_team import models
+
+        self.adopt(["codex", "resume", "0199"] + models.launch_args("codex", None, None))
+        self.assertEqual(self.records("launch_flags_missing"), [])
+        row = next(m for m in self.d.build_who()["teams"]["alpha"]["members"] if m["name"] == "alpha-reviewer")
+        self.assertIsNone(row["missing_launch_flags"])
+
+    def test_a_missing_members_own_empty_pane_is_named_once(self):
+        """H3: the split is still the member's; ``restore`` can put it back in it."""
+        from support import fake_pane
+
+        self.api.set_response("agent.list", {"type": "agent_list", "agents": [dict(FAKE_AGENTS[1]), dict(FAKE_AGENTS[2])]})
+        self.api.set_response("pane.list", {"type": "pane_list", "panes": [
+            fake_pane("w2:p1", "term_shell", None, "team:alpha/reviewer"),
+            fake_pane("w2:p2", "term_w1", "claude", "team:alpha/worker"),
+        ]})
+        self.d.on_connected()
+        self.clock.advance(31)
+        self.d.reconcile_due = True
+        self.d.tick()
+        found = self.records("pane_recovered")
+        self.assertEqual(len(found), 1, [r.get("event") for r in store.BoardStore(self.ts.team).read()])
+        self.assertIn("w2:p1", found[0]["text"])
+        self.assertEqual(self.d.teams["alpha"].member("alpha-reviewer")["status"], "missing", "a note, never a binding")
+        row = next(m for m in self.d.build_who()["teams"]["alpha"]["members"] if m["name"] == "alpha-reviewer")
+        self.assertEqual(row["empty_pane"], "w2:p1")
+        for _ in range(3):
+            self.clock.advance(1)
+            self.d.reconcile_due = True
+            self.d.tick()
+        self.assertEqual(len(self.records("pane_recovered")), 1)
+
+
+class IdlePaneDeliveryTests(unittest.TestCase):
+    """H4 (live 2026-09-28): a non-urgent post to an already-idle pane sat undelivered for five minutes.
+
+    The gap was 300.04 s, to the centisecond ``RENUDGE_AFTER_S[1]``. Three
+    separate faults stacked up, and each one has a test here:
+
+    * a stall on a quiet pane was scored as a landing ("fast turn"), so the
+      posts went onto the re-nudge ladder instead of being retried in seconds;
+    * a brand-new post batch could only jump that ladder while
+      ``attempts == 1 and not renudges``, which this pending no longer was, so
+      the operator's request inherited the previous post's place in the queue;
+    * the ladder's own precondition -- a completed turn since the landing -- can
+      never be met by a landing the daemon inferred rather than watched (an open
+      intent replayed after a restart, which is what the live run had), because
+      the pane was idle before it and idle after it and never made the
+      ``agent_status_changed`` edge the precondition waits for.
+
+    The guard in the other direction matters as much as the fix: with no new
+    seq, the 120/300/600 s ladder must still hold, and a member must never get
+    the same range typed at it in a loop.
+    """
+
+    def setUp(self):
+        self.ts = TempState()
+        self.addCleanup(self.ts.cleanup)
+
+    def daemon(self):
+        doc = store.read_json(self.ts.team.team_json)
+        doc["config"] = dict(doc.get("config") or {}, gate={"done_hold_ms": 0})
+        store.write_json(self.ts.team.team_json, doc)
+        d, api, clock = make_daemon(self.ts)
+        api.set_response("agent.explain", STRONG_IDLE)
+        d.on_connected()
+        return d, api, clock
+
+    def settle(self, d, clock, seconds):
+        """Let ``seconds`` pass in polls the stable window survives (``sample_gap_reset_ms`` is 10 s)."""
+        step = 5.0
+        for _ in range(max(1, int(seconds / step))):
+            clock.advance(step)
+            d.tick()
+
+    def landed(self, d, api, clock):
+        """One post delivered and unread: the state every H4 symptom starts from."""
+        post(self.ts, MEMBER, "one")
+        self.settle(d, clock, 10)
+        pending = d.teams["alpha"].pending[MEMBER]
+        self.assertEqual(len(prompts_of(api)), 1, d.logged[-8:])
+        self.assertIsNotNone(pending.landed_ms)
+        return pending
+
+    # -- the stall ---------------------------------------------------------
+
+    def stalls(self, d, api, seq_after):
+        """``agent.prompt`` stalls; the post-send ``agent.get`` reports ``seq_after``.
+
+        Only the read *after* the stall differs, because the gate's own
+        pre-send re-check reads ``agent.get`` too and a permanently different
+        seq there would simply hold the pane as unstable.
+        """
+        base = dict(d.agents["term_r1"])
+        stalled = []
+
+        def prompt(_params):
+            stalled.append(True)
+            raise FakeError("agent_prompt_stalled", "no observed working or blocked state within 5000 ms; current status is idle")
+
+        api.set_response("agent.prompt", prompt)
+        api.set_response("agent.read", fake_read("w2:p1", "\u203a \n", "detection"))  # prompt line clear
+        api.set_response("agent.get", lambda _p: {"type": "agent_info", "agent": dict(base, state_change_seq=seq_after) if stalled else dict(base)})
+
+    def test_a_stall_on_a_quiet_pane_is_a_transient_failure_not_a_landing(self):
+        d, api, clock = self.daemon()
+        self.stalls(d, api, int(d.agents["term_r1"].get("state_change_seq") or 0))  # idle, unchanged
+        post(self.ts, MEMBER, "one")
+        self.settle(d, clock, 10)
+        pending = d.teams["alpha"].pending[MEMBER]
+        self.assertIsNone(pending.landed_ms, "nothing landed, so nothing may go on the re-nudge ladder")
+        self.assertGreaterEqual(pending.transient_failures, 1)
+        self.assertTrue(any("idle and unchanged since the send" in line for line in d.logged), d.logged[-8:])
+
+    def test_a_fast_turn_is_still_a_landing(self):
+        """The other side of the same evidence: a moved state_change_seq means a turn did run."""
+        d, api, clock = self.daemon()
+        self.stalls(d, api, int(d.agents["term_r1"].get("state_change_seq") or 0) + 2)
+        post(self.ts, MEMBER, "one")
+        self.settle(d, clock, 10)
+        pending = d.teams["alpha"].pending[MEMBER]
+        self.assertIsNotNone(pending.landed_ms, d.logged[-8:])
+        self.assertTrue(any("fast turn" in line for line in d.logged), d.logged[-8:])
+
+    # -- the ladder --------------------------------------------------------
+
+    def test_a_new_batch_after_a_renudge_does_not_inherit_its_place_in_the_ladder(self):
+        d, api, clock = self.daemon()
+        pending = self.landed(d, api, clock)
+        self.settle(d, clock, D.RENUDGE_AFTER_S[0] + 15)
+        self.assertEqual(len(prompts_of(api)), 2, d.logged[-8:])
+        self.assertEqual(pending.renudges, 1)
+        # Now the operator posts something new. Under the old rule this needed
+        # ``attempts == 1 and not renudges`` and therefore waited RENUDGE_AFTER_S[1].
+        landed_at = pending.landed_ms
+        second = post(self.ts, MEMBER, "the new request")
+        d.tick()
+        self.assertTrue(pending.follow_up_due)
+        self.settle(d, clock, 30)
+        self.assertEqual(len(prompts_of(api)), 3, d.logged[-10:])
+        self.assertIn(str(second), prompts_of(api)[2]["text"])
+        self.assertLess(d.now_ms() - landed_at, D.RENUDGE_AFTER_S[1] * 1000.0)
+
+    def test_with_no_new_post_the_full_ladder_still_holds(self):
+        """The guard in the other direction: nothing here makes an unread range louder.
+
+        The gaps between attempts are read off the clock rather than assumed,
+        so a change that made a re-nudge even one rung early would fail here.
+        """
+        d, api, clock = self.daemon()
+        post(self.ts, MEMBER, "one")
+        stamps, held = [], []
+        for _ in range(400):
+            clock.advance(5.0)
+            d.tick()
+            pending = d.teams["alpha"].pending.get(MEMBER)
+            if pending is None:
+                break
+            if len(prompts_of(api)) > len(stamps):
+                stamps.append(d.now_ms())
+            elif pending.hold is not None:
+                held.append(pending.hold)
+        self.assertEqual(len(stamps), 1 + len(D.RENUDGE_AFTER_S), stamps)
+        gaps = [(b - a) / 1000.0 for a, b in zip(stamps, stamps[1:])]
+        self.assertEqual(gaps, list(D.RENUDGE_AFTER_S), "the 120/300/600 s ladder must be untouched")
+        self.assertEqual(set(held), {gate.HOLD_RENUDGE_WAIT}, "and the wait must say so, every poll")
+        self.assertNotIn(MEMBER, d.teams["alpha"].pending)  # abandoned, not looped
+
+    def test_an_urgent_post_on_an_unread_landing_starts_a_fresh_schedule(self):
+        d, api, clock = self.daemon()
+        pending = self.landed(d, api, clock)
+        self.settle(d, clock, D.RENUDGE_AFTER_S[0] + 15)
+        self.assertEqual(pending.renudges, 1)
+        post(self.ts, MEMBER, "now please", urgent=True)
+        d.tick()
+        self.assertEqual((pending.landed_ms, pending.renudges), (None, 0),
+                         "--urgent on an unseen post means now, not the previous post's place in the queue")
+        self.settle(d, clock, 25)
+        self.assertEqual(len(prompts_of(api)), 3, d.logged[-10:])
+
+    def test_the_wait_records_a_hold_instead_of_going_silent(self):
+        d, api, clock = self.daemon()
+        pending = self.landed(d, api, clock)
+        self.settle(d, clock, 10)
+        self.assertEqual(pending.hold, gate.HOLD_RENUDGE_WAIT)
+        self.assertTrue(any("held: renudge_wait" in line for line in d.logged), d.logged[-8:])
+        row = next(m for m in d.build_who()["teams"]["alpha"]["members"] if m["name"] == MEMBER)
+        self.assertEqual(row["hold"], gate.HOLD_RENUDGE_WAIT)
+
+    def test_the_immediate_deliveries_of_one_landing_schedule_are_bounded(self):
+        d, api, clock = self.daemon()
+        pending = self.landed(d, api, clock)
+        for index in range(D.FOLLOW_UP_MAX + 2):
+            post(self.ts, MEMBER, "extra {}".format(index))
+            self.settle(d, clock, 25)
+        self.assertLessEqual(pending.follow_ups_used, D.FOLLOW_UP_MAX)
+        self.assertLessEqual(len(prompts_of(api)), 1 + D.FOLLOW_UP_MAX,
+                             "a chatty sender must not be able to type at a member without limit")
+
+    # -- the precondition a quiet pane can never meet ----------------------
+
+    def test_a_landing_nobody_watched_on_a_pane_that_stayed_idle_still_earns_its_renudge(self):
+        """An open intent replayed after a restart sets ``landed_ms`` without a watched turn.
+
+        The pane was idle before it and is idle after it, so
+        ``idle_since_ms > landed_ms`` -- the old precondition -- is false
+        forever, and the pending waited for an edge that will never come. The
+        unbroken idle observation is the evidence that there is no turn to wait
+        for.
+        """
+        d, api, clock = self.daemon()
+        post(self.ts, MEMBER, "one")
+        d.tick()
+        pending = d.teams["alpha"].pending[MEMBER]
+        team = d.teams["alpha"]
+        pending.landed_ms = d.now_ms()          # as ``_replay_ledger`` would set it
+        pending.attempts = 1
+        pending.landed_seq_max = max(pending.seqs)
+        pending.turn_completed_since_landing = False
+        stability = d.stability["term_r1"]
+        self.assertLessEqual(stability.idle_since_ms, pending.landed_ms)
+        clock.advance(team.gate_config.stable_ms_screen / 1000.0 + 1)
+        d._evaluate_member(team, team.member(MEMBER), pending, d.now_ms())
+        self.assertTrue(pending.turn_completed_since_landing)
+        self.settle(d, clock, D.RENUDGE_AFTER_S[0] + 15)
+        self.assertEqual(len(prompts_of(api)), 1, d.logged[-8:])  # the first attempt was never made here
+        self.assertGreaterEqual(pending.renudges, 0)
+
+    def test_a_blind_spell_is_not_evidence_that_the_pane_stayed_idle(self):
+        d, api, clock = self.daemon()
+        post(self.ts, MEMBER, "one")
+        d.tick()
+        team = d.teams["alpha"]
+        pending = team.pending[MEMBER]
+        pending.landed_ms = d.now_ms()
+        pending.turn_completed_since_landing = False
+        d.stability.pop("term_r1", None)  # what a sample gap over ``sample_gap_reset_ms`` does
+        clock.advance(60)
+        d._evaluate_member(team, team.member(MEMBER), pending, d.now_ms())
+        self.assertFalse(pending.turn_completed_since_landing)
+        self.assertEqual(pending.hold, gate.HOLD_RENUDGE_WAIT)
 
 
 if __name__ == "__main__":

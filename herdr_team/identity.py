@@ -429,6 +429,10 @@ def _env_team(env: Dict[str, str], team: Optional[str]) -> Optional[str]:
         return None
 
 
+#: What ``--name``/``HERDR_TEAM_HUMAN`` means, printed wherever a command drops one.
+IGNORED_LABEL_NOTE = "--name names the operator behind a verified human pane; it is ignored here"
+
+
 def _apply_label(author: Author, label: Optional[str], env: Dict[str, str]) -> Author:
     raw = label if label is not None else env.get("HERDR_TEAM_HUMAN")
     if not raw:
@@ -441,6 +445,22 @@ def _apply_label(author: Author, label: Optional[str], env: Dict[str, str]) -> A
         note = "--name ignored on an unverified or non-human path"
         author.reason = "{}; {}".format(author.reason, note) if author.reason else note
     return author
+
+
+def ignored_label_note(author: Author) -> Optional[str]:
+    """One sentence for a ``--name`` this author does not get, or None.
+
+    The label is applied in exactly one place (``_apply_label``) and recorded
+    in exactly one place (``origin["ignored_label"]``), so the *report* belongs
+    here too. Before this, a command either warned in its own words or -- on
+    ``board``, which is what the live run hit -- dropped the label without a
+    word, so a member could keep passing ``--name`` and keep reading its own
+    inbox while believing it was reading somebody else's.
+    """
+    dropped = author.origin.get("ignored_label")
+    if not dropped:
+        return None
+    return "{} ({!r}); reading as {}".format(IGNORED_LABEL_NOTE, dropped, author.name)
 
 
 def _apply_operator_grant(author: Author, layout: Layout) -> Author:

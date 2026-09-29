@@ -273,3 +273,62 @@ class UrgentSystemEventTests(unittest.TestCase):
         roster.append_system_record(self.ts.team, "artifacts_changed", "artifacts: new a.md", to=["all"], extra={"urgent": True})
         self.d.tail_boards()
         self.assertEqual(self.team.pending, {})
+
+
+class LandedButUnreadSweepTests(unittest.TestCase):
+    """E4 / H4: a nudge that landed, was never read, and sits on a pane that has been idle ever since.
+
+    The ordinary sweep skips any member that already has pending work, so this
+    one case fell between the two mechanisms: the re-nudge ladder was waiting
+    for a completed turn the pane would never make, and the sweep would not
+    look at it at all. The backstop grants no new authority -- it clears the
+    ``renudge_wait`` hold and lets the normal gate decide.
+    """
+
+    setUp = IdleSweepTests.setUp
+    sweep = IdleSweepTests.sweep
+
+    def landed(self, seqs=(1,)):
+        pending = D.Pending(seqs=list(seqs), first_ms=self.d.now_ms())
+        pending.landed_ms = self.d.now_ms()
+        pending.landed_seq_max = max(seqs)
+        pending.attempts = 1
+        pending.turn_completed_since_landing = False
+        pending.next_eligible_ms = self.d.now_ms() + 10 ** 9
+        self.team.pending["alpha-reviewer"] = pending
+        return pending
+
+    def test_a_landed_pending_on_a_quiet_pane_is_looked_at_again(self):
+        pending = self.landed()
+        self.clock.advance(D.IDLE_SWEEP_AFTER_S + 5)
+        self.sweep()
+        self.assertTrue(pending.turn_completed_since_landing)
+        self.assertLessEqual(pending.next_eligible_ms, self.d.now_ms())
+        self.assertTrue(any("idle since" in line for line in self.d.logged), self.d.logged[-6:])
+
+    def test_it_waits_the_same_interval_as_the_ordinary_sweep(self):
+        pending = self.landed()
+        self.clock.advance(D.IDLE_SWEEP_AFTER_S - 10)
+        self.sweep()
+        self.assertFalse(pending.turn_completed_since_landing)
+
+    def test_a_pane_that_did_go_working_is_left_to_the_ordinary_schedule(self):
+        pending = self.landed()
+        self.clock.advance(D.IDLE_SWEEP_AFTER_S + 5)
+        self.d.stability["term_r1"].idle_since_ms = pending.landed_ms + 1000.0
+        self.sweep()
+        self.assertFalse(pending.turn_completed_since_landing)
+
+    def test_a_pending_that_never_landed_is_not_touched(self):
+        pending = self.landed()
+        pending.landed_ms = None
+        self.clock.advance(D.IDLE_SWEEP_AFTER_S + 5)
+        self.sweep()
+        self.assertFalse(pending.turn_completed_since_landing)
+
+    def test_a_working_member_is_left_alone(self):
+        pending = self.landed()
+        self.clock.advance(D.IDLE_SWEEP_AFTER_S + 5)
+        self.d.agents["term_r1"]["agent_status"] = "working"
+        self.sweep()
+        self.assertFalse(pending.turn_completed_since_landing)

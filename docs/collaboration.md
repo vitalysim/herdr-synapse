@@ -47,13 +47,38 @@ element; the rules judge primary changes.
 | 30 | `frozen` | a frozen element, what it holds, or a new mark in a frozen region: propose, or refuse `frozen` under `frozen: refuse` |
 | 40 | `stale_base` | an aimed element the operator changed after the batch's `base`: refuse `stale_base` (it yields to a proposal, which then carries a base note) |
 | 50 | `human_made` | the operator's marks, or a new mark in her container or on her top-level marks: propose, or live under `human_edits: live` (the event says `touched_human`) |
-| 60 | `peer` | a raised run changing another member's marks: propose |
+| 55 | `host_geometry` | a peer's mark inside a frame or group **you** made, moved or resized and nothing else: live (the element records `moved_by`) |
+| 60 | `peer` | a raised run changing another member's marks, apart from what `host_geometry` allows: propose |
 | 70 | `foreign_lane` | a plain member's new mark whose centre lies in another author's claim or home: propose |
 
 Combining: any refusal wins (except `stale_base`, which yields to a proposal);
 else any proposal makes the whole op one proposal (ops are never split); else
 live. A raised run that would be live for any other reason than her own
-`human_edits: live` is a proposal.
+`human_edits: live` or `host_geometry` is a proposal.
+
+### Inside your own frame or group
+
+**You may move and resize a peer's marks inside a container you made. Changing
+what they say is still a proposal.**
+
+This is the one place a member edits another's mark without asking. It exists
+because the alternative is worse: once the operator accepts a peer's proposal
+into your drawing, that drawing holds a mark that is not yours, and without this
+rule you can no longer tidy your own picture - a re-layout of it comes back as a
+proposal, and so does the next one. The rule restores *the author can always
+tidy their own drawing* without touching the one that matters, *nobody rewrites
+your words*.
+
+What counts as geometry is exactly `x`, `y`, `w`, `h`, `z` and, on an arrow
+bound to two marks, the route and label spot its ends imply. Everything else -
+the text, a body or a detail, a style, a pin, a delete, moving the mark out of
+your container - is a proposal as before. `busy`, `locked`, `frozen` and the
+operator's own marks are decided before this rule and still win.
+
+The mark stays the peer's: its `author` never changes, its per-author undo and
+its author chip are theirs. What changes is that the element records `moved_by`,
+the name of whoever last moved it, so the history and the layout engine know
+that where it sits is somebody else's doing.
 
 ### Adding a rule
 
@@ -205,10 +230,17 @@ the `busy` rule, the `operator_selected` warning, `look` (`operator:` and
 `here:` lines, `--region operator`) and every member's apply result
 (`operator: {viewport, selection, editing, pointing_at, age_s}`). The page's
 stream sends it as `presence`. Presence is a view, never authority. On the
-page an agent's pill and the operator's cursor label never cover a label the
-board draws or each other: a pill goes under its halo, else above it, else
-inside it, else further out, then shrinks to its chip, and a label with no
-clear place is left out (the halo and the dot stay).
+page an agent's pill and the operator's cursor label never cover the board's
+work - not a label it draws, and not the ink of any mark, which is the box of
+every entry in a content layer (`entryBoxes` in `web/src/v2/collab/labels.js`;
+a chip across the middle of a diagram was what made this a rule) - nor each
+other. A pill goes under its halo, else above it, else inside it, else further
+out; then in the nearest clear margin outside the whole drawing, with a one-pixel
+leader back to its halo; then it shrinks to its chip; and a label with no clear
+place is left out (the halo and the dot stay). The overlay layer is not the work:
+a claim, a lock or a freeze is drawn round marks, and presence lives in that
+layer itself. The halo rectangle is unchanged - it is an outline round the work
+and is meant to be seen.
 
 ## Readback
 

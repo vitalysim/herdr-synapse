@@ -8,7 +8,8 @@ for `patch`, `place`, pins and upserts.
 
 ## Graphs
 
-`graph {nodes, edges, groups, layout, direction, same_rank, order, route}`:
+`graph {nodes, edges, groups, layout, direction, same_rank, order, route,
+relayout}`:
 
 - A node is `{id, text, kind, tone, icon, in, detail}`: `kind` is box (the
   default), ellipse, diamond, note, card, sticky or icon; `in` names its group;
@@ -27,8 +28,16 @@ for `patch`, `place`, pins and upserts.
 Layout is incremental: a patch keeps what did not change where it was. A node
 someone dragged is pinned there (`pins: db(human)` in `look`) and never moves;
 `unpin` lets the layout have it again (an agent cannot lift a person's pin: ask
-them). `look` prints `crossings`; `check` suggests `patch {relayout: "full"}`
-when a full layout would cross fewer edges.
+them).
+
+A wire the layout redrew around too many times gets cut and drawn again, and
+the reply says so (`routes_recut`). When the drawing still reads badly, ask for
+it fresh: `relayout: "full"` on `graph` or `patch` drops every remembered
+position and every stored line and draws the block as one op would. It is the
+fix `check` prints for `crossings_high` (edges crossing where a reader sees
+it), `routes_tangled` (wire that wanders, doubles back, or is drawn along other
+wire) and `labels_adrift` (a label reading as some other node's). `look` prints
+`crossings`.
 
 ## Mind maps and sequences
 

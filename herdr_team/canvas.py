@@ -2668,16 +2668,37 @@ def _comment_ref(ctx: _Ctx, ref: Any, field: str) -> Dict[str, Any]:
     return el
 
 
+def _claim_region(ctx: _Ctx, region: List[int]) -> Tuple[List[int], List[str]]:
+    """``(region, ids)``: the region asked for, grown outward to hold whole any mark its boundary would cut.
+
+    A claim is drawn as a dashed rectangle over the board, so a boundary through a mark reads as the mark being cut
+    off (QA phase 6, V2: a claim edge through a chart's axis labels). It is also authority, so the growth is bounded
+    (``canvas_check.claim_snap``) and the op's answer says what it took in.
+    """
+    marks = [el for el in ctx.live() if el.get("type") not in ("frame", "comment", "arrow")]
+    snapped, over = _check.claim_snap(region, marks)
+    return (snapped, over) if over else (region, [])
+
+
 def _op_claim(ctx: _Ctx, op: Dict[str, Any]) -> None:
     if op.get("region") is None:
         raise _invalid("region", "claim needs region: where you are about to draw")
     region = _region(op["region"], "region", ctx.lookup)
     label = _text(op.get("label"), "label", MAX_LABEL_CHARS, "MAX_LABEL_CHARS", one_line=True) or ctx.intent
     _check_locks(ctx, [region])
+    region, over = _claim_region(ctx, region)
     # The oldest automatic claim goes first, then the oldest explicit one (phase 5, 4.1).
     own = sorted((c for c in ctx.state.active_claims(ctx.now) if c.get("author") == ctx.author.name),
                  key=lambda c: (not c.get("auto"), str(c.get("at")), _id_number(c.get("id"))))
     released = []
+    for claim in list(own):
+        # Claiming ground that holds one of your own claims whole corrects it rather than holding it twice: that is
+        # what re-claiming a snapped region is (``claim_edge``'s fix), and two claims over one region say nothing new.
+        found = claim.get("region")
+        if isinstance(found, list) and len(found) == 4 and _check._contains(region, found):
+            ctx.other("claim", "delete", claim["id"], None)
+            released.append(claim["id"])
+            own.remove(claim)
     while len(own) >= MAX_CLAIMS_PER_AUTHOR:
         oldest = own.pop(0)
         ctx.other("claim", "delete", oldest["id"], None)
@@ -2687,6 +2708,9 @@ def _op_claim(ctx: _Ctx, op: Dict[str, Any]) -> None:
                                     "at": ctx.ts, "expires_at": _iso(ctx.now + CLAIM_TTL_S)})
     ctx.created.append(cid)
     ctx.changed.extend(released)
+    if over:
+        # A claim is authority-bearing: growing it grows what it refuses others, so the answer says it grew and why.
+        ctx.warn("claim_snapped", "{} covers {} so its edge does not cut {}".format(cid, region_cells(region), _ids_text(over)), [cid] + over)
     _warn_claims(ctx, [cid], region)
 
 
@@ -4813,6 +4837,12 @@ def look_text(result: Dict[str, Any]) -> str:
         lines += _check.problem_lines(found, _check.LOOK_MAX)
     if result.get("image"):
         lines.append("image: {}".format(result["image"]))
+        unnamed = result.get("unnamed") or []
+        if unnamed:
+            # The picture's legend: a badge is never drawn on the words of the board, so at this zoom these marks
+            # carry none. They are in the listing above; zoom in (``--region``) to see their badges.
+            lines.append("  no id badge at this zoom (no room clear of the words): {}{}".format(
+                ", ".join(unnamed[:8]), " … {} more".format(len(unnamed) - 8) if len(unnamed) > 8 else ""))
     elif result.get("image_error"):
         lines.append("image: none ({}){}".format(result["image_error"], "; svg: {}".format(result["svg"]) if result.get("svg") else ""))
     return "\n".join(lines)
@@ -4853,7 +4883,8 @@ def _check_canvas(layout: Any, team: TeamPaths, reader: str, region: Any, around
         raise _error("usage", "use --region or --around, not both")
     state = _load_state(team)
     state.drop_expired(time.time())
-    elements = state.to_scene(time.time())["elements"]
+    found_scene = state.to_scene(time.time())
+    elements, claims = found_scene["elements"], found_scene["claims"]
 
     def lookup(ref: str, field: str) -> Dict[str, Any]:
         return _lookup_in(state, ref, reader, field)
@@ -4864,7 +4895,7 @@ def _check_canvas(layout: Any, team: TeamPaths, reader: str, region: Any, around
         box = [_round(x0 - AROUND_MARGIN), _round(y0 - AROUND_MARGIN), _round(x1 + AROUND_MARGIN), _round(y1 + AROUND_MARGIN)]
     elif region is not None:
         box = _region(region, "region", lookup)
-    found = _check.problems(elements, reader, box)
+    found = _check.problems(elements, reader, box, claims=claims)
     if mine:
         found = [p for p in found if p["yours"]]
     head = "canvas of {} · v{} · {}".format(team.name, state.version, "{} problem{}".format(len(found), "" if len(found) == 1 else "s") if found else "no layout problems")
@@ -4977,8 +5008,8 @@ def _look(layout: Any, team: TeamPaths, reader: str, region: Any, around: Option
         "since": since_version, "changes": changes, "complete": complete, "reset": reset,
         "claims": scene["claims"], "locks": scene["locks"], "legend": scene["legend"],
         "comments_for_you": [el for el in elements if el.get("type") == "comment" and not el.get("resolved") and reader in (el.get("mentions") or [])],
-        "image": None, "svg": None, "image_error": None, "exact": False,
-        "problems": _check.problems(elements, reader, box),
+        "image": None, "svg": None, "image_error": None, "exact": False, "unnamed": [],
+        "problems": _check.problems(elements, reader, box, claims=scene["claims"]),
         "blocks": {el["id"]: blocks.spec_of(elements, el) for el in full if blocks._is_root(el)},
         "full": bool(full_detail), "_scene": elements,
     }
@@ -5043,6 +5074,7 @@ def _look(layout: Any, team: TeamPaths, reader: str, region: Any, around: Option
             result["image"] = rendered["png"]
             result["svg"] = rendered["svg"]
             result["image_error"] = result["image_error"] or rendered["image_error"]
+            result["unnamed"] = rendered.get("unnamed") or []
     result["text"] = look_text(result)
     for key in ("_scene", "_stills", "_tags", "_by_id", "_now", "_team"):
         result.pop(key, None)

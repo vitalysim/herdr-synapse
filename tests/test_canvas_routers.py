@@ -47,6 +47,16 @@ class Registry(RouterConformance, unittest.TestCase):
         with self.assertRaises(R.RouteError):
             R.route("straight", RouteRequest(id="x", a=End(box=(0, 0, 1, 1), outline="star"), b=End(box=(5, 5, 6, 6))))
 
+    def test_every_router_keeps_the_quality_contract(self):
+        """What a route and a batch of routes cost a reader (canvas v2 layout clarity, 3.4).
+
+        The batch label rule and the batch fixed point were both red before the source-anchored label placement and
+        the crossing cost landed: the ``fan`` and ``corridor`` batches stacked their pills into one column in a
+        neighbour's corridor, and the corridor's second pass drew different lines from its first."""
+        for router in R.routers():
+            with self.subTest(router=router.name):
+                self.check_route_quality(router.name)
+
     def test_curved_is_the_straight_points_drawn_as_a_curve(self):
         request = RouteRequest(id="c", a=End(box=(0, 0, 100, 50)), b=End(box=(300, 200, 400, 250)), via=((200.0, 20.0),))
         self.assertEqual(R.route("curved", request).points, R.route("straight", request).points)

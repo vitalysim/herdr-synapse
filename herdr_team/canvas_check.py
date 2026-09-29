@@ -17,7 +17,8 @@ can act on (``canvas check``, the MCP ``canvas_check`` tool, and the
   kind's own check);
 * ``frame_edge``: a mark half inside a frame;
 * ``arrow_through``: an arrow crossing a mark it does not connect;
-* ``stray``: a mark far from everything else.
+* ``stray``: a mark far from everything else;
+* ``claim_edge``: an active claim's boundary drawn through a mark, so the mark reads as cut off.
 
 Every problem carries ``ids``, a one-line ``message``, and ``fix``: a ready
 ``move`` operation when there is an obvious one (``None`` otherwise, the
@@ -70,7 +71,13 @@ STRAY_MIN_MARKS = 4
 FRAME_PAD = 20
 #: Problems a ``look`` shows; ``canvas check`` lists every one.
 LOOK_MAX = 8
-SEVERITY = {"overlap": 0, "text_on_label": 0, "label_overflow": 1, "label_truncated": 1, "frame_edge": 2, "arrow_through": 3, "stray": 4}
+#: The order ``problems`` reports in, most serious first. The codes a kind of element contributes sort here too
+#: (canvas v2 layout clarity, 6): a tangle a reader cannot follow is as serious as an arrow through a mark
+#: (``arrow_through``, 3), a label or a claim edge on the wrong thing as serious as a stray (4), and a badly
+#: shaped drawing after both (5).
+SEVERITY = {"overlap": 0, "text_on_label": 0, "label_overflow": 1, "label_truncated": 1, "frame_edge": 2,
+            "arrow_through": 3, "crossings_high": 3, "routes_tangled": 3, "stray": 4, "labels_adrift": 4,
+            "claim_edge": 4, "graph_thin": 5}
 
 
 def box_of(el: Dict[str, Any]) -> Tuple[float, float, float, float]:
@@ -394,6 +401,100 @@ def _arrows_through(arrows: List[Dict[str, Any]], solid: List[Dict[str, Any]], r
     return out
 
 
+#: How far a claim's boundary is grown, at most, to take in the marks it cuts: a multiple of the area asked for.
+#: A claim carries authority (what it refuses others), so it may tidy its edge and never annex a neighbourhood.
+CLAIM_SNAP_MAX_AREA = 3.0
+#: How many times the snap looks again after growing (growing can reach a mark the first pass did not touch).
+CLAIM_SNAP_PASSES = 4
+
+
+#: How much of a mark a claim has to hold before its boundary counts as drawn *through* the mark rather than beside
+#: it. A claim's edge always ends somewhere, and ending in the margin of the next mark along is not a problem worth
+#: an agent's turn; holding most of a chart and cutting its axis labels off is (V2). It is also what keeps the snap
+#: honest: a claim never grows over a mark it holds less than half of, because that mark is its neighbour's.
+CLAIM_CUT_SHARE = 0.5
+
+
+def claim_cuts(region: Sequence[float], marks: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """The marks this region's boundary is drawn through: most of the mark inside it, and the rest outside.
+
+    A mark wholly inside a claim is claimed and a mark mostly outside is its neighbour's; one the claim holds most of
+    is drawn half in one authority and half in another, which is what a reader sees as a line through their words.
+    """
+    box = (float(region[0]), float(region[1]), float(region[2]), float(region[3]))
+    out = []
+    for el in marks:
+        other = box_of(el)
+        if _contains(box, other) or not _intersects(box, other, TOUCH):
+            continue
+        width, height = _overlap(box, other)
+        area = max(1.0, (other[2] - other[0]) * (other[3] - other[1]))
+        if width * height >= CLAIM_CUT_SHARE * area:
+            out.append(el)
+    return out
+
+
+def claim_snap(region: Sequence[float], marks: Iterable[Dict[str, Any]],
+               max_area: float = CLAIM_SNAP_MAX_AREA) -> Tuple[List[int], List[str]]:
+    """``(region, ids)``: the region grown outward to hold whole the marks its boundary cut, and which those were.
+
+    Bounded by ``max_area`` times the area asked for, and it stops before the step that would pass it, so a claim
+    beside one big diagram never swallows it. Pure, and the same answer whatever order the marks come in.
+    """
+    listed = [el for el in marks if isinstance(el, dict) and el.get("id")]
+    box = [float(region[0]), float(region[1]), float(region[2]), float(region[3])]
+    room = max(1.0, (box[2] - box[0]) * (box[3] - box[1])) * max(1.0, float(max_area))
+    taken: List[str] = []
+    for _pass in range(CLAIM_SNAP_PASSES):
+        cuts = sorted(claim_cuts(box, (el for el in listed if str(el["id"]) not in taken)), key=lambda el: str(el["id"]))
+        if not cuts:
+            break
+        grown = list(box)
+        for el in cuts:
+            other = box_of(el)
+            candidate = [min(grown[0], other[0]), min(grown[1], other[1]), max(grown[2], other[2]), max(grown[3], other[3])]
+            if (candidate[2] - candidate[0]) * (candidate[3] - candidate[1]) > room:
+                continue
+            grown = candidate
+            taken.append(str(el["id"]))
+        if grown == box:
+            break
+        box = grown
+    return [int(math.floor(box[0])), int(math.floor(box[1])), int(math.ceil(box[2])), int(math.ceil(box[3]))], taken
+
+
+def _claim_edges(claims: Sequence[Dict[str, Any]], marks: List[Dict[str, Any]], reader: Optional[str],
+                 by_id: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Every mark an active claim's boundary crosses (V2): the overlay class the agent's feedback loop could not see.
+
+    A claim is drawn as a dashed rectangle over the board, so its edge through a chart's axis labels reads as the
+    chart being cut off - which is how the operator found it, and check called the board clean.
+    """
+    out = []
+    for claim in claims or ():
+        region = claim.get("region")
+        if not isinstance(region, (list, tuple)) or len(region) != 4:
+            continue
+        cuts = claim_cuts(region, marks)
+        if not cuts:
+            continue
+        author = str(claim.get("author") or "")
+        snapped, took = claim_snap(region, marks)
+        # A snap that holds none of them whole (it would pass ``claim_snap``'s bound) has no operation to offer: say so.
+        mine = bool(reader) and (author == reader or reader == "human") and bool(took)
+        fix = {"op": "claim", "region": snapped, "intent": "claim the region that does not cut {}".format(
+            ", ".join(str(el["id"]) for el in cuts[:3]))} if mine else None
+        if fix is not None and str(claim.get("label") or ""):
+            fix["label"] = str(claim["label"])[:80]
+        advice = ("claim {} instead, which holds them whole (this one expires on its own)".format(snapped) if mine
+                  else "claim a region that holds them whole, or leave them to {}".format(author or "their author")
+                  if author == reader or reader == "human" else "ask {} to claim a region that holds them whole".format(author or "its author"))
+        out.append(_problem("claim_edge", [str(claim.get("id") or "")] + [str(el["id"]) for el in cuts],
+                            "claim {}'s edge cuts across {}; {}".format(claim.get("id"), ", ".join(_name(el) for el in cuts[:3]), advice),
+                            fix, reader, by_id))
+    return out
+
+
 def _gap(box: Sequence[float], other: Sequence[float]) -> float:
     return max(0.0, max(other[0] - box[2], box[0] - other[2])) + max(0.0, max(other[1] - box[3], box[1] - other[3]))
 
@@ -468,6 +569,7 @@ CHECKS: List[Check] = [
     Check("frame_edge", 2, lambda live, env: _frame_edges(env["groups"]["marks"], env["groups"]["frames"], env["reader"], env["by_id"])),
     Check("arrow_through", 3, lambda live, env: _arrows_through(env["groups"]["arrows"], env["groups"]["solid"], env["reader"], env["by_id"])),
     Check("stray", 4, lambda live, env: _strays(env["groups"]["marks"], env["reader"], env["by_id"])),
+    Check("claim_edge", 4, lambda live, env: _claim_edges(env["claims"], env["groups"]["marks"], env["reader"], env["by_id"])),
 ]
 
 
@@ -494,14 +596,17 @@ def _kind_checks(live: List[Dict[str, Any]], env: Dict[str, Any]) -> List[Proble
     return out
 
 
-def problems(elements: Iterable[Dict[str, Any]], reader: Optional[str] = None, region: Optional[Sequence[float]] = None) -> List[Dict[str, Any]]:
+def problems(elements: Iterable[Dict[str, Any]], reader: Optional[str] = None, region: Optional[Sequence[float]] = None,
+             claims: Optional[Sequence[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
     """Every layout problem on these elements, most serious first and the reader's own first within each kind.
 
-    ``region`` keeps the problems that touch it (either mark in view).
+    ``region`` keeps the problems that touch it (either mark in view). ``claims`` are the scene's active claims,
+    which are not elements but are drawn over them (``claim_edge``); without them that check finds nothing.
     """
     live = [el for el in elements if isinstance(el, dict) and el.get("id") and not el.get("deleted")]
     by_id = {str(el["id"]): el for el in live}
-    env: Dict[str, Any] = {"reader": reader, "by_id": by_id, "groups": _groups(live)}
+    env: Dict[str, Any] = {"reader": reader, "by_id": by_id, "groups": _groups(live),
+                           "claims": [c for c in claims or () if isinstance(c, dict)]}
     found: List[Problem] = []
     for check in CHECKS:
         found.extend(check.run(live, env))

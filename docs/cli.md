@@ -24,11 +24,19 @@ Pi context JSON can contain `used: null`, `percent: null`, and `estimated: true`
 
 Members with an unfinished swap are skipped until that operation is retried or cancelled.
 
-`herdr-synapse restore <team> [--workspace ID] [--dry-run]` restores missing members into a new `team:<name>` tab in the current workspace. Teams larger than 24 restored members use additional numbered tabs. The command requires human/operator authority and an existing team in the selected Herdr session.
+`herdr-synapse restore <team> [--workspace ID] [--dry-run] [--refresh-flags]` restores missing members into a new `team:<name>` tab in the current workspace. Teams larger than 24 restored members use additional numbered tabs. The command requires human/operator authority and an existing team in the selected Herdr session.
+
+A member whose own pane is still standing, still carrying its `team:<name>/<role>` label and holding no agent, is restored **into that pane** instead of a new one, so a team comes back in its own splits. A label two panes claim identifies neither, and an explicit `--workspace` outside the pane's workspace is honoured over the pane.
+
+`--refresh-flags` repairs a member Herdr's own session restore brought back. Herdr rebuilds `codex resume <id>` or `claude --resume <id>` from the conversation reference alone, so the member runs without the approval-bypass flag, without `mcp_servers.synapse_canvas` and without any pane-local flag — it looks healthy on the roster and then asks permission for every canvas command, or has no canvas door at all. With the flag, `restore` compares each running member's live command line against what `models.launch_args` would have built and, for any behaviour-changing flag that is absent, records the controlled restart the notifier already performs: it exits the member when it is idle and resumes its conversation with the flags in place. `restore` itself never types into a pane and never stops a process. Model, effort and profile are never counted as missing; they are the member's own preference and visible in `who`. Without the flag nothing is audited and no extra call is made. Such a member is reported with `status: "relaunch"`, its `missing_launch_flags`, the `control` block and the `record_seq` of the board record.
+
+The notifier raises the same finding on its own, once, at the one moment it can: when it adopts a member's process rather than starting it. That is a `launch_flags_missing` system record addressed to the operator, naming the member, the missing flags and the one command that repairs them. It is deliberately a notice and not an automatic repair — quitting and relaunching a pane the operator may be reading is worse than telling them. A `pane_recovered` record names a missing member's own surviving empty pane.
+
+For any agent kind whose conversation identity comes from its integration (opencode, pi, omp, kilo, kimi, mastracode), run `herdr integration install <kind>` before you rely on restore. Without it a Herdr restart costs that member a fresh conversation and a briefing turn, because nothing recorded which conversation was in the pane.
 
 Recorded conversations resume by exact ID using the member's effective model/effort configuration. Members without a conversation ID start fresh with their saved instructions and briefing. Already-running agents and members whose reserved pane still exists are skipped. Missing executables/directories, conflicting names, unsupported conversation references and startup failures are reported per member; eligible members continue. Failed panes remain available for inspection, and repeated calls do not duplicate them. Board history, read cursors, manager assignment, team links and member documents are preserved.
 
-`--dry-run` performs read-only preflight and returns `{team, dry_run: true, members}`. Execution returns `{team, tabs, members, counts}`, where `counts` contains `resumed`, `fresh`, `skipped` and `failed`. Each member includes `name`, `kind`, `role`, `status`, and, when applicable, its `mode`, `pane_id`, `terminal_id`, launch arguments and failure `reason`. Progress goes to stderr; `--json` keeps stdout to one result object. Exit 0 means no member failed; exit 1 means partial or complete member failure. An overlapping restore is refused with `restore_busy` (exit 5). A recorded session failing to resume never silently falls back to a new conversation.
+`--dry-run` performs read-only preflight and returns `{team, dry_run: true, members}`. Execution returns `{team, tabs, members, counts}`, where `counts` contains `resumed`, `relaunch`, `fresh`, `skipped` and `failed`. Each member includes `name`, `kind`, `role`, `status`, and, when applicable, its `mode`, `pane_id`, `terminal_id`, launch arguments and failure `reason`. Progress goes to stderr; `--json` keeps stdout to one result object. Exit 0 means no member failed; exit 1 means partial or complete member failure. An overlapping restore is refused with `restore_busy` (exit 5). A recorded session failing to resume never silently falls back to a new conversation.
 
 ## Create a replacement agent
 
@@ -755,13 +763,25 @@ JSON `{"seq":42,"team":"vuln-hunt","notifier":"alive|offline","to":["reviewer"],
 
 ```
 board [--new | --peek] [--to me | --from <name> | --kind <k> | --thread <seq> | --since <seq> | --last N]
-      [--receipts] [--format text|json|context] [--limit N] [--max-bytes N] [--max N]
+      [--receipts] [--format text|json|context] [--limit N] [--max-bytes N] [--max N] [--name LABEL]
 ```
 
 - Default (no `--new`/`--peek`): `--last 30`, no cursor change.
 - `--new`: posts to me or `all` since my cursor, `--limit 100`, 32 KiB cap,
   advances the cursor to the highest seq printed after stdout is flushed.
 - `--peek`: same selection, never advances. Hooks only peek.
+- `--name LABEL`: the operator's own label, which names the human cursor over
+  the operator's inbox. **A member passing it is refused** (`usage`, exit 2).
+  It is not a way to read a teammate's mail and never was: a member is already
+  an identity, so the label was dropped and the read returned the member's own
+  inbox under its own cursor. That is a behaviour change in 0.22: a member
+  script passing `--name` starts failing, which is the point. The same refusal
+  applies to `post --name`. A human path that may not use the label is told so
+  in one sentence on stderr instead of having it silently dropped.
+- An empty `--new` read states the cursor it is holding at and, in the same
+  words `ack` uses, names what is unread but was not shown — so
+  `0 posts … (cursor 135, held); 3 unread posts you have not been shown` can
+  never again read as an empty inbox.
 - `--format context`: the Claude hook format (fixed header line, fenced
   posts). `--max 20 --max-bytes 4096` defaults in that format.
 - `--receipts`: adds `nudged` (board `system` records) and `read` (cursors).

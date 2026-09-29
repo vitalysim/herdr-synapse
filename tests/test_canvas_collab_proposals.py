@@ -9,6 +9,7 @@ from collab_support import DEPUTY, LEAD, MANAGER, MEMBER, PEER, CollabRig
 
 from herdr_team import canvas as C
 from herdr_team import canvas_collab as K
+from herdr_team import canvas_collab as K
 from herdr_team import features as F
 
 
@@ -279,3 +280,79 @@ class Fixtures(CollabRig):
         self.assertIn("pointing_at", results["operator"]["operator"])
         self.assertTrue(results["undo"]["applied"][0]["undo"]["skipped"])
         self.assertIn("restore", results["restore"]["applied"][0])
+
+
+class HostGeometry(CollabRig):
+    """A1 (canvas v2 layout clarity, 5.6): inside a frame or a group its author made, that author may move and
+    resize a peer's marks live; changing what they say is still a proposal.
+
+    The demo that raised this: the operator accepted a sketcher's proposal into a coder's graph, and from then on the
+    coder could not tidy its own drawing - its re-layout came back as a proposal, and the next one too. The rule
+    restores *the author can always tidy their own drawing* without touching *nobody rewrites your words*.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.frame = self.ok({"op": "frame", "title": "Mine", "at": [0, 0], "w": 800, "h": 600, "intent": "t"})["ids"][0]
+        made = self.proposed({"op": "shape", "kind": "box", "text": "Peer mark", "at": [200, 200], "intent": "t"}, PEER)
+        self.ok({"op": "accept", "id": made["proposal"], "intent": "t"}, LEAD)
+        self.peer_mark = made["created"][0]
+        self.assertEqual((self.el(self.peer_mark)["author"], self.el(self.peer_mark)["frame"]), (PEER.name, self.frame))
+
+    def test_the_host_moves_and_resizes_a_peers_mark_live(self):
+        result = self.apply([{"op": "move", "id": self.peer_mark, "by": [40, 0], "intent": "tidy"}])
+        self.assertEqual((len(result["applied"]), result["proposed"]), (1, []))
+        found = self.el(self.peer_mark)
+        self.assertEqual((found["x"], found["author"], found["moved_by"]), (240, PEER.name, MEMBER.name),
+                         "the mark is still theirs; who put it there is recorded")
+        self.assertEqual(len(self.apply([{"op": "move", "id": self.peer_mark, "w": 260, "h": 140, "intent": "t"}])["applied"]), 1)
+
+    def test_what_the_mark_says_is_still_theirs(self):
+        elsewhere = self.ok({"op": "frame", "title": "Also mine", "at": [1000, 0], "w": 600, "h": 400, "intent": "t"})["ids"][0]
+        for op in ({"op": "edit", "id": self.peer_mark, "text": "Reworded"},
+                   {"op": "restyle", "ids": [self.peer_mark], "tone": "danger"},
+                   {"op": "delete", "id": self.peer_mark},
+                   {"op": "move", "id": self.peer_mark, "inside": elsewhere}):
+            with self.subTest(op=op["op"]):
+                self.assertEqual(self.proposed(dict(op, intent="t"))["reason"], "peer")
+        self.assertEqual(self.el(self.peer_mark)["text"], "Peer mark")
+
+    def test_outside_its_own_container_nothing_changes(self):
+        outside = self.ok({"op": "shape", "kind": "box", "text": "Theirs", "at": [2000, 2000], "intent": "t"}, PEER)["ids"][0]
+        self.assertEqual(self.proposed({"op": "move", "id": outside, "by": [20, 0], "intent": "t"})["reason"], "peer",
+                         "a peer's mark that is in nothing of mine is still a proposal")
+
+    def test_a_freeze_a_lock_and_the_operators_own_marks_still_come_first(self):
+        self.ok({"op": "freeze", "ids": [self.peer_mark], "label": "held"}, LEAD)
+        self.assertEqual(self.proposed({"op": "move", "id": self.peer_mark, "by": [20, 0], "intent": "t"})["reason"], "frozen")
+        self.ok({"op": "thaw", "id": self.scene()["freezes"][0]["id"]}, LEAD)
+        self.ok({"op": "lock", "region": [0, 0, 800, 600], "label": "hands off"}, LEAD)
+        self.assertEqual(self.refused({"op": "move", "id": self.peer_mark, "by": [20, 0], "intent": "t"})["code"], "canvas_locked")
+
+    def test_is_geometry_only_and_hosts_are_pure_and_narrow(self):
+        before = {"id": "E-9", "type": "box", "x": 0, "y": 0, "w": 100, "h": 50, "z": 3, "text": "Words", "frame": "E-1",
+                  "author": "them", "author_kind": "member"}
+        self.assertTrue(K.is_geometry_only(before, dict(before, x=40, y=20, z=9, updated_seq=7, updated_at="now")))
+        self.assertTrue(K.is_geometry_only(before, dict(before, w=200, h=90, fit={"size": 14})))
+        self.assertFalse(K.is_geometry_only(before, dict(before, fit={"size": 14})), "a refit alone redraws the words")
+        for after in (None, dict(before, text="Other"), dict(before, frame="E-2"), dict(before, frame=None),
+                      dict(before, pin={"by": "human"}), dict(before, style={"tone": "danger"}),
+                      dict(before, points=[[0, 0], [10, 10]]), dict(before, body="a body"), dict(before, resolved=True)):
+            self.assertFalse(K.is_geometry_only(before, after), after)
+        arrow = {"id": "E-4", "type": "arrow", "from": "E-9", "to": "E-8", "points": [[0, 0], [10, 0]], "label_at": [5, 0]}
+        self.assertTrue(K.is_geometry_only(arrow, dict(arrow, points=[[0, 0], [20, 0]], label_at=[10, 0])),
+                        "a bound arrow's route follows the marks it joins")
+        self.assertFalse(K.is_geometry_only(dict(arrow, **{"from": None, "to": None}),
+                                            dict(arrow, **{"from": None, "to": None, "points": [[0, 0], [20, 0]]})),
+                         "a free arrow's points are its drawing, not a consequence")
+        by_id = {"E-1": {"id": "E-1", "type": "frame", "author": "me", "author_kind": "member"},
+                 "E-2": {"id": "E-2", "type": "frame", "author": "them", "author_kind": "member", "frame": "E-1"},
+                 "E-3": {"id": "E-3", "type": "frame", "author": "human", "author_kind": "human"}}
+        self.assertEqual(K.hosts("me", {"frame": "E-1"}, by_id), "E-1")
+        self.assertEqual(K.hosts("me", {"frame": "E-2"}, by_id), "E-1", "up the chain: their frame inside mine")
+        self.assertIsNone(K.hosts("me", {"frame": "E-3"}, by_id), "the operator's frame is hers, not a member's host")
+        self.assertIsNone(K.hosts("me", {"frame": "E-9"}, by_id), "a container that is not there hosts nothing")
+        self.assertIsNone(K.hosts("me", {}, by_id))
+        cycle = {"A-1": {"id": "A-1", "author": "them", "author_kind": "member", "frame": "A-2"},
+                 "A-2": {"id": "A-2", "author": "them", "author_kind": "member", "frame": "A-1"}}
+        self.assertIsNone(K.hosts("me", {"frame": "A-1"}, cycle), "a cycle ends the walk")

@@ -300,8 +300,11 @@ class Checks(unittest.TestCase):
                             "points": [[200 * i + 80, 64], [200 * (3 - i) + 80, 396]]})
         by_id = {el["id"]: el for el in [root] + members}
         [problem] = G.crossings_high(root, {"by_id": by_id})
-        self.assertEqual(problem["fix"], {"op": "patch", "id": "g", "relayout": "full", "intent": "lay g out again from scratch"})
-        self.assertIn("6 edge crossings", problem["message"])
+        # The repair is the ``graph`` op's own ``relayout``, not a ``patch``: re-issuing the drawing is what an agent
+        # reaches for, and before ``relayout`` was a field of ``graph`` it was byte for byte a no-op.
+        self.assertEqual(problem["fix"], {"op": "graph", "id": "g", "relayout": "full", "intent": "draw g again from scratch"})
+        self.assertIn("6 edge crossings a reader can see", problem["message"])
+        self.assertIn("worst:", problem["message"])
 
 
 class Mermaid(GraphRig):

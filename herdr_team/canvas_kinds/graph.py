@@ -30,7 +30,7 @@ from dataclasses import replace
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from herdr_team import canvas_display as D
-from herdr_team import canvas_icons, canvas_layout, canvas_layouts, canvas_routers, canvas_theme
+from herdr_team import canvas_icons, canvas_layout, canvas_layouts, canvas_readability, canvas_routers, canvas_theme
 from herdr_team.canvas_kinds import Arrangement, Kind, OpSpec, get, kind_of, kinds, outline
 from herdr_team.canvas_kinds import _zone, diagram
 from herdr_team.canvas_kinds._common import DASHES, HEADS, Element, bounds, quote
@@ -528,13 +528,24 @@ def arrange(root: Element, members: List[Element], env: Dict[str, Any]) -> Arran
     order_of = {part: index for index, part in enumerate(sorted(nodes, key=lambda p: _num_id(nodes[p]["id"])))}
     layout = canvas_layouts.get(settings.get("layout") or "layers") or canvas_layouts.get("layers")
     assert layout is not None
+    direction_of = settings.get("direction") or "down"
+    room = _port_room(nodes, edges, direction_of, float(tokens.get("port_spacing", 12)))
     lnodes = []
     for part, el in nodes.items():
         x0, y0, x1, y1 = _box(el)
         pinned = el.get("pin") is not None or el["id"] in held
         fresh = int(el.get("created_seq") or 0) == fresh_seq and not pinned
+        width, height = x1 - x0, y1 - y0
+        if not pinned:
+            # A hub grows to fit its own wires. Seven edges off one 60-unit side cannot be spread: the ports clamp
+            # into a bunch and the seven wires read as one thick line leaving the box. The layout has to know the
+            # size before it places anything, so the degree count happens here, before the nodes are built.
+            if direction_of in ("right", "left"):
+                height = max(height, room.get(part, 0.0))
+            else:
+                width = max(width, room.get(part, 0.0))
         lnodes.append(canvas_layouts.LNode(
-            id=part, w=x1 - x0, h=y1 - y0, order=order_of[part], group=part_of.get(str(el.get("frame"))) if layout.groups else None,
+            id=part, w=width, h=height, order=order_of[part], group=part_of.get(str(el.get("frame"))) if layout.groups else None,
             pin=(x0 - ox, y0 - oy) if pinned else None, pin_by=(el.get("pin") or {}).get("by") if pinned else None,
             seed=(x0 - ox, y0 - oy) if incremental and not fresh and not pinned else None))
     group_pad = tokens.get("group_pad") if isinstance(tokens.get("group_pad"), list) and len(tokens["group_pad"]) == 4 else [20, 40, 20, 20]
@@ -578,13 +589,21 @@ def arrange(root: Element, members: List[Element], env: Dict[str, Any]) -> Arran
         for part, (x0, y0, x1, y1) in found.items():
             frames[groups[part]["id"]] = (x0, y0, x1 - x0, y1 - y0)
             group_world[part] = (x0, y0, x1, y1)
-    routes, blocked = route_edges(root, nodes, groups, edges, loose, world, group_world, result, settings, (ox, oy))
+    routes, blocked, stale = route_edges(root, nodes, groups, edges, loose, world, group_world, result, settings, (ox, oy),
+                                         fresh_routes=not incremental)
     notes = tuple(n for n in result.notes if not n.startswith("pin_ignored"))
     if ROUTE_BUDGET_NOTE in blocked:
         notes += ("route_budget: routing ran out of its budget; the edges it did not reach are drawn straight (check names any that "
                   "cross a node)",)
     notes += tuple("route_blocked {}: no clear route, drawn straight".format(part) for part in blocked if part != ROUTE_BUDGET_NOTE)
+    if stale:
+        # One note, not one per edge: an agent that is told its drawing changed can undo it, and an agent that is not,
+        # cannot. Naming the edges is what makes it actionable and keeps the note honest about how much moved.
+        notes += ("routes_recut: {} edge{} had gone stale (too long, doubling back, or the label adrift) and {} drawn "
+                  "again: {}".format(len(stale), "" if len(stale) == 1 else "s", "was" if len(stale) == 1 else "were",
+                                     ", ".join(stale[:8]) + (" and more" if len(stale) > 8 else "")),)
     stats = dict(result.stats)
+    stats["routes_recut"] = float(len(stale))
     return Arrangement(boxes=boxes, routes=routes, frames=frames, notes=notes, stats=stats)
 
 
@@ -632,12 +651,67 @@ def _label_size(el: Element) -> Optional[Tuple[float, float]]:
     return (float(found[0]), float(found[1])) if found is not None else None
 
 
+def _port_room(nodes: Mapping[str, Element], edges: Mapping[str, Element], direction: str,
+               port_spacing: float) -> Dict[str, float]:
+    """How long each node's busiest side has to be for its wires to leave it side by side, by part.
+
+    Edges leave the side the flow advances toward and arrive on the side across from it, so a node's busiest side
+    carries either its out-degree or its in-degree, whichever is larger. Below ``(count + 1) x port_spacing`` the
+    router's ports clamp into a bunch and the wires read as one line: ``parallel_bundle_len`` on the seven-edge hub
+    of the corpus is 343 units of exactly that.
+    """
+    part_by_id = {el["id"]: part for part, el in nodes.items()}
+    out: Dict[str, int] = {}
+    into: Dict[str, int] = {}
+    for el in edges.values():
+        a, b = part_by_id.get(str(el.get("from"))), part_by_id.get(str(el.get("to")))
+        if a is None or b is None or a == b:
+            continue
+        out[a] = out.get(a, 0) + 1
+        into[b] = into.get(b, 0) + 1
+    return {part: (max(out.get(part, 0), into.get(part, 0)) + 1) * port_spacing for part in nodes}
+
+
+def _label_seed(result: canvas_layouts.LayoutResult, part: str, ox: float, oy: float) -> Optional[Tuple[float, float]]:
+    """The label spot the layout kept room for, in world units: the first spot the router's label search tries.
+
+    A layered layout gives every labelled edge a dummy of the label's own size on its middle rank, so this spot is
+    the one place on the edge that is guaranteed clear of every other rank's item. It was computed and read by
+    nobody; the router now starts from it, and only keeps it while it is still on the route it drew.
+    """
+    found = result.labels.get(part)
+    return (ox + float(found[0]), oy + float(found[1])) if found is not None else None
+
+
+def _by_hand(el: Element, start: Optional[Element], end: Optional[Element]) -> bool:
+    """Whether somebody gave this route its shape on purpose, which is evidence of intent rather than staleness.
+
+    Two kinds of evidence, both recorded elsewhere and never guessed at. ``pin.by == "human"`` on the arrow or on
+    either end it joins: the operator placed it, and holding a pin is the whole point of one. And ``moved_by`` on the
+    arrow, which the review gate writes with the name of the container's author when they apply a geometry-only
+    change to a peer's mark (canvas v2 layout clarity, 2.2 and 5.6) - somebody tidied this wire deliberately, so it
+    is not the pipeline's to cut again.
+    """
+    if str(el.get("moved_by") or "").strip():
+        return True
+    if (el.get("pin") or {}).get("by") == "human":
+        return True
+    return any(bound is not None and (bound.get("pin") or {}).get("by") == "human" for bound in (start, end))
+
+
 def route_edges(root: Element, nodes: Mapping[str, Element], groups: Mapping[str, Element], edges: Mapping[str, Element],
                 loose: Sequence[Element], world: Mapping[str, Tuple[float, float, float, float]],
                 group_world: Mapping[str, Tuple[float, float, float, float]], result: canvas_layouts.LayoutResult,
-                settings: Mapping[str, Any], origin: Tuple[float, float]) -> Tuple[Dict[str, Dict[str, Any]], List[str]]:
+                settings: Mapping[str, Any], origin: Tuple[float, float],
+                fresh_routes: bool = False) -> Tuple[Dict[str, Dict[str, Any]], List[str], List[str]]:
     """Every edge routed along the layout's hints and ports, around every node and every group holding neither end; and
-    the edges that found no clear route (drawn straight)."""
+    the edges that found no clear route (drawn straight).
+
+    ``fresh_routes`` drops every stored polyline before it is looked at: what ``graph {relayout:"full"}`` and
+    ``patch {relayout:"full"}`` mean by "lay it out again from scratch". Otherwise a stored route is kept while it is
+    both legal and still good (``canvas_readability.route_good``), and ``stale`` names the ones that were cut again
+    so the op's answer can say what it changed.
+    """
     from herdr_team.canvas_kinds import arrow
 
     name = router_of(settings)
@@ -651,18 +725,36 @@ def route_edges(root: Element, nodes: Mapping[str, Element], groups: Mapping[str
     loose_obstacles = [(el2["id"], bounds(el2), outline(el2)) for el2 in loose]
     requests = []
     ids = {}
+    stale: List[str] = []
+    #: Part -> ``(its router, its request, the stored polyline that was kept)``. Keeping is a per-route decision made
+    #: before the batch exists, so a kept route can still end up sharing a corridor with one the batch drew next to
+    #: it afterwards; ``_recut_shared`` below cuts those once the batch is finished.
+    held: Dict[str, Tuple[str, Any, Tuple[Tuple[float, float], ...]]] = {}
     for part, el in sorted(edges.items(), key=lambda item: _num_id(item[1]["id"])):
         a, b = part_by_id.get(str(el.get("from"))), part_by_id.get(str(el.get("to")))
         if a is None or b is None:
             continue
+        keep: Optional[Tuple[Tuple[float, float], ...]] = None
         route_name = arrow.route_of(el) if (el.get("style") or {}).get("route") else name
         ports = result.ports.get(part) if route_name == "orthogonal" else None
         obstacles = [entry for p, entry in node_obstacles if p != a and p != b]
         inside = set(group_of.get(a, ())) | set(group_of.get(b, ()))
         obstacles += [(groups[g]["id"], box, "rect") for g, box in group_world.items() if g not in inside]
         obstacles += loose_obstacles
-        if route_name == "orthogonal" and a != b:
-            # A route that still leaves one end, reaches the other and runs through nothing stays as it is.
+        if route_name == "orthogonal" and a != b and not fresh_routes:
+            # A route that still leaves one end, reaches the other, runs through nothing **and is still worth
+            # looking at** stays as it is.
+            #
+            # Legality alone used to be enough, and that is what the owner rejected. Five routes drawn when the
+            # board had six nodes survived into the ten-edge drawing: every one of them was axis-aligned, touched
+            # both its ends and cleared every box, and every one of them was twice as long as it needed to be, turned
+            # back on itself up to seven times, and carried its label nearer a third node than to either of its own
+            # ends. The five new edges were then routed *around* that wire. So quality is asked here, by the caller,
+            # and ``arrow._still_good`` keeps its own meaning, which is legality.
+            #
+            # A polyline a person moved by hand is evidence of intent, not staleness: it is kept as it is. That is
+            # ``pin.by == "human"`` on either end, and ``moved_by`` on the arrow when a container's author has
+            # tidied a peer's mark (canvas v2 layout clarity, 2.2 and 5.6).
             points = el.get("points") or []
             if len(points) >= 2:
                 xs, ys = [p[0] for p in points], [p[1] for p in points]
@@ -670,7 +762,14 @@ def route_edges(root: Element, nodes: Mapping[str, Element], groups: Mapping[str
                 placed_a = dict(nodes[a], x=world[a][0], y=world[a][1], w=world[a][2] - world[a][0], h=world[a][3] - world[a][1])
                 placed_b = dict(nodes[b], x=world[b][0], y=world[b][1], w=world[b][2] - world[b][0], h=world[b][3] - world[b][1])
                 if arrow._still_good([list(p[:2]) for p in points], placed_a, placed_b, near):
-                    continue
+                    if _by_hand(el, nodes.get(a), nodes.get(b)):
+                        keep = tuple((float(p[0]), float(p[1])) for p in points)
+                    elif canvas_readability.route_good(
+                            [(float(p[0]), float(p[1])) for p in points], world[a], world[b],
+                            el.get("label_at"), [world[p] for p in world if p not in (a, b)]):
+                        keep = tuple((float(p[0]), float(p[1])) for p in points)
+                    else:
+                        stale.append(part)
         via = tuple((ox + x, oy + y) for x, y in result.hints.get(part, ()))
         if a == b and route_name != "orthogonal":
             x0, y0, x1, y1 = world[a]
@@ -680,13 +779,17 @@ def route_edges(root: Element, nodes: Mapping[str, Element], groups: Mapping[str
             id=part, a=canvas_routers.End(box=world[a], outline=outline(nodes[a]), id=nodes[a]["id"], side=ports[0] if ports else None),
             b=canvas_routers.End(box=world[b], outline=outline(nodes[b]), id=nodes[b]["id"], side=ports[1] if ports else None),
             via=via, label=_label_size(el) if route_name == "orthogonal" else None, obstacles=tuple(obstacles),
+            label_at=_label_seed(result, part, ox, oy) if route_name == "orthogonal" else None,
             clearance=float(tokens.get("clearance", 20)), radius=float(tokens.get("elbow_radius", 8)),
             port_spacing=float(tokens.get("port_spacing", 12)))
-        requests.append((route_name, request))
         ids[part] = el["id"]
+        if keep is not None:
+            held[part] = (route_name, request, keep)
+            continue
+        requests.append((route_name, request))
     out: Dict[str, Dict[str, Any]] = {}
     blocked: List[str] = []
-    kept = tuple(tuple((float(p[0]), float(p[1])) for p in el.get("points") or []) for part, el in edges.items() if el["id"] not in ids.values())
+    kept = tuple(points for _name, _request, points in held.values())
     requests = [(route_name, replace(request, others=kept)) for route_name, request in requests]
     by_router: Dict[str, List[canvas_routers.RouteRequest]] = {}
     for route_name, request in requests:
@@ -722,6 +825,7 @@ def route_edges(root: Element, nodes: Mapping[str, Element], groups: Mapping[str
                 if part in curved:
                     found = replace(found, points=curve_friendly(found.points, float(tokens.get("elbow_radius", 8))), label_at=None)
                 found_all[part] = found
+        stale.extend(_recut_shared(held, found_all))
     if budget.exhausted is not None:
         blocked.append(ROUTE_BUDGET_NOTE)
     for part, found in found_all.items():
@@ -731,7 +835,54 @@ def route_edges(root: Element, nodes: Mapping[str, Element], groups: Mapping[str
         if found.label_at is not None:
             entry["label_at"] = [found.label_at[0], found.label_at[1]]
         out[ids[part]] = entry
-    return out, blocked
+    return out, blocked, stale
+
+
+#: How much of its line a kept route may share with another before it is cut and drawn again (``_recut_shared``).
+#: Two wires drawn on top of each other read as one, which is worse than either of them moving.
+RECUT_OVERLAP = 12.0
+#: How many times ``_recut_shared`` looks again. Cutting one route moves it next to a third, so one pass is not
+#: enough for the op to settle, and a redraw that keeps changing is its own kind of unreadable; two passes settle
+#: every board of the corpus, and the third would cost more than it is worth.
+RECUT_PASSES = 2
+
+
+def _recut_shared(held: Dict[str, Tuple[str, Any, Tuple[Tuple[float, float], ...]]],
+                  found_all: Dict[str, Any]) -> List[str]:
+    """Cut every kept route that shares a line with another, and draw it again; the parts it cut.
+
+    A route is kept because it is good *on its own*, which is all the keep decision can see: the batch has not been
+    drawn yet. Once it has, a kept wire can be sitting on top of one of the new ones - 180 units of it on the owner's
+    own board - and two wires a reader cannot tell apart are worth more than the stability of one of them. Repeated
+    ``RECUT_PASSES`` times because cutting one route can put it alongside a third.
+    """
+    cut: List[str] = []
+    for _pass in range(RECUT_PASSES):
+        lines = {part: tuple(found.points) for part, found in found_all.items()}
+        lines.update({part: points for part, (_n, _r, points) in held.items()})
+        again = []
+        for part, (_route_name, request, points) in sorted(held.items()):
+            others = tuple(line for other, line in lines.items() if other != part)
+            if _shared_len(points, others) > RECUT_OVERLAP:
+                cut.append(part)
+                again.append(replace(request, others=others))
+        if not again:
+            break
+        for part, found in canvas_routers.route_many("orthogonal", again).items():
+            if not found.blocked:
+                found_all[part] = found
+                held.pop(part, None)
+    return cut
+
+
+def _shared_len(points: Sequence[Tuple[float, float]], others: Sequence[Sequence[Tuple[float, float]]]) -> float:
+    """How much of this polyline is drawn along one of ``others``: ``canvas_readability.overlap_len`` per piece pair."""
+    total = 0.0
+    for other in others:
+        for a, b in zip(points, points[1:]):
+            for c, d in zip(other, other[1:]):
+                total += canvas_readability.overlap_len(a, b, c, d)
+    return total
 
 
 #: The routers whose graph-wide routes detour around a node they would be drawn through (``route_edges``).
@@ -1064,12 +1215,126 @@ def pin_overlap(el: Element, env: Dict[str, Any]) -> List[Dict[str, Any]]:
     return out
 
 
-#: A graph is reported when its edges cross more than this, or a quarter of its edge count (``crossings_high``).
+#: A graph is reported when its edges cross more than this, or a sixth of its edge count (``crossings_high``).
+#:
+#: It stays at 3 rather than dropping to 2 now that the crossings a *reader* sees are counted: a hub's own wires
+#: cross each other a few tens of units out from the box they all leave, so a fan of seven has a natural floor of
+#: about three and a check that fired on it would be crying wolf.
 CROSSINGS_FLOOR = 3
 #: Past this many nodes the check does not try a full relayout to compare (it would cost more than it says).
 CROSSINGS_MAX_NODES = 80
+#: Past this many edges the readability checks do not measure a board: the scan is quadratic in segment pairs.
+READABILITY_MAX_EDGES = 200
 #: A fresh relayout's crossing count by request: a check run again over an unchanged graph does not lay it out again.
 _FRESH_CROSSINGS: Dict[Any, float] = {}
+#: One board's readability figures by ``(block id, the seq it last changed at)``: ``canvas check`` runs three checks
+#: over the same drawing and the measurement is quadratic, so it is made once.
+_MEASURED: Dict[Any, Dict[str, Any]] = {}
+_MEASURED_MAX = 16
+
+#: What ``routes_tangled`` calls a tangle. Deliberately looser than what ``tests/layout_conformance`` holds the
+#: pipeline to: the gate is about what the pipeline owes, the check is about what an agent should be told to fix,
+#: and a board inside these numbers is one a person would call fine. ``test_canvas_readability`` asserts the two can
+#: never invert - a check that fired on a drawing the pipeline is allowed to produce would be crying wolf on its own
+#: work, which is what sets the wire-on-wire number this high.
+TANGLED_MDETOUR_MEDIAN = 1.45
+TANGLED_MDETOUR_MAX = 2.50
+TANGLED_REVERSALS_MAX = 3
+TANGLED_EDGE_ON_EDGE = 130.0
+#: What ``labels_adrift`` calls adrift: a pill nearer a third box than to either of its own ends, or one that sits
+#: further than this fraction of its arrow's span from both of them.
+ADRIFT_ORPHAN = 0.50
+
+
+def _drawn(el: Element, env: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """This graph's readability figures, or None when there is nothing to measure or too much of it.
+
+    One measurement per board per check run, memoised on the seq the block last changed at: the three checks below
+    all read it, and ``canvas_readability.measure`` is quadratic in the edges' segment pairs.
+    """
+    by_id = env.get("by_id") or {}
+    # In member order, so the edge a message names is the same edge on every machine.
+    members = sorted((m for m in by_id.values() if m.get("group") == el.get("id")), key=lambda m: _num_id(m.get("id")))
+    nodes, _groups, edges, _loose = roles(el, members)
+    if not edges or not nodes or len(nodes) > CROSSINGS_MAX_NODES or len(edges) > READABILITY_MAX_EDGES:
+        return None
+    key = (str(el.get("id")), int(el.get("updated_seq") or 0), len(members),
+           max([int(m.get("updated_seq") or 0) for m in members] or [0]))
+    found = _MEASURED.get(key)
+    if found is None:
+        found = canvas_readability.measure(canvas_readability.from_block(el, members))
+        if len(_MEASURED) >= _MEASURED_MAX:
+            _MEASURED.pop(next(iter(_MEASURED)))
+        _MEASURED[key] = found
+    return found
+
+
+def _relayout_fix(el: Element) -> Dict[str, Any]:
+    """The one repair all three readability checks name: draw this block again from scratch.
+
+    It has to be a repair that works. Before ``relayout`` became a field of the ``graph`` op, an agent told to fix
+    its drawing re-issued the whole thing and nothing happened - the seeds held every box and legality held every
+    stale route - so the advice was worse than silence.
+    """
+    alias = el.get("alias") or el.get("id")
+    return {"op": "graph", "id": alias, "relayout": "full", "intent": "draw {} again from scratch".format(alias)}
+
+
+def routes_tangled(el: Element, env: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """A graph whose wire wanders: long detours, wire doubling back, or wire drawn along wire.
+
+    This is most of what the owner saw and ``canvas check`` did not. The five checks it had measured no detour, no
+    reversal, no wire-on-wire and no label attribution, so a board with an edge 3.6 times longer than its own span,
+    turning back on itself seven times, and 549 units of wire drawn on other wire came back clean.
+    """
+    found = _drawn(el, env)
+    if found is None:
+        return []
+    reasons = []
+    if found["mdetour_median"] > TANGLED_MDETOUR_MEDIAN:
+        reasons.append("half its edges are more than {:.0%} longer than the gap they cross".format(
+            found["mdetour_median"] - 1.0))
+    if found["mdetour_max"] > TANGLED_MDETOUR_MAX:
+        worst = (found["mdetour_worst"] or [(0, "an edge", 0, 0)])[0]
+        reasons.append("{} is {} units long for a {} unit gap".format(worst[1], worst[2], worst[3]))
+    if found["reversals_max"] > TANGLED_REVERSALS_MAX:
+        worst = (found["reversals_worst"] or [(0, "an edge")])[0]
+        reasons.append("{} turns back on itself {} times".format(worst[1], worst[0]))
+    if found["edge_on_edge_len"] > TANGLED_EDGE_ON_EDGE:
+        reasons.append("{} units of wire are drawn along other wire".format(int(found["edge_on_edge_len"])))
+    if not reasons:
+        return []
+    alias = el.get("alias") or el.get("id")
+    return [{"code": "routes_tangled", "ids": [str(el.get("id"))],
+             "message": "{}'s wire wanders: {}; a full relayout draws it again".format(alias, ", and ".join(reasons)),
+             "fix": _relayout_fix(el)}]
+
+
+def labels_adrift(el: Element, env: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """A graph whose edge labels read as belonging to something other than their own arrow.
+
+    "cached", "original address" and "save" sitting in mid-air was one of the owner's own words for the board, and
+    nothing measured it: a pill is drawn on its own polyline, which is all the router used to check, and can still
+    be nearer a third node than to either end of the arrow it names.
+    """
+    found = _drawn(el, env)
+    if found is None:
+        return []
+    edges = int(found["edges"])
+    reasons = []
+    if found["label_misattributed"] > max(1, edges // 4):
+        first = (found["label_misattributed_worst"] or [("a label", "a node", 0)])[0]
+        reasons.append("\"{}\" sits nearer {} than to either end of its own arrow".format(first[0], first[1]))
+    if found["label_orphan_max"] > ADRIFT_ORPHAN:
+        worst = (found["label_orphan_worst"] or [(0.0, "a label", 0)])[0]
+        reasons.append("\"{}\" sits {} units from both ends of its own arrow".format(worst[1], worst[2]))
+    if not reasons:
+        return []
+    alias = el.get("alias") or el.get("id")
+    return [{"code": "labels_adrift", "ids": [str(el.get("id"))],
+             "message": "{}'s labels are adrift: {}; a full relayout places them again".format(
+                 alias, ", and ".join(reasons)),
+             "fix": _relayout_fix(el)}]
 
 
 def _pieces(points: Sequence[Sequence[float]]) -> List[Tuple[Tuple[float, float], Tuple[float, float]]]:
@@ -1085,7 +1350,13 @@ def _cross(p1: Tuple[float, float], p2: Tuple[float, float], p3: Tuple[float, fl
 
 
 def edge_crossings(routes: Sequence[Tuple[Tuple[str, str], Sequence[Sequence[float]]]]) -> int:
-    """How many pairs of edges with four distinct ends cross (each drawn as its route)."""
+    """How many pairs of edges with four distinct ends cross (each drawn as its route).
+
+    Kept for what compares like with like - a fresh layout's own crossing count is the same quantity - while
+    ``crossings_high`` reports on ``canvas_readability``'s ``crossings_seen``, which also counts the pairs that share
+    a node and cross each other away from it. Nine of the eleven crossings on the board the owner rejected were of
+    that kind, and this function skips every one of them, which is why the check called the board clean.
+    """
     count = 0
     pieces = [_pieces(points) for _ends, points in routes]
     # Each route's box, and each piece's: pairs whose boxes do not meet cannot cross (most pairs, on a laid-out graph).
@@ -1110,15 +1381,23 @@ def edge_crossings(routes: Sequence[Tuple[Tuple[str, str], Sequence[Sequence[flo
 
 
 def crossings_high(el: Element, env: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """A graph whose edges cross a lot, when a full relayout would cross less: the fix is that relayout."""
+    """A graph whose edges cross where a reader can see it, when a full relayout would cross less.
+
+    Two repairs to what it used to measure. It counts the crossings a reader sees rather than only the pairs with
+    four distinct ends (``canvas_readability.count_crossings``), because two wires that leave the same node and cross
+    each other 24 units further out are a crossing to the eye and were nine of the eleven on the rejected board. And
+    the count it compares against is the *geometric* crossing count of a fresh layout rather than the ordering pass's
+    own count over its dummy chains, which was a different quantity with the same name.
+    """
     by_id = env.get("by_id") or {}
     members = [m for m in by_id.values() if m.get("group") == el.get("id")]
     nodes, groups, edges, _loose = roles(el, members)
     if not edges or len(nodes) > CROSSINGS_MAX_NODES:
         return []
-    routes = [((str(e.get("from")), str(e.get("to"))), e.get("points") or []) for e in edges.values() if len(e.get("points") or []) >= 2]
-    found = edge_crossings(routes)
-    if found <= max(CROSSINGS_FLOOR, len(edges) // 4):
+    drawn = _drawn(el, env)
+    found = int(drawn["crossings_seen"]) if drawn is not None else edge_crossings(
+        [((str(e.get("from")), str(e.get("to"))), e.get("points") or []) for e in edges.values() if len(e.get("points") or []) >= 2])
+    if found <= max(CROSSINGS_FLOOR, len(edges) // 6):
         return []
     settings = _zone.settings_of(el)
     layout = canvas_layouts.get(settings.get("layout") or "layers")
@@ -1142,9 +1421,11 @@ def crossings_high(el: Element, env: Dict[str, Any]) -> List[Dict[str, Any]]:
     if fresh_crossings >= found:
         return []
     alias = el.get("alias") or el.get("id")
+    worst = ((drawn or {}).get("crossings_seen_pairs") or [None])[0]
     return [{"code": "crossings_high", "ids": [str(el.get("id"))],
-             "message": "{} has {} edge crossings; a full relayout draws about {}".format(alias, found, int(fresh_crossings)),
-             "fix": {"op": "patch", "id": alias, "relayout": "full", "intent": "lay {} out again from scratch".format(alias)}}]
+             "message": "{} has {} edge crossings a reader can see{}; a full relayout draws about {}".format(
+                 alias, found, " (worst: {} x {})".format(*worst) if worst else "", int(fresh_crossings)),
+             "fix": _relayout_fix(el)}]
 
 
 # --------------------------------------------------------------------------
@@ -1210,11 +1491,13 @@ def create(ctx: Any, op: Dict[str, Any]) -> None:
 
 
 OPS = (
-    OpSpec(name="graph", family="diagram", fields=("nodes", "edges", "layout", "direction", "title", "id", "groups", "same_rank", "order", "route", "client_id"),
+    OpSpec(name="graph", family="diagram", fields=("nodes", "edges", "layout", "direction", "title", "id", "groups", "same_rank", "order", "route",
+                                                   "relayout", "client_id"),
            create=create, style=True, place=True, order=70,
            doc="nodes, groups and edges laid out by a registered layout and routed around each other (a block you patch)",
            mcp="graph {nodes [{id,text,kind,tone,icon,in,detail}], edges [\"a -> b: label\", \"a --> b\"], groups [{id,title,tone,parent}], "
-               "layout layers|flow|tree|radial|force|grid, direction down|right|up|left, same_rank, order, route orthogonal|straight|curved}"),
+               "layout layers|flow|tree|radial|force|grid, direction down|right|up|left, same_rank, order, route orthogonal|straight|curved, "
+               "relayout incremental|full}"),
 )
 
 KINDS = (
@@ -1227,6 +1510,6 @@ KINDS = (
                                              doc="\"a -> b: label\" relations", refs=(("from", "nodes", "drop"), ("to", "nodes", "drop")))),
                      settings=SETTINGS, fields=("title",), parts="members", positional=True, normalize=normalize, build=build, spec=spec,
                      adopt=adopt, prepare=prepare, max_members=2000),
-         arrange=arrange, emit=_zone.emit, hit=_zone.hit, text_edit=_zone.title_edit, readback=readback, checks=(pin_overlap, crossings_high),
+         arrange=arrange, emit=_zone.emit, hit=_zone.hit, text_edit=_zone.title_edit, readback=readback, checks=(pin_overlap, crossings_high, routes_tangled, labels_adrift),
          noun=("graph", "graphs"), doc="a graph: nodes, groups and edges, laid out and routed (patch it to change it)"),
 )

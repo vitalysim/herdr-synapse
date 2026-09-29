@@ -61,14 +61,15 @@ class SettingTests(unittest.TestCase):
     def test_launch_args_are_the_harness_own_flags(self):
         self.assertTrue(set(models.KINDS) <= set(models.UNRESTRICTED_ARGS))  # other kinds may have a switch without model flags
         self.assertEqual(models.launch_args("claude", None, None), ["--dangerously-skip-permissions"])
-        self.assertEqual(models.launch_args("codex", None, None), ["--dangerously-bypass-approvals-and-sandbox"])
+        # H1: every codex launch carries --no-daemon so its tools run in the pane's own process tree
+        self.assertEqual(models.launch_args("codex", None, None), ["--no-daemon", "--dangerously-bypass-approvals-and-sandbox"])
         self.assertEqual(models.launch_args("opencode", None, None), ["--auto"])
         self.assertEqual(models.launch_args("claude", "opus", "medium"),
                          ["--model", "opus", "--effort", "medium", "--dangerously-skip-permissions"])
         self.assertEqual(models.launch_args("claude", None, "max"), ["--effort", "max", "--dangerously-skip-permissions"])
         # Codex's -c value is TOML: the quotes are part of the argument, not of a shell
         self.assertEqual(models.launch_args("codex", "gpt-5.6-luna", "high"),
-                         ["-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"', "--dangerously-bypass-approvals-and-sandbox"])
+                         ["-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"', "--no-daemon", "--dangerously-bypass-approvals-and-sandbox"])
         self.assertEqual(models.launch_args("opencode", "opencode/claude-opus-4-8", "max"),
                          ["-m", "opencode/claude-opus-4-8", "--auto"])
         # no model flags for Gemini, but its own YOLO switch still applies
@@ -92,7 +93,7 @@ class SettingTests(unittest.TestCase):
     def test_resume_argv_appends_the_flags_to_the_recorded_resume(self):
         self.assertEqual(models.resume_argv("codex", sess("0199"), "gpt-5.6-luna", "high"),
                          ["codex", "resume", "0199", "-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"',
-                          "--dangerously-bypass-approvals-and-sandbox"])
+                          "--no-daemon", "--dangerously-bypass-approvals-and-sandbox"])
         self.assertEqual(models.resume_argv("claude", sess("abc", "herdr:claude", "claude"), "opus", "medium"),
                          ["claude", "--resume", "abc", "--model", "opus", "--effort", "medium", "--dangerously-skip-permissions"])
         self.assertEqual(models.resume_argv("opencode", sess("s1", "herdr:opencode", "opencode"), "opencode/big-pickle", None),
@@ -114,7 +115,7 @@ class SettingTests(unittest.TestCase):
         self.assertEqual(
             models.restart_argv("codex", sess("0199"), "gpt-5.6-luna", "high", current),
             ["codex", "resume", "0199", "-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"',
-             "--dangerously-bypass-approvals-and-sandbox", "-c", "check_for_update_on_startup=false", "--search"],
+             "--no-daemon", "--dangerously-bypass-approvals-and-sandbox", "-c", "check_for_update_on_startup=false", "--search"],
         )
         self.assertIsNone(models.foreground_argv("codex", [{"name": "zsh", "argv": ["-zsh"]}]))
         self.assertEqual(
@@ -209,7 +210,7 @@ class SpawnTests(unittest.TestCase):
             self.assertEqual(len(starts), 2, starts)
             by_name = {argv[2]: argv for argv in starts}
             self.assertEqual(by_name["delta-reviewer"][by_name["delta-reviewer"].index("--") + 1:],
-                             ["-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"', "--dangerously-bypass-approvals-and-sandbox"])
+                             ["-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"', "--no-daemon", "--dangerously-bypass-approvals-and-sandbox"])
             self.assertEqual(by_name["delta-worker"][by_name["delta-worker"].index("--") + 1:],
                              ["--model", "opus", "--effort", "medium", "--dangerously-skip-permissions", "--name", "delta-worker"])
             doc = store.read_json(ts.session.team("delta").team_json)
@@ -270,7 +271,7 @@ class SpawnTests(unittest.TestCase):
             code, payload, err = json_out(run_cli(["--json", "--team", "alpha", "resume", MEMBER, "--print"], env_no_daemon(ts), live_api()))
             self.assertEqual(code, 0, err)
             self.assertEqual(payload["argv"], ["codex", "resume", "0199-reviewer", "-m", "gpt-5.6-sol", "-c", 'model_reasoning_effort="xhigh"',
-                                                "--dangerously-bypass-approvals-and-sandbox"])
+                                                "--no-daemon", "--dangerously-bypass-approvals-and-sandbox"])
             self.assertEqual(payload["setting"], "gpt-5.6-sol@xhigh")
 
 
@@ -345,7 +346,7 @@ class ModelCommandTests(unittest.TestCase):
         control = payload["control"]
         self.assertEqual((control["action"], control["exit"]), ("restart", "/quit"))
         self.assertEqual(control["argv"], ["codex", "resume", "0199-reviewer", "-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"',
-                                                   "--dangerously-bypass-approvals-and-sandbox", "-c", "check_for_update_on_startup=false"])
+                                                   "--no-daemon", "--dangerously-bypass-approvals-and-sandbox", "-c", "check_for_update_on_startup=false"])
         self.assertEqual(control["after"], [])
         record = next(r for r in store.BoardStore(self.ts.team).read() if r.get("seq") == payload["record_seq"])
         self.assertEqual((record["kind"], record["to"], record["control"]["action"]), ("direct", [MEMBER], "restart"))
@@ -367,7 +368,7 @@ class ModelCommandTests(unittest.TestCase):
         self.assertEqual(
             payload["control"]["argv"],
             ["codex", "resume", "0199-reviewer", "-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"',
-             "--dangerously-bypass-approvals-and-sandbox", "-c", "check_for_update_on_startup=false"],
+             "--no-daemon", "--dangerously-bypass-approvals-and-sandbox", "-c", "check_for_update_on_startup=false"],
         )
 
     def test_opencode_restart_uses_its_tui_for_the_variant_not_the_run_only_flag(self):
@@ -540,7 +541,7 @@ class LiveModelJobTests(ControlRig):
 
 class RestartJobTests(ControlRig):
     ARGV = ["codex", "resume", "0199-reviewer", "-m", "gpt-5.6-luna", "-c", 'model_reasoning_effort="high"',
-            "--dangerously-bypass-approvals-and-sandbox", "-c", "check_for_update_on_startup=false"]
+            "--no-daemon", "--dangerously-bypass-approvals-and-sandbox", "-c", "check_for_update_on_startup=false"]
     STARTED = {"type": "agent_started", "agent": fake_agent("w2:p1", "term_r1", "codex", MEMBER, launch_pending=False), "argv": ["codex"]}
 
     def setUp(self):
@@ -890,6 +891,121 @@ class CreateLiveMemberSettingTests(unittest.TestCase):
             code, _payload, err = json_out(run_cli(["--json", "create", "gamma", "--member", "w5:p2:worker", "--model", "nobody=@high"], env_no_daemon(ts), api))
             self.assertEqual((code, err["code"]), (2, "usage"))
             self.assertFalse(ts.session.team("gamma").team_json.exists())
+
+
+# --------------------------------------------------------------------------
+# H1 and H2: the flags a launch must carry, and noticing they are gone
+
+
+class PaneLocalArgsTests(unittest.TestCase):
+    """H1 (live 2026-09-28): a codex member launched without ``--no-daemon`` cannot be identified.
+
+    Codex attaches to a machine-wide ``app-server`` daemon, so everything it
+    runs is a child of that daemon and not of its pane. Synapse's authority
+    model is the pane's process tree, so every ``herdr-synapse`` command the
+    member ran failed ``pane_mismatch`` and the TUI refused to show the
+    conversation ("open in another app"). Both went away on a relaunch with the
+    flag. The rule is therefore per launch, not per command: these assertions
+    cover all four builders plus the one string a human reads.
+    """
+
+    def test_every_launch_path_carries_the_pane_local_flag(self):
+        self.assertEqual(models.PANE_LOCAL_ARGS["codex"], ("--no-daemon",))
+        session = sess("0199")
+        for argv in (
+            models.launch_args("codex", None, None),
+            models.resume_argv("codex", session, None, None),
+            models.restart_argv("codex", session, None, None, ["codex", "--search"]),
+            models.fresh_argv("codex", None, None, ["codex", "--search"]),
+        ):
+            self.assertIn("--no-daemon", argv, argv)
+            self.assertEqual(argv.count("--no-daemon"), 1, argv)
+        # it is a pane-local requirement, not a permission: ``native`` keeps it
+        self.assertEqual(models.launch_args("codex", None, None, "native"), ["--no-daemon"])
+        # and it belongs to codex alone, on the evidence there is
+        for kind in ("claude", "opencode", "pi"):
+            self.assertNotIn("--no-daemon", models.launch_args(kind, None, None))
+
+    def test_a_live_copy_of_the_flag_is_not_preserved_into_a_second_copy(self):
+        live = ["codex", "resume", "0199", "--no-daemon", "--search"]
+        self.assertEqual(models.preserved_launch_args("codex", live), ["--search"])
+        self.assertEqual(models.restart_argv("codex", sess("0199"), None, None, live).count("--no-daemon"), 1)
+
+    def test_resume_print_shows_the_flag_a_human_would_have_to_add_by_hand(self):
+        with TempState() as ts:
+            set_member(ts, MEMBER, session=sess("0199-reviewer"))
+            code, payload, err = json_out(run_cli(["--json", "--team", "alpha", "resume", MEMBER, "--print"], env_no_daemon(ts), live_api()))
+            self.assertEqual(code, 0, err)
+            self.assertIn("--no-daemon", payload["command"])
+            plan = cmd_roster.resume_plan("alpha", roster.load_team(ts.team).find(MEMBER))
+            self.assertIn("--no-daemon", plan["argv"])
+
+
+class MissingLaunchFlagsTests(unittest.TestCase):
+    """H2: Herdr's own session restore rebuilds the command line without Synapse's flags.
+
+    It relaunches ``codex resume <id>`` and ``claude --resume <id>`` from the
+    session reference alone, so the restored member has no approval bypass, no
+    canvas MCP server and no pane-local flag -- and looks healthy on the
+    roster. Synapse may not change Herdr, so it has to be able to *see* this.
+    """
+
+    SPEC = {"server": "synapse_canvas", "command": "/opt/bin/herdr-synapse",
+            "args": ["canvas", "mcp"], "config_file": "/s/teams/alpha/whiteboard/mcp.json"}
+
+    def test_a_herdr_rebuilt_codex_command_line_names_every_missing_flag(self):
+        self.assertEqual(
+            models.missing_launch_flags("codex", ["codex", "resume", "0199"], "yolo", self.SPEC),
+            ["--no-daemon", "--dangerously-bypass-approvals-and-sandbox",
+             "-c mcp_servers.synapse_canvas.command", "-c mcp_servers.synapse_canvas.args"])
+
+    def test_a_full_synapse_launch_is_missing_nothing_on_any_kind(self):
+        for kind, session in (("codex", sess("0199")), ("claude", sess("abc", "herdr:claude", "claude")),
+                              ("opencode", sess("s1", "herdr:opencode", "opencode"))):
+            argv = models.resume_argv(kind, session, None, None, "yolo", None, mcp=self.SPEC)
+            self.assertEqual(models.missing_launch_flags(kind, argv, "yolo", self.SPEC), [], (kind, argv))
+
+    def test_the_mcp_flags_are_recognised_by_meaning_not_by_string(self):
+        """A value ``features.is_preserved_mcp_value`` accepts counts; a lookalike does not."""
+        other = dict(self.SPEC, config_file="/s/teams/beta/whiteboard/mcp.json")
+        argv = models.resume_argv("claude", sess("abc", "herdr:claude", "claude"), None, None, "yolo", None, mcp=other)
+        # another team's config file is still Synapse's own door: not a missing flag
+        self.assertEqual(models.missing_launch_flags("claude", argv, "yolo", self.SPEC), [])
+        # a user's own inline config is not, so the canvas flag is reported missing
+        inline = ["claude", "--resume", "abc", "--dangerously-skip-permissions", "--mcp-config", '{"mcpServers":{}}']
+        self.assertEqual(models.missing_launch_flags("claude", inline, "yolo", self.SPEC), ["--mcp-config"])
+
+    def test_one_codex_override_present_and_one_gone_reports_only_the_gone_one(self):
+        argv = ["codex", "resume", "0199", "--no-daemon", "--dangerously-bypass-approvals-and-sandbox",
+                "-c", 'mcp_servers.synapse_canvas.command="/opt/bin/herdr-synapse"']
+        self.assertEqual(models.missing_launch_flags("codex", argv, "yolo", self.SPEC), ["-c mcp_servers.synapse_canvas.args"])
+
+    def test_only_flags_whose_absence_changes_behaviour_count(self):
+        argv = ["codex", "resume", "0199", "--no-daemon", "--dangerously-bypass-approvals-and-sandbox"]
+        # model, effort and profile are the member's preference, visible in ``who``; never a notice
+        self.assertEqual(models.missing_launch_flags("codex", argv, "yolo", None), [])
+        # a native policy asks for no bypass flag, so its absence is correct
+        self.assertEqual(models.missing_launch_flags("codex", ["codex", "resume", "0199", "--no-daemon"], "native", None), [])
+        # a multi-token policy flag is a run, not a set: the wrong value is still missing
+        self.assertEqual(models.missing_launch_flags("devin", ["devin", "--permission-mode", "ask"], "yolo", None),
+                         ["--permission-mode dangerous"])
+        self.assertEqual(models.missing_launch_flags("devin", ["devin", "--permission-mode", "dangerous"], "yolo", None), [])
+
+    def test_no_evidence_never_reads_as_missing(self):
+        for argv in (None, [], "codex resume 0199"):
+            self.assertEqual(models.missing_launch_flags("codex", argv, "yolo", self.SPEC), [])
+        self.assertEqual(models.missing_launch_flags("amp", ["amp"], "yolo", self.SPEC), [])
+
+    def test_a_refresh_restart_injects_the_canvas_spec_the_live_argv_lacks(self):
+        """The repair restart cannot carry the canvas flags over: that is what is broken."""
+        live = ["codex", "resume", "0199", "--search"]
+        argv = models.restart_argv("codex", sess("0199"), None, None, live, "yolo", None, mcp=self.SPEC)
+        self.assertEqual(models.missing_launch_flags("codex", argv, "yolo", self.SPEC), [])
+        self.assertEqual(argv.count("mcp_servers.synapse_canvas.command=\"/opt/bin/herdr-synapse\""), 1)
+        self.assertIn("--search", argv)
+        # without a spec it behaves exactly as before, so ordinary model restarts do not change
+        self.assertNotIn("-c mcp_servers.synapse_canvas.command",
+                         models.restart_argv("codex", sess("0199"), None, None, live, "yolo", None))
 
 
 if __name__ == "__main__":

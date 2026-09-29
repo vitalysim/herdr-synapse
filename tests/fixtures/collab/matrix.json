@@ -1,5 +1,5 @@
 {
- "about": "The canvas v2 phase 5 authority matrix (14.1): op x actor x target x settings -> live, propose (with the first proposing rule's reason) or refuse (with the code). Undo rows (not proposable, but freezes, locks and authority bind them) add \"skipped\": \"frozen\" when the undo applies and leaves frozen marks as they are; an undo that would take nothing back (all of it frozen) is refused op_invalid, saying why. tests/test_canvas_collab_matrix.py runs every row; a new rule adds rows here.",
+ "about": "The canvas v2 phase 5 authority matrix (14.1): op x actor x target x settings -> live, propose (with the first proposing rule's reason) or refuse (with the code). The ``peer_hosted`` target is a peer's mark inside a container the actor made (A1): geometry lives, words propose. Undo rows (not proposable, but freezes, locks and authority bind them) add \"skipped\": \"frozen\" when the undo applies and leaves frozen marks as they are; an undo that would take nothing back (all of it frozen) is refused op_invalid, saying why. tests/test_canvas_collab_matrix.py runs every row; a new rule adds rows here.",
  "settings": {"default": {"human_edits": "propose", "frozen": "propose"}, "live_refuse": {"human_edits": "live", "frozen": "refuse"}},
  "rows": [
   {"op": "move", "actor": "lead", "target": "own", "settings": "default", "expect": "live"},
@@ -561,6 +561,22 @@
   {"op": "undo", "actor": "member", "target": "frozen_id", "settings": "live_refuse", "expect": "refuse", "code": "op_invalid"},
   {"op": "undo", "actor": "member", "target": "locked", "settings": "live_refuse", "expect": "refuse", "code": "canvas_locked"},
   {"op": "undo", "actor": "member", "target": "operator", "settings": "live_refuse", "expect": "refuse", "code": "operator_only"},
-  {"op": "undo", "actor": "member", "target": "peer", "settings": "live_refuse", "expect": "refuse", "code": "element_not_yours"}
+  {"op": "undo", "actor": "member", "target": "peer", "settings": "live_refuse", "expect": "refuse", "code": "element_not_yours"},
+  {"op": "move", "actor": "lead", "target": "peer_hosted", "settings": "default", "expect": "live"},
+  {"op": "edit", "actor": "lead", "target": "peer_hosted", "settings": "default", "expect": "live"},
+  {"op": "move", "actor": "deputy", "target": "peer_hosted", "settings": "default", "expect": "live"},
+  {"op": "edit", "actor": "deputy", "target": "peer_hosted", "settings": "default", "expect": "live"},
+  {"op": "move", "actor": "manager", "target": "peer_hosted", "settings": "default", "expect": "live"},
+  {"op": "edit", "actor": "manager", "target": "peer_hosted", "settings": "default", "expect": "live"},
+  {"op": "move", "actor": "member", "target": "peer_hosted", "settings": "default", "expect": "live"},
+  {"op": "edit", "actor": "member", "target": "peer_hosted", "settings": "default", "expect": "propose", "reason": "peer"},
+  {"op": "move", "actor": "lead", "target": "peer_hosted", "settings": "live_refuse", "expect": "live"},
+  {"op": "edit", "actor": "lead", "target": "peer_hosted", "settings": "live_refuse", "expect": "live"},
+  {"op": "move", "actor": "deputy", "target": "peer_hosted", "settings": "live_refuse", "expect": "live"},
+  {"op": "edit", "actor": "deputy", "target": "peer_hosted", "settings": "live_refuse", "expect": "live"},
+  {"op": "move", "actor": "manager", "target": "peer_hosted", "settings": "live_refuse", "expect": "live"},
+  {"op": "edit", "actor": "manager", "target": "peer_hosted", "settings": "live_refuse", "expect": "live"},
+  {"op": "move", "actor": "member", "target": "peer_hosted", "settings": "live_refuse", "expect": "live"},
+  {"op": "edit", "actor": "member", "target": "peer_hosted", "settings": "live_refuse", "expect": "propose", "reason": "peer"}
  ]
 }

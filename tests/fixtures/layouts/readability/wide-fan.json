@@ -1,0 +1,189 @@
+{
+ "name": "wide-fan",
+ "about": "one hub with seven wires off one side: ports, bundles and fan labels",
+ "direction": "right",
+ "layout": "layers",
+ "gap": 40,
+ "rank_gap": 80,
+ "clearance": 20,
+ "radius": 8,
+ "port_spacing": 12,
+ "group_pad": [
+  20,
+  40,
+  20,
+  20
+ ],
+ "passes": [
+  {
+   "nodes": [
+    {
+     "id": "gw",
+     "w": 160,
+     "h": 60,
+     "group": null
+    },
+    {
+     "id": "auth",
+     "w": 160,
+     "h": 60,
+     "group": null
+    },
+    {
+     "id": "cat",
+     "w": 220,
+     "h": 60,
+     "group": null
+    },
+    {
+     "id": "cart",
+     "w": 160,
+     "h": 60,
+     "group": null
+    },
+    {
+     "id": "pay",
+     "w": 200,
+     "h": 60,
+     "group": null
+    },
+    {
+     "id": "ship",
+     "w": 200,
+     "h": 60,
+     "group": null
+    },
+    {
+     "id": "mail",
+     "w": 160,
+     "h": 60,
+     "group": null
+    },
+    {
+     "id": "log",
+     "w": 160,
+     "h": 60,
+     "group": null
+    }
+   ],
+   "edges": [
+    {
+     "id": "e:gw->auth",
+     "a": "gw",
+     "b": "auth",
+     "label": [
+      61.41,
+      24.0
+     ],
+     "name": "verify"
+    },
+    {
+     "id": "e:gw->cat",
+     "a": "gw",
+     "b": "cat",
+     "label": [
+      38.79,
+      24.0
+     ],
+     "name": "list"
+    },
+    {
+     "id": "e:gw->cart",
+     "a": "gw",
+     "b": "cart",
+     "label": [
+      51.6,
+      24.0
+     ],
+     "name": "read"
+    },
+    {
+     "id": "e:gw->pay",
+     "a": "gw",
+     "b": "pay",
+     "label": [
+      71.05,
+      24.0
+     ],
+     "name": "charge"
+    },
+    {
+     "id": "e:gw->ship",
+     "a": "gw",
+     "b": "ship",
+     "label": [
+      55.31,
+      24.0
+     ],
+     "name": "book"
+    },
+    {
+     "id": "e:gw->mail",
+     "a": "gw",
+     "b": "mail",
+     "label": [
+      61.36,
+      24.0
+     ],
+     "name": "notify"
+    },
+    {
+     "id": "e:gw->log",
+     "a": "gw",
+     "b": "log",
+     "label": [
+      68.08,
+      24.0
+     ],
+     "name": "record"
+    },
+    {
+     "id": "e:auth->log",
+     "a": "auth",
+     "b": "log",
+     "label": [
+      68.08,
+      24.0
+     ],
+     "name": "record"
+    },
+    {
+     "id": "e:pay->log",
+     "a": "pay",
+     "b": "log",
+     "label": [
+      68.08,
+      24.0
+     ],
+     "name": "record"
+    },
+    {
+     "id": "e:ship->mail",
+     "a": "ship",
+     "b": "mail",
+     "label": [
+      61.36,
+      24.0
+     ],
+     "name": "notify"
+    }
+   ],
+   "groups": []
+  }
+ ],
+ "budget": {
+  "length_ratio": 1.02,
+  "crossings_seen": 3,
+  "mdetour_median": 1.0,
+  "mdetour_max": 1.3,
+  "reversals_max": 1,
+  "reversals_total": 2,
+  "bends_max": 4,
+  "label_misattributed": 1,
+  "label_orphan_max": 0.3,
+  "edge_on_edge_len": 0,
+  "entry_cross_offset_max": 24,
+  "screen_use": 0.75,
+  "parallel_bundle_len": 300
+ }
+}

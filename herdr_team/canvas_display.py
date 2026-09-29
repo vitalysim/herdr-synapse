@@ -669,6 +669,12 @@ def entry(el: Mapping[str, Any], env: Env) -> Dict[str, Any]:
 
 #: World units kept between a claim's label and the claim beside it.
 CLAIM_LABEL_GAP = 4.0
+#: World units the claim's dashed border is drawn *outside* its region (canvas v2 layout clarity, V2).
+#: The border is the only ink a claim puts on the board, it is 2 screen px wide at any zoom, and the region now
+#: snaps to the marks it holds (``canvas_check.claim_snap``), so its edge runs along their edges: drawn on the
+#: region itself the stroke lands on their outline, which at 41% zoom read as a chart's axis labels being cut off.
+#: The entry's ``bbox`` stays the region, because that is the authority the claim carries.
+CLAIM_BORDER_OUT = 3.0
 
 
 def _claim_neighbour(claim: Mapping[str, Any], box: Tuple[float, float, float, float], env: Env) -> Optional[float]:
@@ -703,7 +709,9 @@ def _claim_entry(claim: Mapping[str, Any], env: Env) -> Optional[Dict[str, Any]]
     if right is not None:
         # A claim beside it on the right (QA phase 5 L8): the label stops where that claim, and its label, begin.
         label = {"k": "group", "clip": [x0, y0, max(0.0, right - CLAIM_LABEL_GAP - x0), y1 - y0], "items": [label]}
-    items = [{"k": "rect", "x": x0, "y": y0, "w": x1 - x0, "h": y1 - y0, "fill": None, "stroke": found["bg"], "sw_px": 2, "dash": [8, 6]}, label]
+    out_w, out_h = x1 - x0 + 2 * CLAIM_BORDER_OUT, y1 - y0 + 2 * CLAIM_BORDER_OUT
+    items = [{"k": "rect", "x": x0 - CLAIM_BORDER_OUT, "y": y0 - CLAIM_BORDER_OUT, "w": out_w, "h": out_h,
+              "fill": None, "stroke": found["bg"], "sw_px": 2, "dash": [8, 6]}, label]
     out = {"id": str(claim.get("id") or ""), "kind": "claim", "layer": "overlays", "z": -1, "v": 0,
            "bbox": [x0, y0, x1, y1], "hit": {"shape": "none"}, "handles": "none", "connect": False, "edit": None,
            "frame": None, "author": author, "chip": found, "locked": False, "items": items}

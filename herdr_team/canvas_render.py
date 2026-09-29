@@ -298,11 +298,15 @@ def render_png(svg_text: str, out_path: Path, width_px: Optional[int] = None, en
 def render_region(team: TeamPaths, scene: Dict[str, Any], region: Optional[Sequence[float]], out_dir: Path, name: str,
                   marks: bool = True, grid: bool = False, reader: Optional[str] = None,
                   env: Optional[Mapping[str, str]] = None, theme: str = "light", view: Optional[str] = None) -> Dict[str, Any]:
-    """Write ``<name>.svg`` and ``<name>.png`` under ``out_dir``; ``{"svg", "png", "image_error", "width_px", "height_px", "region"}``.
-    ``view`` draws every slot with still views (a 3D scene) in that view (``look --image --view``)."""
+    """Write ``<name>.svg`` and ``<name>.png`` under ``out_dir``; ``{"svg", "png", "image_error", "width_px",
+    "height_px", "region", "unnamed"}``, where ``unnamed`` are the ids whose badge found nowhere clear of the
+    picture's own words (``badge_marks``). ``view`` draws every slot with still views (a 3D scene) in that view
+    (``look --image --view``)."""
     out_dir = Path(out_dir)
     ensure_dir(out_dir)
-    svg_text, box = picture(scene, region, marks=marks, grid=grid, reader=reader, max_px=DEFAULT_MAX_PX, team=team, theme=theme, view=view)
+    left_out: List[str] = []
+    svg_text, box = picture(scene, region, marks=marks, grid=grid, reader=reader, max_px=DEFAULT_MAX_PX, team=team, theme=theme, view=view,
+                            omitted=left_out)
     width_px, height_px = pixel_size(box, DEFAULT_MAX_PX)
     svg_path = out_dir / (name + ".svg")
     png_path = out_dir / (name + ".png")
@@ -310,7 +314,7 @@ def render_region(team: TeamPaths, scene: Dict[str, Any], region: Optional[Seque
     png, error = _rasterise(svg_path, png_path, width_px, env, RENDER_TIMEOUT_S, svg_text)
     prune_renders(out_dir, RENDER_KEEP)
     return {"svg": os.fspath(svg_path), "png": os.fspath(png) if png else None, "image_error": error,
-            "width_px": width_px, "height_px": height_px, "region": [round(v, 2) for v in box]}
+            "width_px": width_px, "height_px": height_px, "region": [round(v, 2) for v in box], "unnamed": left_out}
 
 
 def prune_renders(directory: Path, keep: int = RENDER_KEEP) -> int:
@@ -760,8 +764,9 @@ def embedder(team: Optional[TeamPaths]) -> _svg.Embed:
     return embed
 
 
-#: The element types whose badge stays inside their top-left corner: a frame's own title stands above it at the zoom an
-#: agent's whole-board picture uses, and a badge put there would cover that title instead of the label it moved off.
+#: The element types whose badge stays inside their own band rather than hanging above the box: a frame's title
+#: stands above it at the zoom an agent's whole-board picture uses, so a badge above it would cover that title.
+#: Inside the band it takes the top-right corner, the one corner a frame never draws in (``badge_spots``, V1).
 BADGE_INSIDE = ("frame",)
 
 
@@ -773,6 +778,8 @@ def mark_anchor(el: Dict[str, Any]) -> Tuple[float, float, bool]:
     corner is taller than the room its label leaves and sits across the label's first word. Every badge therefore
     hangs above its element's top edge, above an arrow label's pill and above a comment's pin, which is clearance
     measured in the same pixels the badge is drawn in. Frames keep theirs inside (``BADGE_INSIDE``).
+
+    This is the spot a badge *prefers*; ``badge_spots`` ladders on from here when it is on the picture's own words.
     """
     if el.get("type") == "arrow":
         pill = arrow_label_pill(el)
@@ -787,25 +794,251 @@ def mark_anchor(el: Dict[str, Any]) -> Tuple[float, float, bool]:
     return float(el.get("x") or 0), float(el.get("y") or 0), el.get("type") not in BADGE_INSIDE
 
 
+# --------------------------------------------------------------------------
+# where the id badges go (V1): the text the picture draws, and a corner clear of it
+
+
+#: A line's ink around its baseline, as a fraction of its size (Inter: ascent 0.97, descent 0.24); the page's
+#: presence layer measures a label the same way (``web/src/v2/collab/labels.js``), and the two must agree.
+ASCENT = 0.97
+DESCENT = 0.24
+#: Screen pixels a badge keeps clear of any text, of the picture's edge, and of the badges already placed.
+BADGE_GAP_PX = 2.0
+#: The cell of the coarse grid the solver buckets text boxes in, in screen pixels: a whole-board picture carries
+#: thousands of lines and hundreds of badges, and each badge asks about the lines near its own corners only.
+BADGE_CELL_PX = 120.0
+_IDENTITY = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+
+
+def _compose(m: Sequence[float], n: Sequence[float]) -> Tuple[float, ...]:
+    """``m · n`` for the 2D affine matrices the display list uses (``[a, b, c, d, e, f]``, the SVG order)."""
+    return (m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1], m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3],
+            m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5])
+
+
+def _apply(m: Sequence[float], x: float, y: float) -> Tuple[float, float]:
+    return m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]
+
+
+class _Obstacles:
+    """Boxes (canvas units) on a coarse grid: what a badge must not cover, asked about by the corner it wants."""
+
+    def __init__(self, cell: float) -> None:
+        self.cell = max(1.0, cell)
+        self.cells: Dict[Tuple[int, int], List[Tuple[float, float, float, float]]] = {}
+
+    def _keys(self, box: Sequence[float]) -> List[Tuple[int, int]]:
+        return [(i, j) for i in range(int(math.floor(box[0] / self.cell)), int(math.floor(box[2] / self.cell)) + 1)
+                for j in range(int(math.floor(box[1] / self.cell)), int(math.floor(box[3] / self.cell)) + 1)]
+
+    def add(self, box: Sequence[float]) -> None:
+        keys = self._keys(box)
+        if len(keys) > 4096:
+            return  # a box that covers the whole picture would be in every cell and blocks nothing a badge can avoid
+        found = (float(box[0]), float(box[1]), float(box[2]), float(box[3]))
+        for key in keys:
+            self.cells.setdefault(key, []).append(found)
+
+    def free(self, box: Sequence[float], gap: float) -> bool:
+        room = (box[0] - gap, box[1] - gap, box[2] + gap, box[3] + gap)
+        for key in self._keys(room):
+            for other in self.cells.get(key, ()):
+                if room[0] < other[2] and other[0] < room[2] and room[1] < other[3] and other[1] < room[3]:
+                    return False
+        return True
+
+
+def _line_boxes(p: Mapping[str, Any], scale: float) -> List[Tuple[float, float, float, float]]:
+    """The boxes of one text primitive's lines in its own units, at this scale (its zoom rule applied)."""
+    layout = _svg.text_layout(p, scale)
+    size = float(p.get("size") or 0)
+    if size <= 0:
+        return []
+    grow = (layout["size"] / size) if layout["zoomed"] else 1.0
+    x = float(p.get("x") or 0)
+    anchor = p.get("anchor")
+    out = []
+    for index, line in enumerate(p.get("lines") or []):
+        if not isinstance(line, Mapping) or not str(line.get("t") or "").strip() or index >= len(layout["ys"]):
+            continue
+        try:
+            width = float(line.get("w") or 0) * grow
+            base = float(layout["ys"][index])
+        except (TypeError, ValueError):
+            continue
+        left = x - width / 2.0 if anchor == "middle" else x - width if anchor == "end" else x
+        out.append((left, base - ASCENT * layout["size"], left + width, base + DESCENT * layout["size"]))
+    return out
+
+
+def _walk_text(items: Any, m: Sequence[float], anchor: Optional[Tuple[float, float]], u: float, scale: float,
+               clips: Sequence[Tuple[float, float, float, float]], out: List[Tuple[float, float, float, float]]) -> None:
+    """Every box of text ``items`` draws, in canvas units, ``clips`` already applied (a claim's label stops at the
+    claim beside it). ``anchor`` is where a screen-anchored group hangs: inside one the local unit is a pixel."""
+    for p in items or ():
+        if not isinstance(p, dict) or not _svg.lod_visible(p, scale):
+            continue
+        kind = p.get("k")
+        if kind in ("text", "rect") and (kind == "text" or anchor is not None):
+            # A rect inside a screen group is the chip a label is drawn on (a proposal's), so it is ink too.
+            local = _line_boxes(p, scale) if kind == "text" else (
+                [(float(p["x"]), float(p["y"]), float(p["x"]) + float(p["w"]), float(p["y"]) + float(p["h"]))]
+                if all(isinstance(p.get(k), (int, float)) for k in ("x", "y", "w", "h")) else [])
+            for box in local:
+                found = _world_box(box, m, anchor, u)
+                for cut in clips:
+                    found = (max(found[0], cut[0]), max(found[1], cut[1]), min(found[2], cut[2]), min(found[3], cut[3]))
+                if found[2] > found[0] and found[3] > found[1]:
+                    out.append(found)
+        elif kind == "group":
+            inner, at = m, anchor
+            screen = p.get("screen")
+            if isinstance(screen, list) and len(screen) == 2 and _finite_pair(screen):
+                if anchor is not None:
+                    inner = _compose(m, (1.0, 0.0, 0.0, 1.0, float(screen[0]), float(screen[1])))
+                else:
+                    at = _apply(m, float(screen[0]), float(screen[1]))
+                    inner = _IDENTITY
+            transform = p.get("t")
+            if isinstance(transform, list) and len(transform) == 6 and all(isinstance(v, (int, float)) for v in transform):
+                inner = _compose(inner, [float(v) for v in transform])
+            cut = list(clips)
+            clip = p.get("clip")
+            if isinstance(clip, list) and len(clip) == 4 and all(isinstance(v, (int, float)) for v in clip):
+                cut.append(_world_box((float(clip[0]), float(clip[1]), float(clip[0]) + float(clip[2]), float(clip[1]) + float(clip[3])),
+                                      inner, at, u))
+            _walk_text(p.get("items"), inner, at, u, scale, cut, out)
+        elif kind == "slot":
+            _walk_text(p.get("fallback", {}).get("items") if isinstance(p.get("fallback"), dict) else None, m, anchor, u, scale, clips, out)
+
+
+def _finite_pair(values: Sequence[Any]) -> bool:
+    return all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(float(v)) for v in values)
+
+
+def _world_box(box: Sequence[float], m: Sequence[float], anchor: Optional[Tuple[float, float]], u: float) -> Tuple[float, float, float, float]:
+    """One box in a primitive's own units as canvas units: inside a screen-anchored group a unit is ``u``."""
+    xs, ys = [], []
+    for cx, cy in ((box[0], box[1]), (box[2], box[1]), (box[0], box[3]), (box[2], box[3])):
+        lx, ly = _apply(m, cx, cy)
+        if anchor is not None:
+            lx, ly = anchor[0] + lx * u, anchor[1] + ly * u
+        xs.append(lx)
+        ys.append(ly)
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def text_boxes(dl: Mapping[str, Any], u: float, box: Optional[Sequence[float]] = None) -> List[Tuple[float, float, float, float]]:
+    """Every box of text the display list draws at ``u`` canvas units per pixel, in canvas units.
+
+    The page measures the same boxes for its presence pills (``web/src/v2/collab/labels.js``), which is why the two
+    walk a display list the same way: a screen-anchored group hangs from a world point and holds pixels, a group's
+    ``clip`` cuts what is inside it, and a primitive whose level of detail is out of band at this zoom draws nothing.
+    """
+    scale = 1.0 / u if u > 0 else float("inf")
+    out: List[Tuple[float, float, float, float]] = []
+    for entry in dl.get("entries") or ():
+        if not isinstance(entry, dict):
+            continue
+        if box is not None and isinstance(entry.get("bbox"), list) and len(entry["bbox"]) == 4 and not _intersects(entry["bbox"], box):
+            continue
+        _walk_text(entry.get("items"), _IDENTITY, None, u, scale, (), out)
+    return out
+
+
+#: How far out, in badge heights, the ladder walks around a mark's preferred corner before the badge is left out.
+BADGE_RINGS = 4
+
+
+def badge_spots(el: Mapping[str, Any], size: Tuple[float, float], u: float) -> List[Tuple[float, float]]:
+    """Where an element's badge may go, best first: its corner as it was drawn until now, then the other three
+    corners, then inside the top-right one (of a frame, the corner nothing else is ever drawn in), then rings
+    around the first of them - in badge heights, so a badge stays as near its mark at any zoom.
+
+    A badge hangs outside the mark rather than inside it because it is a fixed size in pixels while the mark is a box
+    in units, so on a whole-board picture one inside a short box's corner is taller than the room the mark's own
+    label leaves (QA phase 6, F7). Ordering is what keeps this change small: the first candidate is where every badge
+    was drawn before, so a badge moves only when it would have landed on words (V1).
+    """
+    width, height = size
+    pad = 2.0 * u
+    anchor_x, anchor_y, above = mark_anchor(dict(el))
+    if el.get("type") in ("arrow", "comment"):
+        # No box to hang off: the anchor is a point on the line (above its label's pill) or the comment's pin.
+        spots = [(anchor_x - pad, anchor_y - height - pad) if above else (anchor_x - pad, anchor_y + pad),
+                 (anchor_x - pad, anchor_y + pad), (anchor_x - width - pad, anchor_y - height / 2.0),
+                 (anchor_x + pad, anchor_y - height / 2.0)]
+    else:
+        x0, y0, x1, y1 = _bounds(dict(el))
+        right = max(x0, x1 - width)
+        if el.get("type") in BADGE_INSIDE:
+            # A frame's badge stays inside its band, and in the band's top-*right* corner: its own title stands in
+            # the top-left one at every zoom that draws the band, so the left corner is never free (V1).
+            spots = [(right - pad, y0 + pad), (x0 + pad, y0 + pad), (right + pad, y0 - height - pad), (right + pad, y1 + pad)]
+        else:
+            spots = [(anchor_x - pad, anchor_y - height - pad) if above else (anchor_x - pad, anchor_y + pad),
+                     (right + pad, y0 - height - pad), (x0 - pad, y1 + pad), (right + pad, y1 + pad), (right - pad, y0 + pad)]
+    base = spots[0]
+    step = height + pad
+    for ring in range(1, BADGE_RINGS + 1):
+        out = ring * step
+        spots += [(base[0] + dx * out, base[1] + dy * out) for dx, dy in
+                  ((0, -1), (1, 0), (-1, 0), (0, 1), (1, -1), (-1, -1), (1, 1), (-1, 1))]
+    return spots
+
+
+def badge_marks(elements: Sequence[Dict[str, Any]], dl: Mapping[str, Any], box: Sequence[float],
+                u: float) -> Tuple[List[Tuple[str, float, float]], List[str]]:
+    """``(marks, omitted)``: each badge's top-left corner, and the ids whose badge found no clear corner (V1).
+
+    The obstacles are every line of text the picture will draw - an element's own label, a frame's title, a claim's,
+    a lock's or a proposal's pill - and the badges already placed, so no badge is ever drawn on words. A board can
+    leave a mark without a badge; drawing the badge over the words would cost the reader both.
+    """
+    obstacles = _Obstacles(BADGE_CELL_PX * u)
+    for found in text_boxes(dl, u, box):
+        obstacles.add(found)
+    gap = BADGE_GAP_PX * u
+    marks: List[Tuple[str, float, float]] = []
+    omitted: List[str] = []
+    for el in elements:
+        ident = str(el.get("id") or "")
+        if not ident:
+            continue
+        try:
+            size = _svg.badge_box(ident, u)
+            spots = badge_spots(el, size, u)
+        except (TypeError, ValueError, KeyError, IndexError):
+            continue
+        spot = next((s for s in spots if obstacles.free((s[0], s[1], s[0] + size[0], s[1] + size[1]), gap)), None)
+        if spot is None:
+            omitted.append(ident)
+            continue
+        marks.append((ident, spot[0], spot[1]))
+        obstacles.add((spot[0], spot[1], spot[0] + size[0], spot[1] + size[1]))
+    return marks, omitted
+
+
 def picture(scene: Dict[str, Any], region: Optional[Sequence[float]] = None, marks: bool = True, grid: bool = False,
             reader: Optional[str] = None, max_px: int = DEFAULT_MAX_PX, team: Optional[TeamPaths] = None,
-            theme: str = "light", view: Optional[str] = None) -> Tuple[str, Tuple[float, float, float, float]]:
+            theme: str = "light", view: Optional[str] = None, omitted: Optional[List[str]] = None) -> Tuple[str, Tuple[float, float, float, float]]:
     """``(svg, box)``: the agent's picture of the scene (or a region) and the box it shows; ``view`` draws the slots that
-    have still views in that one (phases 3 and 4, 1.4)."""
+    have still views in that one (phases 3 and 4, 1.4).
+
+    ``omitted``, when given, is filled with the ids whose badge found nowhere clear of the picture's own words
+    (``badge_marks``), so what the agent is told about the picture can say which marks it cannot name.
+    """
     dl = _display.display_list(scene, reader=reader)
     if view:
         in_view(dl, scene, view, team)
     box = normalize_region(region) if region is not None else tuple(float(v) for v in dl["bbox"])
-    badges: List[Tuple[str, float, float, bool]] = []
+    badges: List[Tuple[str, float, float]] = []
     if marks:
         drawn = [e for e in scene.get("elements") or [] if isinstance(e, dict) and _intersects(drawn_bounds(e), box)]
         drawn.sort(key=lambda e: (int(e.get("z") or 0), str(e.get("id"))))
-        for el in drawn:
-            try:
-                x, y, above = mark_anchor(el)
-            except (TypeError, ValueError, KeyError, IndexError):
-                continue
-            badges.append((str(el.get("id") or ""), x, y, above))
+        badges, left_out = badge_marks(drawn, dl, box, units_per_px(box, max_px))
+        if omitted is not None:
+            omitted.extend(left_out)
     svg_text = _svg.write(dl, theme=theme, box=box, max_px=max_px, embed=embedder(team), resvg_text=True, marks=badges, grid=grid)
     return svg_text, box  # type: ignore[return-value]
 

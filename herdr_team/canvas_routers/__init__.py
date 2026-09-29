@@ -70,8 +70,14 @@ class RouteRequest:
     label: Optional[Tuple[float, float]] = None
     #: ``(id, box, outline)`` of what the route keeps clear of; never the ends or a container of an end.
     obstacles: Tuple[Tuple[str, Box, str], ...] = ()
-    #: Routes already placed in this batch: the orthogonal router avoids running along them.
+    #: Routes already placed in this batch: the orthogonal router avoids running along them, charges for crossing
+    #: them, and keeps its label pill off them.
     others: Tuple[Tuple[Point, ...], ...] = ()
+    #: Label pills already placed in this batch, as boxes: a pill never lands on another pill.
+    pills: Tuple[Box, ...] = ()
+    #: The label spot the layout kept room for (``LayoutResult.labels``), in the same frame as the boxes: the last
+    #: candidate the label search tries, and only while it is on the route the router drew (``orthogonal._label``).
+    label_at: Optional[Point] = None
     clearance: float = 20
     #: The corner radius of a rounded elbow.
     radius: float = 8
@@ -105,6 +111,11 @@ class Router:
     route: Callable[[RouteRequest], Route]
     aliases: Tuple[str, ...] = ()
     doc: str = ""
+    #: ``(request, route) -> label centre``: where this router's label pill goes on a route it already drew.
+    #: ``route_many`` calls it in a second pass so every pill is placed against **every** line of the batch, not
+    #: only the ones drawn before it. Without it a pill could only avoid its predecessors, and on a seven-edge fan
+    #: that meant a label landing on a wire that had not been drawn yet.
+    relabel: Optional[Callable[[RouteRequest, Route], Optional[Point]]] = None
 
 
 _REGISTRY: Dict[str, Router] = {}
@@ -226,13 +237,39 @@ def route(name: str, request: RouteRequest) -> Route:
 
 def route_many(name: str, requests: Sequence[RouteRequest]) -> Dict[str, Route]:
     """Every request's route in input order; each sees the routes before it as ``others``. Edges that leave the same
-    side of the same node get spread slots first (``with_slots``)."""
+    side of the same node get spread slots first (``with_slots``).
+
+    Then, for a router with a ``relabel`` hook, a second pass places every label against every line of the batch and
+    every pill already placed. Two things need that pass. A router that can only see the boxes puts every pill at the
+    same clear spot and a reader cannot tell which line each belongs to; and a router that can only see the lines
+    drawn *before* it cannot avoid the ones drawn after, which on a seven-edge fan put a label on a wire that did not
+    exist yet."""
+    router = get(name)
+    if router is None:
+        raise RouteError("route", "{!r} is not a router; the routers are {}".format(name, ", ".join(names())))
+    ordered = with_slots(requests)
     out: Dict[str, Route] = {}
     placed: List[Tuple[Point, ...]] = []
-    for request in with_slots(requests):
+    for request in ordered:
         found = route(name, replace(request, others=tuple(request.others) + tuple(placed)))
         out[request.id] = found
         placed.append(tuple(found.points))
+    if router.relabel is None:
+        return out
+    # Second pass: every pill placed against every line of the batch and every pill already placed. The lines are
+    # finished by now, so this moves no wire; it only stops a label landing on a neighbour it had not seen.
+    lines = {request.id: tuple(out[request.id].points) for request in ordered}
+    pills: List[Box] = []
+    for request in ordered:
+        found = out[request.id]
+        if request.label is None or found.blocked:
+            continue
+        others = tuple(request.others) + tuple(line for eid, line in lines.items() if eid != request.id)
+        at = router.relabel(replace(request, others=others, pills=tuple(pills)), found)
+        out[request.id] = replace(found, label_at=(_r2(at[0]), _r2(at[1])) if at is not None else None)
+        if at is not None:
+            w, h = request.label
+            pills.append((at[0] - w / 2.0, at[1] - h / 2.0, at[0] + w / 2.0, at[1] + h / 2.0))
     return out
 
 

@@ -121,3 +121,39 @@ class JoiningHerWork(CollabRig):
         found = self.proposed({"op": "move", "id": mine, "inside": frame, "intent": "t"})
         self.assertEqual((found["reason"], found["message"]), ("human_made", "it goes on the operator's {}".format(frame)))
         self.assertIsNone(self.el(mine)["frame"])
+
+
+class ClaimEdges(CollabRig):
+    """V2: a claim is drawn as a dashed rectangle over the board, so an edge through a mark reads as the mark being
+    cut off. The region grows outward to hold whole what it holds most of - at the ``claim`` op and for the automatic
+    claims drawing makes - and the answer says it grew, because a claim's region is also what it refuses others."""
+
+    def test_the_claim_op_snaps_outward_and_says_so(self):
+        chart = self.ok({"op": "shape", "kind": "box", "text": "Revenue", "at": [200, 200], "w": 400, "h": 300, "intent": "t"})["ids"][0]
+        result = self.apply([{"op": "claim", "region": [100, 100, 500, 450], "label": "the chart", "intent": "t"}])
+        claim = next(c for c in self.scene()["claims"] if c["id"] == result["applied"][0]["ids"][0])
+        self.assertEqual(claim["region"], [100, 100, 600, 500], "grown to the chart's own edges")
+        self.assertEqual([(w["code"], w["ids"]) for w in result["warnings"]],
+                         [("claim_snapped", [claim["id"], chart])])
+        self.assertEqual(C.check(self.layout, self.team, MEMBER.name)["problems"], [])
+
+    def test_a_reclaim_that_holds_an_older_claim_of_ones_own_replaces_it(self):
+        first = self.ok({"op": "claim", "region": [0, 0, 400, 400], "label": "mine", "intent": "t"})["ids"][0]
+        result = self.apply([{"op": "claim", "region": [-100, -100, 500, 500], "label": "mine, wider", "intent": "t"}])
+        held = [c["id"] for c in self.scene()["claims"] if c["author"] == MEMBER.name]
+        self.assertNotIn(first, held, "two claims over one region say nothing new")
+        self.assertIn(result["applied"][0]["ids"][0], held)
+
+    def test_an_automatic_claim_grown_over_a_peers_mark_holds_it_whole(self):
+        # A fresh automatic claim is the batch's marks padded a grid step, so its edge is never far from its own
+        # marks. It is growing that reaches somebody else's: two batches a step apart make one lane over the ground
+        # between them, and a mark of the peer's in that ground was drawn through (the operator's V2, one board up).
+        note = self.ok({"op": "shape", "kind": "note", "text": "Theirs", "at": [900, 100], "intent": "t"}, PEER)["ids"][0]
+        self.ok({"op": "release", "id": "all", "intent": "t"}, PEER)
+        self.ok({"op": "shape", "kind": "box", "text": "One", "at": [0, 0], "w": 400, "h": 200, "intent": "t"})
+        self.ok({"op": "shape", "kind": "box", "text": "Two", "at": [600, 0], "w": 400, "h": 200, "intent": "t"})
+        claim = next(c for c in self.scene()["claims"] if c["author"] == MEMBER.name)
+        self.assertEqual(claim["region"], [-20, -20, 1080, 220], "one lane over both, out to the note's own edge")
+        self.assertEqual([p["code"] for p in C.check(self.layout, self.team, MEMBER.name)["problems"]], ["overlap"],
+                         "the marks still overlap; no edge is drawn through one of them")
+        self.assertEqual(self.el(note)["x"], 900, "nothing moved: only the claim grew")

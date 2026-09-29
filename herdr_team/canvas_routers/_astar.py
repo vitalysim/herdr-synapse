@@ -1,10 +1,11 @@
 """A* over the orthogonal grid, with states ``(point, heading)``.
 
-The cost of a route is its length, plus ``bend`` for every turn, plus three
-times the length it runs within 4 units alongside a route already placed
-(``others``), so parallel edges spread out instead of stacking. The heuristic
-is the Manhattan distance plus the turns still needed, which never
-overestimates. Ties break on the larger ``g`` first (the deeper state: on a
+The cost of a route is its length, plus ``bend`` for every turn, plus
+``ALONGSIDE_COST`` times the length it runs within ``NEAR`` of a route already
+placed (``others``), so parallel edges spread out instead of stacking, plus
+``CROSS_COST`` turns for every placed route it is drawn *through* - which used
+to be free, and is why wire crossed wire. The heuristic is the Manhattan
+distance plus the turns still needed, which never overestimates. Ties break on the larger ``g`` first (the deeper state: on a
 grid, many routes cost the same, and this walks one of them instead of all),
 then ``(x, y, heading)``, so the search is deterministic.
 
@@ -22,7 +23,11 @@ Point = Tuple[float, float]
 STEPS = ((1, 0), (0, 1), (-1, 0), (0, -1))
 #: A piece within this distance of a placed route runs alongside it.
 NEAR = 4.0
-ALONGSIDE_COST = 3.0
+ALONGSIDE_COST = 6.0
+#: What crossing a route already placed costs, as a multiple of a turn (so ``3 x 2 x clearance``, about 120 units at
+#: the shipped clearance). Expensive enough that the search prefers a short stretch beside a wire to a cut across it,
+#: cheap enough that it never fails a leg: a crossing is always still reachable, just never free.
+CROSS_COST = 3.0
 
 
 def heading_of(dx: float, dy: float) -> int:
@@ -54,6 +59,24 @@ class Alongside:
         view = Alongside(())
         view.h, view.v, view._only = self.h, self.v, routes
         return view
+
+    def crossings(self, horizontal: bool, at: float, lo: float, hi: float) -> int:
+        """How many placed pieces this step crosses: the wire it would be drawn *through*.
+
+        Running alongside a placed route was already charged for; running through one was free, which is why the
+        search would happily take a shortcut across three other wires rather than a short detour beside one. The
+        pieces are bucketed by their own coordinate, so a step only looks at the buckets it spans.
+        """
+        table = self.v if horizontal else self.h
+        if not table or hi <= lo:
+            return 0
+        only = self._only
+        count = 0
+        for bucket in range(int(lo // NEAR), int(hi // NEAR) + 1):
+            for c, s0, s1, r in table.get(bucket, ()):
+                if lo < c < hi and s0 < at < s1 and (only is None or r in only):
+                    count += 1
+        return count
 
     def overlap(self, horizontal: bool, at: float, lo: float, hi: float) -> float:
         table = self.h if horizontal else self.v
@@ -139,9 +162,13 @@ def search(grid: Grid, start: Point, start_heading: int, goal: Point, goal_headi
         length = abs(xs[ni] - xs[i]) + abs(ys[nj] - ys[j])
         cost = length
         if sx:
-            cost += ALONGSIDE_COST * alongside.overlap(True, ys[j], min(xs[i], xs[ni]), max(xs[i], xs[ni]))
+            lo, hi = min(xs[i], xs[ni]), max(xs[i], xs[ni])
+            cost += ALONGSIDE_COST * alongside.overlap(True, ys[j], lo, hi)
+            cost += CROSS_COST * bend * alongside.crossings(True, ys[j], lo, hi)
         else:
-            cost += ALONGSIDE_COST * alongside.overlap(False, xs[i], min(ys[j], ys[nj]), max(ys[j], ys[nj]))
+            lo, hi = min(ys[j], ys[nj]), max(ys[j], ys[nj])
+            cost += ALONGSIDE_COST * alongside.overlap(False, xs[i], lo, hi)
+            cost += CROSS_COST * bend * alongside.crossings(False, xs[i], lo, hi)
         return ni, nj, cost
 
     while heap:

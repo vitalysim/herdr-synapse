@@ -139,6 +139,14 @@ token shadow).
 | `slot` | `slot` (a kind's renderer key: `chart`, `mermaid`, `viz`, `scene3d`), `x y w h`, `ref: {id, v, doc?}`, `still` (a name or null), `fallback`, and since phases 3 and 4 `views`?, `drawn`?, `gl`? | The browser draws the content live; without the browser, the still or else `fallback`. `ref.doc` names an asset the page fetches from `assets/<name>` (`<32 hex>.json`, a chart's datasets; `.glb`, a model), immutable, so cached by name. `views` maps each of the kind's still views to its still or null (`{"iso": "E-9-v12-iso.png", "front": null, "top": null}`), in order; `still` stays the first one's. `drawn: true` says `fallback` is a faithful drawing (a chart's axes and bars, a scene's projection), not a placeholder card. `gl: true` says the live content needs a WebGL context. |
 | `group` | `items`, `t: [a,b,c,d,e,f]`?, `clip: [x,y,w,h]`?, `screen: [ax, ay]`? | With `screen` the children are in screen pixels around the anchor (comment pins, claim and lock labels). A claim's label sits in a world group clipped at the claim beside it on the right, when there is one, so it never runs over that claim's label; a claim that changes redraws every claim. |
 
+A **claim**'s dashed border is drawn `CLAIM_BORDER_OUT` units *outside* the
+region, and its `bbox` is the region itself. The border is the only ink a claim
+puts on the board, it is two screen pixels wide at every zoom, and the region
+snaps to the marks it holds (`canvas_check.claim_snap`), so drawn on the region
+its stroke lands along their outlines - which at 41% zoom read as a chart's axis
+labels being cut off. The label still hangs from the region's own corner: that
+is where the authority begins.
+
 **Paint** is `null`, a literal `"#rrggbb"` (the same in both themes), a token
 reference (`base.<role>`, `tone.<tone>.<role>`, `chip.<0-7|human>.<bg|fg>`,
 and since phases 3 and 4 `chart.<name>` with an optional index (`chart.paper`,
@@ -258,9 +266,18 @@ Both writers produce exactly this, with no whitespace between elements:
   root, and adds id badges and the labelled grid (never display-list items). A
   badge is a fixed size in pixels while an element is a box in canvas units, so
   it hangs above its element's top edge, above an arrow label's pill and above a
-  comment's pin - clearance in the same pixels it is drawn in (a frame keeps its
-  badge inside the corner, because a frame's own title stands above it when the
-  picture is zoomed out).
+  comment's pin - clearance in the same pixels it is drawn in.
+  **No badge is ever drawn on the words the picture draws.**
+  `canvas_render.badge_marks` measures every line of text the list will draw at
+  this zoom (`text_boxes`, which walks the list the way the page's presence layer
+  does, screen-anchored groups and clips included) and gives each badge the first
+  corner clear of all of them and of the badges already placed: above-left first
+  - where every badge used to go - then the other three corners, then inside the
+  top-right one, then rings around the first. A frame starts from its band's
+  top-*right* corner, the one corner a frame never draws in, because its own
+  title stands in the top-left one. When no corner is clear the badge is left
+  out and `look --image` says which marks carry none, because a badge over a
+  label costs the reader both.
   The page uses the families `"Synapse Sans"` and `"Synapse Mono"`, each followed
   by the script faces resvg falls back to (`SCRIPT_FALLBACKS` in
   `web/src/v2/render/svgAttrs.js`: Arial Hebrew, Geeza Pro), and real urls.

@@ -90,6 +90,16 @@ describe("the cut-over", () => {
     expect(node.textContent).not.toContain("Classic canvas (v1):"); // the v1 banner belongs to v1 only
   });
 
+  test("data-engine is the board's own attribute, never the document's (D1)", async () => {
+    // A QA report read the engine off documentElement and found it there because that is where a theme
+    // attribute lives. It never was: the board div carries it, so a page holding a v1 and a v2 board at
+    // once still says which is which, and anything looking for the engine looks at the board.
+    const node = await open("/");
+    expect(document.documentElement.getAttribute("data-engine")).toBe(null);
+    expect(document.body.getAttribute("data-engine")).toBe(null);
+    expect(node.querySelector('[data-testid="board"]').getAttribute("data-engine")).toBe("v2");
+  });
+
   test("?engine=v1 opens the classic canvas with its banner, and the banner goes back to v2", async () => {
     const node = await open("/?engine=v1#team=alpha");
     expect(drawn.canvasTab).toBeGreaterThan(0);
