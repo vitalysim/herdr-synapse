@@ -1,11 +1,13 @@
 # Changelog
 
-## 0.22.0 (unreleased)
+## 0.22.1 (unreleased)
 
 A new canvas. The whiteboard is now drawn by Synapse's own renderer instead of Excalidraw, and text always fits: every label is measured with the same bundled fonts on the server, on the page and in the agent's picture, and its box grows to hold it. Agents no longer place boxes by coordinates; they name components (cards, tables, kanbans, timelines, flow graphs, mind maps, sequences) and how they relate, and the canvas sizes, places and routes them. Charts are drawn from data files, and 3D scenes are described by how objects sit against each other. The operator leads: what an agent would change on her work, a peer's work or a frozen area arrives as a proposal she accepts or rejects. The classic Excalidraw canvas stays one click away in this release.
 
 ### Highlights
 
+- **The graph layout is readable.** Readability is measured, not argued about: crossings, detour ratio, reversals, bends, label drift, wire-on-wire and screen use are numbers the build gates per board. On a real agent-drawn flow the crossings a reader sees drop from 8 to 2, the worst detour from 2.43x to none, reversals from 6 to 0, and total wire by 37%; a long chain goes from 24.7:1 to 2.0:1, where its node text had been too small to read at all.
+- **`canvas check` can see a tangle.** It reports `crossings_high`, `routes_tangled`, `labels_adrift` and `graph_thin`, each with a repair that works, so an agent can fix its own drawing instead of being told it is clean. An existing board can be relaid out at last, keeping the operator's pinned marks exactly where they were.
 - **Text always fits** (phase 0). Shapes are sized from their label with the bundled Inter and Geist Mono metrics, and colour comes from tones that mean something.
 - **One picture for everyone** (phase 1). The server turns the board into a display list that the page and the agent's PNG both draw, byte for byte the same.
 - **Components and automatic layout** (phase 2). One op gives a finished card, section, table, kanban, timeline, graph, mind map or sequence, with edges routed around what is in the way, 1,928 icons and semantic zoom.

@@ -1814,7 +1814,7 @@ just written it; a schedule that fails toasts you and wakes nobody.
 
 ## Status
 
-Current source version: 0.22.0, skill v12.
+Current source version: 0.22.1, skill v12.
 
 Claude Code 2.1.267, Codex 0.153.4 and OpenCode 1.18.30 were exercised together
 in one disposable Herdr 0.9.0/p22 session. Formation, exact-session resume, idle
