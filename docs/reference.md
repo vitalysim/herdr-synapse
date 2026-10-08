@@ -1026,10 +1026,10 @@ herdr-synapse contradictions [-h] [--json] [--team NAME|PATH] [--session NAME] [
 #### Recall
 
 <details>
-<summary><code>recall</code> — search the board, facts, work items and artifacts in one ranked list</summary>
+<summary><code>recall</code> — search the board, facts, work items, artifacts and the canvas in one ranked list</summary>
 
 ```text
-herdr-synapse recall [-h] [--json] [--team NAME|PATH] [--session NAME] [--socket PATH] [--session-mismatch-ok] [--kind {post,fact,work,file}] [--about SUBJECT] [--as-of DATE] [--limit LIMIT] [--no-refresh] query
+herdr-synapse recall [-h] [--json] [--team NAME|PATH] [--session NAME] [--socket PATH] [--session-mismatch-ok] [--kind {post,fact,work,file,canvas}] [--about SUBJECT] [--as-of DATE] [--limit LIMIT] [--no-refresh] query
 ```
 
 </details>

@@ -1,12 +1,19 @@
-"""``recall``: one search over everything a team knows (0.19).
+"""``recall``: one search over everything a team knows (0.19; the canvas since 0.22.1).
 
 The board, the facts, the work items with their settlement summaries (a
-work item's thread brief), and the text files in the team's ``artifacts/``
-folder are indexed into one SQLite FTS5 table under the team's state dir
-(``<team>/index/recall.sqlite3``). The index is a cache: the JSONL files and
-the folder stay the source of truth, and deleting the index only costs a
-rebuild on the next query. It is brought up to date lazily, by the query that
-needs it, under its own lock.
+work item's thread brief), the text files in the team's ``artifacts/``
+folder and the team's canvas are indexed into one SQLite FTS5 table under the
+team's state dir (``<team>/index/recall.sqlite3``). The index is a cache: the
+JSONL files, the folder and the scene stay the source of truth, and deleting
+the index only costs a rebuild on the next query. It is brought up to date
+lazily, by the query that needs it, under its own lock.
+
+The canvas was the last thing a team could not find again: a frame holding the
+whole login flow was unreachable by searching for "login flow", so a diagram
+had to be remembered to be used. One row
+per element makes it searchable by what it says, and a hit names the element so
+``canvas look --around E-12`` shows it in place. What text an element carries is
+``canvas_index``'s problem, not this module's.
 
 Ranking follows graphiti's hybrid search without its paid parts: several
 cheap rankings are fused with reciprocal rank fusion (``score = sum 1/(60 +
@@ -51,7 +58,7 @@ MAX_FILE_BYTES = 1024 * 1024
 MAX_FILES = 2000
 CHUNK_CHARS = 1200
 DEFAULT_LIMIT = 10
-KINDS = ("post", "fact", "work", "file")
+KINDS = ("post", "fact", "work", "file", "canvas")
 _TERM_RE = re.compile(r"\w+", re.UNICODE)
 
 
@@ -206,6 +213,64 @@ def _index_work(con: sqlite3.Connection, team: TeamPaths) -> int:
     return len(items)
 
 
+def _canvas_paths(team: TeamPaths) -> Tuple[Path, Path]:
+    """``(scene.json, events.jsonl)``: the two files the canvas index's signature watches.
+
+    Built here from ``features`` rather than through ``canvas`` so that deciding whether to
+    reindex costs two ``stat`` calls and no import of the canvas and its kind registry.
+    """
+    from herdr_team import features as _features
+
+    directory = _features.whiteboard_dir(team)
+    return directory / "scene.json", directory / "events.jsonl"
+
+
+def _canvas_on(team: TeamPaths) -> bool:
+    """Whether this team has a canvas at all. A team that never turned one on, or turned it off,
+    is not searched and keeps no canvas rows; turning it back on reindexes from the scene."""
+    from herdr_team import features as _features
+
+    try:
+        return bool(_features.team_settings(store.RosterStore(team).load())["enabled"])
+    except (HerdrTeamError, OSError, ValueError):
+        return False
+
+
+def _index_canvas(con: sqlite3.Connection, team: TeamPaths) -> int:
+    """Index the canvas: one row per element, comments and legend entries included.
+
+    Full rebuild on any change, with no watermark, because the canvas is small
+    (``canvas.MAX_ELEMENTS`` is 2000) and moves far less often than the board, and because a
+    watermark gets the two cases that matter wrong: ``whiteboard clear`` deletes nothing but moves
+    everything, and a purge rewrites history. Both would leave the old marks findable for ever.
+    The signature is the scene file and the event log: a clear and a purge both move one of them.
+
+    Never takes the canvas lock, and never calls ``look`` (which writes presence and a cursor):
+    reading a board must not look like someone looking at it.
+    """
+    scene_path, events_path = _canvas_paths(team)
+    enabled = _canvas_on(team)
+    signature = "{}|{}".format(_sig(scene_path, events_path), "on" if enabled else "off")
+    if _meta(con, "canvas_sig") == signature:
+        return 0
+    con.execute("DELETE FROM docs WHERE kind='canvas'")
+    rows: List[Dict[str, Any]] = []
+    if enabled:
+        from herdr_team import canvas as _canvas
+        from herdr_team import canvas_index as _canvas_index
+
+        try:
+            rows = _canvas_index.rows(_canvas.load_scene(team))
+        except (OSError, ValueError, HerdrTeamError):
+            # An unreadable or half-written canvas costs its own rows, never the whole index.
+            rows = []
+    for row in rows:
+        _insert(con, "canvas:" + row["id"], "canvas", row["id"], row["author"], _ts(row["ts"]), row["body"],
+                about=row["about"], weight=row["weight"], info=row["info"])
+    _set_meta(con, "canvas_sig", signature)
+    return len(rows)
+
+
 def _drop_file(con: sqlite3.Connection, rel: str) -> None:
     """Remove one file's passages by exact, case-sensitive prefix. A pattern match would treat
     ``_`` as a wildcard and ignore ASCII case, so notes_v1.md would take notes-v1.md with it."""
@@ -278,7 +343,8 @@ def refresh(team: TeamPaths, artifacts: Optional[Path]) -> Dict[str, int]:
         con = _connect(index_path(team))
         try:
             with con:
-                stats = {"posts": _index_board(con, team), "facts": _index_facts(con, team), "work": _index_work(con, team), "files": _index_files(con, artifacts)}
+                stats = {"posts": _index_board(con, team), "facts": _index_facts(con, team), "work": _index_work(con, team),
+                         "files": _index_files(con, artifacts), "canvas": _index_canvas(con, team)}
         finally:
             con.close()
     return stats
