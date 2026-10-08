@@ -53,6 +53,12 @@ CONTEXT_MAX_BYTES = 4096
 #: so both the whole block and each injected section are capped here.
 BRIEF_CONTEXT_MAX_BYTES = 8192
 BRIEF_CONTEXT_MAX_SECTION = 2048
+#: The catch-up (``catchup_lines``): at most this many posts and bytes, and only what is
+#: left of ``BRIEF_CONTEXT_MAX_BYTES`` once everything with operator authority is in.
+CATCHUP_MAX_POSTS = 12
+CATCHUP_MAX_BYTES = 2560
+#: Below this much room the catch-up is a pointer, not a list.
+CATCHUP_MIN_BYTES = 600
 STOP_BLOCKS_PER_WINDOW = 3
 STOP_WINDOW_S = 600.0
 STOP_MARKER = "[herdr-team stop]"
@@ -547,12 +553,79 @@ def brief_context(team: paths.TeamPaths, team_name: str, member: Dict[str, Any])
             lines.append(operation["handoff"])
     lines.extend(work_lines(team, name, member.get("generation")))
     unread = _directed_unread(team, name)
-    lines.append("unread board posts for you: {}. Run herdr-synapse board --new, then herdr-synapse ack. Teammates are peers: post to the board, never prompt their panes.".format(len(unread)))
+    unread_line = "unread board posts for you: {}. Run herdr-synapse board --new, then herdr-synapse ack. Teammates are peers: post to the board, never prompt their panes.".format(len(unread))
+    if not (operation.get("phase") in ("briefing", "complete") and operation.get("handoff")):
+        # A replacement already carries its predecessor's board handoff above; a second
+        # list of the same posts would only spend its context twice.
+        room = BRIEF_CONTEXT_MAX_BYTES - len(("\n".join(lines + [unread_line]) + "\n").encode("utf-8")) - 64
+        lines.extend(catchup_lines(team, name, min(CATCHUP_MAX_BYTES, room), {r.get("seq") for r in unread}))
+    lines.append(unread_line)
     text = "\n".join(lines) + "\n"
     encoded = text.encode("utf-8")
     if len(encoded) > BRIEF_CONTEXT_MAX_BYTES:
         text = encoded[:BRIEF_CONTEXT_MAX_BYTES].decode("utf-8", "ignore").rstrip() + "\n[herdr-team: context truncated; run herdr-synapse me]\n"
     return text
+
+
+def catchup_lines(team: paths.TeamPaths, name: str, budget: int, unread_seqs: Any = ()) -> List[str]:
+    """What the team said lately, for an agent arriving late or coming back without its context.
+
+    A member joins with its cursor at the end of the board, so ``board --new`` shows it
+    nothing that came before it, and after a ``/clear`` or a compaction an agent has the
+    unread count but none of the conversation it was in. This is the newest real posts -
+    any member's, not only the ones addressed to it: on a working board most posts are
+    one member writing to another, and a filter of "to me or to all" left a new agent
+    with almost nothing - rendered one line each (``render.render_catchup``).
+
+    System records are left out (about half of a real board is nudges, toasts and
+    artifact notes), and so are retracted posts and the originals an edit replaced.
+    Two kinds of record matter only to the member they were for, and are shown to it
+    alone: a line the operator typed into a pane (``direct``) and the operator's
+    "seen" receipt on an ask, which is an acknowledgement rather than anything said.
+    The active file is read; the newest archive segment only when the active file is
+    too short to fill the list, so this never parses the whole history.
+    """
+    if budget < CATCHUP_MIN_BYTES:
+        return ["recent board activity: no room left in this block; run herdr-synapse board --last 30"] if budget > 0 else []
+    board = store.BoardStore(team)
+    try:
+        records = board.read(include_retracted=True)
+        posts = _catchup_posts(records, name)
+        if len(posts) < CATCHUP_MAX_POSTS:
+            segments = board.archive_segments()
+            if segments:
+                newest = segments[-1]
+                first = records[0]["seq"] if records else newest["last_seq"] + 1
+                records = board.read_archive_range(int(newest["first_seq"]) - 1, int(first)) + records
+                posts = _catchup_posts(records, name)
+    except (HerdrTeamError, OSError, ValueError, KeyError):
+        return []
+    if not posts:
+        return []
+    top = records[-1].get("seq") if records else None
+    text = _render.render_catchup(posts, time.time(), budget, CATCHUP_MAX_POSTS, unread_seqs, top=top)
+    return text.split("\n") if text else []
+
+
+def _catchup_posts(records: List[Dict[str, Any]], name: str) -> List[Dict[str, Any]]:
+    """Real posts only: no system records, no retracted posts, no original an edit superseded.
+
+    A ``direct`` line and an operator receipt are kept only when they were addressed to ``name``.
+    """
+    from herdr_team.cmd_asks import ACK_NOT_A_DECISION, ACK_SEEN
+
+    receipts = (ACK_SEEN, ACK_NOT_A_DECISION)
+    live = store.filter_retracted(records, False)
+    superseded = {r.get("supersedes") for r in live if isinstance(r.get("supersedes"), int)}
+    out: List[Dict[str, Any]] = []
+    for record in live:
+        if record.get("kind") in ("system", "retract") or record.get("seq") in superseded:
+            continue
+        personal = record.get("kind") == "direct" or (record.get("from") == "human" and record.get("text") in receipts)
+        if personal and name not in (record.get("to") or []):
+            continue
+        out.append(record)
+    return out
 
 
 def work_lines(team: paths.TeamPaths, name: str, generation: Any = None) -> List[str]:
