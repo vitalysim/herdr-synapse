@@ -528,7 +528,9 @@ def _strays(marks: List[Dict[str, Any]], reader: Optional[str], by_id: Dict[str,
     for index, (el, box) in enumerate(boxes):
         reach = (box[0] - STRAY_GAP, box[1] - STRAY_GAP, box[2] + STRAY_GAP, box[3] + STRAY_GAP)
         keys = cells(reach)
-        near = big + ([i for key in keys for i in grid.get(key, ())] if keys is not None else range(len(boxes)))
+        # Both branches must be lists: ``big + range(...)`` raises TypeError, which killed every draw on a board
+        # holding one mark whose reach spans more than 64 grid cells (a wide label is enough).
+        near = big + ([i for key in keys for i in grid.get(key, ())] if keys is not None else list(range(len(boxes))))
         if any(i != index and _gap(box, boxes[i][1]) <= STRAY_GAP for i in near):
             continue
         nearest = min((_gap(box, other) for o, other in boxes if o is not el), default=0.0)

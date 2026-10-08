@@ -231,5 +231,20 @@ class ArrowThroughFix(CanvasRig):
         self.assertIn("route applies to arrows", refused["message"])
 
 
+class WideMarks(unittest.TestCase):
+    """A mark too big for the stray grid used to kill the whole check, and with it every draw on that board.
+
+    ``_strays`` buckets marks into 1500-unit cells and falls back to "look at everything" for a mark whose reach
+    spans more than 64 of them. The fallback concatenated a list with a ``range``, so one wide label raised
+    ``TypeError`` out of ``problems`` -> ``batch_check`` -> ``apply_ops``: the board could not be drawn on at all.
+    """
+
+    def test_a_mark_whose_reach_spans_more_than_64_cells_does_not_break_the_check(self):
+        wide = el("E-1", "box", 0, 0, 30000, 6000, "wide")
+        far = [el("E-{}".format(i + 2), "box", i * 200, 40000, 100, 100, "x") for i in range(3)]
+        found = K.problems([wide] + far, "human", None, claims=())
+        self.assertEqual([p["ids"] for p in found if p["code"] == "stray"], [["E-1"]])
+
+
 if __name__ == "__main__":
     unittest.main()
