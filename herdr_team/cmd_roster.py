@@ -50,7 +50,9 @@ from herdr_team.cmd_board import (
     addressed_to,
     agent_members,
     audit,
+    board_floor,
     board_read_all,
+    board_read_from,
     charter_headline,
     charter_of,
     charter_summary,
@@ -1651,8 +1653,8 @@ def _run_me(args: argparse.Namespace) -> int:
     me = next((m for m in members_of(doc) if m.get("name") == author.name), None)
     if me is None:
         raise HerdrTeamError("not_a_member", "{} is not on the roster of {}".format(author.name, team_name), EXIT_UNREACHABLE, {"author": author.name, "team": team_name})
-    records = board_read_all(team_paths)
     cursor = int(cursor_get(team_paths, author.name).get("seq", 0))
+    records = board_read_from(team_paths, cursor)
     unread = unread_for(team_paths, records, author.name)
     installed = skill_installed_version(env_of(args))
     teammates = [
@@ -1759,7 +1761,7 @@ def _who_payload(args: argparse.Namespace, layout: Layout, api: Any, team_name: 
             agents = None
             source = "unreachable"
         members = _who_from_roster(layout, team_name, doc, agents)
-    records = board_read_all(team_paths)
+    records = board_read_from(team_paths, board_floor(team_paths))
     cursors = cursors_all(team_paths)
     for m in members:
         name = str(m.get("name"))
@@ -1989,7 +1991,7 @@ def _run_brief(args: argparse.Namespace) -> int:
         from herdr_team import cmd_whiteboard as _whiteboard
 
         lines.append(_whiteboard.switch_view(layout.session, team_paths, doc)["line"])
-        records = board_read_all(team_paths)
+        records = board_read_from(team_paths, int(cursor_get(team_paths, member["name"]).get("seq", 0)))
         lines.append("unread posts for you: {}".format(unread_for(team_paths, records, member["name"])))
         out = getattr(args, "stdout", None) or sys.stdout
         out.write("\n".join(lines) + "\n")

@@ -637,6 +637,35 @@ def board_read_all(team: TeamPaths, include_archive: bool = False) -> List[Dict[
     return board_read_all_detailed(team, include_archive=include_archive)[0]
 
 
+def archive_needed(team: TeamPaths, floor: int) -> bool:
+    """True when posts newer than ``floor`` may sit in the archive: ``floor`` is older than the active file.
+
+    The active file starts again at every rotation (``store.BoardStore.ROTATE_BYTES``),
+    so a reader whose cursor is below the active file's first seq has unread posts that
+    only the archive holds. Cheap in the common case: one tail scan of the active file;
+    the archive itself is read only when a reader really is that far behind.
+    """
+    first = store.BoardStore(team).active_first_seq()
+    return first > 1 and floor + 1 < first
+
+
+def board_read_from(team: TeamPaths, floor: int) -> List[Dict[str, Any]]:
+    """Every record, with the archive included when a reader at ``floor`` needs it.
+
+    For unread counts (``me``, ``who``, ``brief``). They used to count over the active
+    file alone, so a member that fell behind a rotation was told it had fewer unread
+    posts than it had: the posts that rotated away were invisible to the count exactly
+    as they were to ``board --new``.
+    """
+    return board_read_all(team, include_archive=archive_needed(team, max(0, int(floor))))
+
+
+def board_floor(team: TeamPaths) -> int:
+    """The lowest cursor any reader with a cursor file holds; 0 when there are none."""
+    seqs = [int(state.get("seq", 0)) for state in cursors_all(team).values()]
+    return min(seqs) if seqs else 0
+
+
 def board_read_all_detailed(team: TeamPaths, include_archive: bool = False) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
     """``board_read_all`` plus what the store skipped: ``{"corrupt", "fragment", "duplicates", "grammar"}`` line counts.
 
@@ -1503,6 +1532,33 @@ def _refuse_member_label(author: Author) -> None:
         )
 
 
+def _board_view_records(team: TeamPaths, args: argparse.Namespace, cursor_before: int) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+    """The records a ``board`` view selects from: the active file, plus the archive when the view reaches into it.
+
+    ``--since`` and ``--thread`` always read the archive. ``--new`` and ``--peek`` did
+    not, and that lost posts: a reader whose cursor was older than the last rotation was
+    shown the active file only, its cursor then advanced past everything printed, and the
+    posts addressed to it that had rotated away were marked read unseen - the daemon then
+    counted them delivered and dropped their nudge. They now read the archive whenever the
+    cursor is older than the active file, and page through it like any other backlog.
+
+    The plain view and ``--last N`` had the same hole in a milder form: right after a
+    rotation, ``board --last 30`` - the catch-up the skill teaches - showed the one system
+    note that starts the fresh file. When the active file holds fewer than N records and
+    an archive exists, the archive is read too. A filtered ``--last N`` still counts from
+    the active file when that file alone is long enough.
+    """
+    if args.since is not None or args.thread is not None:
+        return board_read_all_detailed(team, include_archive=True)
+    if args.new or args.peek:
+        return board_read_all_detailed(team, include_archive=archive_needed(team, cursor_before))
+    records, skipped = board_read_all_detailed(team, include_archive=False)
+    wanted = args.last if args.last is not None else BOARD_DEFAULT_LAST
+    if wanted > 0 and len(records) < wanted and store.BoardStore(team).archive_segments():
+        return board_read_all_detailed(team, include_archive=True)
+    return records, skipped
+
+
 def _run_board(args: argparse.Namespace) -> int:
     layout, api, author, team_name, team, doc = _open_team(args, require_server=False, label=args.name)
     if args.name:
@@ -1514,12 +1570,12 @@ def _run_board(args: argparse.Namespace) -> int:
     reader = reader_id(author)
     is_human = author.is_human or author.name == AUTHOR_SYSTEM
     hook_mode = env_of(args).get("HERDR_TEAM_HOOK") == "1"
-    all_records, skipped = board_read_all_detailed(team, include_archive=bool(args.since or args.thread))
-    selection = all_records
     cursor_state = cursor_get(team, reader)
     cursor_before = int(cursor_state.get("seq", 0))
     seen_before = set(cursor_state.get("seen") or [])
     inbox = args.new or args.peek or args.to == "me"
+    all_records, skipped = _board_view_records(team, args, cursor_before)
+    selection = all_records
     if inbox:
         selection = [r for r in selection if inbox_record(r, reader, is_human)]
     if args.new or args.peek:
