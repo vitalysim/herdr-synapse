@@ -742,7 +742,9 @@ def unread_for(team: TeamPaths, name: str, since_seq: int = 0) -> List[Dict[str,
     cursor, seen = _cursor_state(team, name)
     floor = max(cursor, since_seq)
     try:
-        records = store.BoardStore(team).read(since_seq=floor, include_retracted=False)
+        # Zero is a real unread floor (also the missing/corrupt cursor fallback),
+        # not the store's default active-only view.
+        records = store.BoardStore(team).read(since_seq=floor, include_archive=floor == 0, include_retracted=False)
     except HerdrTeamError:
         records = []
     return [r for r in records if r.get("seq") not in seen and store.is_member_awareness(r, name)]

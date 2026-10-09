@@ -938,6 +938,16 @@ board [--new | --peek] [--to me | --from <name> | --kind <k> | --thread <seq> | 
 - `--new`: posts to me or `all` since my cursor, `--limit 100`, 32 KiB cap,
   advances the cursor to the highest seq printed after stdout is flushed.
 - `--peek`: same selection, never advances. Hooks only peek.
+- **The archive is read when a view reaches into it.** The active file moves to
+  `archive/` at every rotation (4 MiB). When the reader's cursor is older than
+  the active file, `--new` and `--peek` read the archive too and page through
+  it like any backlog: the cursor stops at the last post printed, so nothing is
+  skipped however far behind the reader is. A reader who is current reads the
+  active file only. `--last N` and the default view also read the archive when
+  the active file holds fewer than N records, which is the case right after a
+  rotation. Before 0.22.1 a reader who was behind at a rotation was never shown
+  the posts that rotated away, and its cursor advanced past them; the unread
+  counts in `me`, `who` and `brief` undercounted the same posts.
 - `--name LABEL`: the operator's own label, which names the human cursor over
   the operator's inbox. **A member passing it is refused** (`usage`, exit 2).
   It is not a way to read a teammate's mail and never was: a member is already

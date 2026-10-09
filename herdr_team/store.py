@@ -1348,7 +1348,9 @@ class Cursors:
     def _first_unshown(self, reader: str, current: Dict[str, Any]) -> int:
         """Seq of the first record past ``current`` that ``reader`` was never shown; board max + 1 when none."""
         seen = set(current.get("seen") or [])
-        for record in self.board.read(since_seq=int(current["seq"]), include_retracted=False):
+        floor = int(current["seq"])
+        # At zero the store otherwise reads active-only, letting ack skip archived mail.
+        for record in self.board.read(since_seq=floor, include_archive=floor == 0, include_retracted=False):
             if record["seq"] not in seen and is_member_awareness(record, reader):
                 return int(record["seq"])
         return self.board.max_seq() + 1
@@ -1357,8 +1359,9 @@ class Cursors:
         """Seqs past the cursor that ``reader`` was never shown (the ``ack`` report)."""
         current = self.get(reader)
         seen = set(current.get("seen") or [])
+        floor = int(current["seq"])
         return [
-            int(r["seq"]) for r in self.board.read(since_seq=int(current["seq"]), include_retracted=False)
+            int(r["seq"]) for r in self.board.read(since_seq=floor, include_archive=floor == 0, include_retracted=False)
             if r["seq"] not in seen and is_member_awareness(r, reader)
         ]
 

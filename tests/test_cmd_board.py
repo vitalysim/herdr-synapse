@@ -497,6 +497,101 @@ class Cursors(unittest.TestCase):
         self.assertTrue(self.ts.team.human_cursor("human").exists())
 
 
+class BehindARotation(unittest.TestCase):
+    """A reader whose cursor is older than the last rotation must still be shown what rotated away.
+
+    ``board --new`` used to read the active file only. The posts addressed to a reader
+    that had rotated into ``archive/`` were never printed, the cursor advanced past them,
+    and the daemon then counted them delivered: lost, with nothing to say so. Rotation
+    happens at ``ROTATE_BYTES`` (4 MiB, a few thousand posts); these tests force it.
+    """
+
+    def setUp(self):
+        self.ts = TempState()
+        self.addCleanup(self.ts.cleanup)
+        self.api = pane_api()
+        self.member_env = self.ts.env_with(HERDR_PANE_ID="w2:p1")  # alpha-reviewer
+
+    def post(self, text, to="alpha-reviewer"):
+        code, _, err = run_cli(["--json", "--team", "alpha", "post", text, "--to", to], self.ts.env, self.api)
+        self.assertEqual(code, 0, err)
+
+    def rotate(self):
+        segment = store.BoardStore(self.ts.team, rotate_bytes=1).rotate_if_needed()
+        self.assertIsNotNone(segment)
+        return segment
+
+    def new(self, *extra):
+        code, payload, err = json_out(run_cli(["--json", "board", "--new"] + list(extra), self.member_env, self.api))
+        self.assertEqual(code, 0, err)
+        return payload
+
+    def test_new_shows_unread_posts_that_rotated_into_the_archive(self):
+        for i in range(3):
+            self.post("before rotation {}".format(i))
+        self.rotate()
+        self.post("after rotation")
+        payload = self.new()
+        texts = [p["text"] for p in payload["posts"]]
+        self.assertEqual(texts[:3], ["before rotation 0", "before rotation 1", "before rotation 2"])
+        self.assertEqual(texts[-1], "after rotation")
+        self.assertEqual(payload["cursor"], {"before": 0, "after": 5, "advanced": True})
+        self.assertEqual(self.new()["posts"], [])
+
+    def test_an_archived_backlog_bigger_than_one_page_is_paged_not_skipped(self):
+        """The cursor stops at the last post printed, so the archive pages out like any backlog."""
+        for i in range(130):
+            self.post("old {}".format(i))
+        self.rotate()
+        first = self.new()
+        self.assertTrue(first["truncated"])  # 100 posts or 32 KiB, whichever comes first
+        self.assertEqual(first["cursor"]["after"], first["posts"][-1]["seq"])
+        shown = [p["text"] for p in first["posts"]]
+        for _ in range(10):
+            page = self.new()
+            if not page["posts"]:
+                break
+            shown.extend(p["text"] for p in page["posts"])
+        old = [text for text in shown if text.startswith("old ")]
+        self.assertEqual(old, ["old {}".format(i) for i in range(130)])
+
+    def test_a_filtered_new_does_not_skip_archived_unread_either(self):
+        for i in range(2):
+            self.post("archived {}".format(i))
+        self.rotate()
+        self.post("fresh")
+        payload = self.new("--kind", "note")
+        self.assertEqual([p["text"] for p in payload["posts"]], ["archived 0", "archived 1", "fresh"])
+
+    def test_last_right_after_a_rotation_reaches_into_the_archive(self):
+        for i in range(5):
+            self.post("recent {}".format(i))
+        self.rotate()
+        code, payload, err = json_out(run_cli(["--json", "board", "--last", "4"], self.member_env, self.api))
+        self.assertEqual(code, 0, err)
+        self.assertEqual([p["text"] for p in payload["posts"]][:3], ["recent 2", "recent 3", "recent 4"])
+        self.assertFalse(payload["cursor"]["advanced"])
+
+    def test_me_counts_the_unread_posts_that_rotated_away(self):
+        for i in range(3):
+            self.post("unread {}".format(i))
+        self.rotate()
+        code, payload, err = json_out(run_cli(["--json", "me"], self.member_env, self.api))
+        self.assertEqual(code, 0, err)
+        self.assertGreaterEqual(payload["unread"], 3)
+
+    def test_a_reader_who_is_current_never_reads_the_archive(self):
+        """An up-to-date cursor must keep reading the active file without an archive read."""
+        for i in range(3):
+            self.post("seen {}".format(i))
+        self.new()
+        self.rotate()
+        self.post("new one")
+        with mock.patch.object(store.BoardStore, "read_archive_range", side_effect=AssertionError("archive read")):
+            payload = self.new()
+        self.assertEqual([p["text"] for p in payload["posts"]][-1], "new one")
+
+
 class ShowRetractEdit(unittest.TestCase):
     def test_show_cat_limits_to_payloads_and_roots(self):
         with TempState() as ts:
