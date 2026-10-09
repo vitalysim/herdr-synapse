@@ -27,3 +27,10 @@ in a dispute concedes it.
 
 `knowledge add "<text>"` is a fact with no subject; `knowledge` shows the
 operator's rules and the current facts.
+
+A fact whose author is a **team name** rather than a member was inherited from a
+previous team on this folder: it is what that team believed, nobody here has
+stood behind it yet, and `fact support F-n` is what makes it this team's own
+(`--reference inheritance`). Your team's facts outlive it the same way: they are
+mirrored to `facts.md` in the project folder, with their subjects, sources,
+confidence and validity window.

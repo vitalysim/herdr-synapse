@@ -667,6 +667,12 @@ def _add_create_arguments(parser: argparse.ArgumentParser) -> None:
                         help="a member's model and effort (by --spawn role), or the team default for a kind (claude=opus@medium, codex=gpt-5.6-luna@high)")
     parser.add_argument("--template", metavar="NAME", help="start from a team template (herdr-synapse template list): charter, rules, roles, missions and settings; your own flags win")
     parser.add_argument("--unlisted", action="store_true", help="accept a profile or model the harness does not list here (see: herdr-synapse available)")
+    parser.add_argument("--inherit", metavar="TEAM|PATH",
+                        help="adopt that team's rules, facts and canvas into the new team once it is up (the operator; the same as "
+                             "herdr-synapse knowledge import). Implies --canvas.")
+    from herdr_team.cmd_knowledge import add_inherit_arguments
+
+    add_inherit_arguments(parser, own_source=True)
 
 
 def parse_model_args(items: List[str]) -> Tuple[Dict[str, Tuple[Optional[str], Optional[str]]], Dict[str, Tuple[Optional[str], Optional[str]]]]:
@@ -735,6 +741,17 @@ def _run_create(args: argparse.Namespace) -> int:
         _permissions.validate(mode)
     # Resolved before any write, so a bad path fails before the team exists.
     project_dir = _workdir.resolve_project_dir(args.project, state_root=layout.state_root.path) if args.project is not None else None
+    if getattr(args, "inherit", None):
+        # The flag *is* the opt-in (decision 3: inheritance is never automatic), so it carries the operator's authority
+        # and it turns the canvas on, because a canvas that is off has nothing to import into.
+        _human_only(layout, team_name, author, "create --inherit")
+        if not getattr(args, "no_canvas", False):
+            args.canvas = True
+        if project_dir is None:
+            project_dir = _inherited_project_dir(args.inherit, layout)
+        if project_dir is None:
+            raise UsageError("create --inherit needs a project directory: pass --project <dir>, or inherit from a team's "
+                             "folder inside one (the one holding knowledge.md and canvas.json)")
     instructions = _parse_brief_args(args.instructions, flag="--instructions")
     if args.new and (args.member or args.from_workspace):
         raise UsageError("--new takes --spawn, not --member or --from-workspace")
@@ -860,6 +877,62 @@ def _run_create(args: argparse.Namespace) -> int:
         raise
 
 
+def _inherited_project_dir(source: Any, layout: Layout) -> Optional[Path]:
+    """The project directory implied by ``--inherit <path>``, when the path is a team's folder inside one.
+
+    ``<project>/.herdr-synapse/<team>`` is the only shape that implies one; a dissolved team's name or an archive
+    directory implies nothing, so the operator is asked for ``--project``.
+    """
+    candidate = Path(os.path.expanduser(str(source))).expanduser()
+    if candidate.parent.name != _workdir.DIR_NAME or not candidate.is_dir():
+        return None
+    return _workdir.resolve_project_dir(os.fspath(candidate.parent.parent), state_root=layout.state_root.path)
+
+
+def _inherit_offer(project_dir: Optional[Path], team_name: str) -> List[str]:
+    """One line when the project directory already carries a durable record, and nobody asked to inherit.
+
+    This is the whole discoverability story for inheritance, and it costs one directory listing: without it the
+    operator has to already know that ``knowledge import`` exists to find out that anything is there to import.
+    The team's *own* directory is listed too, because the headline scenario -- a same-named team recreated on the same
+    knowledge path -- is the one case where the folder to inherit from carries this team's name; the mirror holds a
+    previous team's file rather than writing over it, so the record is counted where it is.
+    """
+    if project_dir is None:
+        return []
+    shared = Path(project_dir) / _workdir.DIR_NAME
+    try:
+        others = sorted(entry.name for entry in os.scandir(shared) if entry.is_dir())
+    except OSError:
+        return []
+    from herdr_team import facts as _facts
+    from herdr_team import document_sync as _sync
+
+    for other in others:
+        folder = shared / other
+        marks = facts = 0
+        try:
+            payload = _store.read_json(folder / "canvas.json", default=None)
+            if isinstance(payload, dict):
+                marks = len(payload.get("elements") or []) if isinstance(payload.get("elements"), list) else int(payload.get("element_count") or 0)
+        except (OSError, ValueError):
+            marks = 0
+        try:
+            facts = len(_facts.parse_mirror((folder / "facts.md").read_text(encoding="utf-8")))
+        except (OSError, ValueError, AttributeError, HerdrTeamError):
+            facts = 0
+        if not marks and not facts:
+            continue
+        # Hedged for the same-name case: a team that was dissolved cannot be identified from its leftovers.
+        whose = "a previous team of this name" if other == team_name else other
+        carries = " and ".join([p for p in ("{}'s canvas ({} marks)".format(whose, marks) if marks else "",
+                                            "{} facts".format(facts) if facts else "") if p])
+        return ["this knowledge path carries {};".format(carries),
+                "see what you would inherit with  herdr-synapse knowledge import --from {} --dry-run{}".format(
+                    _sync.quote(folder), _sync.team_flag(team_name))]
+    return []
+
+
 def _apply_workdir_setup(
     args: argparse.Namespace, layout: Layout, team_name: str, team_paths: TeamPaths, author: Author,
     project_dir: Optional[Path], instructions: Optional[Dict[str, str]], members_out: List[Dict[str, Any]],
@@ -890,8 +963,23 @@ def _apply_workdir_setup(
 
     if project_dir is not None:
         result = _workdir.render(layout, team_name)
+        held = {str(record.get("path")) for record in result.get("holds") or []}
         for path in result.get("skipped") or []:
-            out["warnings"].append("left {} alone; it is not ours (pass --force to project render)".format(path))
+            if path not in held:
+                out["warnings"].append("left {} alone; it is not ours (pass --force to project render)".format(path))
+        # ``create --project`` renders immediately, so this is where the team first meets a folder a previous team
+        # filled: every hold is named here, with its reason and the commands that resolve it, and spent.
+        from herdr_team import document_sync as _sync
+
+        found = list(result.get("holds") or [])
+        seen = {str(record.get("path")) for record in found}
+        found.extend(record for record in result.get("inherited") or [] if str(record.get("path")) not in seen)
+        if found:
+            out["found_in_place"] = found
+            out["hints"].extend("  " + _sync.describe_inherited(record, style="list") for record in found)
+            _sync.mark_reported(team_paths, found)
+        if not getattr(args, "inherit", None):
+            out["hints"].extend(_inherit_offer(project_dir, team_name))
         return out
 
     # No folder asked for. Name the directory the members share, if they share one.
@@ -902,6 +990,33 @@ def _apply_workdir_setup(
         out["hints"].append("team folder: none. All members are in {}; to give the team one, run:".format(shared[0]))
         out["hints"].append("  herdr-synapse project set {} --team {}".format(shared[0], team_name))
     return out
+
+
+def _run_inherit(args: argparse.Namespace, layout: Layout, team_name: str, author: Author) -> Tuple[Optional[Dict[str, Any]], List[str]]:
+    """``create --inherit``, run last: the members exist, so the member listing is right, and the canvas is on.
+
+    A failure here does not fail ``create``. The team exists and its agents are running; the right answer to a bad
+    ``--inherit`` is to say what went wrong and print the command that retries it, not to tear a live team down.
+    """
+    source_arg = getattr(args, "inherit", None)
+    if not source_arg:
+        return None, []
+    from herdr_team import canvas as C
+    from herdr_team import cmd_knowledge as _knowledge
+
+    from herdr_team.document_sync import quote
+
+    retry = "retry it with:  herdr-synapse knowledge import --from {} --team {}".format(quote(source_arg), team_name)
+    try:
+        team_paths = layout.team(team_name)
+        source = _knowledge._resolve_source(layout, source_arg)
+        canvas_author = C.author_from_identity(author, load_doc(team_paths), via="cli")
+        result = _knowledge.inherit(args, layout, team_name, author, source, _knowledge.inherit_options(args, canvas_author))
+    except (HerdrTeamError, UsageError, OSError, ValueError) as err:
+        return ({"from": source_arg, "code": getattr(err, "code", "usage"), "reason": str(getattr(err, "message", err)),
+                 "retry": retry},
+                ["inherit from {} failed ({}): {}".format(source_arg, getattr(err, "code", "usage"), getattr(err, "message", err)), retry])
+    return result, _knowledge.inherit_text(result).splitlines()
 
 
 def _create_members(args: argparse.Namespace, layout: Layout, api: Any, env: Dict[str, str], author: Author, team: _roster.Team, team_paths: TeamPaths, specs: List[_JoinSpec], spawn: List[Dict[str, Any]], briefs: Dict[str, str], names_plain: bool, charter_body: Optional[str], known_before: List[str], project_dir: Optional[Path] = None, instructions: Optional[Dict[str, str]] = None) -> int:
@@ -993,6 +1108,7 @@ def _create_members(args: argparse.Namespace, layout: Layout, api: Any, env: Dic
     saved_team = _roster.load_team(team_paths)
     for item in members_out:
         item["launch_permissions"] = _permissions.view(saved_team.config, saved_team.find(item["name"]))
+    inherited, inherited_text = _run_inherit(args, layout, team_name, author)
     payload = {
         "manager": manager_name,
         "team": team_name, "team_dir": os.fspath(team_paths.root), "created": True, "members": members_out,
@@ -1001,6 +1117,9 @@ def _create_members(args: argparse.Namespace, layout: Layout, api: Any, env: Dic
         "pending": list(getattr(args, "_still_pending", []) or []), "failed": [m["name"] for m in failed],
         "project_dir": workdir_result.get("project_dir"), "team_folder": workdir_result.get("folder"),
         "template": {"name": template.name, "settings": template_settings, "notes": template_notes} if template is not None else None,
+        "inherited": inherited,
+        # Files the folder already held when the team was pointed at it: held, left exactly as they are.
+        "found_in_place": workdir_result.get("found_in_place") or [],
     }
 
     def human() -> str:
@@ -1021,6 +1140,7 @@ def _create_members(args: argparse.Namespace, layout: Layout, api: Any, env: Dic
             lines.append("template {}: {}".format(template.name, ", ".join("{}={}".format(k, v if not isinstance(v, dict) else v.get("mode", v)) for k, v in template_settings.items() if k != "template") or "no settings"))
             lines.extend(template_notes)
         lines.append("notifier: {}".format(payload["notifier"]))
+        lines.extend(inherited_text)
         return "\n".join(lines)
 
     for hint in workdir_result.get("warnings") or []:
@@ -1440,15 +1560,67 @@ def _add_dissolve_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--yes", action="store_true", help="do not ask")
 
 
-def _confirm_dissolve(args: argparse.Namespace, team_name: str, members: int) -> bool:
+#: The recoverable counts in the order they are read out, and what to call each one.
+RECOVERABLE_LINES = (("canvas_elements", "canvas mark"), ("facts", "current fact"), ("posts", "board post"), ("work", "work item"))
+
+
+def _recoverable_phrase(counts: Dict[str, Any]) -> str:
+    """``41 canvas marks, 12 facts``: what the dissolve question names, so the answer is not a surprise."""
+    parts = []
+    for key, noun in RECOVERABLE_LINES:
+        count = counts.get(key)
+        if count:
+            parts.append("{} {}{}".format(count, noun, "" if count == 1 else "s"))
+    return ", ".join(parts)
+
+
+def _recoverable_lines(counts: Dict[str, Any], team_name: str) -> List[str]:
+    """What the archive still holds, one line per non-zero count, then the two commands that bring it back.
+
+    A team that drew nothing is not told about a canvas, and a count that could not be read omits its line: the point
+    is to answer "can I get it back", and a line that guesses would be worse than no line.
+    """
+    lines: List[str] = []
+    marks = counts.get("canvas_elements")
+    if marks:
+        extra = []
+        if counts.get("canvas_comments"):
+            extra.append("{} comment{}".format(counts["canvas_comments"], "" if counts["canvas_comments"] == 1 else "s"))
+        if counts.get("canvas_assets"):
+            extra.append("{} picture{}".format(counts["canvas_assets"], "" if counts["canvas_assets"] == 1 else "s"))
+        lines.append("  {} canvas mark{}{}".format(marks, "" if marks == 1 else "s", " ({})".format(", ".join(extra)) if extra else ""))
+    if counts.get("facts"):
+        lines.append("  {} current fact{}".format(counts["facts"], "" if counts["facts"] == 1 else "s"))
+    if counts.get("rules_chars"):
+        lines.append("  the operator's rules ({} chars)".format(counts["rules_chars"]))
+    tail = []
+    for key, noun in (("posts", "board post"), ("work", "work item")):
+        if counts.get(key):
+            tail.append("{} {}{}".format(counts[key], noun, "" if counts[key] == 1 else "s"))
+    if tail:
+        lines.append("  " + ", ".join(tail))
+    if not lines:
+        return []
+    return ["recoverable from there:"] + lines + [
+        "inherit the rules, facts and canvas into another team:  herdr-synapse knowledge import --from {}".format(team_name),
+        "just the drawing:                     herdr-synapse canvas import --from-archive {}".format(team_name),
+        "nothing was deleted; a dissolved team is not restarted.",
+    ]
+
+
+def _confirm_dissolve(args: argparse.Namespace, team_name: str, members: int, counts: Optional[Dict[str, Any]] = None) -> bool:
     """Ask before dissolving, when there is somebody to ask.
 
     The question names what actually happens, because "dissolve" does not say
     it: the agents keep running and the board is archived, not deleted. Off a
-    terminal there is nobody to ask, so ``--yes`` is required instead.
+    terminal there is nobody to ask, so ``--yes`` is required instead. It also
+    names what goes into the archive with the board, read from the live team
+    dir: the owner had to ask whether a dissolved team's canvas and facts were
+    recoverable, which means the question never said.
     """
-    question = "dissolve {}? its {} member{} are released and the board is archived to the session archive, not deleted".format(
-        team_name, members, "" if members == 1 else "s")
+    found = _recoverable_phrase(counts or {})
+    question = "dissolve {}? its {} member{} are released; the board{} are archived to the session archive, not deleted".format(
+        team_name, members, "" if members == 1 else "s", ", " + found if found else "")
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         raise HerdrTeamError("confirmation_required", "{} (pass --yes)".format(question), EXIT_REFUSED, {"team": team_name})
     args.stdout.write("{} [y/N] ".format(question))
@@ -1465,7 +1637,7 @@ def _run_dissolve(args: argparse.Namespace) -> int:
     doc = _roster.load_team(layout.team(team_name))
     if not args.yes:
         live = len([m for m in doc.members if not m.is_human and m.status != "left"])
-        if not _confirm_dissolve(args, team_name, live):
+        if not _confirm_dissolve(args, team_name, live, _roster.recoverable_from(layout.team(team_name).root, team_name)):
             return emit(args, {"team": team_name, "dissolved": False}, "{} was not dissolved".format(team_name))
     check_write_session(args, layout, team_name)
     result = _roster.Roster(layout, team_name).dissolve(api)
@@ -1514,8 +1686,10 @@ def _run_dissolve(args: argparse.Namespace) -> int:
         if len(remaining) == 1:
             console["default_team"] = remaining[0]
         write_console_json(layout.session, console)
-    payload = {"team": team_name, "archived_to": result["archived_to"], "members_cleared": result["members_cleared"], "view_cleared": view_cleared, "view_kept": view_kept, "links_broken": broken_links}
-    return emit(args, payload, "team {} archived to {}".format(team_name, result["archived_to"]))
+    counts = result.get("recoverable") or {}
+    payload = {"team": team_name, "archived_to": result["archived_to"], "members_cleared": result["members_cleared"], "view_cleared": view_cleared, "view_kept": view_kept, "links_broken": broken_links, "recoverable": counts}
+    lines = ["team {} archived to {}".format(team_name, result["archived_to"])] + _recoverable_lines(counts, team_name)
+    return emit(args, payload, "\n".join(lines))
 
 
 def _add_use_arguments(parser: argparse.ArgumentParser) -> None:

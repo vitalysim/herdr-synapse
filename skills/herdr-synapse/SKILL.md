@@ -3,7 +3,7 @@ name: herdr-synapse
 description: "Coordinate with teammates on a herdr-synapse board inside a Herdr session. Use only when HERDR_ENV=1 and `herdr-synapse me` succeeds, or when a line starting with [herdr-team appears in your input."
 ---
 
-<!-- herdr-synapse skill v12, cli >= 0.21 -->
+<!-- herdr-synapse skill v13, cli >= 0.22 -->
 
 # herdr-synapse: work with your teammates through the board
 
@@ -22,13 +22,13 @@ test "${HERDR_ENV:-}" = 1 && herdr-synapse me
 If it fails (exit code other than 0, or `not_a_member`), say so in one line and
 stop using this skill. Never create a team yourself, never install anything,
 never guess a team name. Your name comes from `me` or `orient`, never from
-memory. If `me` warns that the skill version does not match the CLI, say so
-once and use `--help`.
+memory. If `me` warns that the skill version does not match the CLI, say so once
+and use `--help`.
 
-Then load your guide, which always matches the CLI you run: `herdr-synapse
-skill get` (`--list` shows the manager, reviewer and librarian guides). This
-file is the floor; the guide has the detail. If `me` says `whiteboard: on`,
-read `herdr-synapse skill get --reference canvas` before drawing.
+Then load your guide, matched to the CLI you run: `herdr-synapse skill get`
+(`--list` shows the guides and the references); this file is the floor.
+If `me` says `whiteboard: on`, read `herdr-synapse skill get --reference canvas`
+first; read `--reference inheritance` when a fact or a mark names a team, not a member.
 
 ## Commands
 
@@ -47,7 +47,7 @@ read `herdr-synapse skill get --reference canvas` before drawing.
 | `herdr-synapse ack` | mark what you were shown, and the current charter, as read |
 | `herdr-synapse work next` | your work items and exactly what to run next: `work claim`, `work done --outcome` |
 | `herdr-synapse fact add "<one sentence>" --source <url>` | record what you learned, with where it came from |
-| `herdr-synapse recall "<question>"` | search the board, facts, work and artifacts before you start |
+| `herdr-synapse recall "<question>"` | search the board, facts, work, artifacts and the canvas before you start |
 | `herdr-synapse context` | how full each member's context window is; `compact --self` summarises yours |
 
 `post`: `--to <name>[,<name>]|all|human|role:<role>|team:<team>` (team: managers

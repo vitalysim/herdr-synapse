@@ -328,10 +328,19 @@ nothing else, and moves the team dir to `_archive/<team>-<ts>/`. The agents keep
 running and the board is archived rather than removed, so this is recoverable
 by moving the directory back. Human only.
 
-On a terminal it asks, naming what happens, since "dissolve" does not say it;
-off one, `--yes` is required (`confirmation_required`). Declining exits 0 with
-`{"team","dissolved":false}`. JSON on success
-`{"team","archived_to":"…","members_cleared":n}`.
+On a terminal it asks, naming what happens, since "dissolve" does not say it,
+and naming what goes into the archive with the board (the canvas marks, the
+current facts, the posts and the work items, read from the live team dir before
+the rename); off one, `--yes` is required (`confirmation_required`). Declining
+exits 0 with `{"team","dissolved":false}`. JSON on success
+`{"team","archived_to":"…","members_cleared":n,"recoverable":{…}}`.
+
+The result then lists what is recoverable from the archive - canvas marks with
+their comments and pictures, current facts, the operator's rules, board posts and
+work items - and the two commands that bring them back (`knowledge import --from
+<team>`, `canvas import --from-archive <team>`). Only non-zero counts are
+printed, and a count that cannot be read omits its line rather than fail a
+dissolve that has already happened. See [inheritance.md](inheritance.md).
 
 In the team view (`prefix+t`), `x` on a team or one of its members dissolves it
 after the same question.
@@ -484,11 +493,11 @@ document is mirrored to `members/<name>.md`.
 | --- | --- |
 | `--set`, `--file` | replace the document from text or a file; a file over the limit is refused, never truncated |
 | `--edit` | open it in `$VISUAL`/`$EDITOR`, exactly as `charter edit` does |
-| `--adopt` | import the edit made to `members/<name>.md`, after showing a unified diff and asking (`--yes` skips) |
-| `--discard` | throw that edit away and restore the file from the authoritative copy |
+| `--adopt` | import the document in `members/<name>.md`, after showing a unified diff and asking (`--yes` skips); the render after it copies the file into `inherited/members/`, checks the copy, and only then writes this team's version (or leaves the file as it is and says why) |
+| `--discard` | write this team's version over the file in the folder, after the same checked copy |
 | `--clear` | remove the document |
 
-In manual sync mode, edited member files are preserved until `--adopt` shows the diff and imports them. In auto mode, settled edits are imported and the affected member is notified at its next safe opportunity. Auto mode trusts everyone who can write these project documents; editor identity cannot be inferred. Private Notes remain excluded from agent context.
+In manual sync mode, edited member files are preserved until `--adopt` shows the diff and imports them. In auto mode, a settled edit of a document this team wrote is proposed with its full text; only the operator's `project confirm <id>` stores it and notifies the affected member. Neither mode adopts an edit by itself. Private Notes remain excluded from agent context.
 
 Every write bumps the member's `instructions_seq` and appends an
 `instructions_updated` record addressed to **the member and to `all`**, so the
@@ -497,7 +506,8 @@ delivery gate holds) and teammates still learn who owns what. `--urgent`
 nudges everyone at once. With no name, shows your own.
 
 JSON `{"team","member","chars","path","record_seq","instructions_seq"}`;
-`--adopt` adds `"adopted"` and `"diff"`.
+`--adopt` adds `"adopted"`, `"diff"`, and either `"snapshot"` (the checked copy the
+render took) or `"held"` (the hold that kept the file as it is).
 
 ### `knowledge [--limit N]`
 
@@ -528,11 +538,82 @@ JSON `{"team","finding":{"at","author","kind","text"},"record_seq"}`.
 
 Clears the rules. Findings are append-only and are not affected.
 
+### `knowledge import --from <team|path> [options]` (human only)
+
+Adopts another team's durable record into this one: its rules, its current facts
+and its canvas, in that order, each step independent. The source is a team
+dissolved in this session (by name), a team's folder in a project directory, or
+an archived team directory. Options: `--yes` (adopt the rules without asking,
+and replace rules this team already has), `--no-rules`, `--no-facts`,
+`--no-canvas`, `--dry-run`, and the canvas flags `--keep-authors`,
+`--team-can-edit`, `--skip-unknown`, `--skip-missing`.
+
+The Rules it would adopt are printed word for word, in `--dry-run` and in the
+real run (and are in the JSON as `rules.text`), because this command is the door
+through which a file found in the folder becomes operator authority. A real run
+that would adopt rules into a team with none asks first (`adopt these as team
+<team>'s operator Rules?`); `--yes` and `--json` do not ask, and with no
+terminal and no `--yes` the import refuses with `confirmation_required` and
+changes nothing. Rules are stored through `knowledge set`. Facts come from the dissolved team's
+own `facts.jsonl` when it is in the archive, else from the `facts.md` the project
+mirror wrote (`facts.parse_mirror`), and are recorded through
+`facts.add_inherited`: author the source team, `by_kind: "inherited"`, the
+source's own sources plus one `{"kind":"team","team","fact","at"}` record,
+`recorded_at` now, validity window carried, retired and superseded rows and
+disputes left behind. Before the canvas, every file the source board reads under
+`artifacts/` is copied into this team's own `artifacts/` (at most
+`canvas_import.MAX_ARTIFACT_BYTES` each and `MAX_ARTIFACTS_BYTES` in all, never
+overwriting), because a chart's data file resolves against the importing team's
+folder; the result carries `artifacts: {copied, omitted, dir, from}`. The canvas
+is then delegated to the `import` op, and the summary names what it left out.
+Member documents are listed, never adopted (`instructions <name> --adopt`).
+Every file is read where it is. When the source is this team's own folder, the
+bytes each successful step read are released, so the next render may write this
+team's version over them after a checked copy into `inherited/`; a file that has
+changed since the import read it stays held.
+
+Two system records: `canvas_imported` to `all` when a canvas arrived, and
+`knowledge_imported` to `human` summarising every step. Exit is `EXIT_REFUSED`
+only when every step asked for was refused. `create --inherit <team|path>` runs
+it once the new team exists, with the same option names (no `--yes`: `create`
+already owns that flag, and a new team has no rules to replace).
+JSON `{"from":{team,kind,dir,stamp},"rules":{…},"facts":{…},"artifacts":{…},"canvas":{…},"members":[…]}`.
+
 ## 5a. The team working directory
 
 ### `project`
 
-Shows the team's project directory and the folder inside it, or `none`.
+Shows the team's project directory and the folder inside it, or `none`, the
+sync mode, every **held** file and every copy taken before a replacement you
+ordered. A held file is one the mirror left exactly as it is because it does not
+hold the bytes this team last wrote there; each is listed with its reason and
+the commands that resolve it, and one that has changed since the last render
+looked at it says so. JSON carries `sync_state` per mirrored file (`digest`,
+`pending`, `since`, `error`, `hold`), `held` (records: `path`, `kind`, `member`,
+`reason`, `why`, `commands`, and `stale` when the file changed since) and
+`copies` (`path`, `snapshot`, `at`, and `intact`, which is true only when the
+copy still holds the bytes it was taken of). `pending` lists proposals with
+their consent id, file digest, complete text and the baseline reviewed when proposed.
+
+The reasons: `found` (this team has no record of writing what is there now),
+`changed` (it changed after this team last wrote it), `proposed` (waiting for
+the operator's confirmation), `replaced` (another team instance rendered it), `unreadable` (a symlink,
+not a regular file, or an I/O error), `too_large` (over 1 MiB, so it cannot be
+copied and is never replaced), `copy_failed` (a replacement you ordered could
+not make and check its copy), `moved` (it changed while a render was writing
+it), `deleted` (in `auto` mode, a synced document deleted after this team wrote
+it, which sync never recreates by itself: `project render --force` or `project
+sync manual` writes it again), and, for `canvas-assets/`, `unnamed` (no mark
+names it and this team has no record of writing it) and `conflict` (its bytes do
+not match its name). Every command a hold prints names the team (`--team
+<name>`) and shell-quotes its paths. A file found holding exactly this team's
+version is not held, but it is only *claimed*: this team's next version of it is
+held `found`, because finding a file is not writing it. Positive older-plugin
+state grants per-path upgrade grace only to knowledge and member documents
+that plugin wrote, not the newly added facts or canvas mirrors. A held file you
+remove yourself is no longer listed, except a synced document in `auto` mode,
+which becomes `deleted`. After `mv`, `project set <new path>`
+carries what this team recorded over to every file whose bytes are unchanged.
 
 ### `project set <path>` (human only)
 
@@ -544,28 +625,115 @@ into a repository until a human runs this. The path must be an existing
 directory, and the filesystem root, `$HOME`, and the plugin's own state dir
 are refused.
 
-The folder holds a generated `README.md` and `.gitignore` at the top level,
-and per team a `knowledge.md`, a `members/<name>.md` per member, and an
-`artifacts/` directory members own outright. Everything except `artifacts/`
-is a rendered mirror of state that lives elsewhere: edits to it are reported
-as drift and overwritten, never imported. A file without the plugin's marker
-on its first line is somebody else's and is left alone unless `--force`.
+The folder holds a generated `README.md` and `.gitignore` at the top level, and
+per team a `knowledge.md`, a `members/<name>.md` per member, `facts.md` (with
+`facts-2.md`, `facts-3.md`, ... for a long record), `canvas.json` with
+`canvas-assets/`, `canvas.md`, `inherited/` (the copies taken before a
+replacement you ordered), `exports/`, `board.md`, and an `artifacts/` directory
+members own outright. The records are a rendered mirror of state that lives
+elsewhere, and the mirror writes a durable record in the team's folder only where the path
+is empty or the file still holds exactly the bytes this team last wrote there:
+anything else is held, never written over and never imported by itself.
+`board.md` and `canvas.md` are git-ignored views nothing reads back. A
+marker-bearing view is regenerated; a file without the marker stays untouched
+until you move it aside, including with `--force`. The shared `README.md` and `.gitignore` are regenerated
+too; one without the plugin's marker on its first line is left alone unless
+`--force`, which writes over it without a copy.
+`canvas.json` carries its marker as a reserved first-line `"//"` key, and
+`canvas-assets/` is unmarked because the content hash in each name *is* the
+check.
+
+`.gitignore` covers `artifacts/`, `exports/`, `board.md`, `canvas.md` and
+`inherited/` per team. What is committed is what a new team needs to use the
+record: `knowledge.md`, `facts.md` and its parts, `members/`, `canvas.json` and
+`canvas-assets/` ([inheritance.md](inheritance.md)). `inherited/` stays on the
+disk of the checkout that wrote it and does not travel with a clone.
+Caps: 64 KiB for the Markdown mirrors, 8 MiB for `board.md`, and 1 MiB for
+`canvas.json`, which refuses rather than truncates - over the cap it is written
+as a valid JSON pointer (`"elements": null`) naming the scene file and the export
+and import commands, and `canvas.md` says so in a line. `facts.md` is never
+truncated: past 256 KiB the facts continue in `facts-2.md`, `facts-3.md`, ...,
+each under 256 KiB, and `facts.md` says how many parts there are and how many
+facts they hold, which `knowledge import` checks what it read against. A part a
+shorter record no longer needs is rewritten to say it is empty, never deleted.
 
 ### `project clear` (human only)
 
-Stops the plugin writing to the folder. Nothing is deleted; the plugin never
-deletes anything under a project directory, including when a member is
-removed or renamed. Those get a tombstone written over their file instead.
+Stops the plugin writing to the folder. Nothing is deleted by `project clear`
+itself, and a member that is removed or renamed gets a tombstone or a
+forwarding note written over its file rather than a deletion.
+
+The plugin deletes in one place under a project directory: `canvas-assets/` is
+**pruned**, because an asset name is a content hash and every re-paste or re-crop
+of one picture would otherwise leave another permanent blob in a committed
+checkout. The prune runs only after `canvas.json` has been written, removes only
+a file no mark on the board names any more, and only one whose bytes this team
+wrote there (the digest recorded when it wrote the file, so a picture a `git
+pull` replaced under a name this team wrote is not ours). Any other file stays
+where it is and is reported once.
 
 ### `project render [--force]`
 
-Regenerates the mirror. Runs automatically after a roster change and after writes to rules or member instructions. Pending auto-sync edits and conflicts are preserved unless an operator explicitly forces regeneration.
+Regenerates the mirror, including the canvas mirror (`canvas.md` and
+`canvas.json`), so the folder is current without a notifier running. Runs
+automatically after a roster change and after writes to rules or member
+instructions. A file this team did not write, or one changed since it wrote it,
+is held and not written; `holds` lists every hold this render met and
+`inherited` the holds and checked copies nobody has been shown yet, which the
+notifier boards once. The text lists every hold on every render, so a held
+folder never goes quiet. The result also carries `canvas: {elements, version,
+assets, path, reason, too_large, assets_pruned, assets_held}` and, when the
+canvas mirror could not be written, `canvas_reason`.
+
+`--force` (the operator) writes this team's version over replaceable held durable records it
+meets. For each one it reads the file once, writes a copy to
+`<team>/inherited/<name>-<digest>.<ext>` (a member document's under
+`inherited/members/`; the digest is of the bytes, so the same bytes are the same
+copy), reads the copy back, and writes only if the copy matches and the file
+still holds the bytes it read. If not - the file is over 1 MiB, `inherited/` is
+not a writable directory, a different file already has the copy's name, or the
+file changed meanwhile - it changes nothing and the hold says why, with the `mv`
+that moves the file aside to a name nothing has yet. `--force` also writes
+`board.md` when its path is absent or marker-bearing (a plain render leaves it
+to the notifier), and writes
+a synced document that was deleted in `auto` mode. `--force` never adopts anything, and never deletes a
+picture this team did not write. Named canvas assets with conflicting bytes stay untouched even with force;
+move them aside before mirroring again. The render after `instructions <name> --adopt`,
+`instructions <name> --discard`, or a `knowledge import` / `canvas import` from
+this team's own folder, or `project confirm`, replaces the file that command read the same way, and
+only while it still holds those exact bytes.
 
 ### `project sync auto|manual`
 
-Choose whether saved member documents and the Rules section of `knowledge.md` are imported automatically. New teams default to `auto`; existing teams stay `manual` until an operator enables it. `project` shows the mode; `--json project` also reports per-file pending hashes and errors. Auto mode trusts project-document writers, not just the human editor, and imports are audited as `file-sync`. It grants no additional CLI authority.
+Neither mode adopts saved edits by itself. New teams default to `auto`;
+existing teams keep their configured mode. Auto proposes a settled edit of the
+Rules or instructions of a document **this team wrote**. The file stays held,
+and the operator receives the full text plus `project confirm <id>`. Manual
+only holds and lists edits for `knowledge import --from <folder>` or
+`instructions <name> --adopt`. Switching manual to auto applies nothing.
 
-The notifier waits for two unchanged scans at least two seconds apart before importing. Member changes notify that member; shared-rule changes notify each active agent. Delivery waits for a safe composer, while existing revision acknowledgements show whether the agent has read the update. Findings remain generated and attributed: edit only the Rules section and use `knowledge add` for findings. Conflicting CLI/file edits, malformed files, symlinks, and edited findings are preserved and reported to the operator. Deleting a file does not clear instructions. Reconcile conflicts with the stored text before saving again, or use the explicit discard/render controls after saving any edits you want to keep.
+An edit with nothing to adopt stays held and reported. A file this team did not
+write, only claimed, or another instance fully rendered is never proposed as
+its own edit. `project` shows the mode and holds; JSON also includes proposals
+and errors. Confirmation uses the same verified-operator checks as `knowledge set`.
+
+The notifier waits for two unchanged scans at least two seconds apart before proposing. Confirmed changes travel through the usual rules or instructions board records and revision acknowledgements. Findings stay generated: edit only Rules and use `knowledge add` for findings. Malformed files, symlinks and changed Findings are held and reported. Deleting a synced file does not clear stored text or regenerate it in auto mode; `project render --force` or `project sync manual` writes it again.
+
+### `project confirm <id>` (operator only)
+
+Adopt one auto-mode proposal after reviewing its complete text, shown on the
+board and by `project`. The command prints exactly the text it stores. The id
+binds the file bytes, current project, team instance, stored source and revision,
+and member identity. A changed file or context makes the old command refuse;
+the next scan can issue a new proposal and id. A mode change to manual also
+refuses the old confirmation. Markers identify the instance that rendered the
+file; they cannot authenticate its editor.
+
+The following render replaces the edited file only after a verified copy, as
+above. A failure to record consent initially adopts nothing. An error after
+text was saved is reported with the saved text and a warning, and the file may
+remain held. A consumed id cannot store the same change twice. See
+[the remaining check/replace race](inheritance.md#the-contract).
 
 ### Native conversation names
 
@@ -1528,17 +1696,37 @@ current facts with `text` = the plain statement plus `id`, `display`, `status`.
 
 ## 9h. Recall
 
-`recall "<words>" [--kind post|fact|work|file]... [--about S] [--as-of D] [--limit N] [--no-refresh]`.
+`recall "<words>" [--kind post|fact|work|file|canvas]... [--about S] [--as-of D] [--limit N] [--no-refresh]`.
 Anyone on the team. Index: `<team>/index/recall.sqlite3` (FTS5, `0600`), a cache
 rebuilt from the board (active and archive; retracted posts removed; a rotation,
-wipe or purge triggers a full rebuild), facts, work items and text files (<= 1 MiB,
-text suffixes, no dot-files or symlinks) under the team folder's `artifacts/`.
+wipe or purge triggers a full rebuild), facts, work items, text files (<= 1 MiB,
+text suffixes, no dot-files or symlinks) under the team folder's `artifacts/`, and
+the team's canvas.
 Terms are quoted before matching, so no input is an FTS syntax error; all words
 must match, else any word. Ranking: reciprocal rank fusion (k=60) of `bm25`,
 recency and standing (facts weighted by status, members and sources), multiplied
 by `1 + 0.5 * closeness` when `--about` is given. JSON: `{query, hits: [{key,
 kind, ref, author, ts, when, weight, bm25, score, snippet, info, closeness}],
 indexed, as_of, about, team}`. File snippets are redacted like posts.
+
+The `canvas` kind is one row per element, comments and legend entries included
+(`herdr_team/canvas_index.py`): `ref` is the element id, `about` is the title of
+the frame it sits in (else its alias), `info` is `{type, alias, frame, imported}`,
+and `ts` is the element's `updated_at`, so `--as-of` hides a mark drawn later.
+The text is each kind's own - element text, titles, card bodies and badges, table
+cells, chart captions and their gist, kanban and timeline items, comment bodies
+with their mentions, legend meanings - plus the kind word and every mark's
+`intent`, read from the component registry rather than a list of kinds, and
+bounded per row (`MAX_ROW_CHARS`) so a chart's inline data cannot crowd out a
+caption. Weights: a container 1.5, a named or browser-drawn mark 1.2, a resolved
+comment 0.5, else 1.0. Its signature is the scene file, the event log and the
+team's canvas switch, so a draw, a `clear`, a `purge`, an import or turning the
+canvas off rebuilds or drops the rows whole - no watermark, because a cleared
+mark must stop being findable. Indexing never takes the canvas lock, never calls
+`look`, and so writes no presence or cursor: a search is not a reader. A team
+whose canvas is off or was never drawn on reports `canvas: 0` and does not fail.
+`cmd_recall` prints a canvas hit as `[canvas E-12 · card]` plus `→ herdr-synapse
+canvas look --around E-12`, and names the source team for an inherited mark.
 
 ## 9i. Templates
 
@@ -1570,7 +1758,7 @@ popup, Enter focuses an agent card's pane, otherwise shows its `argv`.
 
 ## 9k. Skill guides
 
-`skill get [worker|manager|reviewer|librarian] [--reference work|facts|recall|coordination|canvas] [--list]`
+`skill get [worker|manager|reviewer|librarian] [--reference work|facts|recall|coordination|inheritance|canvas] [--list]`
 prints a guide from `<plugin>/skill-guides`, headed `<!-- herdr-synapse <guide>
 guide, skill vN -->`. The default is `manager` for the team manager and `worker`
 otherwise. The installed `SKILL.md` stays the safety floor and tells agents to load it.
@@ -2253,6 +2441,8 @@ canvas lock REGION [--label TEXT]            (operator)
 canvas unlock X-n                            (operator)
 canvas send ID... --to NAME [--note TEXT]    (operator)
 canvas export [--format json|md|svg|png] [--region R] [--out PATH]
+canvas import (--from PATH | --from-archive TEAM[@STAMP]) [--list] [--latest] [--keep-authors]
+              [--team-can-edit] [--skip-unknown] [--skip-missing] [--dry-run] [--intent TEXT]   (the operator)
 canvas helper [--print]
 canvas icons [--search WORD]
 canvas catalog charts|scene3d [--type NAME]
@@ -2622,6 +2812,34 @@ file instead of printing; `--format png` without `--out` prints the path of
 the render under `whiteboard/renders/`, and refuses `render_unavailable` when
 `resvg` is missing (`$HERDR_SYNAPSE_RESVG`, else `PATH`).
 
+`canvas import` is the inverse of `canvas export` and the only way a board comes
+back: it replays a scene into an **empty** canvas as one undoable batch (the
+`import` core op, so it lands in the event log, folds into the scene, reaches the
+page and is undone like any batch). `--from PATH` takes a project folder's
+`canvas.json`, a dissolved team's directory, a `whiteboard/archive/<stamp>/`
+folder (a canvas lost to `whiteboard clear`) or a file `canvas export --format
+json` wrote; `--from-archive TEAM[@STAMP]` takes a team dissolved in this
+session, with `--list` to see what each archived copy holds and `--latest` to
+take the newest without naming its stamp. Source element ids are kept, so every
+binding survives; `created_seq`/`updated_seq` are rewritten to this batch, and
+the id counters are seeded past what arrived. Each mark records its origin under
+`imported`. Marks are re-attributed to the importer unless `--keep-authors` (the
+operator in person; they can edit marks or `undo B-n` with either choice - see
+[collaboration.md](collaboration.md) and [inheritance.md](inheritance.md)). A
+re-attributed board is the operator's, so with the default `human_edits:
+propose` the team's edits of it arrive as proposals; `--team-can-edit` sets
+`human_edits: live` inside the same batch (and `undo B-n` takes that back with
+the marks). It is refused with `--keep-authors`, which asks for the opposite.
+`--dry-run` reports every refusal the real run would raise and writes nothing:
+no lock file, no asset, no event. Refusals name their repair, including a canvas
+that is not empty, an unreadable or over-cap scene (the mirror's pointer form,
+which names `canvas export` instead), a mark whose data file or picture is
+missing (`--skip-missing`, and the message names the file it found beside the
+document and the `cp` that repairs it), a kind this build does not know
+(`--skip-unknown`), an asset whose bytes do not hash to its name, a document
+that is damaged rather than the wrong kind of file, and a re-import of a
+document this canvas already holds. Nothing in the source is ever written to.
+
 `canvas helper` prints the path of `sketch.py`, a standalone, stdlib-only
 Python helper that builds batches (`--print` prints its source):
 
@@ -2864,13 +3082,14 @@ choice that needs the layer while it is off runs `whiteboard enable` first.
 
 ### Board records
 
-All three are `from: system`, `kind: system`:
+All of these are `from: system`, `kind: system`:
 
 | `event` | Delivery | When |
 | --- | --- | --- |
 | `canvas_changed` | awareness, never a wake | one per author per minute: `alpha-worker drew on the canvas: 3 notes, 2 arrows, 1 pen stroke, moved 2 (v38–v42). Look: herdr-synapse canvas look --since 37`; `extra.canvas` has `author`, `from`, `to`, `counts`, `batches` |
 | `canvas_sent` | a named, idle-gated nudge; a toast when `human` is addressed | a comment's `@mention`, or the operator's "Send to…": the text form and a PNG path; an agent's words are quoted as a peer's request |
 | `whiteboard_state` | awareness | a switch flip changed what a team's members may do; `extra.whiteboard` has `before`, `after`, `by` |
+| `canvas_imported` | awareness, addressed to `all` | a board was inherited from another team: the source, the mark count, the batch and the `canvas undo` that takes it back, so the team knows what it is looking at is not its own work |
 
 ### Error codes
 

@@ -10,7 +10,7 @@ lazily, by the query that needs it, under its own lock.
 
 The canvas was the last thing a team could not find again: a frame holding the
 whole login flow was unreachable by searching for "login flow", so a diagram
-had to be remembered to be used. One row
+had to be remembered to be used, and an inherited board arrived mute. One row
 per element makes it searchable by what it says, and a hit names the element so
 ``canvas look --around E-12`` shows it in place. What text an element carries is
 ``canvas_index``'s problem, not this module's.
@@ -242,8 +242,9 @@ def _index_canvas(con: sqlite3.Connection, team: TeamPaths) -> int:
     Full rebuild on any change, with no watermark, because the canvas is small
     (``canvas.MAX_ELEMENTS`` is 2000) and moves far less often than the board, and because a
     watermark gets the two cases that matter wrong: ``whiteboard clear`` deletes nothing but moves
-    everything, and a purge rewrites history. Both would leave the old marks findable for ever.
-    The signature is the scene file and the event log: a clear and a purge both move one of them.
+    everything, and a re-import replaces the board with another team's. Both would leave the old
+    marks findable for ever. The signature is the scene file and the event log: a clear, a purge
+    and an import all move one of them.
 
     Never takes the canvas lock, and never calls ``look`` (which writes presence and a cursor):
     reading a board must not look like someone looking at it.

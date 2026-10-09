@@ -119,7 +119,7 @@ class SkillGetTests(unittest.TestCase):
         self.assertEqual(code, 0, err)
         listing = json.loads(out)
         self.assertEqual(listing["roles"], ["worker", "manager", "reviewer", "librarian"])
-        self.assertEqual(listing["references"], ["coordination", "facts", "recall", "work"])
+        self.assertEqual(listing["references"], ["coordination", "facts", "inheritance", "recall", "work"])
         for role in listing["roles"]:
             code, out, err = run_cli(["skill", "get", role], {})
             self.assertEqual(code, 0, err)

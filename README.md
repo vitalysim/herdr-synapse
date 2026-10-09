@@ -136,8 +136,8 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
   board announcement, and an audit line on every use.
 - **Instructions you actually edit.** Every member gets a document with the
   same six sections: mission, scope, constraints, definition of done,
-  handoffs, and notes you keep private. Save edits to auto-sync them, or use
-  manual adoption to review each diff. Changed instructions notify the
+  handoffs, and notes you keep private. Save edits to have auto mode propose
+  them for your confirmation, or use manual adoption to review each diff. Changed instructions notify the
   affected member when delivery is safe.
 - **A folder the team shares.** `herdr-synapse project set <path>` gives the
   team `.herdr-synapse/<team>/` in your project: the rules, one instructions
@@ -151,7 +151,13 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
 - **Facts, not a pile of notes.** Findings carry their sources, their supporters and
   when they were true; a newer value supersedes the old one, and disagreements
   between agents are handled the way you choose, from silently observed to
-  debated to decided by you. `recall` searches all of it at once.
+  debated to decided by you. `recall` searches all of it at once, the canvas
+  included, so a diagram is findable by what it says.
+- **A record the next team can have.** The folder carries the rules, the
+  instructions, the facts and the canvas, so dissolving a team no longer throws
+  its work away: `knowledge import` gives a new team the lot, attributed, and
+  `dissolve` says what is recoverable. See [what a new team
+  inherits](#what-a-new-team-inherits).
 
 **Operations**
 
@@ -1206,11 +1212,21 @@ them apart. Give the team a directory and it gets one:
 <your project>/.herdr-synapse/<team>/
   knowledge.md         the team's rules, and what its members have learned
   members/<name>.md    this member's own document; the one file you edit
+  facts.md             the team's current facts, with their provenance
+  canvas.json          the canvas as a scene another team can import
+  canvas-assets/       the chart data and pictures those marks name
+  canvas.md            the canvas as a readable listing; git-ignored
+  inherited/           checked copies taken before a replacement you ordered; git-ignored
   board.md             the board, kept current; git-ignored
   artifacts/           work products; git-ignored
 ```
 
-Each member's file has six sections: Mission, Scope, Constraints, Definition of done, Handoffs, and private Notes. Mission is required at creation; the remaining sections are optional. New teams automatically import saved member edits and the Rules section of `knowledge.md`, then notify affected agents when delivery is safe. Findings remain generated and attributed; private Notes stay out of agent context. Existing teams retain manual adoption until you run `herdr-synapse project sync auto`. Auto-sync trusts everyone who can write these documents. Use `project sync manual` to require explicit `instructions <name> --adopt` again. Conflicting edits are preserved and reported, never silently discarded. [Document sync reference](docs/cli.md#project-sync-automanual)
+The folder is the only thing that outlives the session, so it carries the whole
+durable record and the next team can have it: see [what a new team
+inherits](#what-a-new-team-inherits). A clone carries what a new team needs to
+use it; `inherited/` stays on the disk of the checkout that wrote it.
+
+Each member's file has six sections: Mission, Scope, Constraints, Definition of done, Handoffs, and private Notes. Mission is required at creation; the remaining sections are optional. Neither sync mode adopts a saved edit by itself, for existing teams or new ones. In `auto`, a settled edit of the Rules or a member document this team wrote becomes a pending change, posted to you with its full text. Your `project confirm <id>` adopts exactly that text and notifies affected agents when delivery is safe. A changed file, project, stored revision or member identity invalidates that confirmation. In `manual`, edits are held for `instructions <name> --adopt` or `knowledge import`. Findings remain generated and attributed; private Notes stay out of agent context. New teams start in auto; existing teams keep their selected mode. Switching manual to auto applies nothing. [Document sync reference](docs/cli.md#project-sync-automanual)
 
 Fresh CLI-created Claude Code, Codex, and OpenCode conversations also receive their full team-member name as a native session title. Resuming a saved conversation preserves its title. Naming failures appear on the board without preventing team operation.
 
@@ -1228,9 +1244,24 @@ On daemon load or an explicit `project render`, Synapse completes only the exact
 
 Three things make this safe to keep in a repository agents can write to. The
 files in your project are a **mirror**: the authoritative copies live outside
-it, behind commands only you can run, so an agent cannot edit a file and have
-it read back to its teammates as your instruction. The plugin writes nothing
-until you name a directory, and it **never deletes** anything inside one.
+it, behind operator-authorized commands, so an agent's file edit reaches no
+teammate as your instruction until you confirm or adopt it, in either mode.
+The plugin writes nothing until you name a
+directory. And it never quietly writes over a durable file it did not write: it writes a durable record
+in the team's folder only where the path is empty or the file still holds
+exactly what this team last wrote there. Anything else — a previous team's
+file, a pull, a hand edit, an agent's — is left exactly as it is and held, and
+`herdr-synapse project` lists each hold with its reason and the commands that
+resolve it. Nothing found there is copied or adopted by itself. When you do
+order a replacement (`project render --force`, or an adopt or import that makes
+a held file the team's, including `project confirm`), the file is first
+copied to `<team>/inherited/` and the copy read back; if that copy cannot be
+made and checked, nothing changes and the line says why. The one file it
+deletes is a `canvas-assets/` picture no mark names any more, and only one
+whose bytes this team wrote. `board.md` and `canvas.md` are regenerated views
+nothing reads back: a marker-bearing view is regenerated, and a file without
+the marker stays untouched until you move it aside. `README.md` and `.gitignore`
+sit beside the team folders.
 
 Rules and instructions carry your authority and reach Claude in its session
 context; a changed document reaches it on its very next turn, once, until it
@@ -1394,13 +1425,63 @@ whether a post is delivered: agents can always argue on the board in any mode.
 herdr-synapse recall "enterprise pricing"
 herdr-synapse recall "launch date" --kind fact --as-of 2026-09-01
 herdr-synapse recall "rate limit" --about "Payments API"
+herdr-synapse recall "login flow" --kind canvas
 ```
 
 One ranked list over the board (archive included), the facts, the work items
-with their settlement summaries, and the text files in the team's `artifacts/`.
-It needs no model and no service: a SQLite full-text index kept in the team's
-state directory, ranked by relevance, recency and how well each fact is
-supported. Agents are taught to recall before they start.
+with their settlement summaries, the text files in the team's `artifacts/`, and
+the team's canvas. It needs no model and no service: a SQLite full-text index
+kept in the team's state directory, ranked by relevance, recency and how well
+each fact is supported. Agents are taught to recall before they start.
+
+A diagram is findable by what it says: element text, frame and section titles,
+card bodies and badges, table cells, chart captions, kanban and timeline items,
+comments, the legend, and each mark's stated intent. A canvas hit names the
+element and how to see it in place.
+
+```
+[canvas E-1 · frame] frame flow »Login« »flow« show the link shortener flow
+  → herdr-synapse canvas look --around E-1
+```
+
+## What a new team inherits
+
+A team's folder is the only thing that outlives a Herdr session, so it now
+carries the team's whole durable record — the rules, each member's
+instructions, the current facts with their provenance, and the canvas as an
+importable scene with its pictures (plus a readable listing that stays local).
+Point a new team at that folder and one command gives it the lot:
+
+```bash
+herdr-synapse knowledge import --from beta            # a team dissolved in this session
+herdr-synapse knowledge import --from ../repo/.herdr-synapse/beta
+herdr-synapse canvas import --from-archive beta       # just the drawing
+```
+
+```
+inherited from beta (dissolved 2026-10-01 12:00), /…/_archive/beta-20261001T120000Z:
+  rules    adopted as this team's operator Rules, 412 chars:
+           | Every change needs a review before it lands.
+           | …
+  facts    12 of 14 current facts, attributed to beta; to make one yours,
+           support it:  herdr-synapse fact support F-3
+  canvas   41 marks, 3 comments, 2 pictures, as B-1 (undo B-1 to take it back)
+  members  beta-worker.md and beta-reviewer.md are in that folder but were not
+           adopted: read them in place; instructions --adopt reads only this team's own folder
+nothing in beta was changed or deleted.
+```
+
+Nothing is adopted automatically: a file in your repository is a mirror and
+never truth until you adopt it, and a new team pointed at a previous team's
+folder leaves the durable records it finds there untouched until you run the import,
+which prints the Rules it would adopt and asks first. An
+inherited fact is attributed to
+the team that believed it and is nobody's verified knowledge here until a member
+supports it; an imported canvas keeps every element id and binding, arrives as
+one batch you can undo, and says on each mark where it came from. Nothing in the
+source is changed or deleted, and `dissolve` now says what is recoverable from
+the archive and the command that recovers it. The whole contract is in
+[docs/inheritance.md](docs/inheritance.md).
 
 ## Members and their sessions
 
@@ -1554,7 +1635,7 @@ those are peer notes, attributed and escaped, and they are pointed at rather
 than injected, so one agent's text can never reach another wearing your
 authority.
 
-`instructions <name>` writes one member's own document: mission, scope, constraints, definition of done, handoffs, and private notes. In auto-sync mode, save `<team>/members/<name>.md` to apply changes and notify that member. In manual mode, `instructions <name> --adopt` shows the diff first. `project` reports the mode; auto-sync trusts project-document writers, including agents.
+`instructions <name>` writes one member's own document: mission, scope, constraints, definition of done, handoffs, and private notes. In auto mode, a saved edit of this team's document is proposed with its complete text; your `project confirm <id>` applies it. In manual mode, `instructions <name> --adopt` shows the diff first. Neither mode adopts edits by itself, and `project` reports the mode and holds.
 
 ## When an agent needs you
 
@@ -1803,10 +1884,11 @@ just written it; a schedule that fails toasts you and wakes nobody.
 - [docs/capabilities.md](docs/capabilities.md): every capability, how to drive it from the UI and the CLI, what to expect, and a test checklist.
 - [docs/cli.md](docs/cli.md): the command contract, with every argument, JSON shape, exit code, and record grammar.
 - [docs/development.md](docs/development.md): internals, conventions, state layout, and the status log.
-- [docs/collaboration.md](docs/collaboration.md): how the operator and agents share the canvas: proposals, lanes, freezes, per-author undo, checkpoints and presence.
+- [docs/collaboration.md](docs/collaboration.md): how the operator and agents share the canvas: proposals, lanes, freezes, per-author undo, checkpoints, presence, and who owns an imported board.
+- [docs/inheritance.md](docs/inheritance.md): what a new team inherits from a previous one's folder, the folder file by file, `knowledge import`, `canvas import`, and what never travels.
 - [docs/benchmark.md](docs/benchmark.md): the canvas benchmark: 30 plain-language drawing requests, how agents' drawings are scored, and how to run it.
 - [skills/herdr-synapse/SKILL.md](skills/herdr-synapse/SKILL.md): what agents are taught, printed by `herdr-synapse --skill`.
-- [skill-guides/](skill-guides/): the worker, manager, reviewer and librarian guides, and the work, facts, recall, coordination and canvas references, served to agents by `herdr-synapse skill get` (canvas only while the whiteboard is on).
+- [skill-guides/](skill-guides/): the worker, manager, reviewer and librarian guides, and the work, facts, recall, coordination, inheritance and canvas references, served to agents by `herdr-synapse skill get` (canvas only while the whiteboard is on).
 - [templates/](templates/): the built-in team templates, each a folder of Markdown you can copy and adapt.
 - [CHANGELOG.md](CHANGELOG.md): what changed in each release, and why.
 - [CONTRIBUTING.md](CONTRIBUTING.md): bug reports, pull requests, and validation.
@@ -1814,7 +1896,7 @@ just written it; a schedule that fails toasts you and wakes nobody.
 
 ## Status
 
-Current source version: 0.22.1, skill v12.
+Current source version: 0.22.1, skill v13.
 
 Claude Code 2.1.267, Codex 0.153.4 and OpenCode 1.18.30 were exercised together
 in one disposable Herdr 0.9.0/p22 session. Formation, exact-session resume, idle

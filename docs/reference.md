@@ -327,7 +327,7 @@ These options are accepted before or after the command name.
 <summary><code>create</code> — form a team from live agents (--member/--from-workspace) or fresh panes (--new --spawn)</summary>
 
 ```text
-herdr-synapse create [-h] [--json] [--team NAME|PATH] [--session NAME] [--socket PATH] [--session-mismatch-ok] [--charter TEXT] [--charter-file PATH] [--ref PATH] [--member TARGET[:ROLE[:NAME]]] [--brief NAME=TEXT] [--project PATH] [--rules TEXT] [--rules-file PATH] [--instructions NAME=TEXT] [--from-workspace ID] [--names {prefixed,plain}] [--rename] [--steal] [--reuse] [--use] [--new] [--workspace ID] [--spawn ROLE:HARNESS[/PROFILE][:CWD]] [--permissions {yolo,native}] [--canvas] [--member-permissions NAME|ROLE=MODE] [--manager NAME] [--model ROLE|KIND=MODEL[@EFFORT]] [--template NAME] [--unlisted] team
+herdr-synapse create [-h] [--json] [--team NAME|PATH] [--session NAME] [--socket PATH] [--session-mismatch-ok] [--charter TEXT] [--charter-file PATH] [--ref PATH] [--member TARGET[:ROLE[:NAME]]] [--brief NAME=TEXT] [--project PATH] [--rules TEXT] [--rules-file PATH] [--instructions NAME=TEXT] [--from-workspace ID] [--names {prefixed,plain}] [--rename] [--steal] [--reuse] [--use] [--new] [--workspace ID] [--spawn ROLE:HARNESS[/PROFILE][:CWD]] [--permissions {yolo,native}] [--canvas] [--member-permissions NAME|ROLE=MODE] [--manager NAME] [--model ROLE|KIND=MODEL[@EFFORT]] [--template NAME] [--unlisted] [--inherit TEAM|PATH] [--no-rules] [--no-facts] [--no-canvas] [--keep-authors] [--team-can-edit] [--skip-unknown] [--skip-missing] team
 ```
 
 </details>
@@ -882,7 +882,7 @@ herdr-synapse asks [-h] [--json] [--team NAME|PATH] [--session NAME] [--socket P
 <summary><code>project</code> — show, set or clear the team&#x27;s project directory</summary>
 
 ```text
-herdr-synapse project [-h] [--json] [--team NAME|PATH] [--session NAME] [--socket PATH] [--session-mismatch-ok] [--force] [{set,clear,render,sync}] [path]
+herdr-synapse project [-h] [--json] [--team NAME|PATH] [--session NAME] [--socket PATH] [--session-mismatch-ok] [--force] [{set,clear,render,sync,confirm}] [path]
 ```
 
 </details>
@@ -900,7 +900,7 @@ herdr-synapse instructions [-h] [--json] [--team NAME|PATH] [--session NAME] [--
 <summary><code>knowledge</code> — the team&#x27;s rules and findings</summary>
 
 ```text
-herdr-synapse knowledge [-h] [--json] [--team NAME|PATH] [--session NAME] [--socket PATH] [--session-mismatch-ok] [--file PATH] [--limit LIMIT] [--urgent] [{set,add,clear}] [text]
+herdr-synapse knowledge [-h] [--json] [--team NAME|PATH] [--session NAME] [--socket PATH] [--session-mismatch-ok] [--file PATH] [--limit LIMIT] [--urgent] [--from TEAM|PATH] [--no-rules] [--no-facts] [--no-canvas] [--keep-authors] [--team-can-edit] [--skip-unknown] [--skip-missing] [--dry-run] [--yes] [{set,add,clear,import}] [text]
 ```
 
 </details>

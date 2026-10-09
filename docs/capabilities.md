@@ -119,23 +119,26 @@ on disk tells them apart. Three additions close that:
 | Team rules, the DOs and DON'Ts | `knowledge set "…" \| --file p`, `knowledge clear` | human only |
 | What the team has learned | `knowledge add "<text>"` | any member |
 | Read both | `knowledge` | anyone |
+| Inherit another team's record | `knowledge import --from <team\|path>`, `create --inherit`; `canvas import` for the drawing alone | human only |
 
 The folder is `<project>/.herdr-synapse/<team>/`, namespaced so two teams can
 share one project. It holds `knowledge.md`, `members/<name>.md` per member,
-and `artifacts/`. `README.md` and `.gitignore` sit above it. Members reach it
-by the absolute path `herdr-synapse me` prints, which matters because members of
-one team routinely sit in different checkouts.
+`facts.md` (continued in `facts-2.md`, ... for a long record), `canvas.json`
+with `canvas-assets/`, `canvas.md`, `inherited/`, `artifacts/`, `exports/` and
+`board.md`. `README.md` and `.gitignore` sit above it. Members reach it by the absolute path `herdr-synapse me` prints, which
+matters because members of one team routinely sit in different checkouts.
 
-Three properties make it safe to put in a repository agents can write to:
+These properties make it safe to put in a repository agents can write to:
 
-- **Document trust is configurable.** Agent context reads stored state. In manual mode, member edits require `instructions <name> --adopt`. In auto mode, settled member edits and the Rules section of `knowledge.md` are imported as `file-sync` changes and affected agents are notified. Auto mode trusts all project-document writers; it is the default for new teams, while existing teams keep manual mode until an operator runs `project sync auto`. Generated findings never become instructions, and private Notes never enter agent context.
+- **Edits need operator consent.** Agent context reads stored state. In auto mode, a settled edit of a document this team wrote becomes a pending change with its complete text and `project confirm <id>`. Only the verified operator's confirmation stores it. Manual mode holds member edits for `instructions <name> --adopt` and Rules for `knowledge import`. Neither mode adopts by itself, including after a switch to auto. Existing teams keep their selected mode; new teams start in auto. Generated findings never become instructions, and private Notes never enter agent context.
+- **Durable files this team did not write stay untouched.** The mirror writes a durable record only where its path is empty or its bytes still match what this team last wrote. A different file is left exactly as it is, held, with their reason and repair commands in `project`, `project render` and a report to the operator. Finding identical bytes is a claim, not authorship. Positive older-plugin state grants upgrade grace only to knowledge and member documents that older plugin wrote. First contact never copies or adopts anything. An explicit operator replacement, confirmation, adoption or own-folder import replaces foreign bytes only after a byte-verified copy into `inherited/`; if it cannot copy and check them, it refuses. The final byte check cannot make the replace conditional, so a concurrent writer can still land in that remaining window; see [inheritance.md](inheritance.md#the-contract). Records are classified beside their paths in `workdir.MIRRORED_RECORDS`, and unclassified writes are refused. `board.md` and `canvas.md` are disposable local views: marker-bearing versions regenerate; a file without the marker stays untouched even with `--force`. A tombstone or rename note is never proposed as a Mission.
 - **Consent is explicit.** `config.project_dir` is empty until a human runs
   `project set`. Nothing is inferred from member cwds, so the plugin cannot
   write into the wrong repository or into two of them.
-- **Nothing is deleted.** Removing a member writes a tombstone over its file;
-  renaming one writes a forwarding note under the old name. A file without
-  the plugin's marker on its first line is never overwritten without
-  `--force`, the rule `skill install` already used.
+- **No record is deleted except a picture this team wrote and nothing names.** Removing a member writes a tombstone over its file;
+  renaming one writes a forwarding note under the old name. The one file deleted is a `canvas-assets/`
+  picture no mark names any more whose bytes this team wrote there; any other stays and is reported. A
+  team-folder view without the plugin's marker is never overwritten, including with `--force`.
 
 **How a change reaches an agent.** Writing a file is not telling anyone, so
 every change becomes a board record and rides the delivery model that already
@@ -145,8 +148,10 @@ exists:
 | --- | --- | --- |
 | `knowledge set` | `knowledge_updated` | everyone, next board read |
 | `instructions --set/--edit/--adopt` | `instructions_updated` | the member itself, nudged when idle; everyone else on their next board read |
-| editing `members/<name>.md` | auto: `instructions_updated`; manual: `instructions_edited` | auto: affected member when safe; manual: you, to adopt it |
-| editing Rules in `knowledge.md` (auto mode) | `knowledge_updated` | every active agent when safe; Findings edits are reported as conflicts |
+| editing `members/<name>.md` | auto: `document_sync_inherited` proposal; manual: `instructions_edited` | you, to review and confirm or adopt; nothing is stored yet |
+| editing Rules in `knowledge.md` (auto mode) | `document_sync_inherited` proposal | you, to confirm; changed Findings are held, never proposed |
+| `project confirm` | `knowledge_updated` or `instructions_updated` | the confirmed change follows the usual board delivery and acknowledgement path |
+| a file in the folder this team did not write, or a replacement you ordered | `document_sync_inherited` | you, once: the file, why it is held (or where its checked copy is), and the commands that resolve it |
 | `project set` | `project_set` | everyone, next board read |
 | `knowledge add` | `knowledge_finding` | everyone, next board read |
 | a file in `artifacts/` | `artifacts_changed` | everyone, next board read |
@@ -200,6 +205,40 @@ it still reads correctly long after the session is gone; `jsonl` is the raw
 record shape, so an export goes back into any tool that reads a board file.
 `/export` does the same from the console. An existing file is refused without
 `--force`, symlinked targets are refused, and the file is written `0600`.
+
+## 2b. What a new team inherits (0.22.1)
+
+The project folder is the only storage that outlives a session, so it carries
+the team's whole durable record: the rules, each member's instructions, the
+current facts with their provenance (`facts.md` and its parts), and the canvas
+as an importable scene (`canvas.json` with `canvas-assets/`) plus a readable
+listing (`canvas.md`). What a new team needs to use the record is committed —
+everything except `canvas.md`, `inherited/`, `board.md`, `artifacts/` and
+`exports/` — because a checkout is how a record reaches the next team.
+
+| Capability | CLI | What you observe |
+| --- | --- | --- |
+| Inherit the whole record | `knowledge import --from <team\|path> [--dry-run] [--yes] [--no-rules\|--no-facts\|--no-canvas]` | one line per step: the rules adopted, the facts attributed to the source team, the canvas as one undoable batch, and the member documents listed but never adopted; a step that refuses prints its code in place of its line |
+| Inherit at creation | `create <team> --project <path> --inherit <team\|path>` | the same, run once the team exists |
+| Just the drawing | `canvas import --from <path> \| --from-archive <team> [--list] [--dry-run] [--keep-authors]` | element ids and every binding kept, the counters seeded, one batch (`undo B-1`), re-attributed to you unless you keep the authors in person |
+| Find what a previous team drew | `recall "<words>" [--kind canvas]` | element text, frame titles, card bodies, table cells, chart captions, comments and the legend, each hit naming the element and `canvas look --around E-n` |
+| Know what a dissolve leaves behind | `dissolve <team>` | the question and the result name the recoverable counts, the archive path, and the two commands that bring them back |
+
+Nothing is adopted without you: durable records a new team finds in the folder stay
+untouched until an operator command takes them in (identical bytes may be claimed), because a mirrored file is
+never truth until a human adopts it. Nothing is copied by itself either: a copy
+under `<team>/inherited/` exists only because you ordered a replacement, and it
+is checked before anything is written. The copies stay on this checkout's disk
+— `inherited/` is git-ignored. The whole contract, the folder file by file, the
+caps and the refusals are in [inheritance.md](inheritance.md).
+
+**Verified**: `tests/test_cmd_knowledge_import.py`, `tests/test_canvas_import.py`,
+`tests/test_facts_inherited.py`, `tests/test_workdir.py`,
+`tests/test_document_sync.py`, `tests/test_recall.py`,
+`tests/test_inheritance_fixes.py`, `tests/test_trust_boundary_shapes.py`, and
+`tests/test_folder_invariant.py`, a model-based property test that checks no
+loss, no false report and no automatic copy after every step of random folder
+histories.
 
 ## 3. Names
 
@@ -359,7 +398,8 @@ k/n`. Retracted posts render struck through with `(retracted by #M)`.
 remove or leave; to human when a member goes missing), `member_restarted`,
 `renamed`, `charter_updated` (to all), `rotated`, `reset_detected`,
 `context_high`, `context_compacted` and `context_cleared` (to the member and
-to all).
+to all), `canvas_imported` (to all, when a board was inherited from another
+team), `knowledge_imported` and `document_sync_inherited` (to human).
 
 **Verified**: HP-01 to HP-15, S-01 to S-08, RS-12.
 
@@ -730,6 +770,8 @@ row. The command contract is [cli.md section 9n](cli.md#9n-whiteboard-canvas-and
 | Agents' MCP tools | — | automatic for members Synapse starts while the canvas is on | Claude Code gets `--mcp-config <team>/whiteboard/mcp.json`, Codex two `-c mcp_servers.synapse_canvas.*` overrides; `resume --print` and `restore --dry-run` show them; Pi and every other kind use the CLI |
 | Point an agent at something | "Send to…" on a selection, or a comment with `@name` | `canvas send E-3 E-4 --to NAME --note "…"`, `canvas comment E-3 "@name …"` | one `canvas_sent` record, a nudge through the usual gates; drawing alone never wakes anyone (one `canvas_changed` line per author per minute) |
 | You lead | lock a region, undo a batch, resolve, hide an author | `canvas lock`, `canvas undo B-n` | agents' ops inside a lock refuse `canvas_locked`; an undone batch disappears for everyone |
+| The canvas outlives the team (0.22.1) | — | nothing to run: the mirror writes `<team>/canvas.md` and `<team>/canvas.json` into the project folder whenever the canvas moves; `canvas import --from … \| --from-archive <team>` reads one back | a checkout carries the board as an importable scene and its pictures, with a readable listing beside it that is not committed; an import keeps every element id and binding, seeds the counters, and is one batch you can undo; a scene over 1 MiB is mirrored as a pointer naming `canvas export` instead of half a board; [inheritance.md](inheritance.md) |
+| Find what the board says (0.22.1) | — | `recall "<words>" [--kind canvas]` | element text, frame and section titles, card bodies and badges, table cells, chart captions, kanban and timeline items, comments and the legend; each hit names the element and the `canvas look --around E-n` that shows it in place, and a hit on an inherited mark names the team it came from; the index rebuilds from the scene, so a cleared or re-imported board leaves nothing stale |
 | Team views | the page's Team tab | `whiteboard views` | JSON with `work`, `facts`, `topology`, `timeline`, `lanes`, `canvas` |
 | Give one agent a canvas | `d` on an agent in no team in `prefix+t`, "Give it a canvas of its own" | `create <team> --member <pane>:<role>:<name> --brief <name>="…"` | a team of one (default name `<agent>-canvas`, the agent keeps its name); its canvas is on, and the whiteboard is turned on first if it was off |
 | Watch an agent, in a team or not | `o` on an agent row in `prefix+t` (`◉` marks it; while the whiteboard is off, `o` asks to turn it on first) | `watch <pane\|name>`, `watch show`, `watch list`, `unwatch` | its sidebar row gains `▶ 3/7 run the tests` / `✎ invoice.py` within 15 s once `$team_doing` is in your sidebar block; the Activity tab shows its plan, recent actions and files |
@@ -1074,7 +1116,13 @@ other kinds refuse `hooks_unprobed` until probed, then `hooks_unsupported`.
   capped. Findings, which any member may append, are counted and pointed at,
   never inlined.
 - The plugin writes into a project directory only after a human has run
-  `project set`, and never deletes anything under one.
+  `project set`. The one file it deletes under one is a `canvas-assets/` picture
+  no mark on the board names any more and whose bytes this team wrote there; a
+  durable file this team did not write is never written over or deleted, only held and
+  reported, unless the operator orders it after a checked copy. Auto sync only
+  proposes edits for confirmation. Disposable marker-bearing views regenerate; unknown files do not.
+  A member that is removed or renamed gets a tombstone written over
+  its file, never a deletion.
 - An idle member holding unread posts is swept into an ordinary nudge at most
   once every three minutes, so a teammate's broadcast reaches it without
   waiting for it to take a turn for some other reason. The sweep creates a

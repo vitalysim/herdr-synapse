@@ -4868,6 +4868,56 @@ def look_text(result: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def snapshot_listing(team: TeamPaths, scene: Dict[str, Any]) -> str:
+    """The readable listing of a folded scene, as the operator would read it, with no side effect at all (seam S1).
+
+    ``look`` is a read that writes: it moves the reader's cursor, records presence, reads the stills folder and builds
+    the canvas v2 migration notice. The mirror writes ``canvas.md`` on a timer, not on a person looking, so it must not
+    pay or cause any of that -- and, because the file is rewritten only when the canvas version moved, the text must be
+    a pure function of the scene. Hence no claims (they expire on the clock, so they would churn the file), no
+    presence, no cursor, no lock and no stills.
+
+    And no layout problems. ``_check.problems`` searches for a free spot per overlap, which is superlinear in the mark
+    count: measured on one process, 0.018 s for 25 overlapping marks, 0.57 s for 100 and 8.07 s for 300, against a
+    ``MAX_ELEMENTS`` of 2000 and a notifier tick period of 0.25 s. The mirror runs on that single-threaded tick, which
+    also delivers nudges and wakes, so it cannot pay a second-scale cost because a board moved. Layout advice is also
+    not a record of the board: it is advice about the board now, it would churn the committed file as marks move, and
+    ``canvas check`` is the command that gives it, on purpose, to somebody who asked.
+    """
+    elements = [el for el in scene.get("elements") or [] if isinstance(el, dict) and isinstance(el.get("id"), str)]
+    if len(elements) <= LOOK_FULL_MAX:
+        full, rest, level = list(elements), [], "full"
+    else:
+        full = []
+        rest = [el for el in elements if el.get("type") == "frame"] + [el for el in elements if el.get("type") != "frame"]
+        level = "overview"
+    one_line, remainder = rest[:LOOK_LINE_MAX], rest[LOOK_LINE_MAX:]
+    view = _render.view_box(scene)
+    origin = ((view[0] + view[2]) / 2.0, (view[1] + view[3]) / 2.0)
+    clusters = _clusters(remainder, origin)
+    blocks = _blocks()
+    folded = blocks.member_ids(elements)
+    one_line = [el for el in one_line if el["id"] not in folded]
+    elsewhere = [{"id": el["id"], "type": el.get("type"), "bounds": [el.get("x"), el.get("y"), el.get("w"), el.get("h")],
+                  "cell": cell_name(el.get("x") or 0, el.get("y") or 0), "text": el.get("text") or "", "author": el.get("author"),
+                  "line": blocks.block_lines(elements, el, HUMAN, False, 0)[0] if blocks._is_root(el) and blocks.kind_of(el).name != "section"
+                  else describe(el, HUMAN, full=False)} for el in one_line]
+    result: Dict[str, Any] = {
+        "team": scene.get("team") or team.name, "version": int(scene.get("version") or 0), "reader": HUMAN,
+        "region": None, "region_cells": None, "level": level, "total": len(elements),
+        "elements": full, "elsewhere": elsewhere, "clusters": clusters[:MAX_CLUSTERS],
+        "omitted": sum(c["count"] for c in clusters[MAX_CLUSTERS:]),
+        "since": None, "changes": [], "claims": [], "locks": [], "legend": scene.get("legend") or [],
+        "comments_for_you": [], "image": None, "svg": None, "image_error": None,
+        "problems": [],  # see the docstring: the mirror records the board, it does not advise on it
+        "blocks": {el["id"]: blocks.spec_of(elements, el) for el in full if blocks._is_root(el)},
+        "full": False, "_scene": elements, "_stills": None, "_by_id": {el["id"]: el for el in elements},
+        "presence": {}, "proposals": [], "decided": [], "freezes": [], "settings": scene.get("settings", {}).get("collab"),
+        "checkpoints": [], "proposals_full": False, "_tags": _collab().tags(scene), "_now": 0.0, "_team": team,
+    }
+    return look_text(result)
+
+
 def _exact_export(layout: Any, team: TeamPaths, region: Sequence[float], grid: bool, reader: str) -> Optional[str]:
     """Ask an open page for its own picture of the board and wait up to ``EXACT_WAIT_S``; None when no page answers."""
     if not (layout.session.root / "whiteboard.json").is_file():

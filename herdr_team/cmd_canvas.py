@@ -402,11 +402,31 @@ def _import(args: argparse.Namespace) -> int:
             op[key] = True
     if not args.dry_run:
         result = C.check_applied(C.apply_ops(layout, team, [op], author, doc=doc))
+        _release_own_payload(team, doc, source, result)
         return emit(args, result, C.apply_text(result))
     _features.require_on(layout.session, team, doc)
     report = dry_run(layout, team, doc, author, op)
     payload = dict(report.to_json(), dry_run=True, team=team.name, would_apply=not report.refusals)
     return emit(args, payload, IM.dry_run_text(report))
+
+
+def _release_own_payload(team: TeamPaths, doc: Dict[str, Any], source: Any, result: Dict[str, Any]) -> None:
+    """An import from this team's own ``canvas.json`` adopts the file the mirror is holding: release the bytes read.
+
+    The next canvas mirror then copies that file into ``inherited/``, checks the copy, and writes this team's board
+    over it -- or leaves it as it is if the copy cannot be made. An import from anywhere else releases nothing.
+    """
+    from herdr_team import canvas_import as IM
+    from herdr_team import document_sync as _sync
+    from herdr_team import workdir as _workdir
+
+    project = _workdir.project_dir_of(doc)
+    if not project:
+        return
+    for entry in result.get("applied") or []:
+        info = entry.get(IM.OP_KEY) if isinstance(entry, dict) else None
+        if isinstance(info, dict) and info.get("digest"):
+            _sync.release_import(team, _workdir.paths_for(project, team.name), source, info["digest"])
 
 
 def dry_run(layout: Any, team: TeamPaths, doc: Dict[str, Any], author: C.CanvasAuthor, op: Dict[str, Any]) -> Any:

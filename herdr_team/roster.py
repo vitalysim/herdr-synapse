@@ -1908,7 +1908,14 @@ class Roster:
         return {"team": self.name, "member": member.to_json(), "previous_terminal_id": previous_terminal[0] if previous_terminal else None}
 
     def dissolve(self, api: Any, timestamp: Optional[str] = None) -> Dict[str, Any]:
-        """Clear tokens and labels for every member and move the team dir to ``_archive/<team>-<ts>/``."""
+        """Clear tokens and labels for every member and move the team dir to ``_archive/<team>-<ts>/``.
+
+        ``result["recoverable"]`` is what is still in there, counted **after** the rename by reading the archive, so it
+        reports what is actually on disk rather than what the roster remembered. "Archived, not deleted" was true and
+        said nothing: the owner had to ask whether a dissolved team's canvas and facts could be got back, which is the
+        question ``cmd_roster`` now answers in the dissolve message. Best effort by construction: a count that cannot
+        be read is left out and never fails a dissolve that has already cleared the tokens and moved the directory.
+        """
         team = self.load()
         from herdr_team import swap
         for member in team.agents():
@@ -1927,7 +1934,8 @@ class Roster:
         ensure_dir(self.layout.session.archive_dir)
         with store.team_lock(self.paths):
             os.rename(self.paths.root, destination)
-        return {"team": self.name, "archived_to": os.fspath(destination), "members_cleared": cleared}
+        return {"team": self.name, "archived_to": os.fspath(destination), "members_cleared": cleared,
+                "recoverable": recoverable_from(destination, self.name)}
 
     def adopt_rename(self, member_name: str, new_name: str, socket: Optional[str] = None) -> Member:
         from .document_sync import document_lock
@@ -1955,6 +1963,20 @@ class Roster:
             write_pane_record(self.layout.session, member.terminal_id, self.name, member.name, member.generation, member.session)
         append_system_record(self.paths, "renamed", "{} is now {} (old name resolves for 10 min)".format(member_name, new_name), to=["all"], socket=socket)
         return member
+
+
+def recoverable_from(directory: Path, team_name: str) -> Dict[str, Any]:
+    """What an archived (or still live) team directory holds that another team could inherit; ``{}`` when unreadable.
+
+    ``dissolve`` prints it after the rename and ``_confirm_dissolve`` asks with it before, so both the question and the
+    answer name the same things. Never raises: the counts are a courtesy, not part of the dissolve.
+    """
+    try:
+        from herdr_team import canvas_import
+
+        return canvas_import.recoverable(TeamPaths(Path(directory), team_name))
+    except Exception:  # noqa: BLE001 - a courtesy count must never fail a dissolve
+        return {}
 
 
 # --------------------------------------------------------------------------

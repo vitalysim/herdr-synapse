@@ -22,7 +22,7 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from herdr_team import sanitize as _sanitize
 from herdr_team import store
@@ -461,8 +461,12 @@ def set_instructions(layout: Layout, team: str, author: Author, member_name: str
         return _store_instructions(layout, team, author, member_name, text, file_path, urgent, announce)
 
 
-def _store_instructions(layout: Layout, team: str, author: Author, member_name: str, text: Optional[str], file_path: Optional[str] = None, urgent: bool = False, announce: bool = True) -> Dict[str, Any]:
-    """Internal writer; caller holds document_lock and has checked authority."""
+def _store_instructions(layout: Layout, team: str, author: Author, member_name: str, text: Optional[str], file_path: Optional[str] = None, urgent: bool = False, announce: bool = True, verify: Optional[Callable[[_roster.Team], None]] = None) -> Dict[str, Any]:
+    """Caller holds document_lock and checked authority. A confirmation's verifier and publication also hold team.lock.
+
+    Roster changes do not take document_lock, so checking a proposal before calling this writer is insufficient:
+    a replacement member could otherwise receive consent given for the old identity.
+    """
     team_paths = layout.team(team)
     doc = _roster.load_team(team_paths)
     member = doc.find(member_name)
@@ -483,8 +487,26 @@ def _store_instructions(layout: Layout, team: str, author: Author, member_name: 
     stored = _doc.to_text(sections) if not _doc.is_empty(sections) else ""
     ensure_team_dirs(team_paths)
     target = team_paths.instructions(member.name)
-    store.atomic_write(target, stored.encode("utf-8"))
-    revision = _bump_member_counter(team_paths, member.name, "instructions_seq")
+    if verify is None:
+        store.atomic_write(target, stored.encode("utf-8"))
+        revision = _bump_member_counter(team_paths, member.name, "instructions_seq")
+    else:
+        revisions = []
+
+        def publish(current: _roster.Team) -> None:
+            verify(current)
+            recipient = current.find(member_name)
+            # The verifier checked the exact live identity; use that Team, not the earlier read.
+            if recipient is None:
+                raise HerdrTeamError("document_changed", "the proposed member is no longer present", EXIT_REFUSED)
+            store.atomic_write(team_paths.instructions(recipient.name), stored.encode("utf-8"))
+            recipient.instructions_seq = instructions_seq(recipient) + 1
+            revisions.append(recipient.instructions_seq)
+
+        # Publication is not repeatable: a failed roster save must reach the caller's partial-write report,
+        # not rerun verification against text this attempt already changed.
+        _roster.update_team(team_paths, publish, retries=1)
+        revision = revisions[0]
     # Addressed to the member *and* to ``all``: the member learns its job changed
     # (a record naming nobody is a broadcast, which the delivery gate holds), and
     # teammates learn who owns what, which a shared folder cannot tell them.
@@ -604,23 +626,38 @@ def set_rules(layout: Layout, team: str, author: Author, text: Optional[str], fi
         return _store_rules(layout, team, author, text, file_path, urgent)
 
 
-def _store_rules(layout: Layout, team: str, author: Author, text: Optional[str], file_path: Optional[str] = None, urgent: bool = False) -> Dict[str, Any]:
-    """Internal writer; caller holds document_lock and has checked authority."""
+def _store_rules(layout: Layout, team: str, author: Author, text: Optional[str], file_path: Optional[str] = None, urgent: bool = False, verify: Optional[Callable[[_roster.Team], None]] = None) -> Dict[str, Any]:
+    """Caller holds document_lock and checked authority; confirmation validation/publication serialize with roster edits."""
     team_paths = layout.team(team)
     if file_path:
         body = _read_text_file(file_path, MAX_RULES_CHARS, "rules_too_long", truncate=False)
     else:
         body = sanitize(str(text or ""), MAX_RULES_CHARS, code="rules_too_long")
     ensure_team_dirs(team_paths)
-    store.atomic_write(team_paths.rules_md, ((body + "\n") if body else "").encode("utf-8"))
-    if team_paths.knowledge_md.is_file():
-        # Pre-0.6 teams kept the rules here. The first write moves them to
-        # ``rules.md``; leaving the old file would shadow it on the next read.
-        try:
-            os.unlink(team_paths.knowledge_md)
-        except OSError:
-            pass
-    revision = _bump_team_counter(team_paths, "rules_seq")
+
+    def publish_text() -> None:
+        store.atomic_write(team_paths.rules_md, ((body + "\n") if body else "").encode("utf-8"))
+        if team_paths.knowledge_md.is_file():
+            # Pre-0.6 rules would otherwise shadow the new authoritative file.
+            try:
+                os.unlink(team_paths.knowledge_md)
+            except OSError:
+                pass
+
+    if verify is None:
+        publish_text()
+        revision = _bump_team_counter(team_paths, "rules_seq")
+    else:
+        revisions = []
+
+        def publish(current: _roster.Team) -> None:
+            verify(current)
+            publish_text()
+            current.config["rules_seq"] = rules_seq(current) + 1
+            revisions.append(current.config["rules_seq"])
+
+        _roster.update_team(team_paths, publish, retries=1)
+        revision = revisions[0]
     # The board is how a member learns anything changed. A ``system`` record to
     # ``all`` is seen on the next board read (and by Claude on its next prompt)
     # without waking anyone; ``--urgent`` nudges, exactly as the charter does.

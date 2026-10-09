@@ -222,36 +222,39 @@ class MirrorEditTests(unittest.TestCase):
         self.assertEqual(result["awaiting_adopt"], [])
         self.assertIn("own the parser", self.path.read_text(encoding="utf-8"))
 
-    def test_a_file_an_older_plugin_wrote_is_regenerated_not_held(self):
-        # Upgrading with an old notifier still running leaves files in the old
-        # shape after the new code recorded its own digest. That is not an edit,
-        # and treating it as one froze every member file until someone adopted.
+    def test_a_file_an_older_plugin_wrote_is_held_until_the_operator_says(self):
+        # A marker is not authorship: any writer can put one on a file, so a file in an older plugin's shape that is
+        # not the bytes this team last wrote is held like any other change, and ``--force`` regenerates it after a
+        # checked copy. (Before the never-overwrite rule it was regenerated on sight.)
         old_body = workdir.MARKER.replace("v{}".format(workdir.WORKDIR_VERSION), "v0") + "\n# stale format\n"
         self.path.write_text(old_body, encoding="utf-8")
         result = workdir.render(self.layout, self.team)
-        self.assertEqual(result["awaiting_adopt"], [])
+        self.assertEqual(result["awaiting_adopt"], [os.fspath(self.path)])
+        self.assertEqual(self.path.read_text(encoding="utf-8"), old_body)
+        workdir.render(self.layout, self.team, force=True)
         self.assertIn("## Mission", self.path.read_text(encoding="utf-8"))
         self.assertEqual(workdir.marker_version(self.path.read_text(encoding="utf-8")), workdir.WORKDIR_VERSION)
 
     def _as_written_before_the_rename(self):
         """The file exactly as 0.8 left it: old marker, and its digest recorded."""
         workdir.render(self.layout, self.team)
-        old = self.path.read_text(encoding="utf-8").replace(
-            workdir.MARKER, "<!-- herdr-team:workdir v2 generated file, edits are overwritten -->", 1)
+        rest = self.path.read_text(encoding="utf-8").split("\n", 1)[1]
+        old = "<!-- herdr-team:workdir v2 generated file, edits are overwritten -->\n" + rest
         self.path.write_text(old, encoding="utf-8")
         state = workdir.mirror_state(self.state.team)
         state[self.path.name] = workdir.digest(old)
         workdir.save_mirror_state(self.state.team, state)
         return old
 
-    def test_a_file_carrying_the_old_plugin_name_is_rewritten_under_the_new_one(self):
-        # 0.9 renamed the marker from herdr-team to herdr-synapse. The old
-        # prefix stays recognised, or a file wearing it would read as somebody
-        # else's and the renderer would refuse to touch it for good.
+    def test_a_file_carrying_the_old_plugin_name_is_still_ours_and_rewritten_once_released(self):
+        # 0.9 renamed the marker from herdr-team to herdr-synapse. The old prefix stays recognised, or a file wearing
+        # it would read as somebody else's for good; it is not the bytes this team last wrote here, so it is held
+        # until the operator releases it, and then rewritten under the new name after a checked copy.
         self._as_written_before_the_rename()
-        self.assertTrue(workdir._is_ours(self.path))
+        self.assertTrue(workdir.is_ours(self.path))
         result = workdir.render(self.layout, self.team)
-        self.assertEqual(result["awaiting_adopt"], [])
+        self.assertEqual(result["awaiting_adopt"], [os.fspath(self.path)])
+        workdir.render(self.layout, self.team, force=True)
         text = self.path.read_text(encoding="utf-8")
         self.assertIn("herdr-synapse:workdir", text)
         self.assertNotIn("herdr-team:workdir", text)

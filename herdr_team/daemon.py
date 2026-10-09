@@ -176,6 +176,11 @@ IDLE_SWEEP_AFTER_S = 180.0
 #: move many times a minute and the file is the whole archive, so it is written
 #: on change but no more often than this.
 BOARD_SNAPSHOT_MIN_INTERVAL_S = 60.0
+#: Floor between two rewrites of a team's ``canvas.md``/``canvas.json`` mirror.
+#: Much shorter than the board's: the canvas is what a new team inherits, a
+#: drawing session moves it in bursts, and reading the version to find out
+#: whether it moved at all is one cheap lock-free tail read of the event log.
+CANVAS_SNAPSHOT_MIN_INTERVAL_S = 10.0
 #: How each system event is proactively delivered. Every system record remains
 #: visible board awareness; this table alone may turn one into a wake or toast:
 #: ``wake: all`` nudges every member when the record is ``urgent``, ``wake:
@@ -320,6 +325,33 @@ def _parse_iso(value: Optional[str]) -> Optional[float]:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.timestamp()
+
+
+def _document_sync_quote(word: str) -> str:
+    from . import document_sync as _document_sync
+
+    return _document_sync.quote(word)
+
+
+def _inherited_line(record: Dict[str, Any]) -> str:
+    """The operator's one board record about a hold or a checked copy in the team folder.
+
+    Delegation, so the board and ``project render`` can never word one record two ways: both registers live beside
+    the record, in ``document_sync.describe_inherited``.
+    """
+    from . import document_sync as _document_sync
+
+    return _document_sync.describe_inherited(record)
+
+
+def _inherited_extra(record: Dict[str, Any]) -> Dict[str, Any]:
+    """The record as board-record detail. ``kind`` is the record's own field, so it is renamed: passed through, it
+    raised ``record_invalid`` inside ``system_record`` and took the whole workdir refresh down with it."""
+    out = {"document": record.get("path"), "document_kind": record.get("kind")}
+    for key in ("held", "reason", "snapshot", "regenerated", "member", "command"):
+        if record.get(key) not in (None, [], ""):
+            out[key] = record[key]
+    return out
 
 
 def _short_text(text: Any, limit: int) -> str:
@@ -1424,6 +1456,18 @@ class TeamState:
     #: Board watermark last written to ``board.md``, and when.
     snapshot_seq: Optional[int] = None
     snapshot_ms: Optional[float] = None
+    #: Canvas version last written to ``canvas.md``/``canvas.json``, and when.
+    canvas_snapshot_version: Optional[int] = None
+    canvas_snapshot_ms: Optional[float] = None
+    #: Foreign generated files already reported to the operator, so a checkout that
+    #: permanently holds somebody else's ``README.md`` posts about it once.
+    foreign_announced: Set[str] = field(default_factory=set)
+    #: The last reason the canvas mirror was not written, so a permanent one is said once and not every tick.
+    canvas_mirror_announced: Optional[str] = None
+    #: The ``board.md`` refusal last announced (a file without the marker at the view's name), so it is said once.
+    board_view_announced: Optional[str] = None
+    #: Member documents for names this team does not use, already reported once each.
+    foreign_members_announced: Set[str] = field(default_factory=set)
     #: ``say`` lines typed and awaiting confirmation, by member name (``confirm_says``).
     say_inflight: Dict[str, SayState] = field(default_factory=dict)
     #: Monotonic ms of the last interrupt typed per ``(sender, target)``: the ``interrupt_cooldown_ms`` clock.
@@ -1967,6 +2011,7 @@ class Daemon:
         # After ``asks`` so ``open_asks`` is current; the HTTP runs on the relay's own thread.
         self._phase("remote", lambda: self.remote.tick(self.teams, now))
         self._phase("board_snapshot", lambda: self.snapshot_all_boards(now))
+        self._phase("canvas_snapshot", lambda: self.snapshot_all_canvases(now))
         self._phase("session_names", self.poll_session_names)
         self._phase("evaluate_pending", self.evaluate_pending)
         self._phase("heartbeat", lambda: self.heartbeat_if_due(now))
@@ -2054,7 +2099,12 @@ class Daemon:
                 self.who_dirty = True
         for name in sorted(names):
             if name in self.teams:
-                self._reload_roster(self.teams[name])
+                try:
+                    self._reload_roster(self.teams[name])
+                except Exception as err:  # noqa: BLE001 - one team's bad file must not stop every team after it
+                    # The teams are reloaded in sorted order, so an exception here used to abandon the scan for every
+                    # team after this one, on every tick, for as long as the file that caused it stayed in a checkout.
+                    self.log("team {}: reload failed: {}: {}".format(name, type(err).__name__, err))
                 continue
             paths = self.session.team(name)
             ensure_team_dirs(paths)
@@ -2182,7 +2232,15 @@ class Daemon:
         team.snapshot_ms = now
         if result.get("reason"):
             self.log("{}: board snapshot skipped: {}".format(team.name, result["reason"]))
+            if result.get("foreign") and team.board_view_announced != result["reason"]:
+                # ``board.md`` is a view nothing reads back, never held; a file there without the marker is somebody's
+                # own and is left alone, which the operator hears once, with the ``mv`` that ends it.
+                posted = self._append_system(team, "document_sync_error", result["reason"], ["human"],
+                                             {"document": result["foreign"], "reason": "foreign_view"})
+                if posted is not None:
+                    team.board_view_announced = result["reason"]
             return
+        team.board_view_announced = None
         team.snapshot_seq = watermark
         if result.get("written"):
             self.log("{}: board snapshot updated ({} posts)".format(team.name, result.get("records")))
@@ -2193,6 +2251,98 @@ class Daemon:
                 self.snapshot_board(team, now)
             except Exception as err:  # noqa: BLE001
                 self.log("{}: board snapshot failed: {}: {}".format(name, type(err).__name__, err))
+
+    def snapshot_canvas(self, team: TeamState, now: float) -> None:
+        """Keep ``<project>/.herdr-synapse/<team>/canvas.md`` and ``canvas.json`` current.
+
+        The canvas was the largest thing a team made that died with its session.
+        This is the tick that makes it durable, and it is its own tick rather
+        than part of the roster refresh because the canvas moves without the
+        roster moving at all.
+
+        Gated on the version actually having moved, because reading the version
+        is one cheap tail read while building the listing and the payload folds
+        the whole scene. Rate-limited, and wrapped like every other phase: the
+        daemon must outlive one bad file, and a mirror that cannot be written is
+        never allowed to look like a canvas that cannot be drawn on.
+        """
+        if not _workdir.project_dir_of(team.roster):
+            return
+        if team.canvas_snapshot_ms is not None and now - team.canvas_snapshot_ms < CANVAS_SNAPSHOT_MIN_INTERVAL_S * 1000.0:
+            return
+        try:
+            from . import canvas as _canvas
+            version = _canvas.current_version(self.layout.team(team.name))
+        except Exception as err:  # noqa: BLE001 - F-07: the daemon must outlive one bad file
+            self.log("{}: canvas version unreadable: {}: {}".format(team.name, type(err).__name__, err))
+            team.canvas_snapshot_ms = now
+            return
+        if team.canvas_snapshot_version == version:
+            return
+        try:
+            result = _workdir.render_canvas_snapshot(self.layout, team.name)
+        except Exception as err:  # noqa: BLE001 - F-07
+            self.log("{}: canvas snapshot failed: {}: {}".format(team.name, type(err).__name__, err))
+            team.canvas_snapshot_ms = now
+            return
+        team.canvas_snapshot_ms = now
+        # The canvas records are owed the same one report the documents are, whether or not the payload was written:
+        # a held ``canvas.json`` is exactly the case the operator must hear about. Boarding it is what spends it.
+        inherited = result.get("inherited") or []
+        reported = []
+        for record in inherited:
+            if self._append_system(team, "document_sync_inherited", _inherited_line(record), ["human"],
+                                   _inherited_extra(record)) is not None:
+                reported.append(record)
+        if reported:
+            from . import document_sync as _document_sync
+
+            _document_sync.mark_reported(self.layout.team(team.name), reported)
+        if result.get("reason"):
+            self.log("{}: canvas snapshot skipped: {}".format(team.name, result["reason"]))
+            self._announce_canvas_mirror(team, result["reason"])
+            if not result.get("held_only"):
+                return
+            # Held, and the hold was reported above: this version is done. The next draw, an import or an operator's
+            # ``project render`` looks again; rebuilding the scene every ten seconds would only find it held again.
+        else:
+            team.canvas_mirror_announced = None
+        if len(reported) == len(inherited):
+            team.canvas_snapshot_version = version
+        for message in result.get("errors") or []:
+            self.log("{}: canvas snapshot: {}".format(team.name, message))
+        if result.get("written"):
+            self.log("{}: canvas snapshot updated ({} elements at v{})".format(
+                team.name, result.get("elements"), result.get("version")))
+        if result.get("assets_pruned"):
+            self.log("{}: canvas assets pruned ({})".format(team.name, ", ".join(result["assets_pruned"])))
+
+    def _announce_canvas_mirror(self, team: TeamState, reason: str) -> None:
+        """Say once, on the board, that a regenerated view (``canvas.md`` or ``board.md``) is not being written.
+
+        A view is written over any file carrying this plugin's marker and never over one without it
+        (``workdir.write_view``), so the one case to tell the operator about is a file without the marker at a view's
+        name: somebody's own file, which stays exactly as it is until they move it. The reason is
+        ``ForeignViewError``'s own sentence, which names the file and prints the ``mv`` that resolves it; no
+        ``--force`` is offered, because it would not write a view over such a file either. Once per distinct reason,
+        so a permanent one does not post every ten seconds, and cleared as soon as a snapshot succeeds. A read-only
+        checkout or a full disk is the operator's own machine telling them already, and is only logged.
+        """
+        if getattr(team, "canvas_mirror_announced", None) == reason:
+            return
+        if "not written by herdr-synapse" not in reason and "not written by this plugin" not in reason:
+            return
+        posted = self._append_system(
+            team, "document_sync_error", reason, ["human"], {"document": reason, "reason": "foreign_view"})
+        if posted is not None:
+            team.canvas_mirror_announced = reason
+
+    def snapshot_all_canvases(self, now: float) -> None:
+        for name, team in list(self.teams.items()):
+            try:
+                self.snapshot_canvas(team, now)
+            except Exception as err:  # noqa: BLE001
+                self.log("{}: canvas snapshot failed: {}: {}".format(name, type(err).__name__, err))
 
     def _refresh_workdir(self, team: TeamState) -> None:
         """Keep the project mirror current after a roster change.
@@ -2216,11 +2366,46 @@ class Daemon:
             for error in synced["errors"]:
                 self._append_system(team, "document_sync_error", "{}: {}".format(error["path"], error["error"]), ["human"], error)
             result = _workdir.render(self.layout, team.name)
+            # Each hold and each checked copy is boarded once, in either sync mode: ``render`` re-emits an unreported
+            # record on every tick so that a caller which shows nobody anything leaves it for this one, and boarding
+            # it is what spends it.
+            reported = []
+            for record in result.get("inherited") or []:
+                if self._append_system(team, "document_sync_inherited", _inherited_line(record), ["human"],
+                                       _inherited_extra(record)) is not None:
+                    reported.append(record)
+            document_sync.mark_reported(self.layout.team(team.name), reported)
         except Exception as err:  # noqa: BLE001 - F-07: the daemon must outlive one bad file
             self.log("{}: team folder not refreshed: {}: {}".format(team.name, type(err).__name__, err))
             return
-        for path in result.get("skipped") or []:
+        held = {str(record.get("path")) for record in result.get("holds") or []}
+        skipped = [str(path) for path in (result.get("skipped") or [])]
+        for path in skipped:
             self.log("{}: team folder left {} alone; it is not ours".format(team.name, path))
+            # A held record is boarded by its own record above; a foreign view (a README.md without our marker) has no
+            # record, so it is said here, once per path, and cleared when the file stops being skipped.
+            if path not in held and path not in team.foreign_announced:
+                team.foreign_announced.add(path)
+                self._append_system(
+                    team, "document_sync_error",
+                    "{}: not written by herdr-synapse, so it was left alone; move it aside or run "
+                    "herdr-synapse project render --force --team {}".format(path, _document_sync_quote(team.name)),
+                    ["human"], {"document": path, "reason": "foreign"})
+        team.foreign_announced.intersection_update(skipped)
+        foreign_members = [str(path) for path in (result.get("foreign_members") or [])]
+        for path in foreign_members:
+            self.log("{}: {} belongs to a name this team does not use; nothing was adopted from it".format(team.name, path))
+            # Reported to the operator once: it is most likely a previous team's mission sitting in this team's folder,
+            # and only a human can decide whether it is a document or litter.
+            if path not in team.foreign_members_announced:
+                team.foreign_members_announced.add(path)
+                self._append_system(
+                    team, "document_sync_error",
+                    "{}: a member document for a name this team does not use; nothing was adopted from it and the "
+                    "mirror never writes over or deletes it. Read it, keep it, or move it out of the folder "
+                    "yourself".format(path),
+                    ["human"], {"document": path, "reason": "foreign_member"})
+        team.foreign_members_announced.intersection_update(foreign_members)
         self._announce_move(team, result.get("moved"))
         self._announce_edits(team, result.get("awaiting_adopt") or [])
 
@@ -2254,23 +2439,45 @@ class Daemon:
         the operator's word. Keyed by content digest, so re-rendering the
         mirror does not re-announce, and a second edit does.
         """
+        from herdr_team import document_sync as _sync
+
         live = set()
         for path in paths_:
             live.add(path)
+            # The bytes, not the text: a document with one invalid byte is an edit too, and ``read_text`` raised
+            # ``UnicodeDecodeError`` straight out of the roster reload, on every tick, for as long as it stayed (X3).
             try:
-                current = _workdir.digest(Path(path).read_text(encoding="utf-8"))
-            except OSError:
+                data = store.read_bytes(Path(path))
+            except (HerdrTeamError, OSError):
                 continue
+            if data is None:
+                continue
+            current = _workdir.digest_bytes(data)
             if team.adopt_announced.get(path) == current:
                 continue
             team.adopt_announced[path] = current
             name = Path(path).stem
             self.log("{}: {} was edited; waiting for adopt".format(team.name, path))
-            self._append_system(
-                team, "instructions_edited",
-                "{} was edited. Review and apply it: herdr-synapse instructions {} --adopt".format(path, name),
-                ["human"], {"member": name, "path": path},
-            )
+            member = team.member(name) or {}
+            active = member.get("kind") != "human" and member.get("status") in ("active", "starting")
+            flag = _sync.team_flag(team.name)
+            force = (" ; or write this team's version over it, copying it into inherited/ first:  herdr-synapse "
+                     "project render --force{}".format(flag))
+            if not active:
+                # ``--adopt`` refuses a name that is not an active agent member (``member_not_found``), so a member who
+                # has left is not offered it: the line used to print a repair that exits 1.
+                text = ("{} changed after this team last wrote it, but {} is not an active member of this team, so "
+                        "there are no instructions to apply it to. It is left as it is{}".format(path, name, force))
+            elif _sync._adoptable_now(Path(path)):
+                text = ("{} changed after this team last wrote it, and it is left as it is. Review and apply it:  "
+                        "herdr-synapse instructions {} --adopt{}{}".format(path, _sync.quote(name), flag, force))
+            else:
+                # ``--adopt`` refuses a document that is not UTF-8, has lost our marker or is over the instructions
+                # limit, so printing it here would hand the operator a repair that exits 1.
+                text = ("{} changed after this team last wrote it, but it is not a document instructions --adopt can "
+                        "take (not UTF-8, without this plugin's marker, or over the instructions limit). It is left "
+                        "as it is{}".format(path, force))
+            self._append_system(team, "instructions_edited", text, ["human"], {"member": name, "path": path})
         for path in [p for p in team.adopt_announced if p not in live]:
             del team.adopt_announced[path]  # adopted or discarded; the next edit is news again
 

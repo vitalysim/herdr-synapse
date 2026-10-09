@@ -44,6 +44,8 @@ herdr_team/
                          proposals, accept/reject/withdraw, freezes, settings, per-author undo, checkpoints, the ghosts
   canvas_presence.py     presence files under whiteboard/presence/ (members' focus, the operator's pages), never in the log
   canvas_migrate.py      boards drawn before 0.22 (canvas v2 phase 6): the migration report and the operator's `migrate` op
+  canvas_import.py       the inverse of `canvas export` (docs/inheritance.md): the validator, the payload and the `import` op
+  canvas_index.py        what a canvas says, as recall rows: pure over a folded scene, text found through the kind registry
   canvas_mcp.py          the stdio MCP server (`canvas mcp`) injected at launch for members Synapse starts
   sketch.py              standalone, stdlib-only batch builder for agents (`canvas helper`)
   whiteboard_server.py   the loopback page server: tickets, cookie, CSP, JSON API, SSE, sealed viz frames
@@ -60,6 +62,7 @@ tools/make_v021_boards.py   regenerates tests/fixtures/migration/v021/ from the 
 skills/herdr-synapse/SKILL.md   printed by `herdr-synapse --skill`
 docs/reference.md        complete user-facing command and shortcut reference
 docs/cli.md              implementation and JSON command contract
+docs/inheritance.md      what a new team inherits from a previous one's folder, and the commands that give it to them
 tests/                   unittest suite; tests/support.py has TempState, FakeHerdrServer, FakeApi
 ```
 
@@ -295,6 +298,64 @@ pointer file → `${XDG_STATE_HOME:-$HOME/.local/state}/<app>/plugins/herdr-syna
 
 ## Status
 
+- 2026-10-09, explicit confirmation supersedes the auto-adoption behavior described in the older entries below.
+  Neither mode adopts a saved edit alone. Auto proposes a settled edit with its complete canonical text; an operator's
+  `project confirm <id>` checks the current project, file, instance, stored revision and member identity before adopting.
+  Consent is consumed before the authoritative write; a later bookkeeping failure reports that the text was saved
+  rather than claiming nothing changed. Upgrade grace needs positive older-plugin state and covers only knowledge
+  and member documents that plugin wrote. Disposable board/canvas listings use `write_view`, not the durable guard:
+  marker-bearing views regenerate, while unknown files remain untouched even with force. The final byte-check/replace
+  race remains documented, not claimed solved. The dry-run facts count uses the real duplicate plan.
+- 2026-10-01, team inheritance (brief `.local/prd/team-inheritance.md`, spec `team-inheritance-spec.md`): the project
+  folder carries the team's durable record and one command gives it to the next team (`docs/inheritance.md`). The mirror
+  gained `facts.md` (from `facts.mirror_rows`), `canvas.md` and `canvas.json` with `canvas-assets/` (a new
+  `render_canvas_snapshot` tick in the notifier, gated on the canvas version and rate-limited), a JSON marker as a
+  reserved first-line `"//"` key and a `write_generated_json` that refuses rather than truncates (an over-cap scene is a
+  pointer, never half a board). `canvas_import` adds the `import` core op - the missing inverse of `canvas export` -
+  which replays a scene into an empty canvas as one undoable batch with the source element ids and bindings intact, the
+  counters seeded, and the marks re-attributed to the importer unless the operator keeps the authors in person;
+  `knowledge import` (and `create --inherit`) adopts rules, facts (`facts.add_inherited`: attributed to the source team,
+  never a live member) and the canvas, and lists member documents without adopting them. Two first-contact bugs in
+  `document_sync` are closed: the fabricated baseline that deadlocked a fresh team's Rules import and then froze the
+  mirror, and the silent adoption of a stranger's `members/<name>.md` as a mission. `recall` gained a fifth kind over
+  the canvas (`canvas_index.rows`, pure over a folded scene, text found through the kind registry, rebuilt from the
+  scene with no watermark), and `dissolve` now says what is recoverable from the archive and how. SKILL.md gained one
+  pointer and the skill is v13 (owner decision D2), so every installed agent is told to re-install it.
+- 2026-10-08, never overwrite (owner decision, replacing the copy-then-overwrite guard): every defect six review
+  rounds found came from copying a file this team did not write into `inherited/` and then overwriting it, and every
+  laundering route went through the automatic first-contact adoption. `document_sync.FolderGuard` now writes or deletes
+  a file only when the path is absent or holds the bytes this team last wrote there (its digest in
+  `document-sync.json`); anything else is held and reported once, in either sync mode. Nothing is copied or adopted by
+  itself: the only replacement of foreign bytes is `project render --force` or bytes an adopt, an import from the
+  team's own folder or a discard released, through one verified copy (`FolderGuard.copy_verified`: content-digest name,
+  read back, refuse on any doubt). Removed with the old design: the session-state fallback copies and their promotion,
+  the first-contact adoption and its authorship inference (`never_wrote_here`), the per-record bound on `inherited/`,
+  the copy shapes in `MIRRORED_RECORDS`, and the evidence-store repair that moved a file out of `inherited/`'s way.
+  The property test lost its three allowances and gained NO AUTOMATIC COPY.
+- 2026-10-08, never-overwrite verify round, one fix pass: the fourth oracle vocabulary
+  (`tests/test_folder_invariant_never_overwrite.py`, with FOREIGN_REWRITTEN, SILENT_HOLD, RESOLVER_INEFFECTIVE, the
+  authorship-sentence checks and MV_*) is part of the suite, and `tests/test_never_overwrite_fix_pass.py` pins the trust
+  and release reviewers' findings. A digest found identical is recorded as `claimed`, which never authorises a quiet
+  replace or an auto adoption (a second session's team of the same name could otherwise rewrite this team's file and
+  have its Rules adopted), except on the first render after an upgrade from a plugin that kept only `mirror.json`.
+  `scan` releases an edit only when it adopted something from it and otherwise *settles* it, held and reported; a
+  member document that is not `--adopt`-able is reported rather than quiet; a deleted synced document is held `deleted`
+  and `--force` writes it; digest-less holds carry a size-and-mtime stamp; holds on files that are gone are dropped;
+  the printed `mv` goes to a name nothing has; every printed command carries `--team`; `board.md` and `canvas.md` go
+  through the guard like every file in the team folder; `knowledge import` prints the Rules it adopts and asks;
+  an own-folder import releases under the guard's key however `--from` was spelled; `project set` re-keys a moved
+  folder's records (`document_sync.follow_move`); a held `canvas.json` no longer rebuilds the scene every tick.
+- 2026-10-08, the folder invariant as a test (`.local/prd/remediation-plan.md`): four review rounds each fixed hand-found
+  shapes of one defect class -- an exit-0, success-shaped report naming a copy that does not hold what it claims -- and
+  each had new ones found against it, partly because the tests were written to each fix. `tests/test_folder_invariant.py`
+  is now the specification: a model-based property test that drives random folder histories (renders, forced renders,
+  pulls, branch switches, markerless, conflicted and undecodable files, adoptions, canvas draws, undo, import and asset
+  churn, read-only and full disks, racing writers, `touch inherited`, dissolve and recreate, fresh clones) and checks
+  after every step that no byte-version this team did not write is gone without a copy under `inherited/` and that every
+  report, snapshot and printed repair is true of the disk (since the never-overwrite entry above, also that no copy
+  appears that no operator act ordered). Widen it with `HERDR_SYNAPSE_ORACLE_SEEDS`. The trust
+  boundary is frozen beside it in `tests/test_trust_boundary_shapes.py`. Owner decision D1 git-ignores `inherited/` and
+  `canvas.md`; `facts.md` splits into numbered parts instead of truncating.
 - 2026-09-28, canvas v2 phase 6 (cut-over and evaluation; contract `.local/prd/canvas-v2-phase6.md`), 0.22.0: the page
   opens on canvas v2 and keeps the classic Excalidraw canvas at `?engine=v1` behind a top-bar chip, loaded only when
   chosen (the stored choice moved to `synapse-engine-v022`; the build fails if the first load grows past 121.6 KB or
@@ -313,7 +374,7 @@ pointer file → `${XDG_STATE_HOME:-$HOME/.local/state}/<app>/plugins/herdr-syna
   fixtures the page reads (`tests/fixtures/collab/`). The authority matrix is 512 rows. Behaviour changes: undo skips
   what someone else changed later (`force` restores the old overwrite), an agent's change to the operator's or a peer's
   marks is a proposal where it was refused, a member's drawing in free space claims its area, and delegates no longer
-  change the operator's marks live nor undo her batches.
+  change the operator's marks live nor undo their batches.
 - 2026-09-27, 0.22.0 in progress (canvas v2 foundation and Phase 0; contract
   `.local/prd/canvas-v2-architecture.md`, design `canvas-v2-design.md`, QA
   `canvas-v2-qa.md`). Python side: bundled Inter 4.1 and Geist Mono 1.7.2

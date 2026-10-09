@@ -273,6 +273,10 @@ def _show(args: argparse.Namespace) -> int:
                 lines.append("source: {} (read {})".format(source.get("url"), str(source.get("retrieved_at") or "")[:10]))
             elif source.get("kind") == "post":
                 lines.append("source: board post #{}".format(source.get("seq")))
+            elif source.get("kind") == F.INHERITED_SOURCE_KIND:
+                # An inherited fact: where it came from, and what the team that believed it called it.
+                lines.append("source: inherited from team {} ({}{})".format(
+                    source.get("team"), source.get("fact") or "?", ", recorded " + str(source.get("at"))[:10] if source.get("at") else ""))
             else:
                 lines.append("source: {}".format(source.get("path")))
         for d in row["dispute_details"]:

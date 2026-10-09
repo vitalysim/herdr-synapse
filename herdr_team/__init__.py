@@ -5,5 +5,5 @@ contract and ``README.md`` for the module map.
 """
 
 VERSION = "0.22.1"
-SKILL_VERSION = 12
+SKILL_VERSION = 13
 PLUGIN_ID = "herdr-synapse"

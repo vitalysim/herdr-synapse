@@ -292,6 +292,16 @@ SYSTEM_EVENTS = (
     # pane-local flag), and ``pane_recovered`` names a member's own empty pane so
     # the operator knows where ``restore`` will put it back.
     "launch_flags_missing", "pane_recovered",
+    # 0.22.1: what the mirror owes the operator about the team folder.
+    # ``document_sync_error`` has been appended by the daemon since auto sync
+    # shipped and was refused here every time ("system record needs a known
+    # event"), so a bad project document reached nothing but the daemon log;
+    # ``document_sync_inherited`` reports a held file or a checked copy, once.
+    "document_sync_error", "document_sync_inherited",
+    # 0.22.1 team inheritance: the two records that say a team's rules, facts and board are a previous team's work.
+    # Provenance is the whole mitigation for adopting another team's record at all, so without these the fix would
+    # trade a loud failure (nothing arrives) for a quiet one (it arrives as if this team made it).
+    "knowledge_imported", "canvas_imported",
 )
 #: Every key of a stored record in file order (docs/cli.md section 10).
 RECORD_KEYS = (

@@ -3,7 +3,7 @@
 A diagram used to be the one thing a team could not find again. The board, the
 facts, the work items and the artifact files were all in the recall index; the
 canvas was not, so the frame that holds the whole login flow was unreachable by
-searching for "login flow".
+searching for "login flow", and an inherited board arrived mute.
 
 This module is the extraction half of that fix, kept apart from ``recall`` and
 from ``canvas`` on purpose:

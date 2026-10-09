@@ -215,10 +215,42 @@ claims that came with them.
 `checkpoint {label}` saves the elements as `whiteboard/checkpoints/V-n.json`
 (at most 8 MiB); the lead keeps 30 named, each other author 3, and there are 10
 automatic ones: before a batch of 30 ops or more from anyone but the lead,
-before a `restore`, and before `canvas clear` (which keeps `checkpoints/`, the
+before a `restore`, and before `whiteboard clear` (which keeps `checkpoints/`, the
 records, and a copy of the assets their elements name). `restore {id}` (the
 lead) applies the difference to the snapshot as one op, comments excluded; undo
 it like any batch.
+
+## An imported board (0.22.1)
+
+`canvas import` replays another team's scene into an empty canvas as one batch
+(see [inheritance.md](inheritance.md) for the whole command). It only has to
+decide one collaboration question, and the review gate decides it: **who is the
+author of an inherited mark?**
+
+The default is the operator who ran the import, with the original recorded on each
+element (`imported: {team, author, author_kind, id, at, from}`) so nothing about
+where it came from is lost. Re-attribution makes the current operator the owner of the marks;
+keeping the original names instead retains their ownership semantics and can make a member's later
+edits into peer proposals. The operator can edit individual marks or undo the import batch
+with either choice. `--keep-authors` is the operator's own call in person — not a
+delegate's, not a member's. A `system`-authored element is refused either way: nothing on a
+live canvas may claim to have been drawn by the plugin.
+
+Re-attribution has a cost of its own, and the import now names it. Every
+inherited mark is the operator's, so with the default `human_edits: propose`
+the `human_made` rule turns the team's own edits, moves and deletes of that
+board into proposals — measured, twelve of twelve by a member, a peer, the
+manager and a delegate, and a member tidying a thirty-mark board is stopped at
+the twenty-proposal limit. The board the team inherited is one it can read and
+not touch until the operator says otherwise. `canvas import --team-can-edit`
+sets `human_edits: live` in the same batch (so `undo B-n` takes the mode back
+with the marks), and `canvas settings --human-edits live` does it afterwards;
+either way the operator keeps the revert.
+
+The import carries no `claims`, `homes`, `authors`, `batches`, `proposals`,
+`locks`, `freezes`, `checkpoints` or `settings`, each for the same kind of
+reason: they all name people, pages or snapshots that this session does not
+have. Lanes and colours are assigned here, on each author's first op.
 
 ## Comments
 

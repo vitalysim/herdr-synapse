@@ -22,7 +22,8 @@ A canvas hit names the element and how to see it in place:
 Everything the board says is searchable: element text, frame and section
 titles, card bodies and badges, table cells, chart captions and their
 read-back, kanban and timeline items, comments, the legend's meanings, and
-every mark's `intent` — one more reason to write a real one.
+every mark's `intent` — one more reason to write a real one. A hit on a mark
+this team inherited names the team it came from (`--reference inheritance`).
 
 Snippets mark the match with `»…«`. The index is a cache under the team's
 state dir; it is brought up to date by each query, and the canvas half of it

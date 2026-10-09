@@ -698,9 +698,15 @@ def url_source(raw: str) -> Dict[str, Any]:
     return {"kind": "url", "url": text, "retrieved_at": parse_when(retrieved, "--source date") if retrieved else store.now_iso()}
 
 
-def findings_view(team: TeamPaths, limit: int = 0) -> List[Dict[str, Any]]:
-    """Current facts in the old findings shape (``at``, ``author``, ``kind``, ``text``) for existing readers."""
-    state = load(team)
+def findings_view(team: TeamPaths, limit: int = 0, state: Optional[State] = None) -> List[Dict[str, Any]]:
+    """Current facts in the old findings shape (``at``, ``author``, ``kind``, ``text``) for existing readers.
+
+    ``state`` is an already replayed fact log. The project mirror needs this view and ``mirror_rows`` in the same
+    render, and replaying the whole log twice per render was most of the notifier's per-tick cost for a long-lived
+    team (measured: two ``load`` calls per render at 3000 facts), so ``workdir._render_locked`` loads once and passes
+    the state to both. Without it the log is read here, as before.
+    """
+    state = load(team) if state is None else state
     rows = []
     for fact in state.current():
         marker = " [disputed {}]".format(", ".join(d for d in fact.disputes if state.disputes.get(d) and state.disputes[d].open)) if fact.status(state.disputes) == "disputed" else ""
@@ -717,3 +723,249 @@ def counts(team: TeamPaths) -> Dict[str, int]:
     state = load(team)
     current = state.current()
     return {"current": len(current), "disputed": len([f for f in current if f.status(state.disputes) == "disputed"]), "open_disputes": len(state.open_disputes())}
+
+
+# --------------------------------------------------------------------------
+# the durable record: ``facts.md`` in the knowledge path, and what a new team inherits from it
+#
+# A team's facts used to live only in session state, so dissolving the team took them with it
+# and a new team on the same knowledge path inherited nothing. ``knowledge.md``'s Findings line
+# was the only thing a checkout carried, and it keeps the statement while losing the fact id,
+# the subject, the sources, the confidence, the validity window and the dispute state - which is
+# to say it loses everything that makes a fact more than a remark.
+#
+# ``facts.md`` is the fuller channel. ``mirror_rows`` is every field it prints (the mirror itself
+# does the printing, in ``workdir.facts_body``), ``parse_mirror`` reads that file back, and
+# ``add_inherited`` records what it read as what the *previous* team believed: attributed to that
+# team, never to a live member, so ``fact support`` by somebody who is actually here is still the
+# act that makes it this team's own.
+
+#: The ``by_kind`` of a fact this team inherited rather than learned: its author is a team that is
+#: gone, not a member of this one, and no live member has stood behind it yet.
+INHERITED_KIND = "inherited"
+
+#: The source record that says where an inherited fact came from, beside the source's own sources.
+INHERITED_SOURCE_KIND = "team"
+
+#: ``- **F-1** subject / attribute — statement``, the heading bullet ``workdir.facts_body`` writes.
+_MIRROR_HEAD_RE = re.compile(r"^-\s+\*\*((?:F|L)-[1-9][0-9]{0,6})\*\*\s*(.*)$")
+_MIRROR_TOPIC_SEP = " — "
+_MIRROR_SUBJECT_SEP = " / "
+_MIRROR_META_SEP = " · "
+_MIRROR_VALID_RE = re.compile(r"^valid\s+(\S+)\s+→\s+(\S+)$")
+_MIRROR_ISO_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}([T ].*)?$")
+
+
+def _mirror_unescape(text: str) -> str:
+    """Undo ``render.escape_context_line``: the mirror escapes backticks and a leading marker so a
+    fenced reader stays inert, and a fact read back must be the words that were recorded."""
+    body = text.strip()
+    if body.startswith("\\"):
+        body = body[1:]
+    return body.replace("\\`", "`")
+
+
+def _parse_source(text: str) -> Optional[Dict[str, Any]]:
+    """One entry of the mirror's ``sources:`` line back into a source record.
+
+    The mirror prints a source as one word (``workdir._fact_list``), so what comes back is a URL,
+    a path, or the bare word ``team`` for an inherited fact's provenance. Only a URL is recorded
+    again: a path relative to somebody else's checkout and a provenance record about a team that
+    is gone would both be worse than silence, and the import stamps its own provenance anyway.
+    """
+    body = _mirror_unescape(text)
+    return {"kind": "url", "url": body} if _URL_RE.match(body) else None
+
+
+def mirror_rows(team: TeamPaths, limit: int = 0, state: Optional[State] = None) -> List[Dict[str, Any]]:
+    """Every current fact, with its provenance, for the project mirror's ``facts.md`` (seam S5).
+
+    One row per fact, with every field the mirror prints: the id, the subject and attribute, the
+    statement, who recorded it and when, its confidence, who supports it, its validity window,
+    its dispute state, and - for a fact this team inherited - the team it came from.
+    ``workdir.facts_body`` renders them; the rendering is deliberately not computed here so that
+    one module owns what the file looks like.
+
+    Pure with respect to the clock: nothing here asks what time it is, so an unchanged facts log
+    gives identical rows, and the mirror does not report a change when the team learned nothing
+    (the trap ``render_board_snapshot`` documents).
+
+    ``limit`` keeps the newest rows, as ``findings_view`` does. ``state`` is an already replayed log, for the same
+    reason ``findings_view`` takes one: the mirror asks for both views in one render.
+    """
+    state = load(team) if state is None else state
+    rows: List[Dict[str, Any]] = []
+    for fact in state.current():
+        status = fact.status(state.disputes)
+        inherited = next((s for s in fact.sources if s.get("kind") == INHERITED_SOURCE_KIND), None)
+        row = {
+            "id": fact.id, "about": fact.about, "attribute": fact.attribute, "statement": fact.statement,
+            "author": fact.author, "author_kind": fact.author_kind, "recorded_at": fact.recorded_at,
+            "valid_from": fact.valid_from, "valid_to": fact.valid_to, "sources": list(fact.sources),
+            "supporters": [str(s.get("by")) for s in fact.supporters if s.get("by")],
+            "members": fact.members, "confidence": fact.confidence(), "status": status,
+            "disputes": [d for d in fact.disputes if state.disputes.get(d) is not None and state.disputes[d].open],
+        }
+        if inherited is not None and inherited.get("team"):
+            row["source_team"] = str(inherited["team"])
+        rows.append(row)
+    if limit and len(rows) > limit:
+        rows = rows[-limit:]
+    return rows
+
+
+def parse_mirror(text: Any) -> List[Dict[str, Any]]:
+    """Read a ``facts.md`` back into rows ``add_inherited`` accepts.
+
+    This is the knowledge-path half of inheritance: a checkout carries ``facts.md`` and nothing
+    else about the facts, so a team inheriting from a folder rather than from a dissolved team in
+    this session has only the readable file to go on. It recovers the fact id, the subject, the
+    attribute, the statement, when the other team recorded it, its validity window and its
+    external sources - which is what a fact needs to be inheritable.
+
+    It is best effort by construction, and the exact channel is elsewhere: an archived team's
+    ``facts.jsonl`` carries every field, and ``knowledge import`` prefers it when it is there.
+    What a readable mirror cannot promise: supporters and confidence are this team's count of
+    members who are gone, so they are not read back at all; a statement that itself contains the
+    heading's ``—`` keeps the part before it as the subject.
+
+    Lenient everywhere else: the mirror's own heading and prose, a hand-written note under it and
+    a fact with no statement are skipped rather than recorded as an empty belief, and a file with
+    nothing recognisable in it gives ``[]`` - which the caller reports as "no facts found", never
+    as a crash.
+    """
+    rows: List[Dict[str, Any]] = []
+    current: Optional[Dict[str, Any]] = None
+    for raw in str(text or "").splitlines():
+        head = _MIRROR_HEAD_RE.match(raw)
+        if head is not None:
+            topic, _sep, statement = head.group(2).partition(_MIRROR_TOPIC_SEP)
+            if not _sep:
+                topic, statement = "", head.group(2)
+            subject = [part.strip() for part in topic.split(_MIRROR_SUBJECT_SEP) if part.strip()]
+            current = {"id": head.group(1), "statement": _mirror_unescape(statement),
+                       "about": _mirror_unescape(subject[0]) if subject else None,
+                       "attribute": _mirror_unescape(subject[1]) if len(subject) > 1 else None,
+                       "recorded_at": None, "valid_from": None, "valid_to": None, "sources": []}
+            if current["statement"].startswith("_") or not current["statement"]:
+                current = None
+                continue
+            rows.append(current)
+            continue
+        if current is None or not raw.startswith("  "):
+            continue
+        body = raw.strip()
+        if body.startswith("sources:"):
+            for part in body[len("sources:"):].split(","):
+                source = _parse_source(part)
+                if source is not None:
+                    current["sources"].append(source)
+            continue
+        # the meta line: ``author (kind) · 2026-09-30T… · confidence … · valid A → B · disputed D-1``
+        for field in body.split(_MIRROR_META_SEP):
+            field = field.strip()
+            if _MIRROR_ISO_RE.match(field) and current["recorded_at"] is None:
+                current["recorded_at"] = _mirror_when(field)
+                continue
+            valid = _MIRROR_VALID_RE.match(field)
+            if valid is not None:
+                current["valid_from"] = _mirror_when(valid.group(1))
+                current["valid_to"] = _mirror_when(valid.group(2))
+    return [row for row in rows if row["statement"]]
+
+
+def _mirror_when(value: str) -> Optional[str]:
+    """A date the mirror printed, or None for its em dash placeholder and anything unreadable."""
+    text = str(value or "").strip()
+    if not text or text in ("—", "?", "-"):
+        return None
+    try:
+        return parse_when(text, "date")
+    except UsageError:
+        return parse_when(text[:10], "date") if _MIRROR_ISO_RE.match(text) else None
+
+
+def _fact_key(statement: Any, about: Any, attribute: Any) -> Tuple[str, str, str]:
+    return normalize(statement), normalize(about), normalize(attribute)
+
+
+def _inheritable(state: Any, rows: List[Dict[str, Any]]):
+    """The rows ``add_inherited`` records, in order, with their clipped fields: one filter for the run and the plan.
+
+    A row with no statement, a row its source had retired or superseded, and a statement this team already holds for
+    the same subject and attribute -- or that an earlier row of the same import brings -- are left out.
+    """
+    held = {_fact_key(f.statement, f.about, f.attribute) for f in state.current()}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        statement = clip(row.get("statement"), MAX_STATEMENT_CHARS)
+        if not statement or row.get("retired_at") or row.get("superseded_by"):
+            continue
+        about = clip(row.get("about"), MAX_SUBJECT_CHARS) or None
+        attribute = clip(row.get("attribute"), MAX_SUBJECT_CHARS) or None
+        key = _fact_key(statement, about, attribute)
+        if key in held:
+            continue
+        held.add(key)
+        yield row, statement, about, attribute
+
+
+def plan_inherited(team: TeamPaths, rows: List[Dict[str, Any]]) -> Dict[str, int]:
+    """What ``add_inherited`` would record of ``rows`` now, without recording anything: ``knowledge import --dry-run``.
+
+    ``{"new": n, "held": h, "unusable": u}``: facts it would add, duplicate source rows or facts this team already
+    holds (the same statement for the same subject and attribute), and unusable rows without a current statement.
+    """
+    state = load(team)
+    new = sum(1 for _ in _inheritable(state, rows))
+    usable = [row for row in rows if isinstance(row, dict) and clip(row.get("statement"), MAX_STATEMENT_CHARS)
+              and not row.get("retired_at") and not row.get("superseded_by")]
+    return {"new": new, "held": len(usable) - new, "unusable": len(rows) - len(usable)}
+
+
+def add_inherited(team: TeamPaths, rows: List[Dict[str, Any]], source_team: str, source_ref: str) -> List[str]:
+    """Record what a previous team believed, attributed to that team; returns the new fact ids.
+
+    ``rows`` are either ``Fact.to_json()`` documents (a dissolved team's ``facts.jsonl``, read
+    through ``load``) or ``parse_mirror`` rows (a knowledge path's ``facts.md``). Both carry
+    ``statement`` and the optional ``about``, ``attribute``, ``type``, ``valid_from``,
+    ``valid_to``, ``recorded_at`` and ``sources``, and nothing else is read.
+
+    What this is *not*: an import of the other team's beliefs as this team's own. Each fact is
+    recorded with ``by`` = the source team and ``by_kind`` = ``INHERITED_KIND``, so its author is
+    not a live member, its confidence counts nobody who is here, and ``fact support F-n`` by a
+    member who is actually on the team is what makes it the team's own. Nothing is disputed on
+    arrival either: a dispute is two live members disagreeing, not a dead team disagreeing with a
+    live one, so the contradictions machinery is deliberately not run here.
+
+    Skipped, each in silence, so that one unusable row never costs the rest of an inheritance:
+    a row with no statement; a row the source had already retired or superseded; and a statement
+    this team already holds for the same subject and attribute (importing the same document twice
+    adds nothing). The returned list is what was actually recorded, so a caller reporting "12 of
+    14" only needs its own count of what it passed in.
+    """
+    out: List[str] = []
+    if not rows:
+        return out
+    with store.team_lock(team):
+        state = load(team)
+        now = store.now_iso()
+        for row, statement, about, attribute in _inheritable(state, rows):
+            sources = [s for s in (row.get("sources") or []) if isinstance(s, dict)][:MAX_SOURCES - 1]
+            sources.append({"kind": INHERITED_SOURCE_KIND, "team": source_team, "fact": row.get("id"),
+                            "at": row.get("recorded_at"), "from": source_ref})
+            fact_id = next_fact_id(state)
+            event: Dict[str, Any] = {
+                "op": OP_ADD, "id": fact_id, "at": now, "by": source_team, "by_kind": INHERITED_KIND,
+                "statement": statement, "sources": sources,
+            }
+            for key, value in (("about", about), ("attribute", attribute), ("type", row.get("type")),
+                               ("valid_from", row.get("valid_from")), ("valid_to", row.get("valid_to"))):
+                if value:
+                    event[key] = value
+            _append(team, event)
+            # Fold it in so the next row's id and duplicate check see it, without re-reading the log.
+            apply(state, event)
+            out.append(fact_id)
+    return out

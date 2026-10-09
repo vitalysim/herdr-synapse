@@ -159,6 +159,63 @@ class Seams(ImportRig):
         self.assertEqual(IM.asset_names({"elements": []}), [])
         self.assertEqual(IM.asset_names({}), [])
 
+    def test_the_snapshot_listing_writes_nothing_and_reads_the_same_twice(self):
+        self.draw(BOARD)
+        scene = self.scene(self.source)
+        folder = C._dir(self.source)
+        before = sorted(p.name for p in folder.iterdir())
+        text = C.snapshot_listing(self.source, scene)
+        self.assertEqual(text, C.snapshot_listing(self.source, scene))
+        self.assertIn("login flow", text)
+        self.assertIn("E-1 frame", text)
+        self.assertEqual(sorted(p.name for p in folder.iterdir()), before, "a listing is not a read of the canvas")
+        self.assertFalse((folder / C.CURSORS_DIR).exists() and any((folder / C.CURSORS_DIR).iterdir()))
+
+    def test_the_snapshot_listing_of_an_empty_scene_says_so(self):
+        self.assertIn("the canvas is empty", C.snapshot_listing(self.target, self.scene()))
+
+    def test_the_snapshot_listing_does_not_advise_on_the_layout(self):
+        """The mirror records the board; ``canvas check`` advises on it.
+
+        Not a style preference: the layout check searches for a free spot per overlap, so it is superlinear in the
+        mark count (measured: 0.018 s at 25 overlapping marks, 8.07 s at 300), and the mirror runs on the notifier
+        tick that also delivers nudges and wakes. ``canvas check`` and ``look`` still report problems.
+        """
+        self.draw([{"op": "shape", "kind": "box", "text": "a", "at": [0, 0], "intent": "t"},
+                   {"op": "shape", "kind": "box", "text": "b", "at": [20, 20], "intent": "t"}])
+        scene = self.scene(self.source)
+        self.assertTrue(C._check.problems(scene["elements"], C.HUMAN, None, claims=()), "the two marks do overlap")
+        self.assertNotIn("problems (", C.snapshot_listing(self.source, scene))
+
+    def test_the_snapshot_listing_stays_cheap_as_the_board_grows(self):
+        """A load-tolerant ratio, never a wall-clock bound: ten times the marks must not cost ten times per mark.
+
+        The regression guard for the tick cost above. Measured on this machine, overlapping marks, one process: the
+        cost per mark was 37x worse at 250 marks than at 25 before the fix and 0.03x after it, so the gate is set at
+        8x -- far above any noise a loaded machine can add to the fast case, far below anything superlinear. Each
+        measurement is the best of five, which is the estimator that does not move when something else is running.
+        """
+        import time
+
+        def per_mark(count: int) -> float:
+            marks = [{"id": "E-{}".format(i + 1), "type": "box", "x": (i % 10) * 40, "y": (i // 10) * 40,
+                      "w": 160, "h": 80, "text": "m{}".format(i), "created_seq": i + 1, "updated_seq": i + 1,
+                      "author": "alpha-worker", "author_kind": "member", "style": {"size": 20}, "frame": None}
+                     for i in range(count)]
+            scene = dict(self.scene(self.source), elements=marks, version=count)
+            best = None
+            for _ in range(5):
+                started = time.perf_counter()
+                C.snapshot_listing(self.source, scene)
+                taken = time.perf_counter() - started
+                best = taken if best is None or taken < best else best
+            return (best or 0.0) / count
+
+        per_mark(25)  # warm: the first listing pays the kind-registry import
+        small, large = per_mark(25), per_mark(250)
+        self.assertLess(large, small * 8.0, "{:.6f} s/mark at 250 marks against {:.6f} at 25".format(large, small))
+
+
 class RefusalCommands(unittest.TestCase):
     """Every command an import refusal prints must be one that runs.
 
@@ -700,6 +757,28 @@ class Archives(ImportRig):
 
 # --------------------------------------------------------------------------
 # the mirror's canvas.json, read back (criterion 16's second half)
+
+
+class FromTheMirror(ImportRig):
+    def test_a_mirrored_canvas_json_imports_whole(self):
+        from herdr_team import workdir as WD
+
+        folder = self.project_dir(self.source)
+        self.draw(BOARD)
+        WD.render(self.layout, "alpha")
+        snapshot = WD.render_canvas_snapshot(self.layout, "alpha")
+        self.assertIsNone(snapshot.get("reason"), snapshot)
+        team_folder = WD.paths_for(os.fspath(folder), "alpha")["root"]
+        info = self.imported(os.fspath(team_folder))
+        self.assertEqual((info["elements"], info["comments"]), (7, 1))
+        self.assertEqual(info["form"], "mirror")
+        self.assertEqual(info["assets"], 2, "the chart's spec and data come from canvas-assets/")
+        for name in IM.asset_names(self.scene()):
+            self.assertTrue((C._dir(self.target) / C.ASSETS_DIR / name).is_file())
+
+
+# --------------------------------------------------------------------------
+# what it reads back as
 
 
 class ReadsBackAs(ImportRig):
