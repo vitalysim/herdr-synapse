@@ -246,11 +246,19 @@ class WaitTests(unittest.TestCase):
 
         seq = post(self.ts)
         out, err = io.StringIO(), io.StringIO()
+        # Route a real heartbeat without letting CI scheduling consume the wait
+        # before its first beat; elapsed time belongs to the injected clock.
+        now = [1000.0]
+
+        def sleep(seconds):
+            now[0] += seconds
+
         with mock.patch.object(cmd_board, "WAIT_HEARTBEAT_S", 0.02):
             import argparse
 
             args = argparse.Namespace(stderr=err, stdout=out)
             cmd_board.wait_for_answer(self.ts.team, seq, 0.08, poll_s=0.01,
+                                      sleep=sleep, clock=lambda: now[0],
                                       heartbeat=lambda e: cmd_board.warn(args, "still waiting for the operator ({:.0f}s of 0s)".format(e)),
                                       heartbeat_s=0.02)
         self.assertIn("still waiting for the operator", err.getvalue())
