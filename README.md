@@ -59,7 +59,8 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
 
 - **Teams, roles, names.** Pick live agents into a team with `prefix+t`, or
   start fresh ones into new panes, give each a role, a unique name and a required Mission,
-  choose a model on supported harnesses, and set a charter every member knows.
+  choose one leader and their responsibilities, choose a model on supported
+  harnesses, and set a charter every member knows.
 - **Know what you can start.** `herdr-synapse available` lists the agents
   running in no team and every harness installed here, each with its
   profiles (OpenCode and Claude Code agents, Codex profiles) and the models it
@@ -106,10 +107,12 @@ filter: [all]  to me  requests  human  system  teams  team  (Tab cycles)   ? hel
   deliberately reaches a running turn, and `!!all text` does the same for
   every current agent; a teammate's `post --interrupt` may do the same where
   you allow it.
-- **A manager, when you want one.** Mark one member and the others are told it
-  coordinates: `who` tags it, every briefing names it, the teams view marks it
+- **A configurable leader for each new team.** Choose one member and give it
+  a Mission describing how it coordinates. This uses the existing manager
+  designation: `who` tags it, every briefing names it, the teams view marks it
   with `★`, and the skill tells members to take its assignments as the plan
-  unless those conflict with the charter or their own instructions. Like a
+  unless those conflict with the charter or their own instructions. Its duties
+  are guidance, not permission limits or operator authority. Like a
   human broadcast, its broadcasts queue every teammate for an idle-gated
   nudge; an ordinary peer broadcast waits for the next read or catch-up sweep.
 - **Teams that talk to each other.** Link two teams and their managers become
@@ -544,9 +547,12 @@ its context is not broken by the move.
 ## Quick start
 
 1. Open two panes and start two agents.
-2. `prefix+t`, Space on both, Enter, then a team name, a charter, optional team rules and a team folder, and for
-   each agent a role, a name, a required Mission / brief, and optionally a model (`opus@medium`;
-   Enter keeps the harness default). Each member is briefed once it is idle.
+2. `prefix+t`, Space on both, Enter, then a team name, a charter, optional team
+   rules and a team folder. Choose one of the selected agents as leader, then
+   give each a role, a name, a required Mission / brief, and optionally a model
+   (`opus@medium`; Enter keeps the harness default). Configure the leader's
+   responsibilities in its Mission. Each member is briefed once it is idle,
+   after the leader and instructions are saved.
 3. `prefix+u` opens the console. Plain text posts to the whole team,
    `@name text` to one member, `!name text` types straight into one, and
    `!!all text` attempts forced direct typing for every current agent.
@@ -561,9 +567,9 @@ Nothing running yet? See what you can start, then start it:
 
 ```bash
 herdr-synapse available                      # harnesses, their profiles and models
-herdr-synapse create hunt --new --project ~/work/app \
+herdr-synapse create hunt --new --leader role:lead --project ~/work/app \
     --spawn lead:claude --spawn skeptic:opencode/plan \
-    --brief lead="Plan and review." --brief skeptic="Try to break every change." \
+    --brief lead="Plan and review; track blockers and report progress to the operator." --brief skeptic="Try to break every change." \
     --model skeptic=opencode/claude-fable-5
 ```
 
@@ -615,10 +621,17 @@ model cache (with each model's efforts), and `pi --list-models`. Nothing calls
 a provider. Project agents depend on the directory, so pass `--cwd` for the
 folder your members will work in.
 
+For a fresh team, also choose a leader with `--leader <final-name>` or
+`--leader role:<unique-role>` and give every member a Mission with `--brief`.
+Run creation from your own shell or an operator-delegated agent; an ordinary
+agent cannot appoint a leader.
+
 A member's profile is part of its launch, like its model:
 
 ```bash
-herdr-synapse create hunt --new --spawn skeptic:opencode/plan --spawn writer:claude/drafter …
+herdr-synapse create hunt --new --leader role:skeptic \
+    --spawn skeptic:opencode/plan --spawn writer:claude/drafter \
+    --brief skeptic="Review the plan, track blockers and report progress." --brief writer="Draft the requested content."
 herdr-synapse profile                        # every member's profile
 herdr-synapse profile hunt-writer editor --apply restart
 herdr-synapse profile hunt-writer --clear    # back to the harness default
@@ -681,6 +694,13 @@ Anything you pass yourself wins: your own `--charter`, `--spawn`, `--brief` or
 Mission and instructions. `herdr-synapse template save <name>` turns the current
 team into a template of your own (in your Herdr config), which you can start again
 or share as a folder of Markdown.
+
+A template's manager role counts as the required leader choice only when
+exactly one member in the new team has that role. `--leader` overrides it.
+For example, add `--brief lead="Coordinate the research and report evidence gaps."`
+to the research-sprint command to customize its leader's Mission while keeping
+the template's other instruction sections. A template without a uniquely
+matching manager role needs an explicit leader choice.
 
 ## The teams view
 
@@ -789,7 +809,7 @@ not. Press `d` on any row for its whiteboard menu:
 
 | On | `d` offers |
 | --- | --- |
-| an agent in no team | watch it; give it a canvas of its own (a team of one: Enter twice takes the prefilled name and Mission) |
+| an agent in no team | watch it; give it a canvas of its own (a team of one with that agent as leader: Enter twice takes the prefilled name and Mission) |
 | a member | watch it; turn its team's canvas or live visuals on or off |
 | a team | turn its canvas or live visuals on or off |
 | any row | open the page; turn the whiteboard on or off for this session |
@@ -824,9 +844,9 @@ pane. After that:
 
 ```bash
 # an agent already running in pane w1:p3
-herdr-synapse create sketch --canvas --member w1:p3:artist --brief artist="Draw what I ask on the canvas."
+herdr-synapse create sketch --canvas --leader role:artist --member w1:p3:artist --brief artist="Draw what I ask on the canvas."
 # or a fresh one, which also gets the canvas as MCP tools (--canvas turns it on before it starts)
-herdr-synapse create sketch --canvas --new --spawn artist:claude --brief artist="Draw what I ask on the canvas."
+herdr-synapse create sketch --canvas --new --leader role:artist --spawn artist:claude --brief artist="Draw what I ask on the canvas."
 ```
 
 Then ask on the board (`@<member> sketch the login flow on the canvas`), or
@@ -1091,7 +1111,7 @@ Existing and new teams default to `yolo`. An operator can select `native` for
 an entire team or individual members, including before their first launch:
 
 ```bash
-herdr-synapse create demo --new --spawn dev:claude --spawn reviewer:codex \
+herdr-synapse create demo --new --leader role:reviewer --spawn dev:claude --spawn reviewer:codex \
     --brief dev="Implement the change." --brief reviewer="Review and test it." \
     --permissions native --member-permissions dev=yolo
 
@@ -1154,7 +1174,7 @@ refused rather than receiving guessed flags.
 
 ```bash
 # at creation: per spawned role, or as the team default for a kind
-herdr-synapse create hunt --new --spawn reviewer:codex --spawn dev:claude \
+herdr-synapse create hunt --new --leader role:reviewer --spawn reviewer:codex --spawn dev:claude \
     --brief reviewer="Review every change and report regressions." --brief dev="Implement the requested change and run its tests." \
     --model reviewer=gpt-5.6-luna@high --model claude=opus@medium
 herdr-synapse models set codex gpt-5.6-luna@medium     # team default for a kind
@@ -1320,13 +1340,32 @@ route and makes the sanctioned one explicit and revocable.
 
 ## The team manager
 
-Optional, one per team, and it changes what the other agents believe rather
-than what anyone may write.
+The leader uses the existing manager designation, one per team. Every new
+team requires a choice: the wizard asks after the team folder, and fresh CLI
+creation requires `--leader NAME` (alias `--manager`) or a template with a
+uniquely matching manager role. `role:ROLE` selects a unique role; a bare
+name must be the member's final name, not its role. This also applies when
+`create --reuse` names a team that does not exist yet.
+
+Configure the leader's responsibilities per team through its canonical
+Mission: edit it in the wizard, pass `--brief NAME="..."`, or supply a full
+`--instructions NAME=TEXT` document with a `## Mission` section. Explicit
+instructions take precedence over a short brief. The wizard prefills an
+empty leader Mission with “Coordinate work, track blockers and evidence,
+and report progress to the operator.” These duties are guidance, not
+enforced permission limits: the leader keeps existing manager coordination
+permissions, but selection grants no operator delegation and injects no native
+goal command. Model and profile selection remain the usual member controls.
+
+Existing teams are not migrated or automatically assigned a leader. Adding
+members, reusing an existing team without a new choice, resuming, restoring
+and swapping preserve its designation, including none. You can still change
+or clear it explicitly; a failed or unavailable leader is not silently replaced.
 
 ```bash
 herdr-synapse manager                       # who is it
 herdr-synapse manager vuln-hunt-manager     # set it; the team is told
-herdr-synapse manager --clear               # nobody coordinates
+herdr-synapse manager --clear               # explicitly leave an existing team without a leader
 herdr-synapse manager vuln-hunt-manager --operator --ttl 12h
 ```
 
@@ -1343,9 +1382,10 @@ say so on the board rather than quietly doing something else.
 Two things it is not. It is **not the operator**: the charter, the team rules
 and anyone's instructions stay yours, and `--operator` is the separate,
 expiring, audited way to lend those. And its posts are **still peer requests**,
-not commands. The mechanical changes are two: a post it addresses to the whole
-team queues every teammate for an idle-gated nudge, just as a human broadcast
-does, while an ordinary peer's broadcast waits for the next read; it is also
+not commands. Alongside its existing coordination permissions, a post it
+addresses to the whole team queues every teammate for an idle-gated nudge,
+just as a human broadcast does, while an ordinary peer's broadcast waits for
+the next read; it is also
 the team's voice across a link to another team. Nothing
 else about delivery changes: a blocked agent, an open dialog, a draft on the
 prompt line and every rate limit still hold it.
