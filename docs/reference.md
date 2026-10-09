@@ -1319,6 +1319,30 @@ Every op also takes `op`, `intent` (required from agents) and `if_version`. Ops 
 | `comment` | `at`, `text`, `mentions`, `reply_to`, `client_id` | a comment pin on a point or an element; @mentions wake the members it names |
 <!-- END GENERATED: canvas-ops -->
 
+## Canvas layout and repair fields
+
+`arranged` is an integer fingerprint on block roots that route their own
+edges. It records the last arrangement's member geometry, routes, words and
+root settings relative to the root. An unchanged spec whose drawing still
+matches the fingerprint keeps that drawing exactly; operations never set it directly.
+Older roots without it receive a one-time redraw assessment, including
+clearance for other marks and open proposal overlays.
+
+`alias_theirs` warns that a new block has taken an alias another author's
+block of the same kind already uses. Both remain: aliases are author-scoped.
+The warning names the existing block and its author; ask its author, the
+manager or the operator rather than creating a second copy to repair it.
+
+Every `canvas check` finding carries `code`, `ids`, `message`, `yours` and
+`fix`. A repair is an ownership-permitted op, or `null` with guidance.
+Optional fields are `fix_by` (who has permission), `proposal` (the reader's
+exact current open repair proposal), and `fix_with` (`{code, ids}` naming an
+earlier finding whose one repair also addresses this finding). Proposal
+matching uses the requested change and resolved targets, not intent text or
+shared target ids; legacy records without that identity are not guessed.
+Normal role-specific freeze, lock and pin rules still apply; agent repairs
+respect human pins, while the operator retains their authority.
+
 ## Maintaining this reference
 
 The prose outside generated markers is edited normally. Refresh and validate

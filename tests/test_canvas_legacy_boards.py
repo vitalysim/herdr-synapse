@@ -344,5 +344,57 @@ class SettledBoards(LegacyRig):
                 self.assertEqual(_changed(after_one, self.board()), [], label)
 
 
+class CheckLoop(LegacyRig):
+    """The repair ``canvas check`` prints clears the finding for whoever runs it, so obeying check ends."""
+
+    ALIAS = "link_shortener_flow"
+    READERS = (("author", MEMBER), ("manager", MANAGER), ("operator", LEAD))
+
+    def _repairs(self, reader: str) -> List[Dict[str, Any]]:
+        found = C.check(self.ts.layout, self.ts.team, reader).get("problems") or []
+        return [p for p in found if isinstance(p.get("fix"), dict) and p["fix"].get("relayout") == "full"]
+
+    def test_every_reader_who_obeys_check_after_the_authors_repair_gets_out(self):
+        for name, who in self.READERS:
+            with self.subTest(reader=name):
+                self.new_team()
+                self.plant(_owner()["scene"])
+                printed = self._repairs(MEMBER.name)
+                self.assertTrue(printed, "the owner's board needs its repair")
+                self.apply(printed[0]["fix"])
+                for _round in range(3):
+                    asked = self._repairs(who.name)
+                    if not asked:
+                        break
+                    before = self.board()
+                    self.apply(asked[0]["fix"], who)
+                    # A printed repair that changes nothing and is printed again is the loop.
+                    self.assertNotEqual(_changed(before, self.board()), [],
+                                        "{} was told {} and running it changed nothing".format(name, asked[0]["code"]))
+                self.assertEqual(self._repairs(who.name), [], name)
+
+    def test_the_manager_is_told_nothing_on_a_board_the_author_just_repaired(self):
+        self.plant(_owner()["scene"])
+        self.apply(self._repairs(MEMBER.name)[0]["fix"])
+        self.assertNotIn("routes_tangled", self.codes(MANAGER.name))
+        self.assertNotIn("routes_tangled", self.codes(MEMBER.name))
+
+    def test_what_the_check_holds_is_what_the_repair_holds(self):
+        # One rule, ``canvas_blocks.held_by``: the manager may move an agent's boxes and holds the operator's; a peer
+        # holds every mark but their own; the operator holds nothing; with no reader only the operator's pins hold.
+        self.plant(_owner()["scene"])
+        elements = self.scene()["elements"]
+        by_id = {el["id"]: el for el in elements}
+        root = next(el for el in elements if el.get("alias") == self.ALIAS)
+        members = [el for el in elements if el.get("group") == root["id"]]
+        human = {el["id"] for el in members if el.get("author_kind") == C.KIND_HUMAN}
+        pinned = {el["id"] for el in members if (el.get("pin") or {}).get("by") == "human"}
+        theirs = {el["id"] for el in members if el.get("author") != "alpha-peer"}
+        self.assertEqual(set(G._reader_holds(members, "alpha-manager", True, by_id)), human | pinned)
+        self.assertEqual(set(G._reader_holds(members, "alpha-peer", False, by_id)), theirs | pinned)
+        self.assertEqual(G._reader_holds(members, C.HUMAN, False, by_id), [])
+        self.assertEqual(set(G._reader_holds(members, None, False, by_id)), pinned)
+
+
 if __name__ == "__main__":
     unittest.main()

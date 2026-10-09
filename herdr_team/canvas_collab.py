@@ -1173,6 +1173,17 @@ def open_proposals(state: Any) -> List[Dict[str, Any]]:
     return sorted((p for p in state.proposals.values() if p.get("status") == "open"), key=lambda p: C._id_number(p.get("id")))
 
 
+def repair_identity(op: Mapping[str, Any], targets: Iterable[str]) -> Dict[str, Any]:
+    """The exact requested change and resolved targets, without its explanation or alias spelling.
+
+    A title-only graph proposal is not a full relayout, even with the same target and intent. A small digest keeps
+    that distinction without storing the requested graph a second time in an already bounded proposal record.
+    """
+    payload = {k: v for k, v in op.items() if k not in ("id", "ids", "intent")}
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return {"digest": hashlib.sha256(encoded).hexdigest(), "targets": sorted(set(targets))}
+
+
 def outdated_of(record: Mapping[str, Any], elements: Mapping[str, Mapping[str, Any]]) -> List[Dict[str, Any]]:
     """Why an open proposal can no longer be accepted as the operator saw it (computed, never stored): a target changed
     or went since it was made, or a new element's container went. Empty when it is current."""
@@ -1241,6 +1252,12 @@ def divert(ctx: Any, verdict: Verdict, review: Review) -> str:
     targets = [c.id for c in kept if c.primary and c.action in ("update", "delete")]
     created = [c.id for c in kept if c.action == "add"]
     deleted = [c.id for c in kept if c.action == "delete"]
+    repair_targets = set(ctx.aimed)
+    # A kind op resolves its root through canvas_blocks._existing, not the core id lookup. The block result is
+    # the exact root that actually ran; do not broaden the review gate's aimed set just to record this identity.
+    root_id = (ctx.block_info or {}).get("id")
+    if isinstance(root_id, str) and _kinds.op(ctx.op_name) is not None:
+        repair_targets.add(root_id)
     everyone = open_proposals(state)
     mine = [p for p in everyone if p.get("author") == name]
     superseded = [p for p in mine if set(p.get("targets") or []) & set(targets)]
@@ -1262,6 +1279,7 @@ def divert(ctx: Any, verdict: Verdict, review: Review) -> str:
                      "was": int(c.before.get("updated_seq") or 0) if c.before is not None and c.action != "add" else None,
                      "value": c.after} for c in kept],
         "summary": summary_lines(kept),
+        "repair": repair_identity(ctx.request_op, repair_targets),
     }
     for older in superseded:
         ctx.other("proposal", "update", older["id"], _decided(older, "superseded", ctx, "superseded by {}".format(pid)))

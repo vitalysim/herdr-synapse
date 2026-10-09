@@ -328,6 +328,24 @@ A hit on an inherited mark says which team it came from. The index is a cache in
 the team's state directory: it rebuilds from the scene alone, and a cleared,
 purged or re-imported board leaves nothing stale behind.
 
+## What the folder costs the notifier
+
+Document edit scanning has a two-second floor, but roster refreshes can render
+the folder more often. Mirror views reuse a process-local cached fact snapshot
+while the log is unchanged and the cache entry is retained. Other consumers,
+including the daemon's dispute checks, can independently replay that log.
+Changed canvas snapshots have a ten-second floor; an equal-version check can
+still run on later ticks. A team with no project folder pays none of this work.
+
+A local supporting comparison against the pre-inheritance `d13e58c5` tree used
+25 or 200 facts and 2 or 15 members, with two warm-ups and 15 measured repeats
+per case. Changed-fact scan plus render was 1.26–1.73 times slower, with the
+candidate medians between 4.35 and 13.44 ms. The extra ownership checks and
+record rendering have a cost. These are direct scan-plus-render timings under
+other machine activity, not a complete notifier tick, a stable-release
+benchmark or a guarantee for larger histories and many teams. There was no
+older canvas mirror to compare. No wall-clock test limit was added.
+
 ## What `dissolve` says now
 
 Dissolving renames the whole team directory into the session archive; nothing is

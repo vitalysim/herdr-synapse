@@ -302,10 +302,15 @@ class ThinGraphs(GraphRig):
         for index, el in enumerate(nodes):
             self.ok({"op": "move", "id": el["id"], "to": [float(root["x"]) + 40 + index * 320,
                                                           float(root["y"]) + 60], "intent": "in a line"})
-        found = [p for p in C.check(self.layout, self.team, WORKER.name)["problems"] if p["code"] == "graph_thin"]
+        problems = C.check(self.layout, self.team, WORKER.name)["problems"]
+        found = [p for p in problems if p["code"] == "graph_thin"]
         self.assertTrue(found, [p["code"] for p in C.check(self.layout, self.team, WORKER.name)["problems"]])
         self.assertIn("too small to read", found[0]["message"])
-        self.assertEqual(self.apply([dict(found[0]["fix"])])["refused"], [])
+        shared = found[0].get("fix_with")
+        repair = next((p for p in problems if shared and p["code"] == shared["code"] and p["ids"] == shared["ids"]), found[0])
+        self.assertIsInstance(repair["fix"], dict, "the finding carries its fix or names the same repair above")
+        result = self.apply([dict(repair["fix"])])
+        self.assertEqual((result["refused"], result["proposed"]), ([], []))
         self.assertEqual([p["code"] for p in C.check(self.layout, self.team, WORKER.name)["problems"]
                           if p["code"] == "graph_thin"], [])
 
@@ -434,4 +439,3 @@ class ClaimLabels(GraphRig):
         text = group["items"][0] if group["items"][0]["k"] == "text" else group["items"][0]["items"][0]
         self.assertLess(text["box"][1] + text["box"][3], 0.0, "the label hangs above the region, not over its title")
         self.assertLess(rect["y"], float(title["y"]), "and the dashed border is outside the frame")
-

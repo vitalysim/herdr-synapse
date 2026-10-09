@@ -116,12 +116,22 @@ class R1SkipArrowsInTightStacks(Base):
                     self.setUp()
                     self.stack(layout, gap)
                     arrow = self.ok({"op": "arrow", "from": "a", "to": "d", "intent": "t"}, OPERATOR)["ids"][0]
-                    found = [p for p in C.check(self.layout, self.team, "alpha-worker")["problems"] if p["code"] == "arrow_through"]
+                    # The arrow is the operator's: an agent is told so, with no op it could only turn into a proposal
+                    # (layout findings, decision 1a), and the operator is printed the fix, which works.
+                    told = [p for p in C.check(self.layout, self.team, "alpha-worker")["problems"] if p["code"] == "arrow_through"]
+                    self.assertTrue(told, "a straight arrow across b and c")
+                    self.assertTrue(all(p["fix"] is None and p["fix_by"] == ["the operator"] for p in told), told)
+                    found = [p for p in C.check(self.layout, self.team, C.HUMAN)["problems"] if p["code"] == "arrow_through"]
                     self.assertTrue(found, "a straight arrow across b and c")
+                    fixes = [p for p in found if p.get("fix")]
+                    self.assertEqual(len(fixes), 1, "the same arrow is rerouted once, even when it cuts two cards")
+                    repair = fixes[0]
                     for problem in found:
-                        self.assertIsNotNone(problem["fix"])
-                        self.apply([problem["fix"]], OPERATOR)
-                    after = [p for p in C.check(self.layout, self.team, "alpha-worker")["problems"]
+                        if not problem.get("fix"):
+                            self.assertEqual(problem.get("fix_with"), {"code": repair["code"], "ids": repair["ids"]})
+                    result = self.apply([repair["fix"]], OPERATOR)
+                    self.assertEqual((result["refused"], result["proposed"]), ([], []))
+                    after = [p for p in C.check(self.layout, self.team, C.HUMAN)["problems"]
                              if p["code"] == "arrow_through" and arrow in p["ids"]]
                     self.assertEqual(after, [], "following the fix clears it")
 

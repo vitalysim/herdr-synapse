@@ -101,7 +101,7 @@ regression was missed.
 run the quality cut all the same: of 17 boards drawn by `d13e58c5`, 10 changed and 7 gained crossings, one a wire
 through "Counter". Such a board is fingerprinted as the op found it (`canvas_blocks._unstamped`), so an op that changed
 nothing an arrangement reads is settled against it exactly as a stamped board is. It then keeps its drawing unless the
-redraw the old pipeline would make reads **strictly better**: the redraw is arranged for real, its labels placed by
+redraw the current pipeline would make reads **strictly better**: the redraw is arranged for real, its labels placed by
 the canvas's own label pass, both are measured, and it is taken only when crossings a reader sees, wires through a
 box and misattributed labels are none of them worse and one of them better, with no more than 20 units of extra wire
 on wire (`graph.redraw_better`); otherwise it is rolled back. A redraw that reads better is still rolled back when
@@ -216,7 +216,7 @@ variant the router's keep decision calls, once per edge, and is O(1) in that rou
 
 ### The checks it gives `canvas check`
 
-Four graph kind checks, all naming the one repair that works, `{"op": "graph", "id": <alias>, "relayout": "full"}`:
+Four graph kind checks, with an ownership-permitted graph relayout or canonical-id patch, otherwise guidance:
 
 | Code | Fires when |
 |---|---|
@@ -226,11 +226,38 @@ Four graph kind checks, all naming the one repair that works, `{"op": "graph", "
 | `graph_thin` | Drawn more than six times longer one way than the other, when a fresh drawing's boxes would render at least a quarter bigger (`screen_ink`). |
 
 Each of them fires only when a **whole fresh drawing** — laid out *and routed* by the code the repair would run,
-honouring the same pins and the same peer marks the author may not move — is measurably better on the number that
-fired. The layout's own figures are not that evidence, and comparing against them is how these checks came to cry
+holding exactly what that repair would hold for whoever reads the check (`canvas_blocks.held_by`, the rule the
+arrangement itself holds by: the manager may move any agent's boxes, the operator anything, a peer only their own) —
+is measurably better on the number that fired. A copy of that rule held every member that was not the reader's, so
+the manager and the operator were promised a drawing their own `relayout: "full"` never makes and were printed the
+same repair after it had run: a manager obeying check would have looped. The layout's own figures are not that evidence, and comparing against them is how these checks came to cry
 wolf: a board of two nodes with ten wires between them has no crossings at all until the router draws the ten around
 each other, so its eight visible crossings were compared against a layout's zero, and `relayout full` was advertised
 on a board it reproduces to the digit.
+
+**A named reader is printed only ownership-permitted repairs** (`canvas_check._authorize`, every
+check and every kind's own). A reader runs what check prints; a fix the reader may not make does not fail, the review
+gate turns it into a proposal for the operator, the drawing stays as it was, and check printed it again, so an
+obedient agent filed P-1, P-2, P-3 ... forever. Three such loops were older than the layout findings round: an agent
+told to reroute the operator's arrow (`arrow_through`), a peer told to redraw another agent's graph (the readability
+checks' `relayout: "full"`), and the operator printed `{op: claim}` for an agent's claim (`claim_edge`), which made a
+claim of the operator's inside the agent's. Now a reader who may not apply a fix is told the finding, whose marks they
+are and who can (`fix_by`: the author, the manager, the operator), with `fix: null`; one whose identical proposal is
+already open is told its id (`proposal`) and is not printed the op again.
+
+An exact requested-operation digest and resolved target IDs identify that proposal; neither a matching intent nor
+an overlapping target proves it makes this repair, and an outdated or old-format proposal does not suppress current
+advice. Multiple findings with the same repair keep their messages, but print the operation once: `fix_with` names
+the earlier finding's code and IDs. When a graph alias belongs to more than one author, the repair uses `patch` on
+the canonical element ID, so the manager cannot accidentally redraw their own graph of that name. The check models
+the handler's raised-authority retry only when root ownership requires it; a member still holds human pins, and a
+root's permission does not grant edits to peer-owned children. Freezes, locks and pins are separate review constraints,
+not bypassed by the check: a frozen own graph can file one permitted repair proposal, then the check acknowledges its
+exact current proposal without another op. Ownership permission follows the gate's own rule
+(`canvas._may_edit`, a host's right to move a peer's mark inside its own container, the operator's `human_edits:
+live`). A `claim` op replaces only its sender's claims, so `claim_edge` prints its op to the claim's author alone.
+`tests/test_canvas_check_obey.py` obeys check as the author, the manager, a peer and the operator on the owner's board
+and on a board with operator-placed marks.
 
 Their thresholds are deliberately **looser** than the gates in `tests/layout_conformance.py`: the gate is about what
 the pipeline owes, the check is about what an agent should be told to fix, and a test asserts the two can never

@@ -114,6 +114,12 @@
       "reasons": [
        "human_made"
       ],
+      "repair": {
+       "digest": "3d00a2f48965095033609ad6dbb3d8aa444ac240d037b6a44eb2c023ad8b5013",
+       "targets": [
+        "E-1"
+       ]
+      },
       "seq": 3,
       "status": "open",
       "summary": [
@@ -227,6 +233,10 @@
       "reasons": [
        "human_made"
       ],
+      "repair": {
+       "digest": "1441c7bace5b3c478eda84a2cf9790eacc51cd9f9e7099786473c95625a7ccf4",
+       "targets": []
+      },
       "seq": 10,
       "status": "open",
       "summary": [
@@ -402,6 +412,10 @@
       "reasons": [
        "human_made"
       ],
+      "repair": {
+       "digest": "1441c7bace5b3c478eda84a2cf9790eacc51cd9f9e7099786473c95625a7ccf4",
+       "targets": []
+      },
       "seq": 10,
       "status": "accepted",
       "summary": [
@@ -473,6 +487,12 @@
       "reasons": [
        "human_made"
       ],
+      "repair": {
+       "digest": "3d00a2f48965095033609ad6dbb3d8aa444ac240d037b6a44eb2c023ad8b5013",
+       "targets": [
+        "E-1"
+       ]
+      },
       "seq": 3,
       "status": "withdrawn",
       "summary": [
@@ -727,6 +747,12 @@
       "reasons": [
        "human_made"
       ],
+      "repair": {
+       "digest": "3540b6e63246ab1277fe08b5e66eecb91f500bb5f21f94a3669fd7a054631081",
+       "targets": [
+        "E-1"
+       ]
+      },
       "seq": 23,
       "status": "open",
       "summary": [
@@ -971,6 +997,12 @@
       "reasons": [
        "peer"
       ],
+      "repair": {
+       "digest": "709a4980871b44621ca017c4241059b1c99ac5afb6dd5ca60bf38b08e34f2072",
+       "targets": [
+        "E-8"
+       ]
+      },
       "seq": 28,
       "status": "open",
       "summary": [
@@ -1025,6 +1057,12 @@
       "reasons": [
        "peer"
       ],
+      "repair": {
+       "digest": "709a4980871b44621ca017c4241059b1c99ac5afb6dd5ca60bf38b08e34f2072",
+       "targets": [
+        "E-8"
+       ]
+      },
       "seq": 28,
       "status": "rejected",
       "summary": [
@@ -1136,6 +1174,12 @@
       "reasons": [
        "peer"
       ],
+      "repair": {
+       "digest": "3540b6e63246ab1277fe08b5e66eecb91f500bb5f21f94a3669fd7a054631081",
+       "targets": [
+        "E-8"
+       ]
+      },
       "seq": 30,
       "status": "open",
       "summary": [
@@ -1190,6 +1234,12 @@
       "reasons": [
        "peer"
       ],
+      "repair": {
+       "digest": "3540b6e63246ab1277fe08b5e66eecb91f500bb5f21f94a3669fd7a054631081",
+       "targets": [
+        "E-8"
+       ]
+      },
       "seq": 30,
       "status": "withdrawn",
       "summary": [

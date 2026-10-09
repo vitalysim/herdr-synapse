@@ -3903,6 +3903,9 @@ def _run_op(ctx: _Ctx, handler: Callable[[_Ctx, Dict[str, Any]], None], op: Dict
     moved. Every arrow the op reroutes shares one budget (QA phase 2, R2): a move that drags a hundred orthogonal arrows
     along draws what is left straight, noted, instead of holding the lock. A graph routes its own edges under its own
     budget, and a layout runs under its own."""
+    # The review gate records a small exact-operation identity, not the intent or merely an intersecting target.
+    # Set here for both the ordinary attempt and its raised-authority retry; no requested payload is persisted.
+    ctx.request_op = op
     with _work_budget.running(_work_budget.Budget(work=OP_ROUTE_WORK, seconds=OP_ROUTE_SECONDS)):
         handler(ctx, op)
         _blocks().settle(ctx)  # containers whose members changed are arranged again (phase 2, 1.5)
@@ -4054,7 +4057,7 @@ def _apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: 
             result["geometry"] = found
             if omitted:
                 result["geometry_omitted"] = omitted
-            result["check"] = _blocks().batch_check(state, touched, author.name if not author.is_human else HUMAN)
+            result["check"] = _blocks().batch_check(state, touched, author.name if not author.is_human else HUMAN, author.manager)
         if atomic and result["refused"]:
             first = result["refused"][0]
             raise _error("canvas_refused", "atomic batch refused at op {} ({}: {}); nothing was applied".format(first["index"], first["code"], first["message"]),
@@ -4965,7 +4968,7 @@ def _check_canvas(layout: Any, team: TeamPaths, reader: str, region: Any, around
         box = [_round(x0 - AROUND_MARGIN), _round(y0 - AROUND_MARGIN), _round(x1 + AROUND_MARGIN), _round(y1 + AROUND_MARGIN)]
     elif region is not None:
         box = _region(region, "region", lookup)
-    found = _check.problems(elements, reader, box, claims=claims)
+    found = _check.problems(elements, reader, box, claims=claims, manager=bool((_member_row(doc, reader) or {}).get("manager")), scene=found_scene)
     if mine:
         found = [p for p in found if p["yours"]]
     head = "canvas of {} · v{} · {}".format(team.name, state.version, "{} problem{}".format(len(found), "" if len(found) == 1 else "s") if found else "no layout problems")
@@ -5079,7 +5082,7 @@ def _look(layout: Any, team: TeamPaths, reader: str, region: Any, around: Option
         "claims": scene["claims"], "locks": scene["locks"], "legend": scene["legend"],
         "comments_for_you": [el for el in elements if el.get("type") == "comment" and not el.get("resolved") and reader in (el.get("mentions") or [])],
         "image": None, "svg": None, "image_error": None, "exact": False, "unnamed": [],
-        "problems": _check.problems(elements, reader, box, claims=scene["claims"]),
+        "problems": _check.problems(elements, reader, box, claims=scene["claims"], manager=bool((_member_row(doc, reader) or {}).get("manager")), scene=scene),
         "blocks": {el["id"]: blocks.spec_of(elements, el) for el in full if blocks._is_root(el)},
         "full": bool(full_detail), "_scene": elements,
     }

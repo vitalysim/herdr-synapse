@@ -41,9 +41,12 @@ sees it), `routes_tangled` (wire that wanders, doubles back, or is drawn along
 other wire), `labels_adrift` (a label reading as some other node's) and
 `graph_thin` (a drawing so long and thin its own text is too small to read).
 `look` prints `crossings`.
+When a fix is not yours to apply, `check` prints the finding with no op and says who can (`fix_by`),
+or names the exact current proposal or another printed fix that already makes the repair.
 The graph's author, manager or operator may send its relayout; on a teammate's graph it becomes a proposal,
 so ask them rather than sending nodes, which draws a second copy (`alias_theirs`).
-Re-sending your own unchanged spec changes nothing.
+Re-sending your own unchanged spec while its drawing still
+matches the settled fingerprint changes nothing.
 
 A long chain is drawn as lanes, not as a line: nine steps come out about 2:1
 instead of 16:1. Adding a step keeps the lanes; asking for it fresh picks them

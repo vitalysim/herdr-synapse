@@ -249,11 +249,19 @@ class Checks(GraphRig):
         self.assertEqual(sorted(found), ["crossings_high", "labels_adrift", "routes_tangled"],
                          "all three see it: seven crossings a reader can see, wire more than three times as long as "
                          "the gaps it crosses, and seven labels nearer a third node than their own ends")
-        for problem in K.problems(self.scene()["elements"]):
+        problems = K.problems(self.scene()["elements"])
+        repairs = [p for p in problems if p["code"] in self.CODES and p.get("fix")]
+        self.assertEqual(len(repairs), 1, "all three readability findings print one actual relayout")
+        for problem in problems:
             if problem["code"] in self.CODES:
-                self.assertEqual(problem["fix"], {"op": "graph", "id": "shortener", "relayout": "full",
+                shared = problem.get("fix_with")
+                repair = next((p for p in problems if shared and p["code"] == shared["code"] and p["ids"] == shared["ids"]), problem)
+                self.assertEqual(repair["fix"], {"op": "graph", "id": "shortener", "relayout": "full",
                                                   "intent": "draw shortener again from scratch"},
                                  "every one of them names a repair that works")
+        result = self.apply([dict(repairs[0]["fix"])])
+        self.assertEqual((result["refused"], result["proposed"]), ([], []))
+        self.assertEqual([p["code"] for p in K.problems(self.scene()["elements"]) if p["code"] in self.CODES], [])
 
     def test_a_drawing_the_pipeline_makes_is_clean(self):
         for label, batches in (("fresh", [FLOW]), ("two batches", [FLOW_FIRST, FLOW]),

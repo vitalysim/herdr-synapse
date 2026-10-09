@@ -1329,8 +1329,7 @@ def _drawn(el: Element, env: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     nodes, _groups, edges, _loose = roles(el, members)
     if not edges or not nodes or len(nodes) > CROSSINGS_MAX_NODES or len(edges) > READABILITY_MAX_EDGES:
         return None
-    key = (str(el.get("id")), int(el.get("updated_seq") or 0), len(members),
-           max([int(m.get("updated_seq") or 0) for m in members] or [0]))
+    key = _fresh_key(el, members)
     found = _MEASURED.get(key)
     if found is None:
         found = canvas_readability.measure(canvas_readability.from_block(el, members))
@@ -1346,8 +1345,19 @@ _FRESH: Dict[Any, Optional[Dict[str, Any]]] = {}
 
 
 def _fresh_key(el: Element, members: Sequence[Element]) -> Any:
+    """What a board's memoised measurements are keyed on: its id and seqs, and what it actually looks like.
+
+    The id and the seqs alone say when a board *changed*, not *which* board it is, and ids and seqs restart in every
+    team: in one process that checks two teams' boards (the test suite, the shapes probe of the layout round) the
+    second board was answered with the first one's figures. ``graph_thin`` reported a freshly folded retry loop as
+    "drawn 8 times longer one way than the other" - the numbers of a different board with the same ``E-`` ids. The
+    geometry is read per member, which is nothing beside the quadratic measurement it saves.
+    """
+    look = tuple((str(m.get("id")), m.get("x"), m.get("y"), m.get("w"), m.get("h"),
+                  tuple(tuple(p) for p in (m.get("points") or ()) if isinstance(p, (list, tuple))),
+                  tuple(m.get("label_at") or ()), m.get("text")) for m in members)
     return (str(el.get("id")), int(el.get("updated_seq") or 0), len(members),
-            max([int(m.get("updated_seq") or 0) for m in members] or [0]))
+            max([int(m.get("updated_seq") or 0) for m in members] or [0]), hash(repr(look)))
 
 
 def _fresh_drawn(el: Element, env: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -1373,13 +1383,15 @@ def _fresh_drawn(el: Element, env: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if layout is None or not layout.edges or not layout.crossings:
         return None
     reader = env.get("reader") if isinstance(env.get("reader"), str) else None
-    # What the repair could not move if the reader ran it: the operator's own pins always, and a peer's marks unless
-    # the reader hosts this graph (A1). A fresh drawing that moved what the op may not move would promise a picture
-    # the op cannot deliver, and the check would keep firing on a board it had just repaired.
-    holds = [m["id"] for m in members
-             if (m.get("pin") or {}).get("by") == "human"
-             or (reader is not None and m.get("author") != reader and el.get("author") != reader)]
-    key = _fresh_key(el, members) + (reader,)
+    # What the repair could not move if the reader ran it, by the rule the arrangement itself holds by
+    # (``canvas_blocks.held_by``): the operator's pins for an agent, and what the reader may neither edit nor hosts.
+    # A fresh drawing that moved what the op may not move would promise a picture the op cannot deliver; one that held
+    # what the op will move promised a picture the op never draws, and that was the loop (layout findings,
+    # CHECK-LOOP): the manager and the operator were told ``routes_tangled`` on a board the author had just repaired,
+    # ran the printed ``relayout:"full"``, got the same drawing back, and were told it again.
+    manager = bool(env.get("reader_manager"))
+    holds = _reader_holds(members, reader, manager, by_id, root=el)
+    key = _fresh_key(el, members) + (reader, manager, tuple(holds))
     if key in _FRESH:
         return _FRESH[key]
     found: Optional[Dict[str, Any]] = None
@@ -1441,7 +1453,32 @@ def redraw_better(kept_root: Element, kept: Sequence[Element], new_root: Element
     return any(float(after[k]) < float(before[k]) for k in REDRAW_HARD)
 
 
-def _relayout_fix(el: Element) -> Dict[str, Any]:
+def _reader_holds(members: Sequence[Element], reader: Optional[str], manager: bool, by_id: Mapping[str, Any],
+                  root: Optional[Element] = None) -> List[str]:
+    """The members a ``relayout:"full"`` run by ``reader`` would leave where they are (``_fresh_drawn``).
+
+    The reader is who the check is printed for, and the repair it prints is run by them: ``human`` is the operator
+    (the only human who can run it), anyone else a member, the manager when the roster says so. No reader holds the
+    operator's pins only, as before.
+    """
+    from herdr_team import canvas_blocks
+    from herdr_team import canvas_check
+
+    author = canvas_check.reader_author(reader, manager)
+    if author is None:
+        return [m["id"] for m in members if (m.get("pin") or {}).get("by") == "human"]
+    if root is not None:
+        from herdr_team import canvas as C
+
+        if not C._may_edit(author, root):
+            # The handler refuses this root before laying it out; its retry has operator=True, exactly as D2.
+            # It remains a member, so human pins stay held. Merely setting human_edits:live on an own-root graph
+            # does not raise the handler and must not grant this prediction extra authority over its children.
+            author = replace(author, operator=True)
+    return [m["id"] for m in members if canvas_blocks.held_by(author, m, by_id)]
+
+
+def _relayout_fix(el: Element, env: Dict[str, Any]) -> Dict[str, Any]:
     """The one repair all three readability checks name: draw this block again from scratch.
 
     It has to be a repair that works. Before ``relayout`` became a field of the ``graph`` op, an agent told to fix
@@ -1449,6 +1486,11 @@ def _relayout_fix(el: Element) -> Dict[str, Any]:
     stale route - so the advice was worse than silence.
     """
     alias = el.get("alias") or el.get("id")
+    if not el.get("alias") or sum(1 for other in (env.get("by_id") or {}).values()
+                                  if other.get("alias") == alias) > 1:
+        # An alias belongs to its author: the manager may have their own graph of this name, and the operator
+        # cannot choose between two owners. The existing patch op names the exact stored root in every hand.
+        return {"op": "patch", "id": el["id"], "relayout": "full", "intent": "draw {} again from scratch".format(alias)}
     return {"op": "graph", "id": alias, "relayout": "full", "intent": "draw {} again from scratch".format(alias)}
 
 
@@ -1494,7 +1536,7 @@ def routes_tangled(el: Element, env: Dict[str, Any]) -> List[Dict[str, Any]]:
     alias = el.get("alias") or el.get("id")
     return [{"code": "routes_tangled", "ids": [str(el.get("id"))],
              "message": "{}'s wire wanders: {}; a full relayout draws it again".format(alias, ", and ".join(reasons)),
-             "fix": _relayout_fix(el)}]
+             "fix": _relayout_fix(el, env)}]
 
 
 def labels_adrift(el: Element, env: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -1524,7 +1566,7 @@ def labels_adrift(el: Element, env: Dict[str, Any]) -> List[Dict[str, Any]]:
     return [{"code": "labels_adrift", "ids": [str(el.get("id"))],
              "message": "{}'s labels are adrift: {}; a full relayout places them again".format(
                  alias, ", and ".join(reasons)),
-             "fix": _relayout_fix(el)}]
+             "fix": _relayout_fix(el, env)}]
 
 
 def _pieces(points: Sequence[Sequence[float]]) -> List[Tuple[Tuple[float, float], Tuple[float, float]]]:
@@ -1611,7 +1653,7 @@ def graph_thin(el: Element, env: Dict[str, Any]) -> List[Dict[str, Any]]:
              "message": "{} is drawn {:.0f} times longer one way than the other, so fitting it to a view leaves its "
                         "own text too small to read; a full relayout draws its boxes about {:.0%} the size".format(
                             alias, aspect if aspect >= 1.0 else 1.0 / aspect, math.sqrt(fresh / was)),
-             "fix": _relayout_fix(el)}]
+             "fix": _relayout_fix(el, env)}]
 
 
 def crossings_high(el: Element, env: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -1644,7 +1686,7 @@ def crossings_high(el: Element, env: Dict[str, Any]) -> List[Dict[str, Any]]:
     return [{"code": "crossings_high", "ids": [str(el.get("id"))],
              "message": "{} has {} edge crossings a reader can see{}; a full relayout draws about {}".format(
                  alias, found, " (worst: {} x {})".format(*worst) if worst else "", int(fresh_crossings)),
-             "fix": _relayout_fix(el)}]
+             "fix": _relayout_fix(el, env)}]
 
 
 # --------------------------------------------------------------------------

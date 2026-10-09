@@ -1188,20 +1188,37 @@ def _hosted(ctx: Any, el: Element) -> bool:
     ``l6-sketcher`` added were held where they stood, so every relayout laid the other six boxes out around them and
     the picture could not be made readable by anybody.
     """
+    return _hosted_by(ctx.author, el, _ById(ctx))
+
+
+def _hosted_by(author: Any, el: Element, by_id: Any) -> bool:
     from herdr_team import canvas_collab
 
-    if not getattr(ctx.author, "is_member", False) or not getattr(ctx.author, "name", None):
+    if not getattr(author, "is_member", False) or not getattr(author, "name", None):
         return False
-    return canvas_collab.hosts(ctx.author.name, el, _ById(ctx)) is not None
+    return canvas_collab.hosts(author.name, el, by_id) is not None
 
 
 def _held(ctx: Any, el: Element, positional_block: bool) -> bool:
     """A member the arrangement must leave where it is: not the author's to move (and not hosted by them), pinned by a
     person (for an agent), or pinned at all inside a positional block."""
-    if not C._may_edit(ctx.author, el) and not _hosted(ctx, el):
+    return held_by(ctx.author, el, _ById(ctx), positional_block)
+
+
+def held_by(author: Any, el: Element, by_id: Any, positional_block: bool = False) -> bool:
+    """``_held`` for any ``CanvasAuthor`` over any id lookup: the one rule for what an arrangement run by ``author``
+    leaves where it is.
+
+    Public because ``canvas check`` predicts what a printed repair would draw for whoever reads it, and that
+    prediction has to hold what the repair will hold, by this rule and no copy of it. A copy is how the check came to
+    loop (layout findings, CHECK-LOOP): it held every member that was not the reader's, so for the manager and the
+    operator - who may move an agent's boxes, and do when they run the repair - it promised a drawing their own
+    ``relayout:"full"`` never makes, and kept printing that repair after it had run.
+    """
+    if not C._may_edit(author, el) and not _hosted_by(author, el, by_id):
         return True
     by = pin_of(el)
-    if by == "human" and not ctx.author.is_human:
+    if by == "human" and not author.is_human:
         return True
     return positional_block and by is not None
 
@@ -2485,9 +2502,10 @@ def batch_geometry(state: Any, touched: Sequence[str], limit: int) -> Tuple[List
     return out[:limit], max(0, len(out) - limit)
 
 
-def batch_check(state: Any, touched: Sequence[str], reader: Optional[str]) -> Optional[Dict[str, Any]]:
+def batch_check(state: Any, touched: Sequence[str], reader: Optional[str], manager: bool = False) -> Optional[Dict[str, Any]]:
     """``canvas_check`` over the touched elements' bounds plus ``AROUND_MARGIN``: only problems that involve a touched
-    element, at most ``MAX_CHECK_PROBLEMS`` (each with its fix), and a count per code."""
+    element, at most ``MAX_CHECK_PROBLEMS`` (each with its fix), and a count per code. ``manager``: the batch's author
+    is the team's manager (``canvas_check.problems``)."""
     boxes = [box_of(state.elements[eid]) for eid in touched if eid in state.elements]
     found = _union(boxes)
     if found is None:
@@ -2496,7 +2514,15 @@ def batch_check(state: Any, touched: Sequence[str], reader: Optional[str]) -> Op
     region = [C._round(found[0] - margin), C._round(found[1] - margin), C._round(found[2] + margin), C._round(found[3] + margin)]
     near = [el for el in state.elements.values() if C._intersects(box_of(el), region)]
     touched_set = set(touched)
-    problems = [p for p in _check.problems(near, reader, region) if p["code"] != "stray" and touched_set.intersection(p["ids"])]
+    from herdr_team import canvas_collab
+
+    # The open proposals and the settings, so a fix this batch's author cannot apply - or has just proposed - is
+    # printed without its op (``canvas_check._authorize``): the op that became a proposal is answered "proposed as P-n",
+    # not with the same fix again.
+    collab = {"proposals": [p for p in getattr(state, "proposals", {}).values() if isinstance(p, dict)],
+              "settings": {"collab": canvas_collab.settings_of(state)}}
+    problems = [p for p in _check.problems(near, reader, region, manager=manager, scene=collab)
+                if p["code"] != "stray" and touched_set.intersection(p["ids"])]
     counts: Dict[str, int] = {code: 0 for code in ("overlap", "arrow_through", "label_truncated")}
     for problem in problems:
         counts[problem["code"]] = counts.get(problem["code"], 0) + 1

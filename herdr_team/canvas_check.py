@@ -22,7 +22,12 @@ can act on (``canvas check``, the MCP ``canvas_check`` tool, and the
 
 Every problem carries ``ids``, a one-line ``message``, and ``fix``: a ready
 ``move`` operation when there is an obvious one (``None`` otherwise, the
-message says what to do). Pure: reads element dicts, writes nothing.
+message says what to do). Named readers receive ownership-permitted repairs;
+others get ``fix: None`` and ``fix_by`` (who has permission). Freezes, locks
+and pins remain separate review constraints: a permitted attempt may file one
+proposal, and its exact current proposal is then named without another op
+(``proposal``, ``_authorize``). Repeated findings share one printed repair.
+Pure: reads element dicts, writes nothing.
 
 The checks are a registry (``CHECKS``, ``register_check``): a new check is
 one function and one line, and a kind adds its own through ``Kind.checks``.
@@ -31,7 +36,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, FrozenSet, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, FrozenSet, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from herdr_team import canvas_kinds as _kinds
 
@@ -588,8 +593,13 @@ def _claim_edges(claims: Sequence[Dict[str, Any]], marks: List[Dict[str, Any]], 
             continue
         author = str(claim.get("author") or "")
         snapped, took = claim_snap(region, marks, texts=live)
-        # A snap that holds none of them whole (it would pass ``claim_snap``'s bound) has no operation to offer: say so.
-        mine = bool(reader) and (author == reader or reader == "human") and bool(took)
+        # Only the claim's own author can redraw it: a ``claim`` op replaces the claims of whoever sends it and nobody
+        # else's. The operator used to be printed the same op for an agent's claim, and running it made a second claim,
+        # the operator's, inside the agent's (K-2, then K-3, K-4 ...), while the agent's edge went on cutting and the
+        # finding came back every round - an operator who obeyed check piled up claims forever (layout findings,
+        # decision 1c). A snap that holds none of them whole (it would pass ``claim_snap``'s bound) has no op either.
+        own = bool(reader) and author == reader
+        mine = own and bool(took)
         named = [_name(el) for el in cuts] + [_text_name(t) for t in words]
         ids = [str(el["id"]) for el in cuts] + [t["id"] for t in words if t["id"] not in {str(el["id"]) for el in cuts}]
         ids = list(dict.fromkeys(ids))
@@ -597,12 +607,20 @@ def _claim_edges(claims: Sequence[Dict[str, Any]], marks: List[Dict[str, Any]], 
             ", ".join(ids[:3]))} if mine else None
         if fix is not None and str(claim.get("label") or ""):
             fix["label"] = str(claim["label"])[:80]
-        advice = ("claim {} instead, which holds them whole (this one expires on its own)".format(snapped) if mine
-                  else "claim a region that holds them whole, or leave them to {}".format(author or "their author")
-                  if author == reader or reader == "human" else "ask {} to claim a region that holds them whole".format(author or "its author"))
+        whose = "the operator" if author == "human" else (author or "its author")
+        if mine:
+            advice = "claim {} instead, which holds them whole (this one expires on its own)".format(snapped)
+        elif own:
+            advice = "claim a region that holds them whole"
+        else:
+            advice = "only {} can redraw this claim, so there is nothing for you to apply: {} (it expires on its own)".format(
+                whose, "ask them to claim a region that holds them whole, or release it" if reader == "human"
+                else "ask {} to claim a region that holds them whole".format(whose))
         found = _problem("claim_edge", [str(claim.get("id") or "")] + ids,
                          "claim {}'s edge cuts across {}; {}".format(claim.get("id"), ", ".join(named[:3]), advice),
                          fix, reader, by_id)
+        if not own and reader:
+            found["fix_by"] = [whose]
         out.append(found)
     return out
 
@@ -710,24 +728,230 @@ def _kind_checks(live: List[Dict[str, Any]], env: Dict[str, Any]) -> List[Proble
     return out
 
 
+# --------------------------------------------------------------------------
+# whose fix it is
+
+
+#: The fix ops that change the marks they name (``id``/``ids``): what the reader may apply is what the reader may edit.
+ELEMENT_OPS = frozenset(("move", "restyle", "edit", "delete", "refit", "pin", "unpin", "patch"))
+#: The fields of a ``move`` that only say where a mark is drawn and how big. Such a move of a peer's mark inside a
+#: container the reader made is the reader's to make, live (``canvas_collab.hosted_geometry``, A1); ``inside`` moves
+#: the mark into another container, which is not geometry.
+GEOMETRY_FIX_FIELDS = frozenset(("op", "id", "to", "by", "w", "h", "right_of", "left_of", "below", "above", "intent"))
+
+
+def reader_author(reader: Optional[str], manager: bool = False) -> Any:
+    """The ``CanvasAuthor`` a printed fix would run as when ``reader`` runs it, or None for no reader.
+
+    ``human`` is the operator (the only human who can run a fix); anyone else a member, the manager when the roster
+    says so. One construction for every prediction check makes about a reader (``graph._reader_holds`` too), so what
+    check says a reader may do cannot drift from what the op lets them do."""
+    from herdr_team import canvas as C
+
+    if not reader:
+        return None
+    if reader == C.HUMAN:
+        return C.CanvasAuthor(C.HUMAN, C.KIND_HUMAN, "cli", True, operator=True)
+    return C.CanvasAuthor(reader, C.KIND_MEMBER, "cli", True, manager=bool(manager))
+
+
+def _fix_targets(fix: Dict[str, Any], problem: Problem, by_id: Dict[str, Dict[str, Any]]) -> Optional[List[Dict[str, Any]]]:
+    """The elements a printed fix changes, or None for a fix this cannot tell (it is then printed as it is).
+
+    A core edit names them by ``id``/``ids`` (an id or an alias). A block kind's op (``graph {id, relayout}``) names
+    its block by alias, and the block is the problem's own element: the root is what the op's author must be able to
+    change (``canvas_blocks._may_change``)."""
+    op_name = fix.get("op")
+    refs = [str(r) for r in (fix.get("ids") if isinstance(fix.get("ids"), list) else [])] + \
+        ([str(fix["id"])] if isinstance(fix.get("id"), str) else [])
+    if not refs:
+        return None
+    named = [by_id.get(i) for i in problem.get("ids") or []]
+
+    def resolve(ref: str) -> Optional[Dict[str, Any]]:
+        if ref in by_id:
+            return by_id[ref]
+        return next((el for el in named if el is not None and el.get("alias") == ref), None) or \
+            next((el for el in by_id.values() if el.get("alias") == ref), None)
+
+    if op_name in ELEMENT_OPS:
+        found = [resolve(ref) for ref in refs]
+    else:
+        # The block kind the op draws: the kind of that name, else the one block kind among those the op makes
+        # (``mermaid`` draws a ``graph``; a graph's boxes and arrows list ``graph`` too, and are not blocks).
+        made = [k for k in _kinds.kinds() if op_name in (k.ops or ()) and k.block is not None] if _kinds.op(op_name) else []
+        kind = next((k for k in made if k.name == op_name), made[0] if len(made) == 1 else None)
+        if kind is None:
+            return None
+        found = [resolve(ref) for ref in refs[:1]]
+    return None if any(el is None for el in found) else [el for el in found if el is not None]
+
+
+def _may_apply(author: Any, el: Dict[str, Any], geometry: bool, by_id: Dict[str, Dict[str, Any]], human_live: bool) -> bool:
+    """Whether ``author`` has ownership/host/live-edit permission to repair ``el``.
+
+    The editor rule (``canvas._may_edit``), the host's right to move a peer's mark inside its own container (A1), and
+    the operator's ``human_edits: live`` setting. Other review constraints (freezes, locks and pins) are separate and
+    can still propose or refuse an ownership-permitted attempt; this check never bypasses them."""
+    from herdr_team import canvas as C
+    from herdr_team import canvas_collab
+
+    if C._may_edit(author, el):
+        return True
+    if not author.is_member:
+        return False
+    if el.get("author_kind") == C.KIND_HUMAN:
+        return human_live
+    return geometry and canvas_collab.hosts(author.name, el, by_id) is not None
+
+
+def _whose(els: Sequence[Dict[str, Any]]) -> Tuple[str, List[str]]:
+    """``(whose they are, in words; who may apply the change)``."""
+    owners = list(dict.fromkeys("the operator" if el.get("author_kind") == "human" else str(el.get("author") or "its author")
+                                for el in els))
+    if owners == ["the operator"]:
+        return "the operator's", ["the operator"]
+    agents = [o for o in owners if o != "the operator"]
+    words = " and ".join("{}'s".format(o) for o in owners)
+    return words, (["the operator"] if "the operator" in owners else agents + ["the manager", "the operator"])
+
+
+def _open_proposal(fix: Dict[str, Any], targets: Sequence[Dict[str, Any]], env: Dict[str, Any]) -> Optional[str]:
+    """The reader's own open proposal that already makes this change, or None.
+
+    Only the exact requested change against current targets counts. Old records without that identity are not
+    guessed from their intent or target overlap, and an outdated proposal no longer makes the current repair."""
+    from herdr_team import canvas_collab
+
+    reader = env["reader"]
+    identity = canvas_collab.repair_identity(fix, (str(el["id"]) for el in targets))
+    for record in env.get("proposals") or ():
+        if not isinstance(record, dict) or record.get("status") != "open" or record.get("author") != reader:
+            continue
+        if record.get("repair") != identity or canvas_collab.outdated_of(record, env["by_id"]):
+            continue
+        return str(record.get("id"))
+    return None
+
+
+def _one_repair(found: List[Problem], env: Dict[str, Any]) -> None:
+    """Keep every finding, but print each exact repair once, after filtering and sorting the reader's findings.
+
+    A reader runs the list it just received, not a fresh check between every op. Two identical relayout fixes in
+    that list otherwise file a proposal and immediately supersede it with a duplicate, before the next check can
+    name the open proposal. Intent text may differ between findings; it does not make two drawing operations.
+    """
+    from herdr_team import canvas_collab
+
+    seen: Dict[Tuple[str, Tuple[str, ...]], Problem] = {}
+    for problem in found:
+        fix = problem.get("fix")
+        if not isinstance(fix, dict):
+            continue
+        targets = _fix_targets(fix, problem, env["by_id"])
+        if targets is None:
+            continue
+        identity = canvas_collab.repair_identity(fix, (str(el["id"]) for el in targets))
+        key = (identity["digest"], tuple(identity["targets"]))
+        if key in seen:
+            problem["fix"] = None
+            other = seen[key]
+            problem["fix_with"] = {"code": other["code"], "ids": list(other["ids"])}
+            problem["message"] += "; the {} fix above also repairs this".format(other["code"])
+        else:
+            seen[key] = problem
+
+
+def _authorize(found: List[Problem], env: Dict[str, Any]) -> None:
+    """Remove ownership-barred repair ops, name who has permission, and acknowledge exact current proposals.
+
+    A reader who obeys check runs every fix it prints. A fix the reader may not make does not fail: the review gate
+    turns it into a proposal for the operator and leaves the drawing as it was, so check printed the same fix again,
+    the next run superseded the proposal with a fresh one, and an obedient agent filed proposals forever (layout
+    findings, decision 1: an agent told to reroute the operator's arrow, a peer told to redraw another agent's graph).
+    So named readers only get ownership-permitted repairs. Other readers are told the finding, whose marks they
+    are and who has permission; a reader whose identical current proposal is open is told that one's id. A separate
+    review constraint can turn a permitted repair into a proposal once (a frozen own graph, for example); the next
+    check acknowledges it, and no freeze, lock or pin is bypassed.
+    ``claim_edge`` decides for itself (``_claim_edges``): a claim is not an element, and only its author redraws it.
+    """
+    reader = env.get("reader")
+    author = reader_author(reader, bool(env.get("reader_manager")))
+    if author is None:
+        return
+    by_id = env["by_id"]
+    human_live = bool(env.get("human_live"))
+    for problem in found:
+        fix = problem.get("fix")
+        if not isinstance(fix, dict) or problem["code"] == "claim_edge":
+            continue
+        targets = _fix_targets(fix, problem, by_id)
+        if targets is None:
+            continue
+        geometry = fix.get("op") == "move" and set(fix) <= GEOMETRY_FIX_FIELDS
+        edited = targets
+        if fix.get("relayout") == "full":
+            # A root's permission does not grant its reader every mark inside it. In particular a human root
+            # under human_edits:live can contain another agent's nodes; the gate still proposes those changes.
+            # Hosts may move their guests geometrically, exactly as hosted_geometry permits, but not rewrite them.
+            inside = {str(el["id"]) for el in targets}
+            changed = True
+            while changed:
+                changed = False
+                for el in by_id.values():
+                    if el["id"] not in inside and (el.get("group") in inside or el.get("frame") in inside):
+                        inside.add(el["id"])
+                        changed = True
+            edited = targets + [el for el in by_id.values() if el["id"] in inside and el not in targets
+                                and el.get("type") != "comment"]
+        barred = [el for el in edited if not _may_apply(author, el, geometry or el not in targets, by_id, human_live)]
+        pending = _open_proposal(fix, targets, env)
+        if not barred and pending is None:
+            continue
+        problem["fix"] = None
+        if barred:
+            whose, who = _whose(barred)
+            named = [el for el in targets if el in barred] or barred[:3]
+            names = ", ".join(str(el.get("alias") or el.get("id")) for el in named)
+            problem["fix_by"] = who
+            problem["message"] += "; {} {} {}, so the fix is not yours to apply: only {} can{}".format(
+                names, "is" if len(named) == 1 else "are", whose,
+                who[0] if len(who) == 1 else ", ".join(who[:-1]) + " or " + who[-1],
+                ", and your proposal {} for it is waiting for the operator".format(pending) if pending else " (ask them)")
+        else:
+            problem["message"] += "; your proposal {} already makes this change and is waiting for the operator".format(pending)
+        if pending:
+            problem["proposal"] = pending
+
+
 def problems(elements: Iterable[Dict[str, Any]], reader: Optional[str] = None, region: Optional[Sequence[float]] = None,
-             claims: Optional[Sequence[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+             claims: Optional[Sequence[Dict[str, Any]]] = None, manager: bool = False,
+             scene: Optional[Mapping[str, Any]] = None) -> List[Dict[str, Any]]:
     """Every layout problem on these elements, most serious first and the reader's own first within each kind.
 
     ``region`` keeps the problems that touch it (either mark in view). ``claims`` are the scene's active claims,
     which are not elements but are drawn over them (``claim_edge``); without them that check finds nothing.
+    ``manager`` says the reader is the team's manager, who may move any agent's marks: a check that predicts what its
+    printed repair would draw has to know what that repair may move for this reader (``reader_manager``).
+    ``scene`` carries the open proposals and the collaboration settings: a fix the reader cannot apply, or has already
+    proposed, is printed without its op (``_authorize``).
     """
     live = [el for el in elements if isinstance(el, dict) and el.get("id") and not el.get("deleted")]
     by_id = {str(el["id"]): el for el in live}
+    collab = ((scene or {}).get("settings") or {}).get("collab") if isinstance((scene or {}).get("settings"), dict) else None
     env: Dict[str, Any] = {"reader": reader, "by_id": by_id, "groups": _groups(live),
-                           "claims": [c for c in claims or () if isinstance(c, dict)]}
+                           "claims": [c for c in claims or () if isinstance(c, dict)], "reader_manager": bool(manager),
+                           "proposals": [p for p in (scene or {}).get("proposals") or () if isinstance(p, dict)],
+                           "human_live": isinstance(collab, dict) and collab.get("human_edits") == "live"}
     found: List[Problem] = []
     for check in CHECKS:
         found.extend(check.run(live, env))
     found.extend(_kind_checks(live, env))
+    _authorize(found, env)
     if region is not None:
         found = [p for p in found if any(_intersects(box_of(by_id[i]), region) for i in p["ids"] if i in by_id)]
     found.sort(key=lambda p: (SEVERITY.get(p["code"], 9), not p["yours"]))
+    _one_repair(found, env)
     return found
 
 

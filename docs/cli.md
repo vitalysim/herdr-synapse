@@ -2457,7 +2457,7 @@ names the point at a cell's top-left (`c17r6` = 340,120); a point is also
 to 50,000). Each author gets a home region
 `[i*1000, -1000, i*1000+800, -400]` the first time it draws; an element with
 no placement goes to the next free slot there. The operator's index is -1, so
-her lane sits immediately left of the first member's: since 0.22 she draws
+their lane sits immediately left of the first member's: since 0.22 they draw
 without coordinates like anyone else. Placement is one of `at`,
 `right_of`, `left_of`, `below`, `above` (with `gap`: `s` 20, `m` 40 (the
 default), `l` 80, or a number), `inside` a frame, or `in` a container (a
@@ -2545,7 +2545,7 @@ is left to `check`. An unlabelled shape drawn over labelled ones goes under
 them, so its fill never hides their text.
 
 **Collaboration** (canvas v2 phase 5; `docs/collaboration.md`). The operator
-in person leads: the collaboration layer never refuses her, and only she
+in person leads: the collaboration layer never refuses them, and only they
 accepts, rejects, freezes, thaws, restores, changes the settings or forces an
 undo (`operator_only` for anyone else, delegates too). Every other author's
 proposable op (the edit ops and every kind's create op; comments are always
@@ -2566,7 +2566,7 @@ in once half its time is gone, and a plain member's new marks in free space
 claim it (`auto: true`; the applied entry says `auto_claim: K-n`). A comment on
 an element follows it (`anchor`) and keeps its point, with `was_on`, when the
 element goes. A member's result carries `operator: {viewport, selection,
-editing, pointing_at, age_s}` (null when no page of hers is fresh), and a
+editing, pointing_at, age_s}` (null when no operator page is fresh), and a
 member's draw and look write its presence (`focus` sets it on purpose).
 Proposals never wake anyone; they join the author's `canvas_changed` line.
 
@@ -2709,6 +2709,34 @@ around: move what is in the way). JSON
 `{"team","version","reader","region","mine","problems":[{"code","ids","message","fix","yours"}],"text"}`.
 Reads only; the reader's own problems come first.
 
+A printed repair respects ownership. If the reader cannot make it, `fix` is
+null and `fix_by` names who can. A graph relayout checks the members' ownership
+as well as the root's: an operator-owned root under `human_edits: live` does
+not grant permission to change a peer's nodes. An ambiguous graph alias uses
+`{"op":"patch","id":"E-n","relayout":"full","intent":"…"}` instead.
+Normal role-specific freeze, lock and pin rules still apply; agent repairs
+respect human pins, while the operator retains their authority. A permitted repair of a frozen own graph
+can become one proposal rather than change the drawing.
+
+When the reader's own exact current repair proposal is open, `proposal` names
+it and `fix` is null: do not file the same request again. An unrelated payload,
+an outdated target or an old record without repair identity does not count.
+When several findings share one repair, only the first prints it; the others
+carry `fix_with: {code, ids}` pointing to that finding. Run that operation once,
+then check again. The findings themselves are not hidden.
+
+Graph readability also reports `crossings_high`, `routes_tangled`,
+`labels_adrift` and `graph_thin`, with the same permission and
+proposal guidance.
+
+A claim's region snaps outward around the marks it holds, including arrow
+labels and frame titles (`claim_snapped` names what it took in). Canvas v2
+breaks a dashed border under a title above its frame at overview zoom, and
+moves the claim label to a clear corner or omits it when every corner is on
+words. Only the claim's author receives a `claim_edge` repair; other readers
+are told whose claim it is, rather than creating a duplicate claim over it.
+The classic canvas keeps its earlier claim rendering.
+
 **`refit [--ids E-1,E-2]`** (canvas v2 phase 1) sizes labelled elements again
 from their minimum (`fit.min`, or the size of an element stored before 0.22)
 with today's font metrics and the page's measurements (below): a board drawn
@@ -2736,7 +2764,7 @@ anyone may read:
 `pending` is true while the operator has neither applied nor dismissed it and
 there is something to do (a mark in the old sketch style, or an element drawn
 before 0.22 that `refit` would size); `state` is
-`{"action": "apply"|"dismiss", "seq", "by"}` once she has. `pre_022` counts
+`{"action": "apply"|"dismiss", "seq", "by"}` once they have. `pre_022` counts
 labelled elements with no `fit` record; `refit` lists those whose kind can be
 measured (what `--apply` refits, at most 2,000), `overflow` the ones whose
 label no longer fits, and `sketch` the marks with `rough` above 0 or `font:
@@ -2987,17 +3015,17 @@ ops`), **Details**, **Not now** (this visit only) and **Dismiss**; read-only
 pages and v1 show nothing.
 
 `POST presence` (canvas v2 phase 5, writable pages only) is the operator's page
-telling agents where she is: `{"page": "<16 hex>", "viewport": [x0,y0,x1,y1],
+telling agents where they are: `{"page": "<16 hex>", "viewport": [x0,y0,x1,y1],
 "selection": [ids], "editing": id|null, "cursor": [x,y], "away": bool}` (every
 key but `page` optional, at most 4 KB, at most 8 a second per page: `429
 presence_rate`, `retry_after`), stored as `whiteboard/presence/human-<page>.json`
 for 30 s; JSON `{"ok": true, "ttl_s": 30}`. `GET presence` (read-only pages
-too) answers `{"at", "entries": [...]}`, the fresh records of her pages and of
+too) answers `{"at", "entries": [...]}`, the fresh records of their pages and of
 members (`whiteboard/presence/<name>.json`, written by their draws, looks and
 `canvas focus`). The stream sends `presence` (the same, plus `team`; no `id:`)
 after `scene` or `changes` at start, whenever the directory changes, and at
 least every 15 s while any record is fresh. Presence is never authority: it can
-only refuse an agent's op on what she is editing now (`element_busy`).
+only refuse an agent's op on what they are editing now (`element_busy`).
 
 | Status | Codes |
 | --- | --- |

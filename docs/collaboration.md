@@ -1,9 +1,9 @@
 # Collaboration on the canvas
 
 Canvas v2 phase 5 (`.local/prd/canvas-v2-phase5.md`). The canvas is shared by the
-operator and her team's agents. The operator in person is the lead: nothing an
-agent does changes her marks unseen, the collaboration layer never refuses her,
-and only she decides. Agents contribute in their own lanes; what they would do
+operator and their team's agents. The operator in person is the lead: nothing an
+agent does changes their marks unseen, the collaboration layer never refuses them,
+and only they decide. Agents contribute in their own lanes; what they would do
 elsewhere waits as a proposal. The code is `herdr_team/canvas_collab.py` (the
 gate, proposals, freezes, settings, undo and checkpoints) and
 `herdr_team/canvas_presence.py` (presence).
@@ -13,7 +13,7 @@ gate, proposals, freezes, settings, undo and checkpoints) and
 | Actor | In code | May |
 |---|---|---|
 | The lead | `canvas_collab.is_lead(author)`: `is_human and operator` (the writable page, the console, a trusted shell) | everything; never refused by the collaboration layer; the only one who accepts, rejects, freezes, thaws, restores, changes the settings, forces an undo or applies the 0.22 migration (`migrate`) |
-| A delegate | `is_member and operator` (an operator grant) | agents' work like the lead; her marks follow `human_edits` like anyone's; bound by freezes; exempt from locks and lanes |
+| A delegate | `is_member and operator` (an operator grant) | agents' work like the lead; the operator's marks follow `human_edits` like anyone's; bound by freezes; exempt from locks and lanes |
 | The manager | `is_member and manager` | agents' elements live; exempt from lanes |
 | A member | `is_member` | its own elements and its lane; everything else is a proposal |
 
@@ -42,18 +42,18 @@ element; the rules judge primary changes.
 
 | Order | Rule | Verdict |
 |---|---|---|
-| 10 | `busy` | the element the operator is editing now, on any of her fresh pages: refuse `element_busy` (retry after 5 s) |
+| 10 | `busy` | the element the operator is editing now, on any of their fresh pages: refuse `element_busy` (retry after 5 s) |
 | 20 | `locked` | a raised run touching a lock: refuse `canvas_locked` |
 | 30 | `frozen` | a frozen element, what it holds, or a new mark in a frozen region: propose, or refuse `frozen` under `frozen: refuse` |
 | 40 | `stale_base` | an aimed element the operator changed after the batch's `base`: refuse `stale_base` (it yields to a proposal, which then carries a base note) |
-| 50 | `human_made` | the operator's marks, or a new mark in her container or on her top-level marks: propose, or live under `human_edits: live` (the event says `touched_human`) |
+| 50 | `human_made` | the operator's marks, or a new mark in their container or on their top-level marks: propose, or live under `human_edits: live` (the event says `touched_human`) |
 | 55 | `host_geometry` | a peer's mark inside a frame or group **you** made, moved or resized and nothing else: live (the element records `moved_by`) |
 | 60 | `peer` | a raised run changing another member's marks, apart from what `host_geometry` allows: propose |
 | 70 | `foreign_lane` | a plain member's new mark whose centre lies in another author's claim or home: propose — unless it is inside a frame or group **you** made, where a lane says nothing (a drawing of your own growing while it is laid out again is not a mark placed in a lane) |
 
 Combining: any refusal wins (except `stale_base`, which yields to a proposal);
 else any proposal makes the whole op one proposal (ops are never split); else
-live. A raised run that would be live for any other reason than her own
+live. A raised run that would be live for any other reason than the operator's own
 `human_edits: live` or `host_geometry` is a proposal.
 
 Arranging a block is a geometry-only change by construction, so `host_geometry`
@@ -85,6 +85,32 @@ The mark stays the peer's: its `author` never changes, its per-author undo and
 its author chip are theirs. What changes is that the element records `moved_by`,
 the name of whoever last moved it, so the history and the layout engine know
 that where it sits is somebody else's doing.
+
+### Redrawing another author's graph
+
+`graph {id, relayout: "full", intent: "…"}` names an author-scoped alias.
+The graph's author, manager, delegate and operator may redraw it under the
+normal gate rules. A peer is refused `element_not_yours`, naming the graph
+and its author, before the authority-raised attempt becomes a proposal.
+It is not mistaken for a create that needs nodes. A create using another
+author's alias warns `alias_theirs`; it does not transfer the other graph.
+
+`canvas check` respects ownership when printing repairs. A reader who cannot
+apply the change sees `fix: null` and `fix_by`, naming who can, rather than an
+op that files the same proposal repeatedly. A graph repair considers its
+members, not just its root: `human_edits: live` on a human root does not grant
+permission over another agent's nodes. An ambiguous alias gets a canonical-id
+`patch` repair. Normal role-specific freeze, lock and pin rules still apply;
+agent repairs respect human pins, while the operator retains their authority. An
+otherwise permitted frozen repair may file one proposal.
+
+Check names the reader's own exact current proposal with `proposal` and
+removes that repair op until the proposal changes or is decided. Different
+payloads, outdated targets and old records without repair identity are not
+treated as the same change. Several findings for one repair retain their
+messages, but print the operation only once; `fix_with: {code, ids}` links
+the others to it. A claim repair belongs only to its author; another reader
+is told whose claim it is and the operator may release it.
 
 ### Adding a rule
 
@@ -128,17 +154,19 @@ batch drawing within 200 units of an automatic claim of the author's (up to
 2400 a side, never over another author's lane); a fourth claim releases the
 oldest automatic one first.
 
-An automatic claim's region is fitted to the marks it holds so its dashed edge
-is not drawn through one of them (`canvas_check.claim_snap`), and it is fitted
+An automatic claim's region is fitted to the marks, arrow labels and frame
+titles it holds so its dashed edge does not cut them (`canvas_check.claim_snap`),
+and it is fitted
 **again** whenever its author draws, because the op that makes a claim is not
 the op that decides how big its marks are: a block settles its members and hugs
 itself around them afterwards. An asked-for claim is left alone — its region is
 its author's own statement of where they are working, and `claim_edge` offers
 them the correction to make.
 
-A claim's label hangs *above* its region rather than inside its top-left
-corner. A claim snaps to the marks it holds, so its corner is usually a frame's
-corner, and a frame draws its title there.
+Canvas v2 places a claim label at a clear corner, or omits it at a zoom
+where every corner is on words. Its border breaks under a frame title drawn
+above the frame at overview zooms. The classic canvas retains its earlier
+claim rendering.
 
 ## Proposals
 
@@ -149,7 +177,9 @@ and the whole after-value), and a `summary` (`diff_lines` per change, at most
 12 lines). The ids it would create are reserved. A new proposal by the same
 author on the same targets supersedes the older. At most 20 open per author
 and 200 in all (`proposal_limit`). The scene carries the open ones and the 20
-newest decided; decided ones drop their values.
+newest decided; decided ones drop their values. New records also carry
+optional `repair` metadata identifying the requested operation and resolved
+targets; check uses it only while those targets remain current.
 
 - `accept {id, note?}` (the lead) replays the stored after-values through the
   normal pipeline (unbinding, rerouting, comments following). A proposal whose
@@ -202,7 +232,7 @@ binds it like any op: a write-back to a frozen mark, or one that would put a
 mark back into a frozen region, is skipped as `{id, reason: "frozen", freeze}`
 in either `frozen` setting (with `by` and `seq` too when it was also edited
 later: the freeze is named first), and an undo that would touch the element the
-operator is editing on any of her pages is refused `element_busy`. What an undo
+operator is editing on any of their pages is refused `element_busy`. What an undo
 leaves (skipped, frozen, or not the undoer's to change) stays on the batch as
 `left`: `undo {batch}` again tries those keys once more (refused, saying why,
 when nothing would change), and the lead's `force` writes them back, by batch or
