@@ -18,6 +18,11 @@ the team's canvas is off (``features.require_on`` inside ``canvas``).
 * ``migrate`` (canvas v2 phase 6, ``canvas_migrate``): what a board drawn before
   canvas v2 looks like now, and the operator's one fix (``--apply``) or answer
   (``--dismiss``). ``draw --help`` prints the op table agents get over MCP.
+* ``import`` (``canvas_import``): the inverse of ``export``. The operator replays
+  a dissolved team's canvas, a canvas lost to ``clear``, or the ``canvas.json``
+  in a project folder into this empty canvas as one undoable batch.
+  ``--from-archive <team> --list`` says what is recoverable; ``--dry-run`` says
+  what would happen and what would refuse it, and writes nothing.
 * Collaboration (canvas v2 phase 5, ``canvas_collab``): ``accept``, ``reject``,
   ``withdraw``, ``freeze``, ``thaw``, ``checkpoint``, ``restore`` and
   ``settings`` build those ops; ``undo --author`` reverts one author's batches;
@@ -353,6 +358,77 @@ def _migrate(args: argparse.Namespace) -> int:
     return emit(args, {"migration": found, "summary": M.summary(found)}, M.text(found))
 
 
+def _import(args: argparse.Namespace) -> int:
+    """``canvas import`` (the operator in person): another board replayed into this empty canvas as one undoable batch.
+
+    ``--list`` and ``--dry-run`` read only, so neither goes near ``apply_ops``: a dry run that took the canvas lock or
+    wrote an asset would not be a dry run. Both reach their verdict through the same ``canvas_import.validate`` the op
+    calls, so the dry run can never say yes to an import the op refuses.
+    """
+    from herdr_team import canvas_import as IM
+
+    if (args.source is None) == (args.from_archive is None):
+        raise UsageError("import --from <path>, or import --from-archive <team>[@stamp]")
+    for flag, value in (("--list", args.list), ("--latest", args.latest)):
+        if value and args.from_archive is None:
+            raise UsageError("{} goes with --from-archive <team>".format(flag))
+    layout, _api, _identity, team, doc, author = _open(args, write=not (args.list or args.dry_run))
+    if args.list:
+        wanted = str(args.from_archive).partition("@")[0].strip()
+        summaries = [IM.archive_summary(entry, wanted) for entry in IM.dissolved(layout.session, wanted)]
+        payload = {"team": wanted, "archive": os.fspath(layout.session.archive_dir), "dissolved": summaries}
+
+        def listing() -> str:
+            if not summaries:
+                return ("no dissolved {} in this session's archive ({}); a team dissolved in another Herdr session is "
+                        "under that session's state: import it with --from <path to its whiteboard/scene.json>".format(
+                            wanted, layout.session.archive_dir))
+            head = "{} dissolved cop{} of {} in this session's archive:".format(len(summaries), "y" if len(summaries) == 1 else "ies", wanted)
+            return "\n".join([head] + ["  " + IM.archive_line(entry, wanted) for entry in summaries])
+
+        return emit(args, payload, listing)
+    stamp: Optional[str] = None
+    source = args.source
+    if args.from_archive is not None:
+        entry = IM.resolve_archive(layout.session, args.from_archive, latest=bool(args.latest))
+        source, stamp = entry["path"], entry["stamp"]
+    op: Dict[str, Any] = {"op": "import", "from": source,
+                          "intent": args.intent or "inherit the canvas from {}".format(args.from_archive or source)}
+    if stamp:
+        op["stamp"] = stamp
+    for key, on in (("keep_authors", args.keep_authors), ("skip_unknown", args.skip_unknown), ("skip_missing", args.skip_missing),
+                    ("team_can_edit", args.team_can_edit)):
+        if on:
+            op[key] = True
+    if not args.dry_run:
+        result = C.check_applied(C.apply_ops(layout, team, [op], author, doc=doc))
+        return emit(args, result, C.apply_text(result))
+    _features.require_on(layout.session, team, doc)
+    report = dry_run(layout, team, doc, author, op)
+    payload = dict(report.to_json(), dry_run=True, team=team.name, would_apply=not report.refusals)
+    return emit(args, payload, IM.dry_run_text(report))
+
+
+def dry_run(layout: Any, team: TeamPaths, doc: Dict[str, Any], author: C.CanvasAuthor, op: Dict[str, Any]) -> Any:
+    """``canvas import --dry-run``'s report: the same validator the op runs, with nothing written and no lock taken.
+
+    Shared with ``knowledge import --dry-run`` (``cmd_knowledge``), so the two commands answer the same question the
+    same way.
+    """
+    from herdr_team import canvas_import as IM
+
+    options = IM.options_of(op, author)
+    IM.authority(author, options)
+    document = IM.read_document(op.get("from"), stamp=op.get("stamp"))
+    options["prior"] = IM.prior_import(team, document.digest)
+    options["target_assets"] = C._dir(team) / C.ASSETS_DIR
+    try:
+        root = C.artifacts_dir(layout, team, doc)
+    except (HerdrTeamError, OSError, ValueError):
+        root = None
+    return IM.validate(document, C.load_scene(team), doc, root, options)
+
+
 def _focus(args: argparse.Namespace) -> int:
     """Presence, not an op (phase 5, 9.1): where this member works, its status and intent, for ``--ttl`` seconds."""
     from herdr_team import canvas_presence as P
@@ -422,6 +498,14 @@ def _export(args: argparse.Namespace) -> int:
     reader = _reader(author)
     fmt = args.format
     scene = C.load_scene(team)
+    if args.region and fmt == "json":
+        # It used to parse the region and export the whole board anyway: a payload that claimed to be a region and was
+        # not. A region of a scene is not importable either (its arrows would point at marks it left behind), so the
+        # honest answer is to refuse the pair by name rather than to invent a filter.
+        raise UsageError("--region is not available with --format json: a scene exports whole, because a region of it "
+                         "would carry arrows and comments bound to marks outside it. Export the region as a picture "
+                         "({cli} canvas export --format png --region {r}) or as text ({cli} canvas export --format md "
+                         "--region {r}); export the whole scene with {cli} canvas export --format json.".format(cli=CLI, r=args.region))
     region = C.parse_region(_json_arg(args.region), scene, reader) if args.region else None
     if fmt == "md":
         text = C.look(layout, team, reader, region=region, advance=False, doc=doc)["text"]
@@ -483,6 +567,7 @@ _ACTIONS = {
     "send": _send, "export": _export, "helper": _helper, "mcp": _mcp, "icons": _icons, "catalog": _catalog,
     "accept": _proposal_op("accept"), "reject": _proposal_op("reject"), "withdraw": _proposal_op("withdraw"), "freeze": _freeze,
     "thaw": _thaw, "checkpoint": _checkpoint, "restore": _restore, "settings": _settings, "focus": _focus, "migrate": _migrate,
+    "import": _import,
 }
 
 _SPECS = (
@@ -518,6 +603,8 @@ _SPECS = (
     ("focus", "your presence on the canvas: where you work (REGION or ID), --status, --intent, --ttl; --clear removes it"),
     ("migrate", "a board drawn before canvas v2: what is drawn differently (anyone); --apply resizes old labels and draws the marks "
                 "in 0.21's sketch style clean in one batch, --dismiss hides the notice (the operator)"),
+    ("import", "replay another board into this empty canvas as one undoable batch (the operator): a dissolved team's canvas, a canvas "
+               "lost to whiteboard clear, or the canvas.json in a team's folder in the project directory"),
 )
 
 
@@ -668,6 +755,23 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
     p.add_argument("--out", metavar="PATH", help="write the file here instead of printing it")
     p.add_argument("--no-marks", dest="marks", action="store_false", help="svg/png: no id badges")
     p.add_argument("--grid", action="store_true", help="svg/png: cell dots and names")
+    p = parsers["import"]
+    where = p.add_mutually_exclusive_group()
+    where.add_argument("--from", dest="source", metavar="PATH", help="a team's folder in the project directory (its canvas.json), a "
+                                                                    "dissolved team's directory, a whiteboard/archive/<stamp>/ folder "
+                                                                    "(a canvas lost to whiteboard clear), or a scene file canvas export wrote")
+    where.add_argument("--from-archive", dest="from_archive", metavar="TEAM[@STAMP]", help="a team dissolved in this session")
+    p.add_argument("--list", action="store_true", help="with --from-archive: what is recoverable from each dissolved copy, instead of importing")
+    p.add_argument("--latest", action="store_true", help="with --from-archive: take the newest copy without naming its stamp")
+    p.add_argument("--keep-authors", dest="keep_authors", action="store_true", help="keep the original author names (the operator in person; "
+                                                                                   "they can edit marks or undo B-n)")
+    p.add_argument("--skip-unknown", dest="skip_unknown", action="store_true", help="leave out marks this build does not know")
+    p.add_argument("--skip-missing", dest="skip_missing", action="store_true", help="leave out marks whose data file or picture is not here")
+    p.add_argument("--team-can-edit", dest="team_can_edit", action="store_true", help="let the team work on the imported board directly "
+                                                                                     "(human_edits live); without it their changes to it "
+                                                                                     "arrive as proposals")
+    p.add_argument("--dry-run", dest="dry_run", action="store_true", help="say what it would do and what would refuse it; writes nothing")
+    p.add_argument("--intent", metavar="TEXT")
     parsers["helper"].add_argument("--print", action="store_true", help="print the source instead of the path")
     parsers["icons"].add_argument("--search", metavar="WORD", help="only the icons whose name holds WORD")
     p = parsers["catalog"]
@@ -683,7 +787,7 @@ def _run(args: argparse.Namespace) -> int:
 
 
 COMMANDS: List[Command] = [
-    Command("canvas", "the team canvas: look, draw, check, comment, claim, legend, portrait, changes, migrate (whiteboard must be on)", _add_arguments, _run,
+    Command("canvas", "the team canvas: look, draw, check, comment, claim, legend, portrait, changes, migrate, import (whiteboard must be on)", _add_arguments, _run,
             description="Look at, draw on, and point at the team's shared canvas. Agents send Synapse Sketch operations; "
                         "see herdr-synapse skill get --reference canvas."),
 ]

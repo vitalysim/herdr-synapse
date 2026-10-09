@@ -25,7 +25,7 @@ FAMILY_OPS = {
     "primitive": ["shape", "arrow", "frame", "pen", "path", "svg", "image", "comment"],
 }
 HEADINGS = ["Components", "Diagrams", "Data", "3D", "Any element", "Primitives (when no component fits)"]
-LEAD_ONLY = ("accept", "reject", "freeze", "thaw", "settings", "restore", "migrate")
+LEAD_ONLY = ("accept", "reject", "freeze", "thaw", "settings", "restore", "migrate", "import")
 
 
 def words(text: str) -> str:

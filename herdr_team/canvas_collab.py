@@ -48,7 +48,7 @@ from herdr_team.paths import check_not_symlink
 #: False (a comment is a request, always live).
 PROPOSABLE_CORE = ("move", "restyle", "edit", "delete", "refit", "patch", "place", "pin", "unpin")
 #: The decisions that are the operator's in person (1.2 guarantee 3): delegates, managers and members are refused.
-LEAD_ONLY_OPS = ("accept", "reject", "freeze", "thaw", "settings", "restore", "migrate")
+LEAD_ONLY_OPS = ("accept", "reject", "freeze", "thaw", "settings", "restore", "migrate", "import")
 #: The collaboration settings (5.3) and their defaults.
 SETTINGS_KEY = "collab"
 SETTINGS_DEFAULTS = {"human_edits": "propose", "frozen": "propose"}
@@ -1648,7 +1648,7 @@ def keep_checkpoint_assets(team: Any, records: Mapping[str, Any], archived: Path
 
 
 def clear_checkpoint(team: Any, state: Any, now: float) -> Dict[str, Any]:
-    """``canvas clear``: an automatic checkpoint of the canvas it archives; the records the cleared canvas keeps."""
+    """``whiteboard clear``: an automatic checkpoint of the canvas it archives; the records the cleared canvas keeps."""
     records = {vid: dict(record) for vid, record in state.checkpoints.items()}
     number = max(state.counters.get("V", 0), 0) + 1
     vid = "V-{}".format(number)

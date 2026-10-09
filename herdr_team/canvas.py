@@ -20,9 +20,9 @@ members change their own elements, the manager any agent's, the operator
 anything; unverified callers and hooks only read. The operator's locked
 regions refuse agent operations. Since canvas v2 phase 5 every op of anyone
 but the operator in person then passes one review gate (``canvas_collab``):
-what would change her marks, a peer's work, another lane or a frozen area
-becomes a proposal she accepts or rejects, and a batch's ``base`` refuses an
-op on what she changed since. Presence lives in files (``canvas_presence``).
+what would change their marks, a peer's work, another lane or a frozen area
+becomes a proposal they accept or reject, and a batch's ``base`` refuses an
+op on what they changed since. Presence lives in files (``canvas_presence``).
 
 Board records (``canvas_changed``, coalesced to one per author per minute,
 and ``canvas_sent`` for a comment's @mentions or the operator's "send to
@@ -141,7 +141,7 @@ RATE_WINDOW_S = 60.0
 #: the kind registry (``canvas_kinds``: each module's ``OPS``); ``OPS`` is theirs by ``order``, then these (phase 1, 2.4).
 CORE_OPS = ("claim", "release", "legend", "move", "restyle", "edit", "delete", "portrait", "resolve", "lock", "unlock", "undo", "refit",
             "patch", "place", "pin", "unpin", "accept", "reject", "withdraw", "freeze", "thaw", "settings", "checkpoint", "restore",
-            "migrate")
+            "migrate", "import")
 #: Ids: elements (E), comments (C), claims (K), locks and freezes (X), legend entries (G), batches (B), and since canvas v2
 #: phase 5 proposals (P) and checkpoints (V).
 ID_PATTERN = r"^(E|C|K|X|G|B|P|V)-([1-9][0-9]{0,6})\Z"
@@ -229,6 +229,13 @@ def _migrate() -> Any:
     from herdr_team import canvas_migrate
 
     return canvas_migrate
+
+
+def _import() -> Any:
+    """``canvas_import``, the ``import`` core op and the mirror's payload (it imports this module; imported late)."""
+    from herdr_team import canvas_import
+
+    return canvas_import
 
 
 def _presence() -> Any:
@@ -640,7 +647,7 @@ class _State:
 
     def scene_settings(self) -> Dict[str, Any]:
         """The settings a scene carries: the collaboration settings (defaults filled in), and the operator's answer to the
-        canvas v2 migration notice once she gave one (phase 6, 2.4)."""
+        canvas v2 migration notice once they gave one (phase 6, 2.4)."""
         out: Dict[str, Any] = {"collab": _collab().settings_of(self)}
         migration = self.settings.get("migration")
         if isinstance(migration, dict):
@@ -1336,9 +1343,9 @@ class _Ctx:
     def author_color(self) -> str:
         """The author's colour; registers the author and its home on its first applied op.
 
-        The operator gets a home like every other author (QA phase 6, F4): without one, hers was the only author whose
-        op had to carry coordinates, which is the opposite of what the language teaches. Her index is -1, so her lane
-        sits immediately left of the first member's; a board she has already drawn on is given hers on her next op.
+        The operator gets a home like every other author (QA phase 6, F4): without one, theirs was the only author whose
+        op had to carry coordinates, which is the opposite of what the language teaches. Their index is -1, so their lane
+        sits immediately left of the first member's; a board they have already drawn on is given theirs on their next op.
         """
         name = self.author.name
         info = self.state.authors.get(name) or self.new_author
@@ -2482,11 +2489,13 @@ CORE_OP_DOCS = {
     "withdraw": "take back your own open proposal",
     "freeze": "the operator holds a region or elements as they are: others' changes there become proposals (or are refused)",
     "thaw": "the operator lifts a freeze (id), or lets go of elements (ids)",
-    "settings": "the operator's collaboration settings: agents' changes to her marks (propose or live) and in frozen areas",
+    "settings": "the operator's collaboration settings: agents' changes to their marks (propose or live) and in frozen areas",
     "checkpoint": "save the canvas as a named checkpoint (V-n), or remove one of yours",
     "restore": "the operator restores a checkpoint as one batch (a checkpoint of now is saved first; comments stay)",
     "migrate": "the operator answers the canvas v2 migration notice: apply (size labels from before 0.22 again and draw the marks in "
                "0.21's sketch style clean, in one batch undo takes back) or dismiss",
+    "import": "the operator replays another board into this empty canvas as one undoable batch: a dissolved team's canvas, a cleared "
+              "one, or the canvas.json in a project folder (every mark becomes theirs unless they keep the authors)",
 }
 #: The fields of the core ops; a kind module's op takes ``_COMMON`` + its ``OpSpec.fields`` (+ placement, + style).
 CORE_FIELDS: Dict[str, Tuple[str, ...]] = {
@@ -2517,6 +2526,7 @@ CORE_FIELDS: Dict[str, Tuple[str, ...]] = {
     "checkpoint": _COMMON + ("label", "remove"),
     "restore": _COMMON + ("id",),
     "migrate": _COMMON + ("action",),
+    "import": _COMMON + ("from", "stamp", "keep_authors", "skip_unknown", "skip_missing", "team_can_edit"),
 }
 
 
@@ -3331,6 +3341,13 @@ def _op_migrate(ctx: _Ctx, op: Dict[str, Any]) -> None:
 CORE_HANDLERS["migrate"] = _op_migrate
 
 
+def _op_import(ctx: _Ctx, op: Dict[str, Any]) -> None:
+    _import().op_import(ctx, op)
+
+
+CORE_HANDLERS["import"] = _op_import
+
+
 # --------------------------------------------------------------------------
 # the kind registry's ops (canvas v2 phase 1, 2): a kind module draws through ``_KindCtx``, never through ``canvas``
 
@@ -3924,7 +3941,7 @@ def _apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: 
         base = cursor(team, author.name)
     if base is not None:
         result["base"] = base
-    # The operator's context (phase 5, 9.2): what she is looking at, has selected and is editing, for a member's batch.
+    # The operator's context (phase 5, 9.2): what they are looking at, have selected and are editing, for a member's batch.
     human: Optional[Dict[str, Any]] = None
     if author.is_member:
         try:
@@ -3970,7 +3987,7 @@ def _apply_ops(layout: Any, team: TeamPaths, ops: List[Dict[str, Any]], author: 
                     _run_op(ctx, handler, op)
                 except HerdrTeamError as err:
                     # An agent's op refused only for authority runs once more with raised authority: its result can only
-                    # become a proposal for the operator (phase 5, D2), never reach the canvas behind her back.
+                    # become a proposal for the operator (phase 5, D2), never reach the canvas behind their back.
                     if not collab.may_raise(ctx, name, err):
                         raise
                     ctx.begin(index, name)
@@ -4703,6 +4720,9 @@ def summarize(event: Dict[str, Any], state: Optional[_State] = None) -> str:
         return "restored {} ({} elements changed)".format(event.get("restores") or "a checkpoint", len(ids))
     if op == "migrate":
         return _migrate().summarize(event)
+    if op == "import":
+        # Without this, the single most consequential event on an inherited board reads as "import E-1..E-240".
+        return _import().summarize(event)
     verbs = {"release": "released", "move": "moved", "restyle": "restyled", "edit": "edited", "delete": "deleted",
              "resolve": "resolved", "unlock": "unlocked", "patch": "patched", "place": "placed", "pin": "pinned", "unpin": "unpinned"}
     return "{} {}".format(verbs.get(str(op), str(op)), _ids_text(ids)).strip()
@@ -5174,6 +5194,11 @@ def apply_text(result: Dict[str, Any]) -> str:
         if migrate:
             # Not "#0 migrate E-1, E-2 … (and 40 more)": what the migration did and how to take it back (phase 6, 2.4).
             lines.append("#{} migrate · {}".format(entry.get("index"), _migrate().result_text(migrate)))
+            continue
+        imported = entry.get("import") if isinstance(entry.get("import"), dict) else None
+        if imported:
+            # Not "#0 import E-1, E-2 … (and 40 more)": what came in, from where, and how to take it back.
+            lines.append("#{} import · {}".format(entry.get("index"), _import().result_text(imported)))
             continue
         restore = entry.get("restore") if isinstance(entry.get("restore"), dict) else None
         if restore:

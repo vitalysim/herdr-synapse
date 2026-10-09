@@ -1114,7 +1114,7 @@ herdr-synapse whiteboard [-h] [--json] [--team NAME|PATH] [--session NAME] [--so
 #### Canvas
 
 <details>
-<summary><code>canvas</code> — the team canvas: look, draw, check, comment, claim, legend, portrait, changes, migrate (whiteboard must be on)</summary>
+<summary><code>canvas</code> — the team canvas: look, draw, check, comment, claim, legend, portrait, changes, migrate, import (whiteboard must be on)</summary>
 
 ```text
 herdr-synapse canvas [-h] [--json] [--team NAME|PATH] [--session NAME] [--socket PATH] [--session-mismatch-ok] <action> ...
@@ -1303,10 +1303,11 @@ Every op also takes `op`, `intent` (required from agents) and `if_version`. Ops 
 | `withdraw` | `id` | take back your own open proposal |
 | `freeze` | `region`, `ids`, `label` | the operator holds a region or elements as they are: others' changes there become proposals (or are refused) |
 | `thaw` | `id`, `ids` | the operator lifts a freeze (id), or lets go of elements (ids) |
-| `settings` | `human_edits`, `frozen` | the operator's collaboration settings: agents' changes to her marks (propose or live) and in frozen areas |
+| `settings` | `human_edits`, `frozen` | the operator's collaboration settings: agents' changes to their marks (propose or live) and in frozen areas |
 | `checkpoint` | `label`, `remove` | save the canvas as a named checkpoint (V-n), or remove one of yours |
 | `restore` | `id` | the operator restores a checkpoint as one batch (a checkpoint of now is saved first; comments stay) |
 | `migrate` | `action` | the operator answers the canvas v2 migration notice: apply (size labels from before 0.22 again and draw the marks in 0.21's sketch style clean, in one batch undo takes back) or dismiss |
+| `import` | `from`, `stamp`, `keep_authors`, `skip_unknown`, `skip_missing`, `team_can_edit` | the operator replays another board into this empty canvas as one undoable batch: a dissolved team's canvas, a cleared one, or the canvas.json in a project folder (every mark becomes theirs unless they keep the authors) |
 | **Primitives (when no component fits)** | | |
 | `shape` | `kind`, `text`, `w`, `h`, `icon`, `id`, `client_id`; *style*, *place* | a box, ellipse, diamond, note or free text, sized from its label (w/h are its minimum) |
 | `arrow` | `from`, `to`, `points`, `label`, `head`, `tail`, `curve`, `id`, `client_id`; *style* | a line or connector between two elements or points, with an optional label |
