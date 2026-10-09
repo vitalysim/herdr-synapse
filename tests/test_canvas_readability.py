@@ -331,11 +331,31 @@ class RealPipeline(GraphRig):
 
 
 class PeerRepair(collab_support.CollabRig):
-    """A host's unchanged graph remains settled after arranging a peer's contribution."""
+    """A peer running the printed repair on someone else's graph is told the real reason (layout findings N1).
+
+    ``graph {id, relayout: "full"}`` names a block by its alias, and an alias belongs to its author. A peer who sent it
+    was refused ``op_invalid: graph needs nodes`` - true of the op as a *create*, and the wrong reason: the graph
+    exists, it is somebody else's. An agent that reads "needs nodes" supplies nodes, and that is how a second copy of
+    the owner's graph came to be drawn beside the first. Refused by its real reason, ``element_not_yours``, the op
+    takes the path every other change to another author's work takes: the gate runs it once more and it becomes a
+    proposal for the operator, naming whose the graph is.
+    """
 
     def _drawn(self):
         self.ok(dict(copy.deepcopy(FLOW), intent="the member's own graph"))
         return [(e["id"], e.get("x"), e.get("y"), e.get("points")) for e in self.scene()["elements"]]
+
+    def test_a_peers_repair_of_another_authors_graph_becomes_a_proposal_naming_the_author(self):
+        before = self._drawn()
+        proposed = self.proposed({"op": "graph", "id": "shortener", "relayout": "full", "intent": "run the printed repair"},
+                                 author=collab_support.PEER)
+        self.assertIn(collab_support.MEMBER.name, proposed["message"], "it says whose graph it is")
+        self.assertNotIn("needs nodes", json.dumps(proposed))
+        self.assertEqual([(e["id"], e.get("x"), e.get("y"), e.get("points")) for e in self.scene()["elements"]], before,
+                         "nothing is drawn, and above all no second graph")
+        # The operator can carry it out by accepting it: the relayout the peer asked for, done by someone who may.
+        self.ok({"op": "accept", "id": proposed["proposal"], "intent": "yes, tidy it"}, author=collab_support.LEAD)
+        self.assertEqual(len([e for e in self.scene()["elements"] if e.get("alias") == "shortener"]), 1)
 
     def test_a_host_who_tidied_a_peers_mark_reissues_as_a_no_op(self):
         """The host right (A1) writes ``moved_by`` on a peer's mark after the arrangement that moved it, in the same op;
@@ -362,6 +382,52 @@ class PeerRepair(collab_support.CollabRig):
     def members(self, alias):
         rid = self.by_alias(alias)["id"]
         return [e for e in self.scene()["elements"] if e.get("group") == rid]
+
+    def test_without_the_gate_the_refusal_names_the_author_and_the_op_that_works(self):
+        from unittest import mock
+
+        from herdr_team import canvas_collab
+
+        before = self._drawn()
+        with mock.patch.object(canvas_collab, "GATE_ON", False):
+            refused = self.refused({"op": "graph", "id": "shortener", "relayout": "full", "intent": "run the repair"},
+                                   author=collab_support.PEER)
+        self.assertEqual(refused["code"], "element_not_yours", refused)
+        self.assertNotIn("needs nodes", refused["message"])
+        self.assertIn(collab_support.MEMBER.name, refused["message"], "it says whose graph it is, and who may")
+        printed = json.loads(refused["message"][refused["message"].index("{"):refused["message"].rindex("}") + 1])
+        self.assertEqual(printed, {"op": "graph", "id": "shortener", "relayout": "full", "intent": "draw shortener again from scratch"})
+        self.assertEqual(refused["details"]["fix"], printed, "the message and the fix print the same op")
+        self.assertEqual([(e["id"], e.get("x"), e.get("y"), e.get("points")) for e in self.scene()["elements"]], before)
+        # Verbatim: every agent op needs an intent, so an op printed without one was refused for the very author it names.
+        for who in (collab_support.MEMBER, collab_support.MANAGER, collab_support.LEAD):
+            result = self.apply([copy.deepcopy(printed)], author=who)
+            self.assertEqual((result["refused"], result["proposed"]), ([], []), "and it works, as printed, for {}".format(who.name))
+
+    def test_a_peer_who_sends_the_alias_with_nodes_is_told_whose_graph_that_name_already_is(self):
+        """An alias belongs to its author, so a peer's graph under the same name is the peer's own and is drawn - but
+        that is how the owner's board came to hold two copies of one graph, under ``applied ... check: clean``. The
+        answer names the first graph and its author."""
+        self._drawn()
+        result = self.apply([{"op": "graph", "id": "shortener", "intent": "add the nodes it asked for",
+                              "nodes": [{"id": "api", "text": "Shortener API"}], "edges": []}], author=collab_support.PEER)
+        warned = [w for w in result["warnings"] if w["code"] == "alias_theirs"]
+        self.assertEqual(len(warned), 1, result["warnings"])
+        self.assertIn(collab_support.MEMBER.name, warned[0]["message"])
+        first = [e for e in self.scene()["elements"] if e.get("alias") == "shortener" and e.get("author") == collab_support.MEMBER.name]
+        self.assertEqual(warned[0]["ids"], [first[0]["id"]], "it names the first graph")
+        # Its own second op on that alias is an upsert of its own graph: nothing more to say.
+        again = self.apply([{"op": "graph", "id": "shortener", "intent": "one more node",
+                             "nodes": [{"id": "api", "text": "Shortener API"}, {"id": "db", "text": "Store"}], "edges": ["api -> db"]}],
+                           author=collab_support.PEER)
+        self.assertEqual([w for w in again["warnings"] if w["code"] == "alias_theirs"], [])
+
+    def test_a_peers_own_graph_of_the_same_name_is_still_theirs_to_redraw(self):
+        self._drawn()
+        self.ok(dict(copy.deepcopy(FLOW), at=[0, 2000], intent="the peer's own graph"), author=collab_support.PEER)
+        result = self.apply([{"op": "graph", "id": "shortener", "relayout": "full", "intent": "redraw mine"}],
+                            author=collab_support.PEER)
+        self.assertEqual((result["refused"], result["proposed"]), ([], []), result)
 
 
 def _grid(gid, nodes, edges):

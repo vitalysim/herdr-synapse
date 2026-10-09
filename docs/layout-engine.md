@@ -132,6 +132,14 @@ And a route the layout gives no label spot kept its old one, the one input a rel
 it now drops it and the label is placed afresh from the new route. `Reissue` holds three full relayouts and the
 re-issue after them, every field compared, on the corpus and on the boards the verifier named.
 
+An op that names another author's block and carries no items (`graph {id, relayout: "full"}` sent by a peer) is
+refused `element_not_yours`, naming whose it is and printing the op that works for its author, the manager or the
+operator; through the review gate it becomes a proposal for the operator. It used to fall through to *create* and
+come back `graph needs nodes`, which is how an agent was led to supply nodes and draw a second copy of the graph.
+The printed op carries its own `intent`, so the author or the manager can run it verbatim. A peer who sends the alias
+*with* items still draws a graph of its own — an alias belongs to its author — and the answer warns `alias_theirs`,
+naming the other author's graph of that name.
+
 A fresh layout also **spreads its lanes** until the drawing is a shape a view can fit (`layers._lane_scale`): nothing
 else bounded a drawing's shape, so a graph only ever grew along the flow and the page fitted the owner's own flow at
 51 %. The lane gap grows up to 3x the theme's, never shrinks, and the ranks are never closed up — a board's rank tops

@@ -624,9 +624,13 @@ def run(ctx: Any, kind_name: str, op: Mapping[str, Any]) -> Element:
         raise C._invalid("op", "{} is not a block kind".format(kind_name))
     kctx = C._KindCtx(ctx)
     existing = _existing(ctx, op.get("id"), any_author=_redraws(kind, op))
+    if existing is None and _redraws(kind, op):
+        _refuse_theirs(ctx, kind, op)
     upsert = existing is not None and kind_of(existing) is kind
     if existing is not None and not upsert:
         C._alias(ctx, dict(op))  # a different kind under that alias: alias_taken, as today
+    if existing is None:
+        _warn_theirs(ctx, kind, op)
     if upsert:
         assert existing is not None
         _may_change(ctx, existing)
@@ -645,6 +649,63 @@ def run(ctx: Any, kind_name: str, op: Mapping[str, Any]) -> Element:
     # graph twice and nothing happened.
     mode = C._choice(op.get("relayout"), "relayout", RELAYOUTS, "incremental")
     return build(ctx, kind, spec, op, existing if upsert else None, upsert=upsert, mode=mode)
+
+
+def _theirs(ctx: Any, kind: _kinds.Kind, alias: Any) -> List[Tuple[str, Element]]:
+    """``(author, block)`` for every other author's live block of this kind under ``alias``, by author name."""
+    if not isinstance(alias, str):
+        return []
+    owners = ctx.state.aliases.get(alias) or {}
+    found = [(author, ctx.el(eid)) for author, eid in sorted(owners.items()) if author != ctx.author.name]
+    return [(author, el) for author, el in found if el is not None and kind_of(el) is kind]
+
+
+def _refuse_theirs(ctx: Any, kind: _kinds.Kind, op: Mapping[str, Any]) -> None:
+    """Refuse, by its real reason, an op that redraws a block of this kind that exists under another author's alias.
+
+    The op carries no items, so it cannot be a create - and it used to be read as one, which is how a peer running
+    the repair ``canvas check`` printed for a graph was refused ``op_invalid: graph needs nodes`` (layout findings
+    N1). True of a create, and the wrong reason: the graph exists and is somebody else's. An agent that reads "needs
+    nodes" supplies nodes, and that is how a second copy of the owner's graph came to be drawn beside the first. So
+    the refusal names whose it is, who may lay it out again (its author, the manager, the operator: ``_existing``'s
+    rule), and the op that works for them, verbatim.
+    """
+    alias = op.get("id")
+    theirs = _theirs(ctx, kind, alias)
+    if not theirs:
+        return
+    redo = {"op": kind.name, "id": alias}
+    for name in ("relayout",) + tuple(kind.block.fields) + tuple(kind.block.settings):
+        if op.get(name) is not None and name != "id":
+            redo[name] = op[name]
+    # Every agent op carries an intent, so the op printed for its author to run verbatim does too (QA round 2: without
+    # it the author and the manager who ran it as printed were refused "every operation from an agent carries an intent").
+    redo["intent"] = "draw {} again{}".format(alias, " from scratch" if redo.get("relayout") == "full" else "")
+    whose = " and ".join("{}'s {} ({})".format(C._who(author, None), kind.name, el["id"]) for author, el in theirs)
+    raise C._error("element_not_yours",
+                   "{} is {}, not yours: an alias belongs to its author. Its author, the manager or the operator can "
+                   "send {}; ask them, rather than drawing a second {} of your own".format(
+                       alias, whose, json.dumps(redo), kind.name),
+                   id=theirs[0][1]["id"], author=theirs[0][0], fix=redo)
+
+
+def _warn_theirs(ctx: Any, kind: _kinds.Kind, op: Mapping[str, Any]) -> None:
+    """Say so when a new block takes an alias another author's block of the same kind already holds.
+
+    Two authors may each have a ``shortener``: an alias belongs to its author, and a peer's own graph of that name is
+    theirs to draw (``PeerRepair``). But a peer who sends the alias *with* its items, meaning to change the graph it
+    sees on the board, draws a second graph beside the first, and was told ``applied ... check: clean`` - the exact
+    way the owner's board came to hold two copies of its graph (layout findings N1, QA round 2). Not refused, because
+    it may well be meant; named, with the op that changes the first one for whoever may.
+    """
+    alias = op.get("id")
+    theirs = _theirs(ctx, kind, alias)
+    if not theirs:
+        return
+    whose = " and ".join("{}'s {} ({})".format(C._who(author, None), kind.name, el["id"]) for author, el in theirs)
+    ctx.warn("alias_theirs", "{} is also {}: this draws a second {} of your own beside it. If you meant to change theirs, "
+             "undo this and ask its author, the manager or the operator".format(alias, whose, kind.name),
+             [el["id"] for _author, el in theirs])
 
 
 def _redraws(kind: _kinds.Kind, op: Mapping[str, Any]) -> bool:
