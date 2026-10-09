@@ -425,6 +425,10 @@ class R4LongLayeredChains(Base):
     (``canvas_layouts._fold``), which is what took the corpus's long chain from 16:1 to 2:1, so it no longer runs past
     ``MAX_SIZE`` and its ranks no longer have to close up. A chain with anything else in it - a branch, two nodes in
     one rank - is still drawn as one line, and that is the shape the rank-closing and the block limit are for.
+
+    Since the fold tolerates one branch (a retry loop is a line with its "done" step beside it), "anything else" is
+    two nodes beside the line: the shapes below carry two, so they keep testing what they were written for, and one
+    test holds that a single branch is folded.
     """
 
     def test_a_chain_like_graph_to_the_right_lays_out(self):
@@ -448,11 +452,12 @@ class R4LongLayeredChains(Base):
         self.assertLess(max(root["w"], root["h"]) / max(min(root["w"], root["h"]), 1.0), 6.0,
                         "a two-hundred-step line fits a view once it is folded")
 
-    def test_a_chain_with_a_branch_in_it_is_still_drawn_as_one_line(self):
-        """The fold is for a path of ranks. One rank holding two nodes is not one, and nothing about it changes."""
+    def test_a_chain_with_two_branches_in_it_is_still_drawn_as_one_line(self):
+        """The fold is for a path of ranks with at most one step beside it. Two are not that, and nothing changes."""
         nodes = ["N{}".format(i) for i in range(200)]
-        # 199 in a line and one hanging beside rank 5: two nodes in one rank, so the ranks are not a path.
-        edges = ["N{} -> N{}".format(i, i + 1) for i in range(198)] + ["N4 -> N199", "N199 -> N6"]
+        # 198 in a line and two hanging beside ranks 5 and 11: two ranks hold two nodes, so this is not a spine.
+        edges = ["N{} -> N{}".format(i, i + 1) for i in range(197)] + ["N4 -> N198", "N198 -> N6",
+                                                                        "N10 -> N199", "N199 -> N12"]
         result = self.apply([{"op": "graph", "id": "g", "direction": "right", "nodes": nodes, "edges": edges, "at": [0, 0], "intent": "t"}],
                             OPERATOR)
         self.assertEqual(result["refused"], [])
@@ -461,9 +466,22 @@ class R4LongLayeredChains(Base):
         self.assertGreater(root["w"], C.MAX_SIZE)
         self.assertLessEqual(root["w"], C.MAX_BLOCK_SIZE)
 
+    def test_a_chain_with_one_branch_beside_it_is_folded(self):
+        """The retry loop's shape at scale: 199 in a line and one step hanging beside it from one column."""
+        nodes = ["N{}".format(i) for i in range(200)]
+        edges = ["N{} -> N{}".format(i, i + 1) for i in range(198)] + ["N4 -> N199", "N199 -> N6"]
+        result = self.apply([{"op": "graph", "id": "g", "direction": "right", "nodes": nodes, "edges": edges, "at": [0, 0], "intent": "t"}],
+                            OPERATOR)
+        self.assertEqual(result["refused"], [])
+        self.assertTrue(any("shape_folded" in w["message"] and "N199 beside it" in w["message"]
+                            for w in result["warnings"]), result["warnings"])
+        root = self.by_alias("g")
+        self.assertLess(max(root["w"], root["h"]) / max(min(root["w"], root["h"]), 1.0), 6.0)
+
     def test_past_the_block_limit_it_is_refused_by_name(self):
         nodes = [{"id": "N{}".format(i), "text": "a node whose label runs long enough to widen it a lot {}".format(i)} for i in range(200)]
-        edges = ["N{} -> N{}".format(i, i + 1) for i in range(198)] + ["N4 -> N199", "N199 -> N6"]
+        edges = ["N{} -> N{}".format(i, i + 1) for i in range(197)] + ["N4 -> N198", "N198 -> N6",
+                                                                        "N10 -> N199", "N199 -> N12"]
         refused = self.refused({"op": "graph", "id": "g", "direction": "right", "nodes": nodes, "edges": edges, "at": [0, 0], "intent": "t"},
                                OPERATOR)
         self.assertEqual((refused["code"], refused["details"]["limit"], refused["details"]["max"]),
@@ -471,12 +489,13 @@ class R4LongLayeredChains(Base):
         self.assertIn("split it", refused["message"])
 
     def test_ranks_close_up_only_past_the_limit(self):
-        # Twelve nodes with one rank holding two of them: a line, and not a path of ranks, so no fold and the usual
-        # rank spacing.
+        # Twelve nodes with two ranks holding two of them: a line, and not a spine with one branch, so no fold and
+        # the usual rank spacing.
         nodes = tuple(LNode(id="n{}".format(i), w=160.0, h=60.0, order=i) for i in range(12)) + \
-            (LNode(id="side", w=160.0, h=60.0, order=12),)
+            (LNode(id="side", w=160.0, h=60.0, order=12), LNode(id="other", w=160.0, h=60.0, order=13))
         edges = tuple(LEdge(id="e{}".format(i), a="n{}".format(i), b="n{}".format(i + 1)) for i in range(11)) + \
-            (LEdge(id="s1", a="n4", b="side"), LEdge(id="s2", a="side", b="n6"))
+            (LEdge(id="s1", a="n4", b="side"), LEdge(id="s2", a="side", b="n6"),
+             LEdge(id="s3", a="n8", b="other"), LEdge(id="s4", a="other", b="n10"))
         result = CL.run("layers", LayoutRequest(nodes=nodes, edges=edges, direction="right"))
         self.assertFalse(any(n.startswith("ranks_closed_up") for n in result.notes))
         self.assertFalse(any(n.startswith("shape_folded") for n in result.notes))

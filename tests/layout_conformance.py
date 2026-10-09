@@ -97,7 +97,8 @@ def grouped_sample(seed: int, direction: str = "down") -> LayoutRequest:
     return LayoutRequest(nodes=nodes, edges=edges, groups=tuple(LGroup("g{}".format(k)) for k in range(groups)), direction=direction)
 
 
-#: Where the readability corpus lives. Eight boards plus ``two-components``, each a graph spec derived from a real
+#: Where the readability corpus lives. Eight boards plus ``two-components``, and the shape the fold learned to reach
+#: in the shapes round (``editorial-loop``, a line with a branch beside it), each a graph spec derived from a real
 #: drawing (node and label sizes as the canvas actually fits them) plus its own budget. Adding a board is one file; a
 #: board may never be removed to make a gate pass.
 CORPUS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "layouts", "readability")
@@ -168,6 +169,12 @@ CEILINGS: Dict[str, Any] = {
     # lanes. Gated at last, which is what a corridor growing from 27 % of a drawing to 32 % needed and did not have.
     "empty_band_boxes": ("<=", 0.50),
     "band_order": ("==", 0),
+    # The gap between two bands stacked across the flow, as a share of their extent across it. The owner's two-band
+    # board measured 0.36 - 188 units of frame with a few wires and one pill in it - on the commit the layout round
+    # closed, and no number saw it, because ``empty_band_boxes`` reads strips with no box and that corridor held a
+    # pill. A wire between two bands now runs inside one of them (``layers._band_of_wire``), which takes it to 0.10.
+    # 0.15 and not 0.10: a corridor holds the pill of a wire crossing it when nowhere in a band is clear.
+    "band_corridor": ("<=", 0.15),
     "component_interleave": ("==", 0),
     "parallel_bundle_len": ("<=", 700),
 }

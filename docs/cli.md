@@ -2726,8 +2726,9 @@ carry `fix_with: {code, ids}` pointing to that finding. Run that operation once,
 then check again. The findings themselves are not hidden.
 
 Graph readability also reports `crossings_high`, `routes_tangled`,
-`labels_adrift` and `graph_thin`, with the same permission and
-proposal guidance.
+`labels_adrift`, `graph_thin` and `bands_apart`, with the same permission and
+proposal guidance. `bands_apart` means a full relayout would materially close
+an empty routing corridor between groups.
 
 A claim's region snaps outward around the marks it holds, including arrow
 labels and frame titles (`claim_snapped` names what it took in). Canvas v2

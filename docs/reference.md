@@ -1343,6 +1343,13 @@ shared target ids; legacy records without that identity are not guessed.
 Normal role-specific freeze, lock and pin rules still apply; agent repairs
 respect human pins, while the operator retains their authority.
 
+`bands_apart` has severity 5: groups stacked across the flow stand more than
+20% of their extent apart with only wire between them, and a full relayout
+would close that by at least five percentage points. Its repair is a graph
+relayout, or a canonical-id `patch` when the alias is ambiguous, subject to
+the same ownership guidance. `band_corridor` and `band_corridor_len` measure
+that empty routing corridor; layout conformance gates the ratio at 0.15.
+
 ## Maintaining this reference
 
 The prose outside generated markers is edited normally. Refresh and validate

@@ -112,7 +112,11 @@ including arrows/comments and proposals about the block itself, with a grid step
 screen-sized: its envelope covers its smallest visible zoom (0.35), rather than assuming world-size text at zoom 1.
 The overlay bound includes the actual endpoints of its dashed move/aside leaders as well: an inside member proposed
 far away can have its leader cross the newly grown frame even when its ghost and banner are nowhere near it.
-The board is stamped either way, so the second re-issue is the ordinary no-op. On those 17 boards nothing changes. A settled board also keeps its
+The board is stamped either way, so the second re-issue is the ordinary no-op. On those 17 boards nothing changes. On the owner's
+own board the redraw reads better (8 crossings to 6) but grows the frame 120 units down, to 2 units above the
+operator's "Operator note: expiry" card and over the banner of the open proposal P-4, so the stored drawing is kept;
+with the note moved out of the way the same redraw is taken. `tests/test_canvas_legacy_boards.py` replays all 18 as
+they are stored. A settled board also keeps its
 own frame: hugging again counted label pills placed after the hug that sized it, and grew the frame once.
 
 Keeping the boxes and the wire is not the whole of it: the canvas's label pass runs after every op on every arrow the
@@ -154,9 +158,32 @@ An **entry point** is pulled onto the line its own first step continues, as far 
 (`_align_entries`) when the swap crosses no more and costs at most 12 % more wire. When two nodes in one rank feed
 the same successor, only one of them can have the line; the metric records the other rather than hiding it.
 
-A **serpentine fold** for a long chain is not shipped, and `layers.py` records why: it is a large win on the shape
-(a nine-step pipeline goes from 24.7:1 and 7 % of a view to 1.1:1 and 63 %) and it cannot be stable, because one more
-node that breaks the path shape puts every box back into a line.
+A serpentine fold *along the flow* (alternate rows running backwards) is not shipped: one more node that breaks the
+path shape puts every box back into a line. The fold that ships cuts the ranks into columns across the flow instead;
+see [Folding a path of ranks](#folding-a-path-of-ranks).
+
+**A wire between two sibling bands runs inside a band** (`layers._band_of_wire`), its source's where the rank lies in
+that band's span, else its target's. A dummy chain used to belong to the deepest group both its ends share, which for
+two sibling bands is none, so every lane of every wire between them, and every pill on its middle rank, stood in the
+corridor between the two frames: on the owner's two-band board 188 units, 27 % of the frame, holding three wires and
+two pills, and the one-lane "Create a link" band could not grow to take any of it. Now the bands carry the lanes of
+their own wire (the one-lane band gets thicker, 120 to 198 units) and the corridor is the gap between two frames
+(188 to 49): the board draws with 0 crossings where it had 2, its lookup wire no longer runs over the top of the
+picture, and it uses 9 % less wire. The boxes render exactly as big (`screen_ink` 0.058 both), because the drawing is
+fitted by its width; `screen_use` drops (0.54 to 0.44), which is the corridor's empty space no longer being counted as
+shape. Halving the border's clearance for wire, the earlier attempt at the corridor, is still not done. Bands one after
+another along the flow have no corridor and are unaffected.
+
+An **incremental redraw that keeps the boxes on their seeds** compares its candidate orders on how many seeded boxes
+they push off their places first, and on their wire after that. Without a corridor to stand in, an unbanded step added
+to that board was slotted between the bands by the cheaper wire and pushed both apart (all ten boxes moved); a new
+node outside every band hung off one inside a band also asks for a place beyond that band's outer side
+(`_clear_of_bands`). Two boxes move now, one did before the bands closed.
+
+A pair of boxes in one rank joined by **labelled steps** (a `same_rank` pair, two lanes of a fold column) stands far
+enough apart for the pills of those steps, one after the other along the step (`layers._flat_room`): ranks always had a
+label dummy of the label's size, lanes only had `gap`, and an editorial pipeline's review loop folded into one column
+printed "changes" over "resubmitted".
 
 A graph passes each member's pin as `LNode.pin` (and any member the author may not move). A dragged member is pinned by the
 core; it is never moved by a layout again until someone unpins it.
@@ -209,6 +236,7 @@ distinct ends — which skipped nine of the eleven a reader could see.
 | `entry_cross_offset_max` | How far an entry point sits off the line its own first step continues. |
 | `band_order` | How far the bands are drawn from the order their author declared them in (Kendall distance). |
 | `component_interleave` | Pairs of disconnected components whose spans across the flow overlap. |
+| `band_corridor` | The widest gap between two bands stacked across the flow, as a share of their extent across it (`band_corridor_len` in units). `empty_band_boxes` reads strips with no *box* in them, and the owner's 188-unit corridor held a pill, so it was not one: nothing measured it. |
 
 `measure(drawn)` is quadratic in the edges' segment pairs and is never on a render or parse path: its callers bound it
 with `MAX_NODES` (80) and `MAX_EDGES` (200) and memoise per block version. `edge_quality(...)` is the per-route
@@ -216,14 +244,15 @@ variant the router's keep decision calls, once per edge, and is O(1) in that rou
 
 ### The checks it gives `canvas check`
 
-Four graph kind checks, with an ownership-permitted graph relayout or canonical-id patch, otherwise guidance:
+Five graph kind checks, with an ownership-permitted graph relayout or canonical-id patch, otherwise guidance:
 
 | Code | Fires when |
 |---|---|
 | `crossings_high` | More than `max(3, edges // 6)` crossings a reader can see, and a fresh drawing would cross less. |
-| `routes_tangled` | `mdetour_median > 1.45`, `mdetour_max > 2.50`, `reversals_max > 3`, more than 130 units of wire drawn along other wire, or 30 % more wire than the same graph drawn again. |
+| `routes_tangled` | `mdetour_median > 1.45`, `mdetour_max > 2.50`, `reversals_max > 3`, more than 130 units of wire drawn along other wire, or 30 % more wire than the same graph drawn again - that last one only while the fresh drawing is the same *shape*: a line and its fold are not the same wire drawn better and worse, and `graph_thin` speaks for the fold. |
 | `labels_adrift` | More than `max(1, edges // 4)` pills nearer a third node than their own ends, or one more than half its arrow's span from both of them. |
-| `graph_thin` | Drawn more than six times longer one way than the other, when a fresh drawing's boxes would render at least a quarter bigger (`screen_ink`). |
+| `graph_thin` | Drawn more than six times longer one way than the other, when a fresh drawing's boxes would render at least a quarter bigger (`screen_ink`). Since the fold reaches a line with a branch beside it and a banded line, it speaks for a retry loop and a team hand-off drawn as lines. |
+| `bands_apart` | Two bands stacked across the flow stand more than 20 % of their extent apart (`band_corridor`), and a fresh drawing closes that by at least 5 points. |
 
 Each of them fires only when a **whole fresh drawing** — laid out *and routed* by the code the repair would run,
 holding exactly what that repair would hold for whoever reads the check (`canvas_blocks.held_by`, the rule the
@@ -288,6 +317,31 @@ every box back into a line. An earlier attempt folded along the *flow* axis, wit
 that cannot be recovered from a layered drawing at all, and it is why the first attempt at this was built, measured
 and abandoned.
 
+Two shapes beyond a pure path fold the same way, and each has a rule that keeps it from folding where it reads worse:
+
+- **A line with one step beside it** (`_fold.spine_of_ranks`, `BRANCH_MAX = 1`): a retry loop is a line with its
+  "done" step off the check, an editorial pipeline a line with its "revise" step off the review. The spine takes, in
+  a rank of two, the node that carries the line on; the branch is left out of every column (it lands in the rank after
+  its own column) or put at the far end of its own column, one lane beyond the node it hangs from (`_beside`); both are
+  laid out and measured. A branch fed from more than one column is structure, not a branch, and nothing folds
+  (`_home`): the flowchart golden's "Show a retry banner", fed from two decisions and looping back, folded into a
+  drawing with a crossing and two misattributed pills. A candidate with a branch may not cross more than the line it
+  replaces, and one with any box on a column's line between two steps of that column is dropped
+  (`layers._column_blocked`: the editorial "revise" once landed between "copy edit" and "page layout" and the step
+  between them was routed round it). The retry loop goes from 8.9:1 and `screen_ink` 0.038 to 1.4:1 and 0.27 and draws
+  as a loop; the editorial pipeline from 10:1 and 0.030 to 2.0:1 and 0.196.
+- **A banded line**, when every column stays inside one band: a hand-off from sales to onboarding becomes one column
+  per team (31.8:1 and 0.030 to 2.0:1 and 0.368). A column holding two bands' nodes would put one band's box over the
+  other's, and is never a candidate.
+
+**Flows that do not meet are not folded**, however uneven. Folding each part into lanes at one lane count was built
+(a six-step launch plan beside a three-step churn flow went from 12:1 to 1:1) and the owner judged it not clearer: the
+second flow sat under the first one's column and read as its continuation, and a quarter of the frame was empty. Two
+rows say "two processes" at a glance.
+
+Each is read back from the seeds the way a path is, branch included, so a re-issue changes nothing and one
+more step moves at most one box the author already had (`tests/test_canvas_shapes.py`).
+
 The lane count is estimated in closed form from the box sizes (`_fold.lanes_for`) and only a window around the
 estimate is laid out and compared, on how big its boxes render and then on its wire. Counts that would send a step
 down a column past other boxes are dropped first: the forty-step board carries six steps that skip five each, and the
@@ -330,7 +384,7 @@ so far when it is; one that counts crossings in `stats` sets `crossings=True`. A
   turn-back and bend bound (a non-regression bound only on the mazes, where a long route is correct), and per batch —
   a `fan` of seven edges off one hub, a `corridor` of five through one gap — every pill clear of the obstacles, of the
   other lines and of the other pills and on its own line, and the batch a fixed point.
-- `tests/layout_conformance.py`, the readability corpus: nine committed boards under
+- `tests/layout_conformance.py`, the readability corpus: ten committed boards under
   `tests/fixtures/layouts/readability/`, each drawn, routed and measured against its own budget under one set of
   global ceilings. Eighteen of those bounds were red on the commit the owner rejected the drawing on. A board's own
   budget may only ever be **tighter** than the ceiling (`test_canvas_layouts` asserts it), so the only way to loosen
@@ -339,6 +393,9 @@ so far when it is; one that counts crossings in `stats` sets `crossings=True`. A
   8 against the 110 units of corridor two routes of a second batch still share, `entry_cross_offset_max` 24 against
   the 131 the owner's own flow measures because moving that entry costs a crossing — the comment says so and names
   the board.
+- `tests/test_canvas_shapes.py`: the shapes round - a retry loop, an editorial loop, two flows that do not meet (kept
+  as two rows), a banded line and the banded form through the real canvas (drawn bigger, clean, a fixed point, stable when one step is
+  added), the fold's rules one by one, and `graph_thin` and `bands_apart` speaking for boards drawn before.
 - `tests/test_canvas_readability.py`: the metric on shapes whose answers can be checked by hand, the keep decision,
   the `relayout` repair through the real canvas, and the checks (they fire on a tangled board and say nothing on
   every board the pipeline makes).

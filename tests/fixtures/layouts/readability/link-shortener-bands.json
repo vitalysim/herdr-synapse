@@ -1,6 +1,6 @@
 {
   "name": "link-shortener-bands",
-  "about": "the same flow in two declared bands, the second journey declared first",
+  "about": "the same flow in two declared bands, the second journey declared first; a wire between the bands runs inside one of them, so the corridor between the frames is a gap and not a fifth of the drawing - which costs screen_use (0.54 -> 0.44) and nothing in screen_ink, because the drawing is fitted by its width",
   "direction": "right",
   "layout": "layers",
   "gap": 40,
@@ -184,21 +184,22 @@
   ],
   "budget": {
     "length_ratio": 1.02,
-    "crossings_seen": 2,
+    "crossings_seen": 1,
     "mdetour_median": 1.0,
     "mdetour_max": 1.3,
     "reversals_max": 1,
-    "reversals_total": 1,
+    "reversals_total": 2,
     "bends_max": 4,
     "label_misattributed": 0,
     "label_orphan_max": 0.35,
     "label_astray_max": 0,
-    "edge_on_edge_len": 0,
+    "edge_on_edge_len": 5,
     "entry_cross_offset_max": 24,
-    "screen_use": 0.53,
+    "screen_use": 0.42,
     "screen_ink": 0.055,
-    "empty_band_boxes": 0.48,
+    "empty_band_boxes": 0.3,
     "band_order": 0,
-    "parallel_bundle_len": 440
+    "parallel_bundle_len": 520,
+    "band_corridor": 0.12
   }
 }

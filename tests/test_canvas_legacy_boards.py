@@ -187,12 +187,42 @@ class OldBoards(LegacyRig):
                                       else dict(note, text=str(note.get("text") or "") + " (edited)")}]
         return scene
 
+    def test_the_owners_board_keeps_its_drawing_rather_than_grow_over_the_operators_note(self):
+        # The owner's l6 board as it stands has a redraw that reads strictly better (8 crossings -> 6), and it grew
+        # the frame 120 units down, to 2 units above the operator's "Operator note: expiry" card and over the banner
+        # of the open proposal P-4. The owner's rule (decision 3): a one-time redraw nobody asked for must not grow
+        # over someone else's content, so the stored drawing is kept, and stamped, so it settles.
+        item = _owner()
+        self.plant(item["scene"])
+        before, note = self._geometry(item["alias"]), next(el for el in self.scene()["elements"] if el["id"] == "E-344")
+        result = C.apply_ops(self.ts.layout, self.ts.team, [dict(self.own_spec(item["alias"]), intent="the same graph")], MEMBER)
+        self.assertEqual((result["refused"], result["proposed"]), ([], []))
+        self.assertEqual(self._geometry(item["alias"]), before, "the frame and its drawing stay as stored")
+        self.assertEqual(next(el for el in self.scene()["elements"] if el["id"] == "E-344"), note)
+        self.assertIsInstance(self.root(item["alias"]).get(B.ARRANGED), int, "stamped, so it settles")
+        said = [w["message"] for w in result.get("warnings") or [] if "kept as it is" in w["message"]]
+        self.assertTrue(said and "E-344" in said[0] and "P-4" in said[0], result.get("warnings"))
+        board = self.board()
+        self.apply(dict(self.own_spec(item["alias"]), intent="and again"))
+        self.assertEqual(_changed(board, self.board()), [])
+
     def test_with_room_below_the_owners_board_still_takes_its_better_redraw(self):
-        # The guard must not prohibit a strictly better redraw when no newly covered region crowds others;
-        # a rule that only ever kept would throw that away.
+        # Not frozen: moved out of the way, the note no longer stands where the frame grows, and the redraw that
+        # reads better is taken (8 crossings -> 6) - a rule that only ever kept would have thrown that away.
         got = self._reissue("owner-l6, note moved", _owner()["alias"], None, self._owner_moved(2000.0))
         self.assertTrue(got["changed"])
         self.assertLess(got["after"]["crossings_seen"], got["before"]["crossings_seen"])
+
+    def test_an_open_proposals_banner_alone_keeps_the_drawing(self):
+        # The note is far away, but P-4 proposes putting it back below the frame: its banner is drawn there, and a
+        # frame grown over it would cover the operator's pending decision.
+        item = _owner()
+        self.plant(self._owner_moved(2000.0, proposal_stays=True))
+        before = self._geometry(item["alias"])
+        result = C.apply_ops(self.ts.layout, self.ts.team, [dict(self.own_spec(item["alias"]), intent="the same graph")], MEMBER)
+        self.assertEqual(self._geometry(item["alias"]), before)
+        said = [w["message"] for w in result.get("warnings") or [] if "kept as it is" in w["message"]]
+        self.assertTrue(said and "proposal P-4" in said[0] and "E-344" not in said[0], result.get("warnings"))
 
     def test_an_old_board_whose_spec_changed_is_arranged_for_the_change(self):
         # The stand-in fingerprint is taken of the board as the op found it: an op that adds an edge is not settled.

@@ -129,8 +129,10 @@ def _folded(request: LayoutRequest, rank: Mapping[str, int], drawn: LayoutResult
     worth trusting. The recursion terminates because a folded request declares ``same_rank``, which is the first
     thing this refuses to fold again.
     """
-    if request.same_rank or request.order or request.groups or not request.nodes:
+    if request.same_rank or request.order or not request.nodes:
         return None  # the author has arranged this drawing; a fold would be the layout overruling them
+    order_of = {n.id: n.order for n in request.nodes}
+    group_of = {n.id: n.group for n in request.nodes}
     seeds: Dict[str, Point] = {}
     heights: Dict[str, float] = {}
     if request.incremental:
@@ -148,29 +150,51 @@ def _folded(request: LayoutRequest, rank: Mapping[str, int], drawn: LayoutResult
         # would vanish - every box back into a line, which is the churn that stopped the first attempt at this from
         # shipping. The new step joins the column its predecessor is in and nothing else moves.
         ranks = {n: rank[n] for n in seeds if n in rank}
-        if len(set(ranks.values())) != len(ranks) or len(ranks) < _fold.FROM_RANKS or len(ranks) > _fold.MAX_NODES:
-            return None  # two boxes already share a rank: this board was never a folded line
-        found = _fold.from_seeds(sorted(ranks, key=lambda n: (ranks[n], n)), seeds, heights)
+        # The spine is read off the seeded boxes the same way a fresh layout reads it off the graph, branch and all:
+        # a folded retry loop has two boxes in one rank of its *unfolded* ranking (its "ok" and "error" steps), and
+        # asking for one box per rank here, as the plain path fold did, unfolded it again on its first redraw.
+        links = [(e.a, e.b) for e in request.edges]
+        spine = _fold.spine_of_ranks(ranks, links, order_of)
+        if spine is None:
+            return None  # boxes share ranks beyond a branch: this board was never a folded line
+        found = _fold.from_seeds(spine[0], seeds, heights, branches=spine[1])
         if found is None:
             return None
         kept, _kept_rank = _layered(replace(request, same_rank=found[0], order=found[1]))
         return kept
-    path = _fold.path_of_ranks(rank, {n.id: n.order for n in request.nodes})
-    if path is None:
+    pairs = [(e.a, e.b) for e in request.edges if e.a != e.b]
+    found_spine = _fold.spine_of_ranks(rank, pairs, order_of)
+    if found_spine is None:
+        # Two flows that do not meet are not a spine, and are not folded. Folding each into lanes was built (a
+        # six-step launch plan beside a three-step churn flow, 12:1 as two rows) and judged by the owner not clearer:
+        # the second flow sat right under the first one's column and read as its continuation, and a quarter of the
+        # frame was empty. Two rows say "two processes" at a glance, which is what the drawing is.
         return None
+    path, branches = found_spine
+    # A path cannot gain a crossing by folding (every step is to a neighbouring lane or the next column), so the
+    # plain fold never compared one. A node off the spine can: it is laid out wherever the ordering pass puts it in
+    # the rank after its column. So with a branch, a candidate may cross no more than the drawing it replaces.
+    most = _wire_cost_of(request, drawn)[0] if branches else None
     budget = _budget.active()
     tried: List[Tuple[float, Tuple[int, float], int, LayoutResult]] = []
-    pairs = [(e.a, e.b) for e in request.edges if e.a != e.b]
     sizes = [_util.frame_size(request.direction, n.w, n.h) for n in request.nodes if n.id in path]
     labelled = any(e.label is not None and e.label[0] > 0 for e in request.edges)
     hint = _fold.lanes_for(len(path), _util.median([s[0] for s in sizes]), _util.median([s[1] for s in sizes]),
                            request.gap, request.rank_gap / (2 if labelled else 1),
                            request.direction in ("down", "up"), SCREEN_ASPECT)
-    for lanes, (sets, ordered) in _fold.candidates(path, pairs, hint):
+    for lanes, (sets, ordered) in _fold.candidates(path, pairs, hint, branches):
         if budget.over():
             break
+        if any(len({group_of.get(n) for n in members}) > 1 for members in sets):
+            # A column is one rank across the flow, and a band is a box around its own members: a column holding
+            # two bands' nodes would put one band's box over the other's. A banded line folds only where every
+            # column stays inside one band - the hand-off from sales to onboarding becomes one column per team.
+            continue
         found_result, _found_rank = _layered(replace(request, same_rank=sets, order=ordered))
-        tried.append((_render_scale(request, found_result), _wire_cost_of(request, found_result), lanes, found_result))
+        cost = _wire_cost_of(request, found_result)
+        if most is not None and (cost[0] > most or _column_blocked(request, found_result, sets)):
+            continue
+        tried.append((_render_scale(request, found_result), cost, lanes, found_result))
     if not tried:
         return None
     was = _render_scale(request, drawn)
@@ -183,9 +207,67 @@ def _folded(request: LayoutRequest, rank: Mapping[str, int], drawn: LayoutResult
     # seven lanes is thirty-three of these notes, and the one note that says what happened is ``shape_folded``.
     notes = tuple(note for note in result.notes if not note.startswith("same_rank_flat"))
     return replace(result, notes=notes + (
-        "shape_folded {}: the drawing is a line of {} steps, so it is drawn as {} lanes; its boxes come out {:.0%} "
-        "the size they would in one line".format(lanes, len(path), lanes, score / max(was, 1e-9)),),
+        "shape_folded {}: the drawing is a line of {} steps{}, so it is drawn as {} lanes; its boxes come out "
+        "{:.0%} the size they would in one line".format(
+            lanes, len(path), " with {} beside it".format(", ".join(branches)) if branches else "", lanes,
+            score / max(was, 1e-9)),),
                    stats=dict(result.stats, folded=float(lanes)))
+
+
+def _column_blocked(request: LayoutRequest, result: LayoutResult, sets: Sequence[Sequence[str]]) -> bool:
+    """Whether a box landed between two steps of one fold column: a step down the column past another box.
+
+    ``_fold.candidates`` rules that out for the spine by counting, before anything is laid out. A node off the spine
+    cannot be counted in advance: it goes in the rank after its own column, and when that rank is the *next* column's
+    the ordering pass slots it in among that column's lanes wherever it likes. On an editorial pipeline the "revise"
+    step landed between "copy edit" and "page layout", and the step between those two then had to be routed around
+    it - a snake through the middle of the drawing, which is the one picture the fold exists to remove. So the laid
+    out candidate is looked at: any box on a column's own line, between two boxes the column joins by a step, sinks
+    the candidate.
+    """
+    size = {n.id: _util.frame_size(request.direction, n.w, n.h) for n in request.nodes}
+    frame = {}
+    for node, (x, y) in result.positions.items():
+        if node in size:
+            fx, fy = _util.to_frame(request.direction, x, y, size[node][0], size[node][1])
+            frame[node] = (fx + size[node][0] / 2.0, fy + size[node][1] / 2.0)
+    member_of = {node: index for index, members in enumerate(sets) for node in members}
+    for e in request.edges:
+        if e.a == e.b or e.a not in frame or e.b not in frame or member_of.get(e.a) is None \
+                or member_of.get(e.a) != member_of.get(e.b):
+            continue
+        line = frame[e.a][1]
+        low, high = sorted((frame[e.a][0], frame[e.b][0]))
+        for node, (across, along) in frame.items():
+            if node not in (e.a, e.b) and abs(along - line) <= 1.0 and low < across < high:
+                return True
+    return False
+
+
+#: Whether a wire between two sibling bands runs inside a band (on) or in the corridor between them (off, as it
+#: did until the shapes round). A switch rather than a constant in the code because the measurement behind it is
+#: the kind a later round will want to repeat: off, the owner's two-band board keeps a 188-unit corridor (0.36 of
+#: its bands' extent) and two crossings; on, 49 units and none, the same box size, and 9 % less wire.
+BAND_WIRE_INSIDE = True
+
+
+def _band_of_wire(across: Tuple[str, str], band_span: Mapping[str, Tuple[int, int]], r: int) -> Optional[str]:
+    """Which band a wire between two sibling bands runs inside at rank ``r``: its source's, else its target's.
+
+    The corridor between two bands was the layered layout's one place for such wire: a dummy chain belongs to the
+    deepest group both its ends share, and two sibling bands share none, so every lane of every wire between them -
+    and every pill on the middle rank - stood between the two frames. On the owner's two-band board that was 27 %
+    of the frame with three wires and two pills in it, the "empty third" they had already complained about once,
+    and the one-lane "Create a link" band could not grow to take any of it. Run inside a band, the wire is where its
+    own node is, the band grows by the lanes it carries (the one-lane band gets thicker) and the corridor closes to
+    the gap between two frames. The source's band, because a wire is read from where it starts; the target's where
+    the rank is outside the source's span; neither (the corridor, as before) where it is outside both.
+    """
+    for band in across:
+        lo, hi = band_span.get(band, (1, 0))
+        if lo <= r <= hi:
+            return band
+    return None
 
 
 def _layered(request: LayoutRequest) -> Tuple[LayoutResult, Dict[str, int]]:
@@ -242,6 +324,12 @@ def _layered(request: LayoutRequest) -> Tuple[LayoutResult, Dict[str, int]]:
         graph.add(n.id, size[n.id][0], size[n.id][1], rank[n.id], "node", n.group)
     chains: Dict[str, List[str]] = {}
     label_key: Dict[str, str] = {}
+    band_span: Dict[str, Tuple[int, int]] = {}
+    for n in nodes:
+        outer = chain(n.group)
+        if outer:
+            lo, hi = band_span.get(outer[0], (rank[n.id], rank[n.id]))
+            band_span[outer[0]] = (min(lo, rank[n.id]), max(hi, rank[n.id]))
     for e in ranked:
         low, high = (e.b, e.a) if rank[e.a] > rank[e.b] else (e.a, e.b)
         if rank[low] == rank[high]:
@@ -250,18 +338,21 @@ def _layered(request: LayoutRequest) -> Tuple[LayoutResult, Dict[str, int]]:
         ca, cb = chain(by_id[e.a].group), chain(by_id[e.b].group)
         common = [g for g, h in zip(ca, cb) if g == h]
         dummy_group = common[-1] if common else None
+        # A wire between two sibling bands runs inside a band, not in the corridor between them (``_band_of_wire``).
+        across = (ca[0], cb[0]) if not common and ca and cb and BAND_WIRE_INSIDE else None
         span = rank[high] - rank[low]
         middle = rank[low] + span // 2
         previous = low
         keys: List[str] = []
         for r in range(rank[low] + 1, rank[high]):
             key = "\x00d\x00{}\x00{}".format(e.id, r)
+            where = _band_of_wire(across, band_span, r) if across else dummy_group
             if e.label is not None and e.label[0] > 0 and r == middle:
                 lw, lh = _util.frame_size(direction, e.label[0], e.label[1])
-                graph.add(key, lw, lh, r, "label", dummy_group)
+                graph.add(key, lw, lh, r, "label", where)
                 label_key[e.id] = key
             else:
-                graph.add(key, 0.0, 0.0, r, "dummy", dummy_group)
+                graph.add(key, 0.0, 0.0, r, "dummy", where)
             graph.link(previous, key, e.weight)
             keys.append(key)
             previous = key
@@ -304,6 +395,9 @@ def _layered(request: LayoutRequest) -> Tuple[LayoutResult, Dict[str, int]]:
             if corner is not None:
                 seeds[n.id] = _util.to_frame(direction, corner[0], corner[1], size[n.id][0], size[n.id][1])
     wanted = _wanted(graph, chains, seeds) if seeds else None
+    if wanted is not None:
+        _clear_of_bands(graph, wanted, seeds, [g.id for g in request.groups if g.parent is None], pads, chain,
+                        request.gap)
     coords = {k: x + graph.w[k] / 2.0 for k, x in wanted.items()} if wanted else None
     first = _order.initial(model, [], coords)
 
@@ -318,14 +412,16 @@ def _layered(request: LayoutRequest) -> Tuple[LayoutResult, Dict[str, int]]:
             if e.a in component_of:
                 component_of[key] = component_of[e.a]
 
+    flat_room = _flat_room(direction, flat)
+
     def place_with(order_layers: List[List[str]], gap: float, ranks: float) -> Tuple[Dict[str, float], Dict[str, float]]:
         return _place(graph, order_layers, replace(request, gap=gap), ranks, pads, chain, wanted, seeds, component_of,
-                      wire_gap=request.gap)
+                      wire_gap=request.gap, flat_room=flat_room)
 
     def place_fresh(order_layers: List[List[str]], gap: float, ranks: float) -> Tuple[Dict[str, float], Dict[str, float]]:
         """The same order laid out from scratch: the shape the graph *would* have, whatever the seeds say."""
         return _place(graph, order_layers, replace(request, gap=gap), ranks, pads, chain, None, {}, component_of,
-                      wire_gap=request.gap)
+                      wire_gap=request.gap, flat_room=flat_room)
 
     best, crossings, sweeps = _order.improve(model, first, incremental=bool(seeds))
     # How far apart the lanes are. A fresh layout picks the spacing that makes the drawing a shape a view can fit;
@@ -354,7 +450,8 @@ def _layered(request: LayoutRequest) -> Tuple[LayoutResult, Dict[str, int]]:
         hybrid, hybrid_crossings, hybrid_sweeps = _order.improve(model, _order.initial(model, [], node_coords))
         sweeps += hybrid_sweeps
 
-        def cost_of(order_layers: List[List[str]], found_xs: Dict[str, float], found_ys: Dict[str, float]) -> Tuple[int, float]:
+        def cost_of(order_layers: List[List[str]], found_xs: Dict[str, float],
+                    found_ys: Dict[str, float]) -> Tuple[int, int, float]:
             """What this candidate's wire costs in the result the caller will actually get.
 
             Measured on the finished ``LayoutResult``, not on the frame coordinates: the component shift and the pin
@@ -362,17 +459,25 @@ def _layered(request: LayoutRequest) -> Tuple[LayoutResult, Dict[str, int]]:
             before them was not always the drawing that came out (1 crossing became 2 on the nested-group sample)."""
             done = _result(request, graph, order_layers, found_xs, found_ys, chains, label_key, flat, loops,
                            reversed_ids, list(notes), sweeps, 0.0)
-            return _wire_cost_of(request, done)
+            # Boxes first, then wire. Every candidate keeps the seeds' node *order*, but a candidate can still slot
+            # an item where the separation pass has to push seeded boxes to make room for it: one unbanded step
+            # added to the owner's two-band board was slotted into the gap between the bands by the cheaper wire,
+            # and all ten boxes moved. The order whose wire was a little longer moved none.
+            moved = sum(1 for n in seeds if n in found_xs and graph.kind.get(n) == "node"
+                        and max(abs(found_xs[n] - seeds[n][0]), abs(found_ys[n] - seeds[n][1])) > MOVED)
+            crossings_seen, length = _wire_cost_of(request, done)
+            return moved, crossings_seen, length
 
         cost = cost_of(best, xs, ys)
         for candidate, candidate_crossings in ((hybrid, hybrid_crossings), (first, _order.cross_count(first, graph.down))):
             found_xs, found_ys = place_with(candidate, lane_gap, rank_gap)
             found = cost_of(candidate, found_xs, found_ys)
             if found < cost:
+                why = "moved boxes a fresh slotting keeps" if found[0] < cost[0] else "crossed more"
                 best, xs, ys, crossings, cost = candidate, found_xs, found_ys, candidate_crossings, found
                 notes = [n for n in notes if not n.startswith("wire_rerouted")]
-                notes.append("wire_rerouted: the drawing keeps every box where it was and slots its long edges the "
-                             "way a fresh layout would, because the stored order's wire crossed more")
+                notes.append("wire_rerouted: the drawing slots its long edges the way a fresh layout would, because "
+                             "the stored order's wire {}".format(why))
     if seeds and _util.all_seeded(request):
         # Nothing new and nothing moved: the boxes stay exactly on their seeds. The order and the wire are still the
         # improved ones, not the seed order's - a re-draw of an unchanged graph used to return the seeds with the
@@ -631,21 +736,10 @@ def _screen_use(request: LayoutRequest, graph: _Graph, xs: Mapping[str, float], 
     return _screen_use_at(across / max(along, 1.0))
 
 
-# A serpentine fold for a path - nine ranks drawn as three rows, alternate rows reversed - is **not shipped**, and
-# this is the record of why rather than a gap nobody wrote down. It was built and measured: it takes the nine-step
-# pipeline of the readability corpus from 24.7:1 and 7% of a view to 1.1:1 and 63%, with 0 crossings, 0 misattributed
-# labels and a third of the wire, which is a large win on exactly the complaint it addresses.
-#
-# It does not ship because it cannot be stable. A fold is a different drawing, not a nudge: the moment one more node
-# joins the chain and some rank holds two nodes, no fold exists any more and every box has to go back into a line.
-# The stability contract (``test_layout_layers`` G8: adding one node moves at most a quarter of the boxes) then fails
-# outright - twelve of twelve boxes moved on the ``pipeline-crossed`` fixture - and a drawing that rearranges itself
-# whenever its author adds a step is a worse thing to look at than a long one.
-#
-# What would make it shippable is recognising a folded board from its own boxes and extending the serpentine by one
-# slot instead of unfolding it, which is a real piece of work and not a tuning change. Until then a long chain is
-# drawn as a long chain, and ``graph_thin`` does not ship either, because a check whose fix does not work is worse
-# than no check.
+# A serpentine fold *along the flow* - nine ranks drawn as three rows, alternate rows running backwards - was built,
+# measured and dropped: one more node that gives some rank two nodes takes every box back into a line. The fold that
+# shipped cuts the ranks into columns across the flow instead (``_fold``, ``_folded``), and is read back from the
+# seeds, which is what makes it stable.
 
 
 def _seeds_hold(request: LayoutRequest, graph: _Graph, seeds: Mapping[str, Point]) -> bool:
@@ -678,6 +772,49 @@ def _seeds_hold(request: LayoutRequest, graph: _Graph, seeds: Mapping[str, Point
                 if not inside and _util.meets(box, world[n.id]):
                     return False
     return True
+
+
+def _clear_of_bands(graph: _Graph, wanted: Dict[str, float], seeds: Mapping[str, Point], top: Sequence[str],
+                    pads: Mapping[str, Tuple[float, float, float, float]], chain, gap: float) -> None:
+    """A new node outside every band, hung off a node inside one, asks for a place beyond that band's outer side.
+
+    ``_wanted`` puts a new node at the barycentre of its placed neighbours, which for a neighbour inside a band is
+    inside that band - where the new node may not stand. The ordering pass then puts it at one side of the band and
+    the separation pass makes room for it from where it asked to be, which pushes the whole band - and with wire run
+    inside the bands (``_band_of_wire``) the corridor between two of them is a gap, not a reserve: adding one
+    unbanded step to the owner's two-band board moved all ten of its boxes. Asked for beyond the band's outer side
+    instead (the side with no other band beyond it), it pushes nothing. A band with bands on both sides, or a node
+    whose neighbours are in two bands, is left to the barycentre.
+    """
+    if len(top) < 2:
+        return
+    extent: Dict[str, Tuple[float, float]] = {}
+    for key, (x, _y) in seeds.items():
+        outer = chain(graph.group.get(key))
+        if outer and outer[0] in top:
+            lo, hi = extent.get(outer[0], (x, x + graph.w[key]))
+            extent[outer[0]] = (min(lo, x), max(hi, x + graph.w[key]))
+    for key in sorted(wanted, key=lambda k: graph.tie[k]):
+        if key in seeds or graph.kind[key] != "node" or graph.group.get(key) is not None:
+            continue
+        ends = []
+        for links, step in ((graph.up, graph.up), (graph.down, graph.down)):
+            for w, _weight in links[key]:
+                while graph.kind[w] in ("dummy", "label") and step[w]:
+                    w = step[w][0][0]  # a long edge's chain, followed to the node at its far end
+                ends.append(w)
+        near = {chain(graph.group.get(w))[0] if chain(graph.group.get(w)) else None for w in ends if w in seeds}
+        if len(near) != 1:
+            continue
+        band = near.pop()
+        if band is None or band not in extent:
+            continue
+        lo, hi = extent[band]
+        others = [extent[g] for g in extent if g != band]
+        if all(o[0] >= hi for o in others):
+            wanted[key] = lo - pads.get(band, (0.0, 0.0, 0.0, 0.0))[0] - gap - graph.w[key]
+        elif all(o[1] <= lo for o in others):
+            wanted[key] = hi + pads.get(band, (0.0, 0.0, 0.0, 0.0))[2] + gap
 
 
 def _wanted(graph: _Graph, chains: Mapping[str, List[str]], seeds: Mapping[str, Point]) -> Dict[str, float]:
@@ -720,10 +857,38 @@ def _wanted(graph: _Graph, chains: Mapping[str, List[str]], seeds: Mapping[str, 
     return out
 
 
+#: The room a pill on a step between two boxes of one rank keeps from each of them and from the next pill, along
+#: the step. Two steps between the same pair of boxes leave by neighbouring ports, a port spacing apart, so their
+#: pills cannot sit side by side across the wire: they need room one after the other along it.
+FLAT_LABEL_MARGIN = 12.0
+
+
+def _flat_room(direction: str, flat: Sequence[LEdge]) -> Dict[Tuple[str, str], float]:
+    """How far apart two boxes of one rank must stand for the pills of the labelled steps between them to fit.
+
+    A step between two boxes in one rank - a ``same_rank`` pair, or two lanes of a fold column - runs straight
+    across the gap between them, and nothing gave that gap room for its words: ranks get a label dummy of the
+    label's size, lanes got ``gap``. One pill fits in a theme gap; two do not. The editorial pipeline's review loop
+    ("changes", "resubmitted") folded into one column with its two pills printed over each other, which is text over
+    text. Keyed by the pair in either order; only labelled steps count.
+    """
+    room: Dict[Tuple[str, str], float] = {}
+    count: Dict[Tuple[str, str], int] = {}
+    for e in flat:
+        if e.label is None or e.label[0] <= 0:
+            continue
+        along, _across = _util.frame_size(direction, e.label[0], e.label[1])
+        for key in ((e.a, e.b), (e.b, e.a)):
+            room[key] = room.get(key, 0.0) + along
+            count[key] = count.get(key, 0) + 1
+    return {key: total + (count[key] + 1) * FLAT_LABEL_MARGIN for key, total in room.items()}
+
+
 def _place(graph: _Graph, order_layers: List[List[str]], request: LayoutRequest, rank_gap: float,
            pads: Mapping[str, Tuple[float, float, float, float]], chain, wanted: Optional[Mapping[str, float]],
            seeds: Mapping[str, Point], component_of: Optional[Mapping[str, int]] = None,
-           wire_gap: Optional[float] = None) -> Tuple[Dict[str, float], Dict[str, float]]:
+           wire_gap: Optional[float] = None,
+           flat_room: Optional[Mapping[Tuple[str, str], float]] = None) -> Tuple[Dict[str, float], Dict[str, float]]:
     """Left edges and tops of every item in the ``down`` frame.
 
     ``wire_gap`` is how much room a *wire* lane gets across the flow, which is the theme's own spacing even when the
@@ -746,12 +911,15 @@ def _place(graph: _Graph, order_layers: List[List[str]], request: LayoutRequest,
         # only thing making its shape fit a screen at all, and a shorter corridor took it to 3.7:1 and 48 % of a
         # view from 54 %. Every unit of corridor is either empty space or shape here; there is no third thing to
         # spend it on until a band with one lane in it can be made thicker.
+        #
+        # It can now: the wire between two bands runs inside them (``_band_of_wire``), so the bands carry its lanes
+        # and the corridor is this gap and nothing else. The clearance is untouched.
         bu, bv = graph.border_of.get(u), graph.border_of.get(v)
         if bu is not None:
             return pads[bu[0]][0] if bu[1] == "left" else gap
         if bv is not None:
             return pads[bv[0]][2] if bv[1] == "right" else gap
-        return (spacing(u) + spacing(v)) / 2.0
+        return max((spacing(u) + spacing(v)) / 2.0, (flat_room or {}).get((u, v), 0.0))
 
     unify = {k: "\x01{}\x00{}".format(side, g) for k, (g, side) in graph.border_of.items()}
     centres = _position.brandes_koepf(order_layers, graph.up, graph.down, graph.w,

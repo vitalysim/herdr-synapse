@@ -699,6 +699,25 @@ def _bands(g: Drawn, edges: Sequence[Edge]) -> Dict[str, Any]:
         across = len({round((boxes[n][cross] + boxes[n][cross + 2]) / 2.0) for n in members})
         lanes.append((bid, along, across))
     out["band_lanes"] = lanes
+    # The corridor: the widest gap across the flow between two bands that stand side by side along it, as a share of
+    # the bands' extent across the flow. The owner's two-band board kept 27 % of its frame there with nothing in it
+    # but a few wires and one pill, and nothing measured it: ``empty_band_boxes`` reads a strip with no *box* in it,
+    # and a corridor the size of a band is not that when a pill sits in it. Bands one after another along the flow
+    # (a hand-off from one team to the next) have no corridor between them and are left out.
+    stacked = sorted(g.bands.values(), key=lambda box: (box[cross], box[cross + 2]))
+    widest = 0.0
+    for i, a in enumerate(stacked):
+        for b in stacked[i + 1:]:
+            if not (a[axis] < b[axis + 2] and b[axis] < a[axis + 2]):
+                continue  # not side by side along the flow
+            if b[cross] >= a[cross + 2]:
+                widest = max(widest, b[cross] - a[cross + 2])
+                break
+    if stacked:
+        lo = min(box[cross] for box in stacked)
+        hi = max(box[cross + 2] for box in stacked)
+        out["band_corridor"] = round(widest / max(hi - lo, 1.0), 3)
+        out["band_corridor_len"] = round(widest, 1)
     # Declared against drawn: the bands sorted by where they sit across the flow.
     drawn = [bid for bid, _box in sorted(g.bands.items(), key=lambda item: item[1][cross] * g.sign)]
     declared = [bid for bid in g.band_order if bid in g.bands] or drawn
@@ -741,8 +760,18 @@ def _entries(g: Drawn, edges: Sequence[Edge]) -> Dict[str, Any]:
         firsts = outs.get(s) or []
         off = 0.0
         if firsts:
-            c0 = (boxes[s][cross] + boxes[s][cross + 2]) / 2.0
-            c1 = median([(boxes[t][cross] + boxes[t][cross + 2]) / 2.0 for t in firsts])
+            # The line a first step continues is the line it runs along. Usually that is the flow, and the offset is
+            # across it; but a step to a box in the entry's own rank - the first step down a folded column, "submit"
+            # to "queue" in the retry loop - runs *across* the flow, and its box is not off that step's line by the
+            # whole lane it moved down: it is exactly on it. Measured across the flow, the folded retry loop's
+            # straight first step read as 108 units off, worse than the owner's "Paste long URL" (72).
+            # A step forward along the flow still wins when there is one: the line is the median of the forward
+            # steps, as it always was, and a fan of seven is measured exactly as before.
+            ahead_of = [t for t in firsts
+                        if not (boxes[s][axis] < boxes[t][axis + 2] and boxes[t][axis] < boxes[s][axis + 2])]
+            k = cross if ahead_of else axis
+            c0 = (boxes[s][k] + boxes[s][k + 2]) / 2.0
+            c1 = median([(boxes[t][k] + boxes[t][k + 2]) / 2.0 for t in (ahead_of or firsts)])
             off = abs(c1 - c0)
         detail.append((s, behind, int(round(off))))
     return {"sources": [s for s in sources],

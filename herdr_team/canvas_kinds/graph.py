@@ -1527,7 +1527,13 @@ def routes_tangled(el: Element, env: Dict[str, Any]) -> List[Dict[str, Any]]:
     # The headline of the gate, as a check: how much more wire this drawing uses than a fresh one of the same graph.
     # It is the one measure that compares across boards, and it catches the shape of the owner's complaint that the
     # per-edge measures miss - every edge a little too long rather than one edge far too long.
-    if float(fresh["length_total"]) > 0 and \
+    #
+    # Not when the fresh drawing is a different *shape*. A retry loop drawn as a line and the same loop folded into
+    # lanes are not the same wire drawn better and worse: the fold shortens every step, so the line "uses 250 %
+    # more wire" and nothing in it wanders. That board is thin, ``graph_thin`` says so with the same repair, and a
+    # second message calling straight wire tangled was a check crying wolf about the cure for another one.
+    reshaped = float(fresh.get("screen_ink") or 0.0) >= float(found.get("screen_ink") or 0.0) * THIN_GAIN * THIN_GAIN
+    if float(fresh["length_total"]) > 0 and not reshaped and \
             float(found["length_total"]) > float(fresh["length_total"]) * TANGLED_LENGTH_RATIO:
         reasons.append("it uses {:.0%} more wire than the same graph drawn again".format(
             found["length_total"] / fresh["length_total"] - 1.0))
@@ -1656,6 +1662,42 @@ def graph_thin(el: Element, env: Dict[str, Any]) -> List[Dict[str, Any]]:
              "fix": _relayout_fix(el, env)}]
 
 
+#: What ``bands_apart`` calls a corridor: a gap between two bands stacked across the flow this big a share of their
+#: extent. Looser than the gate (``tests/layout_conformance`` holds the pipeline to 0.15), as every check here is.
+BANDS_APART = 0.20
+#: How much smaller a fresh drawing's corridor has to be before the check names the repair.
+BANDS_APART_GAIN = 0.05
+
+
+def bands_apart(el: Element, env: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """A banded graph whose bands stand far apart with nothing between them but wire - when a fresh layout would
+    close them up.
+
+    The owner's two-band board kept 188 units of its frame, 27 %, between "Create a link" and "Open a link", and
+    no check said a word: the corridor was where the layered layout ran every wire between the two bands, one lane
+    each, and a strip with a pill in it is not a strip with nothing in it. A wire between two bands now runs inside
+    one of them (``canvas_layouts.layers._band_of_wire``), so a fresh drawing of that board has a 49-unit gap; a
+    board drawn before that is told so, with the one repair that applies it.
+    """
+    drawn = _drawn(el, env)
+    if drawn is None or drawn.get("band_corridor") is None:
+        return []
+    corridor = float(drawn["band_corridor"])
+    if corridor <= BANDS_APART:
+        return []
+    found = _fresh_drawn(el, env)
+    if found is None or found.get("band_corridor") is None or \
+            float(found["band_corridor"]) > corridor - BANDS_APART_GAIN:
+        return []
+    alias = el.get("alias") or el.get("id")
+    return [{"code": "bands_apart", "ids": [str(el.get("id"))],
+             "message": "{}'s bands stand {:.0f} units apart, {:.0%} of the drawing, with nothing between them but "
+                        "wire; a full relayout runs that wire inside the bands and closes the gap to about {:.0f}".format(
+                            alias, float(drawn.get("band_corridor_len") or 0.0), corridor,
+                            float(found.get("band_corridor_len") or 0.0)),
+             "fix": _relayout_fix(el, env)}]
+
+
 def crossings_high(el: Element, env: Dict[str, Any]) -> List[Dict[str, Any]]:
     """A graph whose edges cross where a reader can see it, when a full relayout would cross less.
 
@@ -1771,6 +1813,6 @@ KINDS = (
                                              doc="\"a -> b: label\" relations", refs=(("from", "nodes", "drop"), ("to", "nodes", "drop")))),
                      settings=SETTINGS, fields=("title",), parts="members", positional=True, normalize=normalize, build=build, spec=spec,
                      adopt=adopt, prepare=prepare, max_members=2000),
-         arrange=arrange, emit=_zone.emit, hit=_zone.hit, text_edit=_zone.title_edit, readback=readback, checks=(pin_overlap, crossings_high, routes_tangled, labels_adrift, graph_thin),
+         arrange=arrange, emit=_zone.emit, hit=_zone.hit, text_edit=_zone.title_edit, readback=readback, checks=(pin_overlap, crossings_high, routes_tangled, labels_adrift, graph_thin, bands_apart),
          noun=("graph", "graphs"), doc="a graph: nodes, groups and edges, laid out and routed (patch it to change it)"),
 )

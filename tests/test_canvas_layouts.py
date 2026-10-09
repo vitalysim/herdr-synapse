@@ -91,7 +91,7 @@ class Conformance(LayoutConformance, unittest.TestCase):
                 self.check_layout_quality(layout.name)
 
     def test_the_readability_corpus_stays_inside_its_budgets(self):
-        """The gate behind "make the auto layout clearer": the nine committed boards, drawn and routed and measured.
+        """The gate behind "make the auto layout clearer": the committed boards (ten), drawn and routed and measured.
 
         Thirty-one of these bounds were red on 19f9f469 - the commit the owner rejected the drawing on - and they are
         the proof that this suite is not a rubber stamp."""

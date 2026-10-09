@@ -82,7 +82,7 @@ LOOK_MAX = 8
 #: shaped drawing after both (5).
 SEVERITY = {"overlap": 0, "text_on_label": 0, "label_overflow": 1, "label_truncated": 1, "frame_edge": 2,
             "arrow_through": 3, "crossings_high": 3, "routes_tangled": 3, "stray": 4, "labels_adrift": 4,
-            "claim_edge": 4, "graph_thin": 5}
+            "claim_edge": 4, "graph_thin": 5, "bands_apart": 5}
 
 
 def box_of(el: Dict[str, Any]) -> Tuple[float, float, float, float]:

@@ -1,0 +1,172 @@
+{
+  "name": "editorial-loop",
+  "about": "an editorial pipeline with a two-step review loop off its editor: a line with one branch, folded with the branch at the end of its own column",
+  "direction": "right",
+  "layout": "layers",
+  "gap": 40.0,
+  "rank_gap": 80.0,
+  "clearance": 20,
+  "radius": 8,
+  "port_spacing": 12,
+  "group_pad": [
+    20,
+    40,
+    20,
+    20
+  ],
+  "passes": [
+    {
+      "nodes": [
+        {
+          "id": "pitch",
+          "w": 180.0,
+          "h": 60.0,
+          "group": null
+        },
+        {
+          "id": "draft",
+          "w": 160.0,
+          "h": 60.0,
+          "group": null
+        },
+        {
+          "id": "edit",
+          "w": 180.0,
+          "h": 60.0,
+          "group": null
+        },
+        {
+          "id": "fact",
+          "w": 160.0,
+          "h": 60.0,
+          "group": null
+        },
+        {
+          "id": "copyedit",
+          "w": 160.0,
+          "h": 60.0,
+          "group": null
+        },
+        {
+          "id": "layout",
+          "w": 160.0,
+          "h": 60.0,
+          "group": null
+        },
+        {
+          "id": "publish",
+          "w": 160.0,
+          "h": 60.0,
+          "group": null
+        },
+        {
+          "id": "revise",
+          "w": 160.0,
+          "h": 60.0,
+          "group": null
+        }
+      ],
+      "edges": [
+        {
+          "id": "e:pitch->draft",
+          "a": "pitch",
+          "b": "draft",
+          "label": [
+            87.255078125,
+            24.0
+          ],
+          "name": "assigned"
+        },
+        {
+          "id": "e:draft->edit",
+          "a": "draft",
+          "b": "edit",
+          "label": [
+            94.85132812500001,
+            24.0
+          ],
+          "name": "submitted"
+        },
+        {
+          "id": "e:edit->fact",
+          "a": "edit",
+          "b": "fact",
+          "label": [
+            91.39921875,
+            24.0
+          ],
+          "name": "approved"
+        },
+        {
+          "id": "e:edit->revise",
+          "a": "edit",
+          "b": "revise",
+          "label": [
+            83.465,
+            24.0
+          ],
+          "name": "changes"
+        },
+        {
+          "id": "e:revise->edit",
+          "a": "revise",
+          "b": "edit",
+          "label": [
+            110.90484375,
+            24.0
+          ],
+          "name": "resubmitted"
+        },
+        {
+          "id": "e:fact->copyedit",
+          "a": "fact",
+          "b": "copyedit",
+          "label": [
+            83.698359375,
+            24.0
+          ],
+          "name": "checked"
+        },
+        {
+          "id": "e:copyedit->layout",
+          "a": "copyedit",
+          "b": "layout",
+          "label": [
+            58.61625,
+            24.0
+          ],
+          "name": "clean"
+        },
+        {
+          "id": "e:layout->publish",
+          "a": "layout",
+          "b": "publish",
+          "label": [
+            95.87328125,
+            24.0
+          ],
+          "name": "signed off"
+        }
+      ],
+      "groups": []
+    }
+  ],
+  "budget": {
+    "length_ratio": 1.02,
+    "crossings_seen": 0,
+    "mdetour_median": 1.0,
+    "mdetour_max": 1.05,
+    "reversals_max": 0,
+    "reversals_total": 0,
+    "bends_max": 2,
+    "label_misattributed": 0,
+    "label_orphan_max": 0.25,
+    "label_astray_max": 0,
+    "edge_on_edge_len": 0,
+    "entry_cross_offset_max": 24,
+    "parallel_bundle_len": 100,
+    "screen_use": 0.8,
+    "screen_ink": 0.18,
+    "empty_band_boxes": 0.25
+  }
+}
