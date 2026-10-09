@@ -2686,7 +2686,7 @@ def _claim_region(ctx: _Ctx, region: List[int]) -> Tuple[List[int], List[str]]:
     (``canvas_check.claim_snap``) and the op's answer says what it took in.
     """
     marks = [el for el in ctx.live() if el.get("type") not in ("frame", "comment", "arrow")]
-    snapped, over = _check.claim_snap(region, marks)
+    snapped, over = _check.claim_snap(region, marks, texts=ctx.live())
     return (snapped, over) if over else (region, [])
 
 

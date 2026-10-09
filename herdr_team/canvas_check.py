@@ -434,20 +434,109 @@ def claim_cuts(region: Sequence[float], marks: Iterable[Dict[str, Any]]) -> List
     return out
 
 
+#: How far past a claim's region its border may run, in world units, and how far inside it: the dashed rectangle is
+#: drawn ``canvas_display.CLAIM_BORDER_OUT`` outside the region with a 2 px stroke, and the widest that stroke is in
+#: world units at the zooms these numbers stand for is one pixel either side at the closest zoom a top-level frame
+#: still stands its title above itself (``canvas_geometry.FRAME_TITLE_LOD``). Deeper zooms are the display's to clear
+#: (``canvas_display._claim_rects``), because there the title grows on screen and no region can hold it.
+def _border_reach() -> Tuple[float, float]:
+    from herdr_team import canvas_display as _display  # it imports this module's neighbours: late on purpose
+    from herdr_team import canvas_geometry as _geo
+
+    half = 1.0 / float(_geo.FRAME_TITLE_LOD)
+    return float(_display.CLAIM_BORDER_OUT) - half, float(_display.CLAIM_BORDER_OUT) + half
+
+
+#: How far from a claim's region a line of text can be and still meet its border: the border's reach and a pill's
+#: own size. Text further out is never looked at, so a claim on a 2,000-mark board measures its own neighbourhood.
+CLAIM_TEXT_NEAR = 400.0
+
+
+def claim_texts(elements: Iterable[Dict[str, Any]], near: Optional[Sequence[float]] = None) -> List[Dict[str, Any]]:
+    """The lines of text a claim's border must never be drawn through that are not marks, as ``{"id", "box", "what"}``.
+
+    An arrow's label pill where the canvas placed it, and a frame's title: in its band, and for a top-level frame
+    standing above it at the closest zoom that stands it there. A title and a pill are not marks - an arrow and a frame
+    are not - which is exactly why ``claim_edge`` called a board clean with a dashed line through "Checkout flow" and
+    through "cancels a job the user / no longer wants" at every zoom (layout findings N4). Taken from each element's
+    own display entry, so a check can never disagree with the picture about where the words are. ``near`` limits it to
+    the text within ``CLAIM_TEXT_NEAR`` of a box.
+    """
+    from herdr_team import canvas_display as _display  # late, as above
+    from herdr_team import canvas_geometry as _geo
+    from herdr_team import canvas_render as _render
+
+    reach = None if near is None else (near[0] - CLAIM_TEXT_NEAR, near[1] - CLAIM_TEXT_NEAR,
+                                       near[2] + CLAIM_TEXT_NEAR, near[3] + CLAIM_TEXT_NEAR)
+    listed = [el for el in elements if isinstance(el, dict) and el.get("id")]
+    out: List[Dict[str, Any]] = []
+    env = None
+    for el in listed:
+        kind = el.get("type")
+        if kind == "arrow" and str(el.get("text") or "").strip():
+            pill = _geo.arrow_label_pill(el)
+            if pill is None:
+                continue
+            x, y, w, h = pill[0]
+            box = (x, y, x + w, y + h)
+            if reach is None or _intersects(reach, box):
+                out.append({"id": str(el["id"]), "box": box, "what": "label", "text": str(el.get("text") or "")})
+        elif kind == "frame" and str(el.get("text") or "").strip():
+            if reach is not None and not _intersects(reach, box_of(el)):
+                continue
+            if env is None:
+                env = _display.environment({"elements": listed})
+            entry = _display.entry(el, env)
+            seen = set()
+            for u in (1.0, 1.0 / float(_geo.FRAME_TITLE_LOD) + 1e-6):
+                for box in _render.text_boxes({"entries": [entry]}, u):
+                    key = tuple(round(v, 2) for v in box)
+                    if key not in seen:
+                        seen.add(key)
+                        out.append({"id": str(el["id"]), "box": box, "what": "title", "text": str(el.get("text") or "")})
+    return out
+
+
+def claim_text_cuts(region: Sequence[float], texts: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """The lines of text (``claim_texts``) this region's dashed border is drawn through: neither wholly inside the
+    stroke nor wholly outside it. Unlike a mark, a line of text has no share that makes a cut acceptable - a dashed
+    line through the edge of a word is still a line through a word."""
+    inward, outward = _border_reach()
+    x0, y0, x1, y1 = (float(v) for v in region)
+    inner = (x0 - inward, y0 - inward, x1 + inward, y1 + inward)
+    outer = (x0 - outward, y0 - outward, x1 + outward, y1 + outward)
+    found = []
+    for text in texts:
+        t = text["box"]
+        if _contains(inner, t) or t[2] <= outer[0] or t[0] >= outer[2] or t[3] <= outer[1] or t[1] >= outer[3]:
+            continue
+        found.append(text)
+    return found
+
+
 def claim_snap(region: Sequence[float], marks: Iterable[Dict[str, Any]],
-               max_area: float = CLAIM_SNAP_MAX_AREA) -> Tuple[List[int], List[str]]:
+               max_area: float = CLAIM_SNAP_MAX_AREA, texts: Optional[Iterable[Dict[str, Any]]] = None) -> Tuple[List[int], List[str]]:
     """``(region, ids)``: the region grown outward to hold whole the marks its boundary cut, and which those were.
 
     Bounded by ``max_area`` times the area asked for, and it stops before the step that would pass it, so a claim
     beside one big diagram never swallows it. Pure, and the same answer whatever order the marks come in.
+
+    ``texts`` is the board's elements (``ctx.live()``): the region then also grows to hold whole every frame title and
+    arrow pill its border would be drawn through (``claim_texts``), whatever share of it is inside - a claim that
+    stops its edge in the margin of the next mark is fine, one that stops it in the middle of a word is not. Growing,
+    never shrinking, so the repair ``claim_edge`` prints holds the claim it corrects and replaces it (the ``claim`` op
+    releases an own claim the new region holds whole).
     """
     listed = [el for el in marks if isinstance(el, dict) and el.get("id")]
     box = [float(region[0]), float(region[1]), float(region[2]), float(region[3])]
     room = max(1.0, (box[2] - box[0]) * (box[3] - box[1])) * max(1.0, float(max_area))
+    board = [el for el in texts if isinstance(el, dict)] if texts is not None else []
+    inward, _outward = _border_reach()
     taken: List[str] = []
     for _pass in range(CLAIM_SNAP_PASSES):
         cuts = sorted(claim_cuts(box, (el for el in listed if str(el["id"]) not in taken)), key=lambda el: str(el["id"]))
-        if not cuts:
+        words = sorted(claim_text_cuts(box, claim_texts(board, box)), key=lambda t: (t["id"], t["box"])) if board else []
+        if not cuts and not words:
             break
         grown = list(box)
         for el in cuts:
@@ -457,18 +546,36 @@ def claim_snap(region: Sequence[float], marks: Iterable[Dict[str, Any]],
                 continue
             grown = candidate
             taken.append(str(el["id"]))
+        for text in words:
+            # Hold the line whole *inside* the stroke: the border runs ``inward`` past the region's edge at most.
+            t = text["box"]
+            candidate = [min(grown[0], t[0] + inward - 1.0), min(grown[1], t[1] + inward - 1.0),
+                         max(grown[2], t[2] - inward + 1.0), max(grown[3], t[3] - inward + 1.0)]
+            if (candidate[2] - candidate[0]) * (candidate[3] - candidate[1]) > room:
+                continue
+            grown = candidate
+            if text["id"] not in taken:
+                taken.append(text["id"])
         if grown == box:
             break
         box = grown
     return [int(math.floor(box[0])), int(math.floor(box[1])), int(math.ceil(box[2])), int(math.ceil(box[3]))], taken
 
 
+def _text_name(text: Dict[str, Any]) -> str:
+    words = " ".join(str(text.get("text") or "").split())
+    words = words if len(words) <= 40 else words[:39] + "…"
+    return '{}\'s {} "{}"'.format(text["id"], "label" if text["what"] == "label" else "title", words)
+
+
 def _claim_edges(claims: Sequence[Dict[str, Any]], marks: List[Dict[str, Any]], reader: Optional[str],
-                 by_id: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Every mark an active claim's boundary crosses (V2): the overlay class the agent's feedback loop could not see.
+                 by_id: Dict[str, Dict[str, Any]], live: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+    """Every mark an active claim's boundary crosses (V2), and every frame title and arrow label it is drawn through
+    (N4): the overlay class the agent's feedback loop could not see.
 
     A claim is drawn as a dashed rectangle over the board, so its edge through a chart's axis labels reads as the
-    chart being cut off - which is how the operator found it, and check called the board clean.
+    chart being cut off - which is how the operator found it, and check called the board clean. A title and a pill
+    are not marks, so the first version of this check could not see the same line drawn through "Checkout flow".
     """
     out = []
     for claim in claims or ():
@@ -476,22 +583,27 @@ def _claim_edges(claims: Sequence[Dict[str, Any]], marks: List[Dict[str, Any]], 
         if not isinstance(region, (list, tuple)) or len(region) != 4:
             continue
         cuts = claim_cuts(region, marks)
-        if not cuts:
+        words = claim_text_cuts(region, claim_texts(live, region)) if live else []
+        if not cuts and not words:
             continue
         author = str(claim.get("author") or "")
-        snapped, took = claim_snap(region, marks)
+        snapped, took = claim_snap(region, marks, texts=live)
         # A snap that holds none of them whole (it would pass ``claim_snap``'s bound) has no operation to offer: say so.
         mine = bool(reader) and (author == reader or reader == "human") and bool(took)
+        named = [_name(el) for el in cuts] + [_text_name(t) for t in words]
+        ids = [str(el["id"]) for el in cuts] + [t["id"] for t in words if t["id"] not in {str(el["id"]) for el in cuts}]
+        ids = list(dict.fromkeys(ids))
         fix = {"op": "claim", "region": snapped, "intent": "claim the region that does not cut {}".format(
-            ", ".join(str(el["id"]) for el in cuts[:3]))} if mine else None
+            ", ".join(ids[:3]))} if mine else None
         if fix is not None and str(claim.get("label") or ""):
             fix["label"] = str(claim["label"])[:80]
         advice = ("claim {} instead, which holds them whole (this one expires on its own)".format(snapped) if mine
                   else "claim a region that holds them whole, or leave them to {}".format(author or "their author")
                   if author == reader or reader == "human" else "ask {} to claim a region that holds them whole".format(author or "its author"))
-        out.append(_problem("claim_edge", [str(claim.get("id") or "")] + [str(el["id"]) for el in cuts],
-                            "claim {}'s edge cuts across {}; {}".format(claim.get("id"), ", ".join(_name(el) for el in cuts[:3]), advice),
-                            fix, reader, by_id))
+        found = _problem("claim_edge", [str(claim.get("id") or "")] + ids,
+                         "claim {}'s edge cuts across {}; {}".format(claim.get("id"), ", ".join(named[:3]), advice),
+                         fix, reader, by_id)
+        out.append(found)
     return out
 
 
@@ -571,7 +683,7 @@ CHECKS: List[Check] = [
     Check("frame_edge", 2, lambda live, env: _frame_edges(env["groups"]["marks"], env["groups"]["frames"], env["reader"], env["by_id"])),
     Check("arrow_through", 3, lambda live, env: _arrows_through(env["groups"]["arrows"], env["groups"]["solid"], env["reader"], env["by_id"])),
     Check("stray", 4, lambda live, env: _strays(env["groups"]["marks"], env["reader"], env["by_id"])),
-    Check("claim_edge", 4, lambda live, env: _claim_edges(env["claims"], env["groups"]["marks"], env["reader"], env["by_id"])),
+    Check("claim_edge", 4, lambda live, env: _claim_edges(env["claims"], env["groups"]["marks"], env["reader"], env["by_id"], live)),
 ]
 
 

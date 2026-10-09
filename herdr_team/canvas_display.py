@@ -700,31 +700,432 @@ def _claim_neighbour(claim: Mapping[str, Any], box: Tuple[float, float, float, f
     return best
 
 
+#: The zooms, in screen pixels per unit, between which a claim's dashed border may be drawn differently so that it is
+#: never drawn through words (layout findings N4). The words near a claim depend on the zoom - a top-level frame's
+#: title stands above the frame below ``TITLE_MIN_PX / size`` and keeps 12 px on screen, so it grows in world units
+#: without bound, and a claim's own label is a fixed screen size - so no region can hold them at every zoom. The border
+#: is fitted per band instead, each band ``CLAIM_BAND_STEP`` wide so it is never much more generous than the zoom it
+#: is seen at, from ``CLAIM_BAND_TOP`` (where every title is in its band, inside its frame) down to
+#: ``CLAIM_BAND_FLOOR`` (20,000 units in 500 pixels). The theme's level-of-detail edges are band edges too, so within
+#: a band the same words draw. A band drawn the same as the one beside it adds nothing to the entry.
+CLAIM_BAND_TOP = 0.75
+CLAIM_BAND_STEP = 1.4
+CLAIM_BAND_FLOOR = 1.0 / 40.0
+#: Screen pixels the dashed stroke stops short of a line of text on each side: its own half width and two more, so a
+#: descender clears it.
+CLAIM_TEXT_GAP_PX = 3.0
+#: How far from a claim words are looked for, in units: the furthest a zoomed title stands above its frame at
+#: ``CLAIM_BAND_FLOOR`` is under 600.
+CLAIM_TEXT_REACH = 1000.0
+
+
+def _band_ends(low: Optional[float], high: Optional[float]) -> Tuple[float, float]:
+    """The units per pixel at the far (zoomed out) and near ends of a band of zoom, both just inside it.
+
+    Just inside, because what is measured there is drawn by ``lod`` and ``lod`` is half open: at exactly ``1 / low``
+    the scale can round below ``low`` and a label drawn in this band is not seen, and at ``1 / high`` it is the next
+    band's label that draws. A border fitted that way broke for another claim's label where the label was not, and
+    ran through it where it was (QA round 2).
+    """
+    far = 1.0 / ((low if low is not None else CLAIM_BAND_FLOOR / CLAIM_BAND_STEP) * (1.0 + 1e-6))
+    near = 1.0 / (high * (1.0 - 1e-6)) if high is not None else 1.0
+    return far, near
+
+
+def _claim_bands() -> List[Tuple[Optional[float], Optional[float]]]:
+    """The bands of zoom ``(low, high)`` a claim's border is fitted in, closest first (``lod`` order)."""
+    edges = {CLAIM_BAND_TOP, float(LOD_TITLES), float(LOD_OVERVIEW)}
+    scale = CLAIM_BAND_TOP
+    while scale > CLAIM_BAND_FLOOR:
+        scale /= CLAIM_BAND_STEP
+        edges.add(max(scale, CLAIM_BAND_FLOOR))
+    ordered = sorted((e for e in edges if CLAIM_BAND_FLOOR <= e <= CLAIM_BAND_TOP), reverse=True)
+    bands: List[Tuple[Optional[float], Optional[float]]] = [(ordered[0], None)]
+    bands += [(ordered[i + 1], ordered[i]) for i in range(len(ordered) - 1)]
+    bands.append((None, ordered[-1]))
+    return bands
+
+
+#: The corners a claim's label may hang from, best first: above the top-left (where every claim label was drawn until
+#: layout findings N4), above the top-right, then just inside the top-right and the top-left - inside a frame's title
+#: band, which is empty once the board is zoomed out far enough for the title to stand above the frame, and still
+#: inside a whole-board picture, which a label below the region is not - and last below the bottom-left and right.
+CLAIM_LABEL_CORNERS = ("tl", "tr", "itr", "itl", "bl", "br")
+
+
+def _claim_label(claim: Mapping[str, Any], env: Env, box: Tuple[float, float, float, float], corner: str = "tl") -> Dict[str, Any]:
+    """A claim's label: hung outside one of the region's corners (``corner``, above the top-left by default) at a fixed
+    screen size."""
+    author = str(claim.get("author") or "")
+    reader = env.get("reader")
+    who = "you" if reader and author == reader else ("the operator" if author == "human" else author)
+    found = chip(author, env)
+    text = "{} {}: {}".format(claim.get("id"), who, claim.get("label") or "")[:120]
+    x0, y0, x1, y1 = box
+    # Above the region's top edge, not just inside it. A claim snaps to the marks it holds, so its top-left corner is
+    # usually a frame's own top-left corner - and that is where a frame draws its title. The dashed rectangle and this
+    # pill were being drawn straight through "Customer interview findings, week 38" on nearly every graph render, in
+    # both themes (QA phase 6 V2, still open as F8). Text on text is the owner's own word for unclear.
+    left = corner in ("tl", "bl", "itl")
+    top = -(_ctext.line_height(12) + CLAIM_LABEL_LIFT) if corner in ("tl", "tr") else CLAIM_LABEL_LIFT
+    label: Dict[str, Any] = {"k": "group", "screen": [x0 if left else x1, y1 if corner in ("bl", "br") else y0],
+                             "items": [text_prim([text], 4 if left else -4, top, 12, {}, found["bg"], "start" if left else "end",
+                                                 None, 400)]}
+    right = _claim_neighbour(claim, (x0, y0, x1, y1), env) if left else None
+    if right is not None:
+        # A claim beside it on the right (QA phase 5 L8): the label stops where that claim, and its label, begin.
+        label = {"k": "group", "clip": [x0, y0 - CLAIM_LABEL_ROOM, max(0.0, right - CLAIM_LABEL_GAP - x0),
+                                        (y1 - y0) + 2 * CLAIM_LABEL_ROOM], "items": [label]}
+    return label
+
+
+#: A ring that holds every box: ``_words_at`` measuring for a claim's label, which is not looking along a border.
+_EVERYWHERE = ((-float("inf"), -float("inf"), float("inf"), float("inf")), (float("inf"), float("inf"), -float("inf"), -float("inf")))
+
+
+def _claim_labels(claim: Mapping[str, Any], env: Env, box: Tuple[float, float, float, float]) -> List[Dict[str, Any]]:
+    """A claim's label for every band of zoom: hung from the first corner where it lands on no words, or left out.
+
+    The label is a fixed 12 px on screen and hangs outside the region's top-left corner, which is where a top-level
+    frame's zoomed title stands too: on a member's claim of exactly their graph's frame, at a whole-board fit,
+    "K-2 alpha-member: ..." was printed straight over "Checkout flow for returning shoppers" (QA round 2 of layout
+    findings N4; 15 golden boards at some zoom). Text over text is what the owner calls unclear, so per band the label
+    tries the other corners (``CLAIM_LABEL_CORNERS``), measured against the words the board draws there at both ends
+    of the band, and where every corner lands on words it is left out: at that zoom it could only be read as a smudge.
+    It is left out too once the board is zoomed out so far that the label is wider than the whole board. A claim whose
+    first corner is clear at every zoom it is measured at keeps the label it always had, there.
+    """
+    from herdr_team import canvas_render as _render  # it imports this module: late on purpose
+
+    x0, y0, x1, y1 = box
+    variants = [(corner, _claim_label(claim, env, box, corner)) for corner in CLAIM_LABEL_CORNERS]
+    source = env.get("_claim_word_source")
+    if source is None:
+        source = []
+        for el in (env.get("by_id") or {}).values():
+            if not isinstance(el, dict) or el.get("type") == "comment":
+                continue
+            reach = _geo.drawn_bounds(dict(el))
+            if el.get("type") in ("frame", "heading") and str(el.get("text") or "").strip():
+                reach = (reach[0], reach[1] - CLAIM_TEXT_REACH, reach[2] + CLAIM_TEXT_REACH, reach[3])
+            source.append((reach, el))
+        env["_claim_word_source"] = source
+    cache = env.setdefault("_claim_entries", {})
+    # The labels of the claims placed before this one, where they were placed: this one keeps off them, so two labels
+    # never land on each other, and the later claim is the one that moves.
+    others = [{"id": "label:" + str(oid), "items": items}
+              for oid, items in (env.get("_claim_label_items") or {}).items() if oid != claim.get("id") and items]
+    def hull(boxes: Sequence[Sequence[float]]) -> Tuple[float, float, float, float]:
+        return (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
+
+    def meets(reach: Sequence[float], zone: Sequence[float]) -> bool:
+        return not (reach[2] < zone[0] or reach[0] > zone[2] or reach[3] < zone[1] or reach[1] > zone[3])
+
+    # Where each corner's label lands at both ends of every band (one short line each: cheap), then the board's words
+    # gathered once for the whole of that, so a band asks only about the few marks beside the corner it tries.
+    board = env.get("_claim_board")
+    if board is None:
+        board = env["_claim_board"] = hull([reach for reach, _el in source]) if source else (x0, y0, x1, y1)
+    wide = max(board[2] - board[0], x1 - x0)
+    # A label is a screen-sized group hung from a world point, cut by a world clip (the claim beside it): measured once
+    # at one pixel per unit relative to its anchor, it is the anchor plus those offsets times ``u`` at any zoom.
+    shapes = {}
+    for corner, prim in variants:
+        inner, clip = (prim["items"][0], prim["clip"]) if "clip" in prim else (prim, None)
+        ax, ay = float(inner["screen"][0]), float(inner["screen"][1])
+        rel = [(b[0] - ax, b[1] - ay, b[2] - ax, b[3] - ay) for b in _render.text_boxes({"entries": [{"items": [inner]}]}, 1.0)]
+        shapes[corner] = (ax, ay, rel, (clip[0], clip[1], clip[0] + clip[2], clip[1] + clip[3]) if clip else None)
+
+    def spot(corner: str, u: float) -> List[Tuple[float, float, float, float]]:
+        ax, ay, rel, cut = shapes[corner]
+        out = []
+        for r in rel:
+            b = (ax + r[0] * u, ay + r[1] * u, ax + r[2] * u, ay + r[3] * u)
+            if cut is not None:
+                b = (max(b[0], cut[0]), max(b[1], cut[1]), min(b[2], cut[2]), min(b[3], cut[3]))
+            if b[2] > b[0] and b[3] > b[1]:
+                out.append(b)
+        return out
+
+    bands = []
+    for low, high in _claim_bands():
+        far, near = _band_ends(low, high)
+        spots = {corner: spot(corner, far) + spot(corner, near) for corner, _prim in variants}
+        if any(b[2] - b[0] > wide for b in spots["tl"]):
+            # Zoomed out until the label is wider than the whole board: it can only lie across the drawing, and the
+            # drawing is a thumbnail. Not drawn, and not measured, which is what keeps a large board's bill flat.
+            spots = {corner: [] for corner in spots}
+        bands.append((low, high, far, near, spots))
+    every = [b for band in bands for boxes in band[4].values() for b in boxes]
+    pool: List[Tuple[Sequence[float], Dict[str, Any]]] = []
+    if every:
+        zone = hull(every)
+        for reach, el in source:
+            if meets(reach, zone):
+                key = el.get("id")
+                if key not in cache:
+                    cache[key] = entry(el, env)
+                pool.append((reach, cache[key]))
+        for overlay in env.get("_overlay_words") or []:
+            bbox = overlay.get("bbox")
+            if isinstance(bbox, list) and len(bbox) == 4:
+                reach = (bbox[0], bbox[1] - CLAIM_TEXT_REACH, bbox[2] + CLAIM_TEXT_REACH, bbox[3])
+                if meets(reach, zone):
+                    pool.append((reach, overlay))
+    # Measured against ``_EVERYWHERE``, an entry's words are the same for every claim: one memo for the whole list.
+    memo: Dict[Any, Any] = env.setdefault("_claim_label_words", {})
+    chosen: List[Tuple[Optional[float], Optional[float], Optional[str]]] = []
+    for low, high, far, near, spots in bands:
+        pick: Optional[str] = None
+        gap = CLAIM_TEXT_GAP_PX * far
+        for corner in CLAIM_LABEL_CORNERS:
+            mine = spots[corner]
+            if not mine:
+                continue
+            zx0, zy0, zx1, zy1 = hull(mine)
+            near_by = [found for reach, found in pool
+                       if not (reach[2] < zx0 or reach[0] > zx1 or reach[3] < zy0 or reach[1] > zy1)] + others
+            words = _words_at(near_by, far, memo, _EVERYWHERE, env) + _words_at(near_by, near, memo, _EVERYWHERE, env)
+            if not any(a[0] < w[2] + gap and a[2] > w[0] - gap and a[1] < w[3] + gap and a[3] > w[1] - gap
+                       for a in mine for w in words):
+                pick = corner
+                break
+        if chosen and chosen[-1][2] == pick:
+            chosen[-1] = (low, chosen[-1][1], pick)
+        else:
+            chosen.append((low, high, pick))
+    if len(chosen) == 1 and chosen[0][2] == "tl":
+        return [variants[0][1]]
+    out = []
+    by_corner = dict(variants)
+    for low, high, pick in chosen:
+        if pick is not None:
+            out.append(dict(by_corner[pick], lod=[low, high]))
+    return out
+
+
+def _claim_near(claim: Mapping[str, Any], env: Env, rect: Sequence[float]) -> List[Dict[str, Any]]:
+    """The entries whose words can reach a claim's border at some zoom: an element whose drawn box meets a ring round
+    the border, a frame or heading whose title can stand above it into that ring, and the other claims' labels.
+
+    The ring is what keeps this off the board's hot path: a claim holds most of what is near it, and words well
+    inside its border or well outside cannot meet a 2 px line at any zoom, so only the few along it are measured.
+    """
+    ring = 40.0
+    outer = (rect[0] - ring, rect[1] - ring, rect[2] + ring, rect[3] + ring)
+    inner = (rect[0] + ring, rect[1] + ring, rect[2] - ring, rect[3] - ring)
+    cache = env.setdefault("_claim_entries", {})
+    found: List[Dict[str, Any]] = []
+
+    def meets(box: Sequence[float]) -> bool:
+        if box[2] < outer[0] or box[0] > outer[2] or box[3] < outer[1] or box[1] > outer[3]:
+            return False
+        return not (inner[0] < inner[2] and inner[1] < inner[3] and box[0] > inner[0] and box[2] < inner[2]
+                    and box[1] > inner[1] and box[3] < inner[3])
+
+    for el in (env.get("by_id") or {}).values():
+        if not isinstance(el, dict) or el.get("type") == "comment":
+            continue
+        box = _geo.drawn_bounds(dict(el))
+        if el.get("type") in ("frame", "heading") and str(el.get("text") or "").strip():
+            # A zoomed title stands above the frame and may run past its right edge: reach up and right for it.
+            box = (box[0], box[1] - CLAIM_TEXT_REACH, box[2] + CLAIM_TEXT_REACH, box[3])
+        if not meets(box):
+            continue
+        key = el.get("id")
+        if key not in cache:
+            cache[key] = entry(el, env)
+        found.append(cache[key])
+    for overlay in env.get("_overlay_words") or []:
+        bbox = overlay.get("bbox")
+        # A proposal's pill hangs above its box at a fixed screen size: reach up and right for it, like a title.
+        if isinstance(bbox, list) and len(bbox) == 4 and meets((bbox[0], bbox[1] - CLAIM_TEXT_REACH, bbox[2] + CLAIM_TEXT_REACH, bbox[3])):
+            found.append(overlay)
+    placed = env.get("_claim_label_items") or {}
+    for other in env.get("claims") or []:
+        region = other.get("region")
+        if other is claim or other.get("id") == claim.get("id") or not isinstance(region, list) or len(region) != 4:
+            continue
+        ox0, oy0, ox1, oy1 = (num(v, 0.0) for v in region)
+        if other.get("id") in placed:
+            # Hung from whichever corner it was placed at, per band (``_claim_labels``): measured as it draws.
+            if placed[other["id"]] and meets((ox0 - CLAIM_TEXT_REACH * 4, oy0 - CLAIM_TEXT_REACH, ox1 + CLAIM_TEXT_REACH * 4,
+                                              oy1 + CLAIM_TEXT_REACH)):
+                found.append({"id": "label:" + str(other.get("id")), "items": placed[other["id"]]})
+        elif meets((ox0, oy0 - CLAIM_TEXT_REACH, ox0 + CLAIM_TEXT_REACH * 4, oy0)):
+            found.append({"id": "label:" + str(other.get("id")), "claim_label": other,
+                          "items": [_claim_label(other, env, (ox0, oy0, ox1, oy1))]})
+    return found
+
+
+def _scaled(item: Mapping[str, Any]) -> bool:
+    """Whether a primitive's words move with the zoom other than by its ``lod``: a zoomed title or a screen group."""
+    if item.get("zoom") is not None or item.get("screen") is not None:
+        return True
+    fallback = item.get("fallback")
+    inner = list(item.get("items") or ()) + (list(fallback.get("items") or ()) if isinstance(fallback, dict) else [])
+    return any(isinstance(p, dict) and _scaled(p) for p in inner)
+
+
+def _on_ring(box: Sequence[float], ring: Tuple[Tuple[float, float, float, float], Tuple[float, float, float, float]]) -> bool:
+    """Whether a box reaches the band between ``ring``'s outer and inner rectangles: where a border's gap can need it."""
+    outer, inner = ring
+    if box[2] < outer[0] or box[0] > outer[2] or box[3] < outer[1] or box[1] > outer[3]:
+        return False
+    return not (box[0] > inner[0] and box[2] < inner[2] and box[1] > inner[1] and box[3] < inner[3])
+
+
+def _words_at(near_by: Sequence[Dict[str, Any]], u: float, memo: Dict[Any, Any],
+              ring: Tuple[Tuple[float, float, float, float], Tuple[float, float, float, float]], env: Env) -> List[Tuple[float, float, float, float]]:
+    """``canvas_render.text_boxes`` of ``near_by`` at ``u``, measured once per entry rather than once per band.
+
+    Words in world units only appear and disappear at their ``lod`` edges, so each of an entry's items is measured
+    once with its ``lod`` set aside and kept with it; a zoomed title is one ``zoom_box``; only a screen-sized group
+    (another claim's label) is walked at each zoom. This is what keeps a claim's border off the display list's bill.
+    """
+    from herdr_team import canvas_render as _render  # it imports this module: late on purpose
+
+    scale = 1.0 / u if u > 0 else float("inf")
+    out: List[Tuple[float, float, float, float]] = []
+    for found in near_by:
+        key = found.get("id")
+        shape = memo.get(key)
+        if shape is None:
+            fixed: List[Tuple[Optional[List[Any]], Tuple[float, float, float, float]]] = []
+            titles: List[Mapping[str, Any]] = []
+            labels: List[Tuple[Tuple[float, float], Tuple[float, float, float, float], Optional[Tuple[float, float]]]] = []
+            other = found.get("claim_label")
+            if other is not None:
+                # Another claim's label hangs from its region's corner in screen pixels: measured once at one pixel
+                # per unit, it is that corner plus the same offsets times ``u`` at any zoom, cut by its own stop.
+                ox0, oy0 = num(other["region"][0], 0.0), num(other["region"][1], 0.0)
+                right = _claim_neighbour(other, tuple(num(v, 0.0) for v in other["region"]), env)  # type: ignore[arg-type]
+                bare = _claim_label(dict(other, region=[ox0, oy0, ox0 + 1e9, oy0 + 1.0]), {**env, "claims": []},
+                                    (ox0, oy0, ox0 + 1e9, oy0 + 1.0))
+                for box in _render.text_boxes({"entries": [{"items": [bare]}]}, 1.0):
+                    labels.append(((ox0, oy0), (box[0] - ox0, box[1] - oy0, box[2] - ox0, box[3] - oy0),
+                                   (ox0, right - CLAIM_LABEL_GAP) if right is not None else None))
+            for item in [] if other is not None else found.get("items") or ():
+                if not isinstance(item, dict):
+                    continue
+                if item.get("k") == "text" and isinstance(item.get("zoom"), dict):
+                    titles.append(item)
+                elif not _scaled(item):
+                    lod = item.get("lod") if isinstance(item.get("lod"), list) else None
+                    bare_item = {k: v for k, v in item.items() if k != "lod"}
+                    fixed += [(lod, box) for box in _render.text_boxes({"entries": [{"items": [bare_item]}]}, 1.0)
+                              if _on_ring(box, ring)]
+                else:
+                    titles.append(item)  # screen-sized words inside a mark: walked at each zoom below
+            shape = memo[key] = (fixed, titles, labels)
+        fixed, titles, labels = shape
+        for lod, box in fixed:
+            if lod is not None:
+                low, high = (lod + [None, None])[:2]
+                if (isinstance(low, (int, float)) and not scale >= low) or (isinstance(high, (int, float)) and not scale < high):
+                    continue
+            out.append(box)
+        for prim in titles:
+            if prim.get("k") == "text" and isinstance(prim.get("zoom"), dict):
+                box = zoom_box(prim, u)
+                if box is not None:
+                    out.append(box)
+            else:
+                out.extend(_render.text_boxes({"entries": [{"items": [prim]}]}, u))
+        for (ax, ay), (dx0, dy0, dx1, dy1), stop in labels:
+            box = (ax + dx0 * u, ay + dy0 * u, ax + dx1 * u, ay + dy1 * u)
+            if stop is not None:
+                box = (max(box[0], stop[0]), box[1], min(box[2], stop[1]), box[3])
+            if box[2] > box[0]:
+                out.append(box)
+    return out
+
+
+def _claim_border(rect: Sequence[float], words: Sequence[Sequence[float]], u: float) -> Optional[str]:
+    """The claim's border as path data with a gap wherever a line of text sits on it, or None when nothing does.
+
+    A legend in a fieldset: the line stops short of the words and starts again past them, so the words read whole and
+    the region still reads as a rectangle. Each side is a straight run; a line of text is on a side when its box
+    reaches into the stroke there (half the 2 px stroke and ``CLAIM_TEXT_GAP_PX`` either side, at ``u``).
+    """
+    x0, y0, x1, y1 = rect
+    clear = (1.0 + CLAIM_TEXT_GAP_PX) * u
+    sides = (("h", y0, x0, x1), ("v", x1, y0, y1), ("h", y1, x1, x0), ("v", x0, y1, y0))
+    runs: List[str] = []
+    cut = False
+    for axis, at, start, stop in sides:
+        lo, hi = min(start, stop), max(start, stop)
+        gaps = []
+        for t in words:
+            across = (t[1], t[3]) if axis == "h" else (t[0], t[2])
+            along = (t[0], t[2]) if axis == "h" else (t[1], t[3])
+            if across[0] < at + clear and across[1] > at - clear and along[1] > lo and along[0] < hi:
+                gaps.append((along[0] - clear, along[1] + clear))
+        pieces = [(lo, hi)]
+        for g0, g1 in sorted(gaps):
+            nxt = []
+            for p0, p1 in pieces:
+                if g1 <= p0 or g0 >= p1:
+                    nxt.append((p0, p1))
+                    continue
+                if g0 > p0:
+                    nxt.append((p0, g0))
+                if g1 < p1:
+                    nxt.append((g1, p1))
+            pieces = nxt
+        cut = cut or bool(gaps)
+        for p0, p1 in pieces:
+            if p1 - p0 <= 0.0:
+                continue
+            if axis == "h":
+                runs.append("M{} {}L{} {}".format(fmt(p0), fmt(at), fmt(p1), fmt(at)))
+            else:
+                runs.append("M{} {}L{} {}".format(fmt(at), fmt(p0), fmt(at), fmt(p1)))
+    if not cut:
+        return None
+    # Every side gapped (a claim smaller than the words it sits on): nothing to draw. A zero-length run here was a dot
+    # in the middle of the words with a round cap, and resvg logged "path dashing failed" on it (QA round 2).
+    return "".join(runs)
+
+
 def _claim_entry(claim: Mapping[str, Any], env: Env) -> Optional[Dict[str, Any]]:
     region = claim.get("region")
     if not isinstance(region, list) or len(region) != 4:
         return None
     x0, y0, x1, y1 = (num(v, 0.0) for v in region)
     author = str(claim.get("author") or "")
-    reader = env.get("reader")
-    who = "you" if reader and author == reader else ("the operator" if author == "human" else author)
     found = chip(author, env)
-    text = "{} {}: {}".format(claim.get("id"), who, claim.get("label") or "")[:120]
-    # Above the region's top edge, not just inside it. A claim snaps to the marks it holds, so its top-left corner is
-    # usually a frame's own top-left corner - and that is where a frame draws its title. The dashed rectangle and this
-    # pill were being drawn straight through "Customer interview findings, week 38" on nearly every graph render, in
-    # both themes (QA phase 6 V2, still open as F8). Text on text is the owner's own word for unclear.
-    label: Dict[str, Any] = {"k": "group", "screen": [x0, y0],
-                             "items": [text_prim([text], 4, -(_ctext.line_height(12) + CLAIM_LABEL_LIFT), 12, {},
-                                                 found["bg"], "start", None, 400)]}
-    right = _claim_neighbour(claim, (x0, y0, x1, y1), env)
-    if right is not None:
-        # A claim beside it on the right (QA phase 5 L8): the label stops where that claim, and its label, begin.
-        label = {"k": "group", "clip": [x0, y0 - CLAIM_LABEL_ROOM, max(0.0, right - CLAIM_LABEL_GAP - x0),
-                                        (y1 - y0) + 2 * CLAIM_LABEL_ROOM], "items": [label]}
-    out_w, out_h = x1 - x0 + 2 * CLAIM_BORDER_OUT, y1 - y0 + 2 * CLAIM_BORDER_OUT
-    items = [{"k": "rect", "x": x0 - CLAIM_BORDER_OUT, "y": y0 - CLAIM_BORDER_OUT, "w": out_w, "h": out_h,
-              "fill": None, "stroke": found["bg"], "sw_px": 2, "dash": [8, 6]}, label]
+    rect = (x0 - CLAIM_BORDER_OUT, y0 - CLAIM_BORDER_OUT, x1 + CLAIM_BORDER_OUT, y1 + CLAIM_BORDER_OUT)
+    paint = {"fill": None, "stroke": found["bg"], "sw_px": 2, "dash": [8, 6]}
+    whole = dict({"k": "rect", "x": rect[0], "y": rect[1], "w": rect[2] - rect[0], "h": rect[3] - rect[1]}, **paint)
+    # Per band of zoom, the border as it must be drawn there; consecutive bands that draw it the same are one.
+    near_by = _claim_near(claim, env, rect)
+    memo: Dict[Any, Any] = {}
+    # Words in world units matter only where a gap can reach: within the widest gap of the furthest band of a side.
+    reach = (1.0 + CLAIM_TEXT_GAP_PX) * CLAIM_BAND_STEP / CLAIM_BAND_FLOOR
+    ring = ((rect[0] - reach, rect[1] - reach, rect[2] + reach, rect[3] + reach),
+            (rect[0] + reach, rect[1] + reach, rect[2] - reach, rect[3] - reach))
+    drawn: List[Tuple[Optional[float], Optional[float], Optional[str]]] = []
+    for low, high in _claim_bands() if near_by else [(None, None)]:
+        far, near = _band_ends(low, high)
+        # Both ends of the band: the far end draws every zoomed title at its widest and the stroke at its widest in
+        # units, the near end draws the words a closer zoom shows that the far end leaves out.
+        words = (_words_at(near_by, far, memo, ring, env) + _words_at(near_by, near, memo, ring, env)) if near_by else []
+        path = _claim_border(rect, words, far)
+        if drawn and drawn[-1][2] == path:
+            drawn[-1] = (low, drawn[-1][1], path)
+        else:
+            drawn.append((low, high, path))
+    items: List[Dict[str, Any]] = []
+    for low, high, path in drawn:
+        if path == "":
+            continue  # at this zoom the words cover the whole border: it is not drawn (``_claim_border``)
+        prim = dict(whole) if path is None else dict({"k": "path", "d": path}, **paint)
+        if len(drawn) > 1:
+            prim["lod"] = [low, high]
+        items.append(prim)
+    placed = env.get("_claim_label_items") or {}
+    items.extend(placed[claim.get("id")] if claim.get("id") in placed else _claim_labels(claim, env, (x0, y0, x1, y1)))
     out = {"id": str(claim.get("id") or ""), "kind": "claim", "layer": "overlays", "z": -1, "v": 0,
            "bbox": [x0, y0, x1, y1], "hit": {"shape": "none"}, "handles": "none", "connect": False, "edit": None,
            "frame": None, "author": author, "chip": found, "locked": False, "items": items}
@@ -796,13 +1197,26 @@ def entries(scene: Mapping[str, Any], ids: Optional[Iterable[str]] = None, *, re
             found = _lock_entry(lock, env)
             if found is not None:
                 out.append(found)
+    if wanted is None:
+        # The claims below measure the words along their borders from these same entries (``_claim_near``).
+        env.setdefault("_claim_entries", {}).update((e["id"], e) for e in out if e.get("id"))
+    # Made before the claims so a claim's border and label keep off a proposal's pill too (QA round 2: claim K-1's
+    # corner ran over the end of proposal P-1's pill on the collab board).
+    overlays = collab.display_entries(scene, env, wanted) if collab is not None else []
+    env["_overlay_words"] = [e for e in overlays if isinstance(e, dict) and e.get("kind") == "proposal"]
+    # Every claim's label is placed before any border is fitted, so a border breaks for the other labels where they
+    # are drawn, not where the first corner would have put them.
+    placed = env.setdefault("_claim_label_items", {})
+    for claim in scene.get("claims") or []:
+        region = claim.get("region") if isinstance(claim, dict) else None
+        if isinstance(region, list) and len(region) == 4 and claim.get("id") not in placed:
+            placed[claim.get("id")] = _claim_labels(claim, env, tuple(num(v, 0.0) for v in region))  # type: ignore[arg-type]
     for claim in scene.get("claims") or []:
         if isinstance(claim, dict) and (wanted is None or claim.get("id") in wanted):
             found = _claim_entry(claim, env)
             if found is not None:
                 out.append(found)
-    if collab is not None:
-        out.extend(collab.display_entries(scene, env, wanted))
+    out.extend(overlays)
     out.sort(key=order_key)
     return out
 
@@ -842,10 +1256,18 @@ def lod_visible(prim: Mapping[str, Any], scale: float) -> bool:
 
 
 def bbox_of(found: Sequence[Mapping[str, Any]], max_px: int = _geo.DEFAULT_MAX_PX) -> Box:
-    """The document ``bbox`` (1.1): every entry's bbox padded by 40, grown until it holds every frame title as a
-    picture of it at ``max_px`` draws it (the settling rule of ``canvas_geometry.view_box``)."""
+    """The document ``bbox`` (1.1): every entry's bbox padded by 40, grown until it holds every frame title and every
+    claim's label as a picture of it at ``max_px`` draws them (the settling rule of ``canvas_geometry.view_box``).
+
+    A claim's label hangs outside its region at a fixed screen size, and on a whole-board picture the only corner
+    clear of words is often outside the board: without the room, the label was cut in half at the picture's top
+    edge, or, moved below the region to keep off a frame title (layout findings N4), left out of the picture."""
+    from herdr_team import canvas_render as _render  # it imports this module: late on purpose
+
     boxes = [tuple(e["bbox"]) for e in found if isinstance(e.get("bbox"), list) and len(e["bbox"]) == 4]
     titles = [prim for e in found for prim in frame_titles(e.get("items") or [])]
+    claims = {"entries": [{"items": [p for p in e.get("items") or () if isinstance(p, dict) and p.get("k") == "group"]}
+                          for e in found if e.get("kind") == "claim"]}
     if not boxes:
         return -_geo.PADDING, -_geo.PADDING, 400.0 + _geo.PADDING, 300.0 + _geo.PADDING
 
@@ -854,12 +1276,17 @@ def bbox_of(found: Sequence[Mapping[str, Any]], max_px: int = _geo.DEFAULT_MAX_P
                 max(b[2] for b in more) + _geo.PADDING, max(b[3] for b in more) + _geo.PADDING)
 
     box = padded(boxes)
+    labels: List[Tuple[float, float, float, float]] = []
     for _round in range(4):
-        if not titles:
+        if not titles and not claims["entries"]:
             break
         u = _geo.units_per_px(box, max_px)
         extra = [b for b in (zoom_box(prim, u) for prim in titles) if b is not None]
-        grown = padded(list(boxes) + extra)
+        if claims["entries"]:
+            # Kept from every round: a label picks its corner by the zoom, and the zoom moves as the box grows, so a
+            # label held above the board on one round and below it on the next must find room on both.
+            labels += _render.text_boxes(claims, u)
+        grown = padded(list(boxes) + extra + labels)
         if grown == box:
             break
         box = grown

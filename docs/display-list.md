@@ -31,8 +31,9 @@ move text, and never compute geometry.
 ```
 
 - `bbox` is `[x0, y0, x1, y1]`: every entry's `bbox` padded by 40, grown until
-  it also holds each frame title as a 1024-pixel picture of the board draws it
-  (the settling rule of `canvas_geometry.view_box`). The page fits to it.
+  it also holds each frame title and each claim's label as a 1024-pixel picture
+  of the board draws them (the settling rule of `canvas_geometry.view_box`,
+  which answers this box when the board has claims). The page fits to it.
 - `entries` come in render order: layer (`zones`, `marks`, `labels`,
   `overlays`), then `z`, then the number in the id, then the id. Within an
   entry, `items` draw in list order. Claims have `z` -1 and locks -2.
@@ -155,6 +156,34 @@ it is therefore a horizontal stop and nothing else: the label is screen-sized,
 so its height in world units grows as the board is zoomed out, and the clip's
 vertical range (`CLAIM_LABEL_ROOM` either side) is whatever cannot cut it at a
 usable zoom.
+
+The border is never drawn **through words** either (layout findings N4). The region
+holds whole the words that are in world units — an arrow's label pill and a frame's
+title in its band (`canvas_check.claim_snap` with the board's elements, and
+`claim_edge` reports a claim that does not, with a `claim` op that does). The
+words whose size depends on the zoom cannot be held by any region: a top-level
+frame's title stands above it at 12 px and grows in world units as the board is
+zoomed out, and another claim's label is screen-sized. For those the border is
+drawn per band of zoom (`CLAIM_BAND_TOP` down to `CLAIM_BAND_FLOOR`, each
+`CLAIM_BAND_STEP` wide, with `lod`) and, where a line of text sits on it, as a
+`path` of straight runs that stops `CLAIM_TEXT_GAP_PX` short of the words and
+starts again past them — a fieldset's legend. A band that draws the same as the
+one beside it merges into it, and a claim with no words on its border is one
+`rect` as before. Only the entries along the border are measured, each once per
+side of its own `lod` edges, just inside each band so a `lod` edge is never read
+as the band beside it. A proposal's pill counts as words too. A band where words
+cover every side draws no border at all, never a zero-length run.
+
+The claim's **label** keeps off words the same way. Per band it hangs from the
+first of `CLAIM_LABEL_CORNERS` where it lands on no other line of text — above
+the top-left corner (where it always hung), above the top-right, just inside the
+top-right and top-left, below the bottom-left and bottom-right — measured against
+the board's words, proposals' pills and the labels of the claims placed before
+it, and is left out of a band where every corner is on words or the label is
+wider than the whole board. Each run is a `group` with `lod`. The document
+`bbox` holds every claim's label as a picture at the default size draws it, so a
+whole-board picture shows it whole. The classic (v1) page engine draws claims
+its own way and has none of this.
 
 **Paint** is `null`, a literal `"#rrggbb"` (the same in both themes), a token
 reference (`base.<role>`, `tone.<tone>.<role>`, `chip.<0-7|human>.<bg|fg>`,

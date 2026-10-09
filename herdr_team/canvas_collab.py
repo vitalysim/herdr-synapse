@@ -1068,7 +1068,7 @@ def _claim_fit(ctx: Any, region: Sequence[float]) -> List[int]:
     it holds more than half of and never over one it merely reaches into, so whose lane a mark is in barely moves.
     """
     marks = [el for el in ctx.live() if el.get("type") not in ("frame", "comment", "arrow")]
-    snapped, _over = _check.claim_snap([float(v) for v in region], marks)
+    snapped, _over = _check.claim_snap([float(v) for v in region], marks, texts=ctx.live())
     return snapped
 
 

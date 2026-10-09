@@ -733,6 +733,14 @@ def view_box(scene: Dict[str, Any], region: Optional[Sequence[float]] = None, ma
     """
     if region is not None:
         return normalize_region(region)
+    if any(isinstance(c, dict) and isinstance(c.get("region"), list) for c in scene.get("claims") or []):
+        # A claim's label hangs outside its region at a fixed screen size, from whichever corner keeps it off words at
+        # that zoom, and the display list's own box holds it (``canvas_display.bbox_of``): the picture draws that box,
+        # so this answers the same box rather than a second guess at where the labels went.
+        from herdr_team import canvas_display as _display  # it imports this module: late on purpose
+
+        found = _display.bbox_of(_display.entries(scene), max_px)
+        return tuple(_display.r2(v) for v in found)  # type: ignore[return-value]
     elements = [e for e in scene.get("elements") or [] if isinstance(e, dict)]
     boxes: List[Sequence[float]] = [drawn_bounds(e) for e in elements]
     for item in list(scene.get("claims") or []) + list(scene.get("locks") or []):
