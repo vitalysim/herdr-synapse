@@ -104,7 +104,7 @@ class CommandTests(unittest.TestCase):
         # daemon only queues a record for the human when the human is named
         self.assertIn("human", record["to"])
         self.assertEqual(record["member"], MANAGER)
-        self.assertIn("is the team manager", record["text"])
+        self.assertIn("is the team leader (manager)", record["text"])
         self.assertIn("not the operator", record["text"], "the record has to say what it is not")
 
     def test_the_operator_is_toasted_and_every_member_is_nudged(self):
@@ -313,7 +313,7 @@ class PublishedTests(unittest.TestCase):
         self.assertIn("{} (reviewer, codex, team manager)".format(MANAGER), text)
         self.assertNotIn("you are the team manager", text)
         boss = [m for m in doc["members"] if m["name"] == MANAGER][0]
-        self.assertIn("you are the team manager", cmd_hooks.brief_context(self.ts.team, "alpha", dict(boss)))
+        self.assertIn("you are the team leader (manager)", cmd_hooks.brief_context(self.ts.team, "alpha", dict(boss)))
 
     def test_the_skill_teaches_it_without_contradicting_the_peer_rule(self):
         from herdr_team import paths as _paths

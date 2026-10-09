@@ -148,8 +148,8 @@ or `herdr agent start <name> --kind <kind> --pane <id>`), let them reach
 idle, then either:
 
 - **UI** (later, to add an agent to a team that exists): `prefix+t`, Space on the new agent, Enter, then type `1` for `add it to team <t>` (the last number creates a new team instead), then its role, name, and required Mission / brief; the confirm screen says `Add 1 agent to team <t>?`; afterwards every other member is nudged that `<name> joined team <t>` and the newcomer is briefed.
-- **UI**: `prefix+t`, Space on the two rows, Enter, team name, charter, optional team rules, team folder, then per member a role, a name, a required Mission / brief and an optional model; confirm.
-- **CLI**: `herdr-synapse create demo --charter "Try the team board end to end" --member <pane1>:reviewer --member <pane2>:worker --brief reviewer="Review the work." --brief worker="Implement the work."`.
+- **UI**: `prefix+t`, Space on the two rows, Enter, team name, charter, optional team rules, team folder, confirm a leader, then per member a role, a name, a required Mission / brief (the leader's configurable responsibilities) and an optional model; confirm.
+- **CLI**: `herdr-synapse create demo --leader role:reviewer --charter "Try the team board end to end" --member <pane1>:reviewer --member <pane2>:worker --brief reviewer="Review the work and report progress." --brief worker="Implement the work."`.
 
 Each member gets a one-line briefing typed into its input box once it is
 idle, then reads the skill, the charter, and the board, and acknowledges.

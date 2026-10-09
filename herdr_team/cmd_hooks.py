@@ -523,7 +523,7 @@ def brief_context(team: paths.TeamPaths, team_name: str, member: Dict[str, Any])
     mates.append("human (operator)")
     lines.append("teammates: " + ", ".join(mates))
     if member.get("manager"):
-        lines.append("you are the team manager: split and sequence the work, and post the plan to the team.")
+        lines.append("you are the team leader (manager): follow your Mission for responsibilities. Existing manager permissions apply; this is not operator delegation.")
     from herdr_team import links as _links
 
     try:

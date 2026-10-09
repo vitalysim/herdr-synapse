@@ -171,7 +171,7 @@ def _teammate_list(teammates: List[Tuple[str, ...]]) -> str:
     """``name (role)`` for each, with the team manager marked.
 
     A third element in the tuple, when present and true, marks that teammate as
-    the manager. Peers need to know who is splitting the work; the manager
+    the manager. Peers need to identify the designated coordinator; its Mission defines the duties. The manager
     itself is not told here, because the "You are ..." clause has only 29
     characters of slack at the worst legal name and role, and the board record
     that names it reaches every kind anyway.

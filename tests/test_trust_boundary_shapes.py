@@ -604,7 +604,7 @@ class ThroughTheRealCommands(unittest.TestCase):
         return json_out(run_cli(["--json"] + list(argv), env_no_daemon(self.ts), self.api))
 
     def create(self, *extra: str) -> None:
-        code, _payload, err = self.cli("create", "alpha", "--member", "w5:p1:reviewer",
+        code, _payload, err = self.cli("create", "alpha", "--leader", "role:reviewer", "--member", "w5:p1:reviewer",
                                        "--brief", "reviewer=Review the patch.", *extra)
         self.assertEqual(code, 0, err)
 

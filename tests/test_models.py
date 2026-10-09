@@ -200,7 +200,7 @@ class SpawnTests(unittest.TestCase):
             api = self.api()
             api.set_cli_result(["agent", "start"], self.STARTED_CODEX, request_id="cli:agent:start")
             code, payload, err = json_out(run_cli([
-                "--json", "create", "delta", "--new", "--workspace", "w9",
+                "--json", "create", "delta", "--leader", "role:reviewer", "--new", "--workspace", "w9",
                 "--spawn", "reviewer:codex", "--spawn", "worker:claude",
                 "--brief", "reviewer=Review every patch.", "--brief", "worker=Implement the patch.",
                 "--model", "reviewer=gpt-5.6-luna@high", "--model", "claude=opus@medium",
@@ -223,11 +223,11 @@ class SpawnTests(unittest.TestCase):
         with TempState(write_team=False) as ts:
             self.no_waiting()
             api = self.api()
-            code, _payload, err = json_out(run_cli(["--json", "create", "delta", "--new", "--workspace", "w9", "--spawn", "qa:gemini", "--model", "qa=pro@high"], env_no_daemon(ts), api))
+            code, _payload, err = json_out(run_cli(["--json", "create", "delta", "--leader", "role:qa", "--new", "--workspace", "w9", "--spawn", "qa:gemini", "--model", "qa=pro@high"], env_no_daemon(ts), api))
             self.assertEqual((code, err["code"]), (1, "model_unsupported"))
             self.assertEqual([m for m, _p in api.calls if m == "layout.apply"], [])
             self.assertFalse(ts.session.team("delta").team_json.exists())
-            code, _payload, err = json_out(run_cli(["--json", "create", "delta", "--new", "--workspace", "w9", "--spawn", "qa:codex", "--model", "nobody=@high"], env_no_daemon(ts), api))
+            code, _payload, err = json_out(run_cli(["--json", "create", "delta", "--leader", "role:qa", "--new", "--workspace", "w9", "--spawn", "qa:codex", "--model", "nobody=@high"], env_no_daemon(ts), api))
             self.assertEqual((code, err["code"]), (2, "usage"))
 
     def test_opencode_spawn_selects_the_variant_before_it_queues_the_briefing(self):
@@ -239,7 +239,7 @@ class SpawnTests(unittest.TestCase):
                                                                                      "root": {"type": "pane", "pane_id": "w9:p1"}}})
             api.set_cli_result(["agent", "start"], self.STARTED_OPENCODE, request_id="cli:agent:start")
             code, payload, err = json_out(run_cli([
-                "--json", "create", "delta", "--new", "--workspace", "w9",
+                "--json", "create", "delta", "--leader", "role:builder", "--new", "--workspace", "w9",
                 "--spawn", "builder:opencode", "--brief", "builder=Build the feature.", "--model", "builder=opencode/glm-5.3-flash@high",
             ], env_no_daemon(ts), api))
             self.assertEqual(code, 0, err)
@@ -829,6 +829,8 @@ class PickerCreateTests(unittest.TestCase):
         tui_model.picker_apply_key(model, "TAB")            # no team rules
         self.assertEqual(model.stage, "project")
         tui_model.picker_apply_key(model, "TAB")            # no folder
+        self.assertEqual(model.stage, "leader")
+        tui_model.picker_apply_key(model, "ENTER")
         self.assertEqual(model.stage, "members")
 
     def test_the_fourth_prompt_records_a_setting_and_enter_keeps_the_default(self):
@@ -884,11 +886,11 @@ class CreateLiveMemberSettingTests(unittest.TestCase):
     def test_it_is_recorded_and_a_wrong_name_is_a_usage_error(self):
         with TempState(write_team=False) as ts:
             api = live_api()
-            code, payload, err = json_out(run_cli(["--json", "create", "beta", "--member", "w5:p1:reviewer", "--brief", "reviewer=Review every patch.", "--model", "reviewer=@high"], env_no_daemon(ts), api))
+            code, payload, err = json_out(run_cli(["--json", "create", "beta", "--leader", "role:reviewer", "--member", "w5:p1:reviewer", "--brief", "reviewer=Review every patch.", "--model", "reviewer=@high"], env_no_daemon(ts), api))
             self.assertEqual(code, 0, err)
             row = next(m for m in store.read_json(ts.session.team("beta").team_json)["members"] if m["role"] == "reviewer")
             self.assertEqual((row.get("model"), row.get("effort")), (None, "high"))
-            code, _payload, err = json_out(run_cli(["--json", "create", "gamma", "--member", "w5:p2:worker", "--model", "nobody=@high"], env_no_daemon(ts), api))
+            code, _payload, err = json_out(run_cli(["--json", "create", "gamma", "--leader", "role:worker", "--member", "w5:p2:worker", "--model", "nobody=@high"], env_no_daemon(ts), api))
             self.assertEqual((code, err["code"]), (2, "usage"))
             self.assertFalse(ts.session.team("gamma").team_json.exists())
 

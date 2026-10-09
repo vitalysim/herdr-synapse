@@ -131,7 +131,7 @@ class SaveAndReuse(unittest.TestCase):
     def test_the_default_reviewer_applies_to_new_work(self):
         with TempState(write_team=False) as ts:
             env = env_no_daemon(ts)
-            code, _p, err = json_out(run_cli(["--json", "create", "hunt", "--template", "vuln-hunt", "--member", "w5:p1:hunter", "--member", "wA:p6:validator"], env, live_api()))
+            code, _p, err = json_out(run_cli(["--json", "create", "hunt", "--template", "vuln-hunt", "--member", "w5:p1:hunter", "--member", "wA:p6:validator", "--leader", "role:validator"], env, live_api()))
             self.assertEqual(code, 0, err)
             code, payload, err = json_out(run_cli(["--json", "--team", "hunt", "work", "add", "Check the upload endpoint", "--to", "hunt-hunter", "--acceptance", "reproduced PoC"], env, live_api()))
             self.assertEqual(code, 0, err)

@@ -286,7 +286,7 @@ class DelegatedOrchestrationTests(unittest.TestCase):
             api = live_api()
             # alpha-worker sits in pane w2:p2; every gated flag is refused for it today
             agent_env = env_no_daemon(ts, HERDR_PANE_ID="w2:p2")
-            argv = ["--json", "create", "beta", "--member", "w5:p1:tester:tess",
+            argv = ["--json", "create", "beta", "--leader", "tess", "--member", "w5:p1:tester:tess",
                     "--charter", "find the bug", "--rules", "DON'T force push",
                     "--instructions", "tess=own the parser", "--project", project]
             code, _out, err = run_cli(argv, agent_env, api)

@@ -64,7 +64,7 @@ class InheritOnCreate(unittest.TestCase):
 
     def test_create_inherit_adopts_the_rules_the_facts_and_the_canvas(self):
         folder = self.source_team()
-        code, payload, err = self.cli("create", "beta", "--member", "w5:p1:reviewer", "--brief", "reviewer=Review the patch.", "--project", os.fspath(self.project),
+        code, payload, err = self.cli("create", "beta", "--leader", "role:reviewer", "--member", "w5:p1:reviewer", "--brief", "reviewer=Review the patch.", "--project", os.fspath(self.project),
                                       "--inherit", os.fspath(folder))
         self.assertEqual(code, 0, err)
         inherited = payload["inherited"]
@@ -78,7 +78,7 @@ class InheritOnCreate(unittest.TestCase):
         folder = self.source_team()
         from herdr_team import features
 
-        code, payload, err = self.cli("create", "gamma", "--member", "w5:p1:reviewer", "--brief", "reviewer=Review the patch.", "--project", os.fspath(self.project),
+        code, payload, err = self.cli("create", "gamma", "--leader", "role:reviewer", "--member", "w5:p1:reviewer", "--brief", "reviewer=Review the patch.", "--project", os.fspath(self.project),
                                       "--inherit", os.fspath(folder))
         self.assertEqual(code, 0, err)
         self.assertTrue(features.team_switch(self.ts.session, self.ts.session.team("gamma")).enabled)
@@ -86,17 +86,17 @@ class InheritOnCreate(unittest.TestCase):
 
     def test_inherit_needs_a_project_directory_and_takes_one_from_the_path(self):
         folder = self.source_team()
-        code, payload, err = self.cli("create", "delta", "--member", "w5:p1:reviewer", "--brief", "reviewer=Review the patch.", "--inherit", os.fspath(folder))
+        code, payload, err = self.cli("create", "delta", "--leader", "role:reviewer", "--member", "w5:p1:reviewer", "--brief", "reviewer=Review the patch.", "--inherit", os.fspath(folder))
         self.assertEqual(code, 0, err)
         self.assertEqual(payload["project_dir"], os.path.realpath(self.project), "the knowledge path named its own project")
-        code, _payload, err = self.cli("create", "epsilon", "--member", "w5:p3:reviewer", "--brief", "reviewer=Review the patch.", "--inherit", "alpha")
+        code, _payload, err = self.cli("create", "epsilon", "--leader", "role:reviewer", "--member", "w5:p3:reviewer", "--brief", "reviewer=Review the patch.", "--inherit", "alpha")
         message = err["message"] if isinstance(err, dict) else err
         self.assertEqual(code, 2, message)
         self.assertIn("--project", message)
 
     def test_a_bad_inherit_does_not_fail_create(self):
         self.source_team()
-        code, payload, err = self.cli("create", "zeta", "--member", "w5:p1:reviewer", "--brief", "reviewer=Review the patch.", "--project", os.fspath(self.project),
+        code, payload, err = self.cli("create", "zeta", "--leader", "role:reviewer", "--member", "w5:p1:reviewer", "--brief", "reviewer=Review the patch.", "--project", os.fspath(self.project),
                                       "--inherit", os.fspath(self.ts.tmp / "nowhere"))
         self.assertEqual(code, 0, err)
         self.assertTrue(payload["created"])
@@ -105,7 +105,7 @@ class InheritOnCreate(unittest.TestCase):
 
     def test_without_the_flag_create_offers_the_record_already_in_the_folder(self):
         self.source_team()
-        code, payload, err = self.cli("create", "eta", "--member", "w5:p1:reviewer", "--brief", "reviewer=Review the patch.", "--project", os.fspath(self.project))
+        code, payload, err = self.cli("create", "eta", "--leader", "role:reviewer", "--member", "w5:p1:reviewer", "--brief", "reviewer=Review the patch.", "--project", os.fspath(self.project))
         self.assertEqual(code, 0, err)
         self.assertIsNone(payload["inherited"])
         self.assertEqual(len(C.load_scene(self.ts.session.team("eta"))["elements"]), 0, "nothing is adopted implicitly")
@@ -132,7 +132,7 @@ class InheritOnCreate(unittest.TestCase):
     def test_the_offer_fires_for_a_same_named_teams_facts_still_in_place(self):
         """TRUS-5: the same-name offer counts the previous team's facts where they are, which is where they stay."""
         _folder, _before = self._previous_alpha_then_recreate()
-        code, out, err = run_cli(["create", "alpha", "--member", "w5:p1:reviewer",
+        code, out, err = run_cli(["create", "alpha", "--leader", "role:reviewer", "--member", "w5:p1:reviewer",
                                   "--brief", "reviewer=Review the patch.",
                                   "--project", os.fspath(self.project)],
                                  env_no_daemon(self.ts), self.api)
@@ -145,7 +145,7 @@ class InheritOnCreate(unittest.TestCase):
         """DATA-8: ``found_in_place`` names every file the folder already held, the knowledge document included,
         and nothing in it becomes this team's operator authority by itself."""
         folder, before = self._previous_alpha_then_recreate()
-        code, payload, err = self.cli("create", "alpha", "--member", "w5:p1:reviewer",
+        code, payload, err = self.cli("create", "alpha", "--leader", "role:reviewer", "--member", "w5:p1:reviewer",
                                       "--brief", "reviewer=Review the patch.",
                                       "--project", os.fspath(self.project))
         self.assertEqual(code, 0, err)
@@ -161,7 +161,7 @@ class InheritOnCreate(unittest.TestCase):
     def test_create_project_says_nothing_was_copied_because_nothing_was(self):
         """TRUS-1: every sentence about a found document is true of the disk: it is held, and no copy exists."""
         folder, _before = self._previous_alpha_then_recreate()
-        code, out, err = run_cli(["create", "alpha", "--member", "w5:p1:reviewer",
+        code, out, err = run_cli(["create", "alpha", "--leader", "role:reviewer", "--member", "w5:p1:reviewer",
                                   "--brief", "reviewer=Review the patch.",
                                   "--project", os.fspath(self.project)],
                                  env_no_daemon(self.ts), self.api)

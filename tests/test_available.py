@@ -270,7 +270,7 @@ class CreateWithProfilesTests(unittest.TestCase):
 
         api.set_response("layout.apply", layout_apply)
         api.set_cli(["agent", "start"], 0, "{}", "")
-        argv = ["--json", "create", "delta", "--new", "--workspace", "w9"]
+        argv = ["--json", "create", "delta", "--new", "--workspace", "w9", "--leader", "role:" + spawns[0].split(":")[0]]
         for spec in spawns:
             argv += ["--spawn", spec, "--brief", "{}=Work.".format(spec.split(":")[0])]
         env = dict(rig.env)
@@ -465,6 +465,8 @@ class PickerNewMemberTests(unittest.TestCase):
             tui_model.picker_apply_key(model, "TAB")            # no rules
             self.assertEqual(model.input, str(rig.project))     # the new members' directory is the suggested folder
             tui_model.picker_apply_key(model, "TAB")            # no folder
+            self.assertEqual(model.stage, "leader")
+            tui_model.picker_apply_key(model, "ENTER")          # confirm the highlighted leader
             self.assertEqual(model.stage, "members")
             type_line(model, "skeptic")
             tui_model.picker_apply_key(model, "ENTER")
@@ -508,7 +510,7 @@ class PickerNewMemberTests(unittest.TestCase):
             return 0, {"team": "mix"}, None
 
         spec = {"team": "mix", "charter": "Ship it.", "rules": None, "project": "/p", "mode": "create", "workspace": "w1", "members": [
-            {"target": "w1:p2", "kind": "claude", "role": "lead", "name": "mix-lead", "brief": "Lead.", "setting": None, "spawn": False},
+            {"target": "w1:p2", "terminal_id": "term_live", "kind": "claude", "role": "lead", "name": "mix-lead", "brief": "Lead.", "setting": None, "spawn": False, "leader": True},
             {"target": "new-1", "kind": "opencode", "role": "skeptic", "name": "mix-skeptic", "brief": "Doubt.", "setting": None,
              "spawn": True, "profile": "plan", "cwd": "/p"},
         ]}

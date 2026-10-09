@@ -872,7 +872,7 @@ class CreateSetupTests(unittest.TestCase):
 
             api.set_response("agent.get", agent_get)
         return run_cli(
-            ["create", "alpha", "--member", "w2:p1:reviewer", "--member", "w2:p2:worker", "--brief", "reviewer=Review the work.", "--brief", "worker=Implement the work."] + list(extra),
+            ["create", "alpha", "--leader", "role:reviewer", "--member", "w2:p1:reviewer", "--member", "w2:p2:worker", "--brief", "reviewer=Review the work.", "--brief", "worker=Implement the work."] + list(extra),
             env if env is not None else self.state.env, api,
         )
 
@@ -965,6 +965,8 @@ class PickerProjectStageTests(unittest.TestCase):
         model = self.drive_to_project(self.model())
         picker_apply_key(model, "TAB")
         self.assertEqual(model.project, "")
+        self.assertEqual(model.stage, "leader")
+        picker_apply_key(model, "ENTER")
         self.assertEqual(model.stage, "members")
         model.stage = "confirm"
         spec = create_spec(model)
@@ -1000,7 +1002,11 @@ class PickerProjectStageTests(unittest.TestCase):
         picker_apply_key(model, "TAB")
         picker_apply_key(model, "TAB")
         picker_apply_key(model, "TAB")
+        self.assertEqual(model.stage, "leader")
+        picker_apply_key(model, "ENTER")
         self.assertEqual(model.stage, "members")
+        picker_apply_key(model, "ESC")
+        self.assertEqual(model.stage, "leader")
         picker_apply_key(model, "ESC")
         self.assertEqual(model.stage, "project")
 

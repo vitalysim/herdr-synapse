@@ -343,7 +343,10 @@ def solo_intent(model: PickerModel, trust: bool = False, clear: bool = True) -> 
     target = model.wb_target or {}
     team = model.solo_team
     role, name = solo_member(model, team)
-    create = ["create", team, "--member", "{}:{}:{}".format(target.get("pane_id"), role, name), "--brief", "{}={}".format(name, model.solo_mission)]
+    create = ["create", team, "--member", "{}:{}:{}".format(target.get("pane_id"), role, name), "--brief", "{}={}".format(name, model.solo_mission), "--leader", name]
+    if target.get("terminal_id"):
+        # Layer/trust steps can outlive the first pane guard; creation must check the selected identity again.
+        create += ["--expect-terminal", "{}={}".format(name, target["terminal_id"])]
     kind = str(target.get("agent_kind") or "")
     canvas_on = ["--team", team, "whiteboard", "team", "on"]  # only this team: a canvas is per team
     steps = ([trust_step(kind, "trusted from the teams view to brief {}".format(name))] if trust else []) + [create, canvas_on]

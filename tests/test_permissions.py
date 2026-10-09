@@ -143,7 +143,7 @@ class PermissionTests(unittest.TestCase):
             api = rig.api()
             api.set_cli_result(["agent", "start"], rig.STARTED_CODEX, request_id="cli:agent:start")
             with mock.patch("herdr_team.cmd_roster._wait_for_agent", return_value=None):
-                code, out, err = json_out(run_cli(["--json", "create", "delta", "--new", "--workspace", "w9",
+                code, out, err = json_out(run_cli(["--json", "create", "delta", "--leader", "role:reviewer", "--new", "--workspace", "w9",
                     "--spawn", "reviewer:codex", "--spawn", "worker:claude", "--brief", "reviewer=Review patches",
                     "--brief", "worker=Write patches", "--permissions", "native", "--member-permissions", "worker=yolo"], env_no_daemon(ts), api))
             self.assertEqual(code, 0, err)
@@ -176,7 +176,7 @@ class PermissionTests(unittest.TestCase):
     def test_attaching_live_members_records_policy_without_relaunching(self):
         with TempState(write_team=False) as ts:
             api = live_api()
-            code, out, err = json_out(run_cli(["--json", "create", "delta", "--member", "w5:p1:reviewer",
+            code, out, err = json_out(run_cli(["--json", "create", "delta", "--leader", "role:reviewer", "--member", "w5:p1:reviewer",
                 "--brief", "reviewer=Review patches", "--member-permissions", "reviewer=native"], env_no_daemon(ts), api))
             self.assertEqual(code, 0, err)
             self.assertEqual(roster.load_team(ts.session.team("delta")).find("delta-reviewer").permissions, "native")

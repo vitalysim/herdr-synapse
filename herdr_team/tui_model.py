@@ -2419,7 +2419,7 @@ class PickerModel:
     rows: List[PickerRow]
     cursor: int = 0
     scope_workspace: Optional[str] = None
-    stage: str = "select"  # select | topology | target | name | charter | rules | project | members | confirm
+    stage: str = "select"  # select | topology | target | name | charter | rules | project | leader | members | confirm
     team_name: str = ""
     charter: str = ""
     rules: str = ""
@@ -2440,6 +2440,9 @@ class PickerModel:
     mode: str = "create"
     #: Highlighted row of the target stage: one row per existing team, then "create a new team".
     target_index: int = 0
+    #: Creation-only choice follows terminal/new-row identity, never an editable name or list ordinal.
+    leader_key: str = ""
+    leader_index: int = 0
     #: Agent members per existing team, for the target stage labels (filled by the picker runtime).
     existing_team_sizes: Dict[str, int] = field(default_factory=dict)
     #: Kinds the daemon may type into (``kinds.json``); None when unknown. The confirm screen warns about the rest.
@@ -2949,6 +2952,7 @@ def create_spec(model: PickerModel) -> Dict[str, Any]:
                 "spawn": row.spawn,
                 "profile": row.profile or None,
                 "cwd": row.cwd or None,
+                "leader": model.mode == "create" and leader_row_key(row) == model.leader_key,
             }
         )
     return {"team": model.team_name, "charter": model.charter or None, "rules": model.rules or None, "project": model.project or None,
@@ -2967,6 +2971,11 @@ def _begin_member_field(model: PickerModel) -> None:
         model.error = "select at least one agent"
         return
     if model.member_index >= len(rows):
+        if model.mode == "create" and not any(leader_row_key(r) == model.leader_key for r in rows):
+            model.stage = "leader"
+            model.leader_index = min(model.leader_index, max(0, len(rows) - 1))
+            model.error = "choose a leader from the current selection"
+            return
         model.stage = "confirm"
         model.input = ""
         model.cursor_pos = 0
@@ -3066,6 +3075,8 @@ def picker_apply_key(model: PickerModel, key: str) -> Optional[Intent]:
         return _rules_key(model, key)
     if model.stage == "project":
         return _project_key(model, key)
+    if model.stage == "leader":
+        return _leader_key(model, key)
     if model.stage == "team_folder":
         return _team_folder_key(model, key)
     if model.stage == "link_pick":
@@ -3080,6 +3091,11 @@ def picker_apply_key(model: PickerModel, key: str) -> Optional[Intent]:
         return _new_profile_key(model, key)
     if model.stage == "confirm":
         if key == "ENTER":
+            if model.mode == "create" and not any(leader_row_key(r) == model.leader_key for r in selected_rows(model)):
+                model.stage = "leader"
+                model.leader_index = min(model.leader_index, max(0, len(selected_rows(model)) - 1))
+                model.error = "the selected leader is no longer available; choose again"
+                return None
             return Intent("create", create_spec(model))
         if key == "ESC":
             rows = selected_rows(model)
@@ -3717,7 +3733,52 @@ def _project_key(model: PickerModel, key: str) -> Optional[Intent]:
 
 def _finish_project(model: PickerModel) -> Optional[Intent]:
     model.error = None
+    model.stage = "leader"
+    rows = selected_rows(model)
+    model.leader_index = next((i for i, r in enumerate(rows) if leader_row_key(r) == model.leader_key), 0)
+    _set_input(model, "")
+    return None
+
+
+LEADER_MISSION = "Coordinate work, track blockers and evidence, and report progress to the operator."
+
+
+def leader_row_key(row: PickerRow) -> str:
+    """Keep the operator's choice attached to a terminal even when role, name or pane changes."""
+    if row.spawn:
+        return "new:" + row.pane_id
+    return "terminal:" + row.terminal_id if row.terminal_id else "pane:" + row.pane_id
+
+
+def _leader_key(model: PickerModel, key: str) -> Optional[Intent]:
+    rows = selected_rows(model)
+    if key == "ESC":
+        model.stage = "project"
+        _set_input(model, model.project or suggested_project_dir(model))
+        model.error = None
+        return None
+    if not rows:
+        model.stage = "select"
+        model.error = "select at least one agent"
+        return None
+    if key in ("UP", "k", "DOWN", "j", "PGUP", "PGDN", "HOME", "END"):
+        model.leader_index = _move_index(model.leader_index, len(rows), key, model.page_rows)
+        model.error = None
+        return None
+    if key.isdigit():
+        index = int(key) - 1
+        if index < 0 or index >= len(rows):
+            model.error = "choose a leader between 1 and {}".format(len(rows))
+            return None
+        model.leader_index = index
+    elif key != "ENTER":
+        return None
+    row = rows[min(model.leader_index, len(rows) - 1)]
+    model.leader_key = leader_row_key(row)
+    if not row.brief:
+        row.brief = LEADER_MISSION
     model.stage = "members"
+    model.error = None
     model.member_index = 0
     model.member_field = "role"
     _begin_member_field(model)
@@ -3869,9 +3930,8 @@ def _members_key(model: PickerModel, key: str) -> Optional[Intent]:
             model.status = None
             return None
         else:
-            # Back one stage, which is now the folder, not the charter.
-            model.stage = "project"
-            _set_input(model, model.project or suggested_project_dir(model))
+            model.stage = "leader"
+            _set_input(model, "")
             return None
         model.error = None
         _begin_member_field(model)
@@ -4560,6 +4620,17 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
         lines.append("  <dir>/.herdr-synapse/{}/ ; leave empty for no folder".format(model.team_name))
         lines.append(INPUT_PROMPT + model.input)
         has_input = True
+    elif model.stage == "leader":
+        header = _wrap_picker_text("Choose the team leader (type a number, or arrows and Enter; Esc back)", width, "  ")
+        header += _wrap_picker_text("Edit their responsibilities in Mission next. Existing manager permissions; no operator delegation.", width, "  ")
+        groups = [_wrap_picker_text("{} {}  {} ({})".format(
+            ">" if i == model.leader_index else " ", i + 1, row.member_name or row.name or row.pane_id,
+            new_label(row) if row.spawn else row.kind or "?"), width, "  ") for i, row in enumerate(selected_rows(model))]
+        reserved = len(picker_message_lines(model, width, height))
+        if groups and len(header) + len(groups[min(model.leader_index, len(groups) - 1)]) + reserved > height:
+            header = [truncate_columns("Choose leader: arrows/Enter; Esc back", width)]
+        lines.extend(header)
+        lines.extend(_option_window(groups, model.leader_index, max(1, height - len(header) - reserved)))
     elif model.stage == "new_harness":
         rows = installed_harnesses(model)
         lines.append("Start a new member: which harness? (Enter picks, Esc back)")
@@ -4593,7 +4664,7 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
         else:
             lines.append("Member {}/{}: {} {} {}{}".format(model.member_index + 1, len(rows), row.pane_id, row.kind or "?", row.name or "(unnamed)", joining))
         lines.append("Enter accepts the value shown, Ctrl-U clears it, Esc goes back")
-        prompt = {"role": "role", "name": "name", "brief": "Mission / brief for {} (required)".format(row.member_name or "this member"),
+        prompt = {"role": "role", "name": "name", "brief": "{} for {} (required)".format("Leader responsibilities / Mission" if model.mode == "create" and leader_row_key(row) == model.leader_key else "Mission / brief", row.member_name or "this member"),
                   "model": "model@effort for {} (optional, e.g. opus@medium or @high; Enter keeps the harness default)".format(row.member_name or "this member")}[model.member_field]
         if model.member_field == "model":
             hint = model_hint(model, row)
@@ -4611,6 +4682,8 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
             lines.append("Create team {}? (Enter creates, Esc back)".format(model.team_name))
             lines.append("charter: {}".format(headline(model.charter, 60) if model.charter else "(none, set later with charter set)"))
             lines.append("rules: {}".format(headline(model.rules, 60) if model.rules else "(none, set later with knowledge set)"))
+            chosen = next((r for r in selected_rows(model) if leader_row_key(r) == model.leader_key), None)
+            lines.append("leader: {} — existing manager permissions, not operator".format(chosen.member_name if chosen else "missing; choose again"))
         kind_width = max([10] + [len(new_label(r)) for r in selected_rows(model) if r.spawn])
         for row in selected_rows(model):
             lines.append("  {:<8} {:<{kw}} {:<14} {}{}{}".format("new" if row.spawn else row.pane_id, new_label(row) if row.spawn else (row.kind or "?"),

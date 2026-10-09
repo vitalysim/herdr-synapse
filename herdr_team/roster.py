@@ -869,7 +869,7 @@ def update_team(team_paths: TeamPaths, mutate: Callable[[Team], Any], retries: i
     return Team.from_json(store.RosterStore(team_paths).update(mutate_doc, retries=retries))
 
 
-def create_team(layout: Layout, name: str, naming: str = "prefixed", charter: Optional[Dict[str, Any]] = None, reuse: bool = False) -> Team:
+def create_team(layout: Layout, name: str, naming: str = "prefixed", charter: Optional[Dict[str, Any]] = None, reuse: bool = False, expected_exists: Optional[bool] = None) -> Team:
     """Write a fresh ``team.json`` (with the human member); ``team_exists`` unless ``reuse``."""
     validate_team_name(name)
     if naming not in NAMING_MODES:
@@ -878,6 +878,8 @@ def create_team(layout: Layout, name: str, naming: str = "prefixed", charter: Op
     ensure_team_dirs(team_paths)
     with store.team_lock(team_paths):
         existing = store.read_json(team_paths.team_json, default=None)
+        if expected_exists is not None and (existing is not None) != expected_exists:
+            raise HerdrTeamError("team_changed", "team {!r} changed during creation planning; retry so its leader requirement is checked again".format(name), EXIT_REFUSED, {"team": name})
         if existing is not None:
             if not reuse:
                 raise HerdrTeamError("team_exists", "team {!r} already exists (use --reuse)".format(name), EXIT_REFUSED, {"team": name})

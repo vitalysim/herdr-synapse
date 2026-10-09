@@ -76,8 +76,9 @@ held as gone (below).
   it refuses unless given one of those); `--dry-run` shows the same text and changes
   nothing. `herdr-synapse instructions <name> --adopt` takes one member
   document, in front of a diff; `herdr-synapse canvas import --from <folder>`
-  takes the board; `herdr-synapse create <team> --inherit <folder>` does the
-  first at creation. Each reads the file where it is. What it adopted becomes
+  takes the board; `herdr-synapse create <team> --leader <name> --inherit <folder>`
+  does the first at creation, alongside the required member/Mission arguments.
+  Each reads the file where it is. What it adopted becomes
   this team's, so the next render may write this team's version over it —
   through the copy below.
 - `herdr-synapse project render --force` writes this team's version over

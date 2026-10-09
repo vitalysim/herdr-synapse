@@ -126,7 +126,8 @@ class TeamOfOne(unittest.TestCase):
         intent = picker_apply_key(model, "ENTER")
         name = roster.fit_member_name("codex-canvas", "codex-dev", tui_model.MAX_MEMBER_NAME_CHARS)
         self.assertEqual(intent.args["steps"], [["create", "codex-canvas", "--member", "w1:p3:codex-dev:" + name,
-                                                 "--brief", "{}={}".format(name, W.SOLO_MISSION)],
+                                                 "--brief", "{}={}".format(name, W.SOLO_MISSION), "--leader", name,
+                                                 "--expect-terminal", name + "=term_a"],
                                                 ["--team", "codex-canvas", "whiteboard", "team", "on"]])  # only this team's canvas
         self.assertEqual(intent.args["focus"], "team:codex-canvas")
         self.assertIn("has a canvas of its own in team codex-canvas", intent.args["done"])
@@ -148,7 +149,7 @@ class TeamOfOne(unittest.TestCase):
         self.assertIn("needs a Mission", model.error)
         type_line(model, "Draw   the plan ")
         intent = picker_apply_key(model, "ENTER")
-        self.assertEqual(intent.args["steps"], [ENABLE, ["create", "sketch-pad", "--member", "w1:p2:gemini-dev:gem", "--brief", "gem=Draw the plan"],
+        self.assertEqual(intent.args["steps"], [ENABLE, ["create", "sketch-pad", "--member", "w1:p2:gemini-dev:gem", "--brief", "gem=Draw the plan", "--leader", "gem", "--expect-terminal", "gem=term_c"],
                                                 ["--team", "sketch-pad", "whiteboard", "team", "on"]])
         self.assertIn("its briefing tells it once it is idle", intent.args["done"])
 

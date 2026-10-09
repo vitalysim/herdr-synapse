@@ -121,7 +121,7 @@ class Workflow1Tests(unittest.TestCase):
         team_paths = ts.session.team(TEAM)
 
         # 1. create the team from two live agents ---------------------------------------
-        code, created, err = self.cli(["--json", "create", TEAM, "--member", "{}:reviewer".format(REVIEWER_PANE), "--member", "{}:worker".format(WORKER_PANE), "--brief", "reviewer=Review the fix.", "--brief", "worker=Implement the fix.", "--charter", "Fix the session bug."])
+        code, created, err = self.cli(["--json", "create", TEAM, "--leader", "role:reviewer", "--member", "{}:reviewer".format(REVIEWER_PANE), "--member", "{}:worker".format(WORKER_PANE), "--brief", "reviewer=Review the fix.", "--brief", "worker=Implement the fix.", "--charter", "Fix the session bug."])
         self.assertEqual(code, 0, err)
         self.assertEqual([m["name"] for m in created["members"]], ["beta-reviewer", "beta-worker"])
         self.assertEqual({r["name"] for r in api.rows}, {"beta-reviewer", "beta-worker"}, "agent.rename applied the derived names")
@@ -141,7 +141,7 @@ class Workflow1Tests(unittest.TestCase):
         self.assertEqual(code, 0, err)
         self.assertEqual(charter["charter"]["seq"], 2)
         records = store.BoardStore(team_paths).read()
-        self.assertEqual([r["event"] for r in records], ["charter_updated", "charter_updated"])
+        self.assertEqual([r["event"] for r in records], ["charter_updated", "manager_changed", "charter_updated"])
         self.assertTrue(all(r["from"] == "system" and r["kind"] == "system" for r in records))
         # an agent pane may not touch it
         code, _, err = self.cli(["--json", "charter", "set", "mine now"], HERDR_PANE_ID=REVIEWER_PANE)

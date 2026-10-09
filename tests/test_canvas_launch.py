@@ -127,7 +127,7 @@ class FourPathsTests(unittest.TestCase):
         api.set_cli_result(["agent", "start"], {"type": "agent_started", "agent": fake_agent("w9:p1", "term_new", "codex", "delta-reviewer", launch_pending=False),
                                                 "argv": ["codex"]}, request_id="cli:agent:start")
         code, _payload, err = json_out(run_cli([
-            "--json", "create", "delta", "--new", "--workspace", "w9"] + (["--canvas"] if canvas else []) + [
+            "--json", "create", "delta", "--leader", "role:reviewer", "--new", "--workspace", "w9"] + (["--canvas"] if canvas else []) + [
 
             "--spawn", "reviewer:codex", "--spawn", "worker:claude", "--spawn", "scout:pi",
             "--brief", "reviewer=Review.", "--brief", "worker=Build.", "--brief", "scout=Scout.",

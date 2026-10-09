@@ -827,6 +827,8 @@ class PickerWizardTests(unittest.TestCase):
         picker_apply_key(model, "ALT_ENTER")
         self.assertEqual(model.stage, "project")
         picker_apply_key(model, "TAB")  # skip the team folder
+        self.assertEqual(model.stage, "leader")
+        picker_apply_key(model, "ENTER")  # confirm the highlighted leader
         self.assertEqual((model.stage, model.member_index, model.member_field), ("members", 0, "role"))
         self.assertEqual(model.input, "codex-dev")  # default role: kind label + "-dev" (bare labels are refused)
         picker_apply_key(model, "ENTER")
@@ -888,6 +890,8 @@ class PickerWizardTests(unittest.TestCase):
         self.assertEqual(model.charter, "")
         picker_apply_key(model, "TAB")  # skip team rules
         picker_apply_key(model, "TAB")  # skip the team folder
+        self.assertEqual(model.stage, "leader")
+        picker_apply_key(model, "ENTER")  # confirm the highlighted leader
         picker_apply_key(model, "ENTER")  # role codex-dev
         self.assertEqual(model.input, "t-codex-dev")
         picker_apply_key(model, "ENTER")  # name
@@ -918,6 +922,8 @@ class PickerWizardTests(unittest.TestCase):
         picker_apply_key(model, "TAB")  # skip charter
         picker_apply_key(model, "TAB")  # skip team rules
         picker_apply_key(model, "TAB")  # skip the team folder
+        self.assertEqual(model.stage, "leader")
+        picker_apply_key(model, "ENTER")  # confirm the highlighted leader
         picker_apply_key(model, "ENTER")
         type_line(model, "alpha-reviewer")
         picker_apply_key(model, "ENTER")
@@ -974,6 +980,8 @@ class PickerWizardTests(unittest.TestCase):
         picker_apply_key(model, "TAB")
         self.assertEqual(model.stage, "project")
         picker_apply_key(model, "TAB")
+        self.assertEqual(model.stage, "leader")
+        picker_apply_key(model, "ENTER")
         self.assertEqual(model.stage, "members")
         type_line(model, "human")
         picker_apply_key(model, "ENTER")
@@ -983,8 +991,11 @@ class PickerWizardTests(unittest.TestCase):
         picker_apply_key(model, "ESC")
         self.assertEqual(model.member_field, "role")
         picker_apply_key(model, "ESC")
+        self.assertEqual(model.stage, "leader")
+        picker_apply_key(model, "ESC")
         self.assertEqual(model.stage, "project")
         picker_apply_key(model, "TAB")
+        picker_apply_key(model, "ENTER")  # leader again
         picker_apply_key(model, "ENTER")
         picker_apply_key(model, "ENTER")
         type_line(model, "Test the patch.")

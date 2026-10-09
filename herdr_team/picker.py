@@ -205,12 +205,14 @@ def refresh_rows(model: PickerModel, api: Any, layout: Optional[Layout]) -> None
     fresh = build_model(api, {"workspace_id": model.focused_workspace}, layout)
     for row in fresh.rows:
         old = by_terminal.get(row.terminal_id) if row.terminal_id else None
-        if old is None:
+        if old is None and not row.terminal_id:
             old = by_pane.get(row.pane_id)
-        if old is not None:
+        if old is not None and row.terminal_id == old.terminal_id:
             row.selected = old.selected and tui_model.selectable(row)
             row.role, row.member_name, row.brief = old.role, old.member_name, old.brief
+            row.setting = old.setting
     model.rows = fresh.rows
+    model.leader_index = min(model.leader_index, max(0, len(tui_model.selected_rows(model)) - 1))
     model.live_names = fresh.live_names
     model.existing_teams = fresh.existing_teams
     model.existing_team_sizes = fresh.existing_team_sizes
@@ -327,26 +329,38 @@ def spawn_args(spec: Dict[str, Any], first: bool) -> List[str]:
         where = spec.get("project") or member.get("cwd")
         args += ["--spawn", "{}:{}{}{}".format(member["role"], member["kind"], "/" + member["profile"] if member.get("profile") else "",
                                                ":" + str(where) if where else "")]
+        args += ["--spawn-name", "{}={}".format(member["role"], member["name"])]
         # keyed by role: the wizard keeps the new members' roles distinct, and create names them <team>-<role>
         if member.get("brief"):
             args += ["--brief", "{}={}".format(member["role"], member["brief"])]
         if member.get("setting"):
             args += ["--model", "{}={}".format(member["role"], member["setting"])]
+        if first and member.get("leader"):
+            args += ["--leader", "role:" + str(member["role"])]
     return args
 
 
 def create_args(spec: Dict[str, Any]) -> List[str]:
-    """The first ``herdr-synapse create`` of a picker spec: the live agents with the charter, or only new members."""
-    if not live_members(spec):
+    """Create the chosen leader's batch first, without a provisional election."""
+    if not live_members(spec) or any(m.get("leader") for m in new_members(spec)):
         return spawn_args(spec, first=True)
-    args: List[str] = ["create", str(spec["team"])] + _team_setup_args(spec)
+    return _live_create_args(spec, first=True)
+
+
+def _live_create_args(spec: Dict[str, Any], first: bool) -> List[str]:
+    """Mixed creation joins the remaining live members without replacing the selected leader."""
+    args: List[str] = ["create", str(spec["team"])] + (_team_setup_args(spec) if first else ["--reuse"])
     for member in live_members(spec):
         target = "{}:{}:{}".format(member["target"], member["role"], member["name"])
         args += ["--member", target]
+        if member.get("terminal_id"):
+            args += ["--expect-terminal", "{}={}".format(member["name"], member["terminal_id"])]
         if member.get("brief"):
             args += ["--brief", "{}={}".format(member["name"], member["brief"])]
         if member.get("setting"):
             args += ["--model", "{}={}".format(member["name"], member["setting"])]
+        if first and member.get("leader"):
+            args += ["--leader", str(member["name"])]
     return args
 
 
@@ -953,16 +967,24 @@ def execute_create(spec: Dict[str, Any], env: Dict[str, str]) -> int:
         return execute_add(spec, env)
     from herdr_team.console import run_cli
 
+    if len([m for m in spec.get("members") or [] if m.get("leader")]) != 1:
+        sys.stderr.write(json.dumps({"code": "leader_required", "message": "choose exactly one leader before creating the team"}) + "\n")
+        return EXIT_REFUSED
+    if any(not m.get("terminal_id") for m in live_members(spec)):
+        sys.stderr.write(json.dumps({"code": "pane_mismatch", "message": "a selected live member has no stable terminal identity; refresh before creating"}) + "\n")
+        return EXIT_REFUSED
     rc, out, err = run_cli(create_args(spec), env)
     if err:
         sys.stderr.write(json.dumps(err, ensure_ascii=False) + "\n")
         return rc or EXIT_REFUSED
     if live_members(spec) and new_members(spec):
-        # the live agents formed the team; the new members join it in their own panes
-        rc2, started, err = run_cli(spawn_args(spec, first=False), env)
+        remaining = _live_create_args(spec, first=False) if any(m.get("leader") for m in new_members(spec)) else spawn_args(spec, first=False)
+        rc2, started, err = run_cli(remaining, env)
         if err:
             err = dict(err)
-            err["team_created_with"] = [m.get("name") for m in live_members(spec)]
+            # The failed reuse phase may already have joined members; its saved-roster report is authoritative.
+            err.setdefault("team_created_with", [m.get("name") for m in (out.get("members") or [])] if isinstance(out, dict) else [])
+            err.setdefault("manager", out.get("manager") if isinstance(out, dict) else None)
             sys.stderr.write(json.dumps(err, ensure_ascii=False) + "\n")
             return rc2 or EXIT_REFUSED
         out = {"created": out, "started": started}

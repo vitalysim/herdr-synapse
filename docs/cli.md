@@ -165,6 +165,31 @@ create <team> --new [--workspace] [--charter …] --spawn <role>:<harness>[/<pro
        [--canvas]
 ```
 
+- Every fresh team requires an explicit `--leader <final-name>` (alias
+  `--manager`) or a template with a manager role held by exactly one planned
+  member. `--leader role:<role>` selects by a unique role; an exact name never
+  falls back to a role. Invalid/ambiguous selections fail in preflight.
+  This intentionally changes fresh CLI creation: scripts must add a choice,
+  and ordinary agents need operator delegation to appoint one. An absent
+  `create --reuse` target is still fresh. Existing teams are not migrated;
+  `add`, existing-team reuse without an explicit choice, resume, restore and
+  swap preserve their designation, including none. A concurrent existence
+  change refuses with `team_changed` rather than bypassing this requirement.
+- Configure the leader's responsibilities through their canonical Mission,
+  using `--brief NAME="..."` or `--instructions NAME=TEXT` with a multiline
+  document containing a `## Mission` section.
+  Explicit instructions take precedence over a short brief. With a template,
+  an explicit brief replaces the template Mission while preserving its other
+  sections, unless explicit instructions were also supplied. Model/profile
+  flags remain the ordinary member controls. Duties are guidance, not enforced
+  permission limits: the leader retains existing manager coordination rights
+  and receives no operator delegation or native goal command.
+- `--spawn-name ROLE=NAME` fixes a uniquely named spawn role's exact name;
+  invalid, repeated or taken names refuse before layout. The wizard uses it
+  to preserve confirmed names across mixed live/new creation.
+  `--expect-terminal NAME=ID` refuses a live target whose resolved terminal
+  differs; the wizard carries this identity from its selection.
+
 - `--canvas` (0.21, the operator or a delegate): turn this team's whiteboard
   canvas on before any member starts, so Claude Code and Codex members get the
   canvas MCP tools at launch and every briefing mentions it. A canvas is per
@@ -206,21 +231,30 @@ create <team> --new [--workspace] [--charter …] --spawn <role>:<harness>[/<pro
   refused as roles always.
 - Validates team name, every role, every name (grammar, reserved words, kind
   labels, live-name collisions, duplicates within the call) before renaming,
-  labelling, or stamping anything. A failure leaves no half-named team.
+  labelling, or stamping anything. A preflight failure leaves no team. Later
+  runtime failures can retain partial membership; their error reports
+  `team_created_with`, `selected_leader`, `manager`, `leader_status` and recovery
+  guidance. No replacement leader is silently elected.
 - Per target: `agent get` (refuse `agent_not_found` with a `pane get`
   cross-check, `agent_target_ambiguous`, `launch_pending`), claim check
   (`member_claimed` unless `--steal`), `agent rename` unless already named
   and `--rename` absent, `pane rename team:<team>/<role>`, append to the
   roster, store its six-section Mission document as revision 1, stamp tokens,
-  enqueue the briefing job, then ensure the notifier is running.
+  publish creation briefing jobs only after leadership and documents are ready,
+  then ensure the notifier is running. Live rename dependencies retain their
+  order; creation is not atomic to arbitrary concurrent hooks.
 - `--new`: one `layout.apply` over the socket, then `agent start` per leaf.
+  The selected leader starts first with its designation and Mission saved,
+  while pane assignment and result order retain the planned layout order.
+  A failed leader keeps its designation with an unavailable warning, not a
+  claim that the team has an operational coordinator.
 - Sets `default_team` when it is the only team; asks (or refuses without
   `--use`) when a second team would change it.
 
 JSON:
 
 ```json
-{"team":"vuln-hunt","team_dir":"…/teams/vuln-hunt","created":true,
+{"team":"vuln-hunt","team_dir":"…/teams/vuln-hunt","created":true,"manager":"vuln-hunt-reviewer",
  "members":[{"name":"vuln-hunt-reviewer","role":"reviewer","kind":"codex","pane_id":"w2:p1","terminal_id":"term_…","status":"active","renamed":true}],
  "charter":{"seq":1,"headline":"…"},"notifier":"alive","default_team":true,"briefing_jobs":["…"]}
 ```
@@ -391,8 +425,11 @@ appoint one; `--operator` additionally requires the operator themselves
 (`_strictly_human`), because a delegate may name a manager but may not pass its
 own authority on.
 
-The designation grants nothing. The charter, the team rules and every member's
-instructions stay human-only; `--operator` is the one way to add those, and it
+The designation does not grant operator authority. Existing manager permissions
+include work assignment/review, fact coordination, peer model/profile settings
+and agent-authored canvas edits. A reporting-only Mission does not restrict
+those permissions. The charter, rules and instructions retain their existing
+operator/delegate gates; `--operator` is the one way to delegate those, and it
 goes through the ordinary grant, keeping its expiry, board announcement and
 per-use audit line.
 
@@ -420,8 +457,9 @@ delivered:
   the bypass surface.
 
 JSON `{"team","member","previous","changed","operator"[,"expires_at"]}`.
-`create <team> --manager <name>` does the same at creation, after the members
-exist. In the team view (`prefix+t`), action 8 on a member row toggles it.
+`create <team> --leader <name>` (alias `--manager`) selects one in preflight;
+responsibilities come from their Mission. In the team view (`prefix+t`),
+action 8 on a member row still toggles the existing designation.
 
 ### `operator [list] | grant <name> [--ttl DURATION] [--note TEXT] | revoke <name>`
 
@@ -1781,9 +1819,13 @@ a built-in of the same name). A template is `team.md` (`# Title`, description,
 kind — about`, `## Vocabulary` as `- Label: meaning`) plus `roles/<role>.md`
 instructions documents. `create` fills only what was not passed (charter, rules,
 `--spawn` per role with `--new`, per-role instructions keyed by role, launch
-permissions), sets the manager by role once the members exist, then writes
+permissions), validates the template's manager role against the actual fresh
+creation batch before mutations, then writes
 `config.contradictions`, `config.work`, `config.vocabulary` and `config.template`.
 An invalid template is refused before anything is created (`template_invalid`).
+Explicit leadership overrides the template. A managerless template remains
+readable/savable but needs `--leader` for a fresh team. Existing-team reuse does
+not implicitly reselect a manager from template settings.
 
 ## 9j. Mission control
 
@@ -2115,6 +2157,15 @@ acting on the wrong agent. `--dry-run` disables the actions.
 
 With agents selected, a numbered choice follows: `add it to team <t>` per
 team (one `add` per agent, the charter untouched) or `create a new team`.
+Fresh creation asks for a leader after the optional project directory. Confirm
+one selected member, then edit their Mission/responsibilities and ordinary
+model settings. Spawn profiles are chosen when adding new rows. The suggested
+empty Mission is coordinate work, track
+blockers/evidence and report progress; custom text is preserved. Confirmation
+shows the chosen leader and notes that this is not operator delegation.
+Mixed live/new selections create the leader-containing batch first, then reuse
+the team for the remainder. A second-phase failure reports the actual created
+members and saved manager. Adding to an existing team skips leader selection.
 
 Opening the console entrypoint stamps `launched_at` in `console.json`
 (section 10). `doctor` and `daemon start` close a pane labelled `Team
@@ -3146,8 +3197,9 @@ asks to turn it on and watch in one step. `d` on any row of `prefix+t` opens
 the whiteboard menu, which runs these same commands from the popup (the
 operator in person): `watch`/`unwatch`, `whiteboard enable`/`disable` (off asks
 first), `whiteboard open`, `--team T whiteboard team|viz on|off`, and for an
-agent in no team `create <name> --member <pane>:<role>:<name> --brief
-<name>=<Mission>`, a team of one whose name defaults to `<agent>-canvas`. A
+agent in no team `create <team> --leader <name> --member <pane>:<role>:<name>
+--brief <name>=<Mission> --expect-terminal <name>=<terminal-id>`, a team of one
+whose name defaults to `<agent>-canvas`. A
 choice that needs the layer while it is off runs `whiteboard enable` first.
 
 ### Board records

@@ -38,10 +38,10 @@ holds `daemon.json`, `daemon.log`, `who.json`, `kinds.json`, `view.json`,
 
 | Capability | UI | CLI |
 | --- | --- | --- |
-| Create from live agents | `prefix+t` picker (section 7); after the charter it offers optional team rules and a team folder, then requires a Mission / brief for every member | `herdr-synapse create <team> --member <pane\|name>[:<role>[:<name>]] … --brief NAME\|ROLE=MISSION … [--charter "…"\|--charter-file p] [--ref p] [--names plain] [--rename] [--reuse] [--use]`; an explicit non-empty Mission in `--instructions FINAL-NAME=TEXT` may supply and derive the brief instead |
-| Create from every agent in a Space | picker: `w` then `a` | `create <team> --from-workspace <ws-id>`: waits up to 60 s for agents still launching and warns about the rest |
+| Create from live agents | `prefix+t` picker (section 7); after the charter it offers optional team rules and a team folder, requires a leader choice, then a Mission / brief for every member | `herdr-synapse create <team> --leader NAME\|role:ROLE --member <pane\|name>[:<role>[:<name>]] … --brief NAME\|ROLE=MISSION … [--charter "…"\|--charter-file p] [--ref p] [--names plain] [--rename] [--reuse] [--use]`; a template's matching manager role can supply the leader; explicit non-empty `--instructions FINAL-NAME=TEXT` may supply the Mission and derive the brief |
+| Create from every agent in a Space | picker: `w` then `a`, then choose a leader | `create <team> --leader NAME\|role:ROLE --from-workspace <ws-id>`: waits up to 60 s for agents still launching and warns about the rest |
 | Add agents to an existing team | picker: select the agents, Enter; when teams exist a numbered choice follows (`1  add it to team <t>  (N members)`, last number `create a new team`; type the number or move with the arrows); adding skips the charter stage, asks role, name, and required Mission / brief per agent, and confirms with `Add N agents to team <t>?`; every other member is nudged with a `member_joined` record and the newcomer is briefed. A kind that is not trusted yet (`kinds list`) is flagged on the confirm screen and by `add` (`kind_trusted: false`, a warning): nothing is typed into it until `herdr-synapse kinds trust <kind>` | `herdr-synapse add <team> <pane\|name> [--role <r>] [--as <name>] --brief "<Mission>"`, one per agent; each new member is briefed once idle |
-| Create from scratch | | `create <team> --new [--workspace ID] --spawn <role>:<kind>[:<cwd>] … --brief <role\|name>=<Mission> … [--model <role\|kind>=<model>[@<effort>]] …` lays out the panes and starts the agents with their model and effort flags (section 5e) |
+| Create from scratch | | `create <team> --new --leader NAME\|role:ROLE [--workspace ID] --spawn <role>:<kind>[:<cwd>] … --brief <role\|name>=<Mission> … [--model <role\|kind>=<model>[@<effort>]] …` lays out the panes and starts the agents with their model and effort flags (section 5e) |
 | Add a member later | | `add <team> <pane\|name> [--role r] [--as name] --brief MISSION [--rename] [--steal] [--model <setting>]` |
 | Link two teams through their managers | picker: `c` on a team row (Enter links or breaks; a team with no manager is refused with the reason); console `/link`, `/unlink`, `/links` | `link <team> <other> [--note]`, `unlink`, `links [--all]` (section 5f) |
 | Clear a board | console `/wipe [--purge] [reason]` (y/n first) | `wipe [--yes] [--purge] [--reason]`: every post moves to `archive/` (seqs and cursors kept; `board --since 1` reads it), or is deleted for good with `--purge`; operator only |
@@ -497,13 +497,19 @@ produced a reply on the board), F-01 to F-04, SK-08.
 
 ## 5b. The team manager
 
-One optional member per team, `Member.manager`, set by `herdr-synapse manager
-<name>` or `create --manager`, and toggled by action 8 in the team view. At most
+One leader is required when creating a fresh team, using `create --leader`
+(alias `--manager`) or a uniquely matching template manager role. The wizard
+asks which member and uses their editable Mission for responsibilities.
+Existing/cleared teams may still have none; add/reuse omission/restore do not
+elect or migrate one. Identity remains `Member.manager`, set by `herdr-synapse manager
+<name>` and toggled by action 8 in the team view. At most
 one holder, enforced by the setter: the write that sets one clears every other.
 A boolean on the member rather than a name in team config, so a rename carries
 it and a removal drops it with no stale name to clean up.
 
-It confers no authority. Every human-only gate is unchanged, and `--operator`
+Responsibilities are guidance, not enforced permission profiles. Existing
+manager coordination rights remain; it confers no operator authority.
+Every operator/delegate gate is unchanged, and `--operator`
 is the one way to add the operator's writing powers, through the existing grant
 with its expiry and audit. Appointing is `_human_only` (a delegate may);
 granting is `_strictly_human` (a delegate may not).
@@ -773,7 +779,7 @@ row. The command contract is [cli.md section 9n](cli.md#9n-whiteboard-canvas-and
 | The canvas outlives the team (0.22.1) | — | nothing to run: the mirror writes `<team>/canvas.md` and `<team>/canvas.json` into the project folder whenever the canvas moves; `canvas import --from … \| --from-archive <team>` reads one back | a checkout carries the board as an importable scene and its pictures, with a readable listing beside it that is not committed; an import keeps every element id and binding, seeds the counters, and is one batch you can undo; a scene over 1 MiB is mirrored as a pointer naming `canvas export` instead of half a board; [inheritance.md](inheritance.md) |
 | Find what the board says (0.22.1) | — | `recall "<words>" [--kind canvas]` | element text, frame and section titles, card bodies and badges, table cells, chart captions, kanban and timeline items, comments and the legend; each hit names the element and the `canvas look --around E-n` that shows it in place, and a hit on an inherited mark names the team it came from; the index rebuilds from the scene, so a cleared or re-imported board leaves nothing stale |
 | Team views | the page's Team tab | `whiteboard views` | JSON with `work`, `facts`, `topology`, `timeline`, `lanes`, `canvas` |
-| Give one agent a canvas | `d` on an agent in no team in `prefix+t`, "Give it a canvas of its own" | `create <team> --member <pane>:<role>:<name> --brief <name>="…"` | a team of one (default name `<agent>-canvas`, the agent keeps its name); its canvas is on, and the whiteboard is turned on first if it was off |
+| Give one agent a canvas | `d` on an agent in no team in `prefix+t`, "Give it a canvas of its own" | `create <team> --leader <name> --member <pane>:<role>:<name> --brief <name>="…"` | a team of one (default name `<agent>-canvas`, the agent keeps its name); its canvas is on, and the whiteboard is turned on first if it was off |
 | Watch an agent, in a team or not | `o` on an agent row in `prefix+t` (`◉` marks it; while the whiteboard is off, `o` asks to turn it on first) | `watch <pane\|name>`, `watch show`, `watch list`, `unwatch` | its sidebar row gains `▶ 3/7 run the tests` / `✎ invoice.py` within 15 s once `$team_doing` is in your sidebar block; the Activity tab shows its plan, recent actions and files |
 | Clear or delete | — | `whiteboard clear` (archives), `whiteboard purge [--all-teams] --yes` | a cleared canvas starts empty with its history under `whiteboard/archive/`; purge deletes it |
 
@@ -1213,7 +1219,7 @@ Each row: do this, expect that.
 | --- | --- | --- |
 | C1 | `herdr-synapse doctor` after linking and `daemon-start` | daemon alive, your socket, slug `default`, no errors |
 | C2 | trust `claude`, `codex`, `opencode` and `pi`; `kinds list` | all four rows are in the `delivers` column with `trusted` in the flags (`--json`: `delivers: true, trusted: true`) |
-| C3 | two fresh idle agents; `prefix+t`; Space on both; Enter; team name; charter; optional rules; folder; per member role, name, required Mission / brief (fields are prefilled except Mission: Ctrl-U clears before typing, Enter accepts a shown default); confirm | `who` lists both with roles; `herdr agent list` shows names and tokens; `herdr pane list` shows labels `team:<t>/<role>`; each authoritative member document has all six standard sections |
+| C3 | two fresh idle agents; `prefix+t`; Space on both; Enter; team name; charter; optional rules; folder; choose leader; per member role, name, required Mission / brief (fields are prefilled except Mission: Ctrl-U clears before typing, Enter accepts a shown default); confirm | `who` lists both with roles and the chosen manager; `herdr agent list` shows names and tokens; `herdr pane list` shows labels `team:<t>/<role>`; each authoritative member document has all six standard sections |
 | C4 | wait about a minute; `who` | the `unbriefed` tag disappears from both rows once the briefing lines landed; each screen shows the `[herdr-team briefing]` lines and the agent running `herdr-synapse ack` (otherwise one re-brief after 90 s, then a `<name> unbriefed` toast) |
 | C5 | ask a member "what is this team for and what is your role" | it answers from `charter` and `me` with the right names |
 | C6 | `herdr-synapse post "hello team"` from a shell pane | `board --last 1`: from `human`, to `all`, no `(unverified)`; every member shows `↪1` and is nudged once idle (an agent's post to `all` nudges nobody) |

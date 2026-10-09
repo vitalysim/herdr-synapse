@@ -21,7 +21,7 @@ herdr-synapse kinds trust opencode
 herdr-synapse hooks install claude
 ```
 
-The commands below start fresh panes. To organize agents that are already running, use `prefix+t`, select them with Space, press Enter, and follow the same charter, optional team rules, folder, role, required Mission / brief and optional model pattern in the wizard; appoint or link managers from the resulting team row.
+The commands below start fresh panes. To organize agents that are already running, use `prefix+t`, select them with Space, press Enter, and follow the same charter, optional team rules, folder, required leader choice, role, required Mission / brief and optional model pattern in the wizard. Edit the chosen leader's responsibilities in their Mission; link managers from the resulting team row.
 
 ## 1. Development team with a team lead
 
@@ -154,7 +154,7 @@ Synapse launches supported Claude Code, Codex and OpenCode members without appro
 
 ## 4. Independent review swarm
 
-Not every team needs a manager. For a high-risk change, three independent reviewers can inspect the same diff through different lenses while the human owns synthesis.
+A leader need not direct reviews. For a high-risk change, three independent reviewers can inspect the same diff through different lenses while the human owns synthesis. Choose a reporting coordinator whose Mission preserves that independence; existing manager permissions remain unchanged.
 
 ```bash
 herdr-synapse create review-swarm --new \
@@ -164,9 +164,10 @@ herdr-synapse create review-swarm --new \
   --spawn "correctness:codex:$PROJECT_DIR" \
   --spawn "security:claude:$PROJECT_DIR" \
   --spawn "operability:opencode:$PROJECT_DIR" \
-  --brief review-swarm-correctness="Check logic, invariants, error paths and regression coverage." \
+  --brief review-swarm-correctness="Check logic, invariants, error paths and regression coverage; coordinate reporting times and blockers without directing other reviews." \
   --brief review-swarm-security="Check trust boundaries, unsafe inputs, secret handling and privilege changes." \
-  --brief review-swarm-operability="Check user workflow, diagnostics, recovery, documentation and maintenance cost."
+  --brief review-swarm-operability="Check user workflow, diagnostics, recovery, documentation and maintenance cost." \
+  --leader review-swarm-correctness
 
 herdr-synapse --team review-swarm post --kind request \
   "Review your assigned lens independently. Post findings with severity and evidence, then post done."
@@ -201,4 +202,4 @@ Use links for team-level consultation, not as a way to merge every board into on
 | Dependency upgrade | upgrade implementer, compatibility tester, changelog reviewer | Separate briefs, exact session resume, independent review. |
 | Competing prototypes | coordinator plus one implementer per approach | Isolated roles, artifacts folder, explicit comparison criteria. |
 
-The harness mix is a choice, not a requirement. The durable part is the team contract: one charter, non-overlapping briefs, a named manager only when coordination benefits from one, and evidence posted to the shared board.
+The harness mix is a choice, not a requirement. The durable part is the team contract: one charter, non-overlapping briefs, a chosen leader with per-team responsibilities (coordination or reporting), and evidence posted to the shared board.
