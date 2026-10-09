@@ -27,6 +27,63 @@ from herdr_team.canvas_routers import End, RouteRequest
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "layouts"
 
+#: Routing fifty nodes and eighty edges, as a multiple of ``_reference``'s time in the same process, per layout: three
+#: times the worst ratio measured on the dev Mac, unloaded (layers 3.4, tree 2.8, force 1.8, radial 5.7, grid 9.2, on
+#: Apple 3.9; Homebrew 3.14 is faster at every one). Wide enough for a busy machine, which slows both sides alike, and
+#: narrow enough that a router ten times slower fails on every layout.
+ROUTING_COST_LIMIT = {"layers": 10.0, "tree": 9.0, "force": 6.0, "radial": 17.0, "grid": 28.0}
+
+
+def _reference() -> float:
+    """A fixed amount of the work routing is made of - float arithmetic, tuples, a list and a sort - to time beside it."""
+    total = 0.0
+    points = []
+    for i in range(20000):
+        x, y = (i * 7.3) % 101.0, (i * 3.1) % 57.0
+        points.append((x, y))
+        total += abs(x - y) * 0.5
+    points.sort()
+    return total
+
+
+def routing_cost(rig, layout, nodes, edges, repeats=3):
+    """``(routing budgets, op result, cost)``: one graph drawn on ``layout`` with routing timed apart from the rest.
+
+    ``cost`` is the fastest routing over ``repeats`` draws divided by the fastest of as many ``_reference`` runs,
+    interleaved with them. The wall-clock ceiling is moved out of the way, so the work cap alone decides what is
+    routed and the drawing is the same however busy the machine is.
+    """
+    budgets = []
+    real_init = _budget.Budget.__init__
+    real_route = G.route_edges
+    routed = []
+
+    def record(budget, *args, **kwargs):
+        real_init(budget, *args, **kwargs)
+        budgets.append(budget)
+
+    def timed(*args, **kwargs):
+        started = time.perf_counter()
+        try:
+            return real_route(*args, **kwargs)
+        finally:
+            routed.append(time.perf_counter() - started)
+
+    best_route, best_reference, result = float("inf"), float("inf"), None
+    for _repeat in range(repeats):
+        rig.setUp()
+        del budgets[:], routed[:]
+        started = time.perf_counter()
+        _reference()
+        best_reference = min(best_reference, time.perf_counter() - started)
+        with mock.patch.object(G, "ROUTE_SECONDS", 3600.0), mock.patch.object(_budget.Budget, "__init__", record), \
+                mock.patch.object(G, "route_edges", timed):
+            result = rig.apply([{"op": "graph", "id": "g", "layout": layout, "nodes": nodes, "edges": edges, "at": [0, 0],
+                                 "intent": "t"}], OPERATOR)
+        # The op's own arrangement is the first routing; ``check``'s fresh drawing for comparison may follow it.
+        best_route = min(best_route, routed[0])
+    return [b for b in budgets if b.work is not None], result, best_route / max(best_reference, 1e-9)
+
 
 def random_graph(n, m, seed, chain=False):
     """``n`` nodes ``N0``... and ``m`` edges: a random tree (or a chain-like spine) plus random extra edges."""
@@ -210,27 +267,63 @@ class R2Budgets(Base):
                 results.append(sorted((e.get("part"), tuple(map(tuple, e["points"]))) for e in self.elements() if e["type"] == "arrow"))
         self.assertEqual(results[0], results[1], "the work cap, not the clock, decides what is routed")
 
-    def test_fifty_nodes_route_fully_inside_the_budget_on_every_layout(self):
+    def test_fifty_nodes_route_fully_inside_the_work_budget_on_every_layout(self):
+        """Fifty nodes and eighty edges route whole on every layout: the deterministic work cap never cuts them.
+
+        The wall-clock ceiling is taken out of it (``ROUTE_SECONDS`` patched far away), because that ceiling is there
+        for a machine that is slow *now* and is exactly what made this a flake: on a loaded machine the clock cut the
+        routing short, an edge was drawn straight, and the test failed for a reason that was not in the code. Whether
+        routing has become slow is ``test_fifty_node_routing_costs_what_it_did``'s question, asked without a clock."""
         nodes, edges = random_graph(50, 80, 100)
-        spent = []
-        real = _budget.Budget.__init__
-
-        def record(budget, *args, **kwargs):
-            real(budget, *args, **kwargs)
-            spent.append(budget)
-
-        for layout in ("layers", "tree", "force", "radial", "grid"):
+        for layout in ROUTING_COST_LIMIT:
             with self.subTest(layout=layout):
                 self.setUp()
-                del spent[:]
-                with mock.patch.object(_budget.Budget, "__init__", record):
-                    result = self.apply([{"op": "graph", "id": "g", "layout": layout, "nodes": nodes, "edges": edges, "at": [0, 0],
-                                          "intent": "t"}], OPERATOR)
+                budgets, result, _cost = routing_cost(self, layout, nodes, edges, repeats=1)
                 self.assertEqual(result["refused"], [])
-                routing = [b for b in spent if b.work is not None]
-                self.assertTrue(routing)
-                self.assertTrue(all(b.exhausted is None for b in routing), [(b.work, b.spent) for b in routing])
+                self.assertTrue(budgets)
+                self.assertTrue(all(b.exhausted is None for b in budgets), [(b.work, b.spent, b.exhausted) for b in budgets])
                 self.assertEqual(result["check"]["counts"]["arrow_through"], 0)
+
+    def test_fifty_node_routing_costs_what_it_did(self):
+        """A load-tolerant regression guard on routing speed (a project rule: no wall-clock limits in CI).
+
+        Routing's time is measured against a reference workload of the same kind - pure Python float and tuple work -
+        timed in the same process, interleaved, the fastest of three of each. Load slows both alike and cancels out;
+        a router that has itself become slower does not. Each layout's limit is three times the worst ratio measured on
+        the dev Mac (Homebrew 3.14 and Apple 3.9, unloaded), so a genuine tenfold slowdown fails on every layout -
+        ``test_the_routing_cost_guard_catches_a_tenfold_slowdown`` proves it - and a busy machine does not."""
+        nodes, edges = random_graph(50, 80, 100)
+        for layout, limit in ROUTING_COST_LIMIT.items():
+            with self.subTest(layout=layout):
+                _budgets, _result, cost = routing_cost(self, layout, nodes, edges)
+                self.assertLessEqual(cost, limit, "{}: routing costs {:.1f}x the reference, the limit is {:.1f}x".format(
+                    layout, cost, limit))
+
+    def test_the_routing_cost_guard_catches_a_tenfold_slowdown(self):
+        """The guard above is not a rubber stamp: routing made ten times slower fails it, on every layout.
+
+        Slower by spinning the processor for nine times each call's own duration after it returns, which spends no
+        routing budget. Running each call ten times instead, as this test first did, is not ten times slower: the
+        repeats spend the shared work budget, later calls get cheaper, and on radial and grid the guard passed it
+        (QA round 2)."""
+        nodes, edges = random_graph(50, 80, 100)
+        real = G.route_edges
+
+        def tenfold(*args, **kwargs):
+            started = time.perf_counter()
+            try:
+                return real(*args, **kwargs)
+            finally:
+                spent = time.perf_counter() - started
+                until = time.perf_counter() + 9.0 * spent
+                while time.perf_counter() < until:
+                    pass
+
+        for layout, limit in ROUTING_COST_LIMIT.items():
+            with self.subTest(layout=layout):
+                with mock.patch.object(G, "route_edges", tenfold):
+                    _budgets, _result, cost = routing_cost(self, layout, nodes, edges, repeats=2)
+                self.assertGreater(cost, limit, "{}: a tenfold slowdown must fail the guard ({:.1f}x)".format(layout, cost))
 
     def test_a_layout_out_of_time_returns_a_valid_drawing_and_says_so(self):
         ids, pairs = random_graph(60, 120, 5)
