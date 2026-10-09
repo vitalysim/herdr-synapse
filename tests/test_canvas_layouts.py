@@ -99,6 +99,13 @@ class Conformance(LayoutConformance, unittest.TestCase):
             with self.subTest(layout=layout.name):
                 self.check_readability(layout.name)
 
+    def test_reissuing_a_corpus_board_unchanged_changes_nothing(self):
+        """Idempotence of the plain re-issue, across the whole corpus (layout findings N3/F11): the regression the
+        clarity round brought in against ``19f9f469``, where every board re-issued byte for byte."""
+        for layout in CL.layouts():
+            with self.subTest(layout=layout.name):
+                self.check_reissue(layout.name)
+
     def test_no_boards_own_budget_is_looser_than_the_ceiling(self):
         """A budget may only ever be tighter than the ceiling in ``layout_conformance.CEILINGS``, so the only way to
         loosen a gate is to loosen it in one place, where the next reader sees it."""

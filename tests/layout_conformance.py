@@ -261,11 +261,19 @@ def draw(name: str, fixture: Mapping[str, Any], fresh: bool = False, keep: bool 
     stored: Dict[str, Tuple[List[Tuple[float, float]], Optional[Tuple[float, float]]]] = {}
     result = None
     members: Mapping[str, Any] = passes[-1]
+    previous: Optional[Mapping[str, Any]] = None
     for index, members in enumerate(passes):
         request = _request(fixture, members, positions, incremental=index > 0 and not fresh)
         result = CL.run(layout, request)
-        positions = {k: (float(v[0]), float(v[1])) for k, v in result.positions.items()}
-        stored = _route(fixture, members, request, result, stored, keep)
+        placed = {k: (float(v[0]), float(v[1])) for k, v in result.positions.items()}
+        # Mirrored from ``graph.arrange``'s ``settled``: a pass identical to the one before it, whose boxes all came
+        # back where they were, keeps every stored route verbatim. The harness's own state is never edited between
+        # passes, so "the block is exactly as the last arrangement left it" is exactly "the same members again".
+        settled = keep and members == previous and placed == positions and all(e["id"] in stored for e in members["edges"])
+        positions = placed
+        if not settled:
+            stored = _route(fixture, members, request, result, stored, keep)
+        previous = members
     assert result is not None
     sizes = {n["id"]: (float(n["w"]), float(n["h"])) for n in members["nodes"]}
     nodes = {k: (p[0], p[1], p[0] + sizes[k][0], p[1] + sizes[k][1]) for k, p in positions.items()}
@@ -523,6 +531,36 @@ class LayoutConformance:
                 for metric in ALWAYS_ZERO:
                     self.assertEqual(float(found.get(metric) or 0.0), 0.0,
                                      "{}: {} must stay 0 ({})".format(board, metric, found.get(metric + "_worst")))
+
+    def check_reissue(self, name: str) -> None:
+        """Re-sending a board's last op unchanged changes nothing: every box and every wire comes back to the digit.
+
+        ``relayout: "full"`` was made a fixed point in the layout clarity round, and the ordinary re-issue was not:
+        the quality half of the keep decision (``canvas_readability.route_good``) judged routes the pipeline had just
+        drawn against these very boxes, called some of them stale and cut them again in a different context. On
+        ``19f9f469`` every board re-issued byte for byte; on ``9d929c35`` the owner's flow went from 3 to 23 units of
+        wire on wire and the adversarial board from 7 crossings to 10, once, and then settled. An agent re-sending its
+        own unchanged spec must not make its own picture worse, so the gate is equality, not "no worse": "no worse"
+        is how the degradation was missed. Two re-issues, because a decision that settles only on the second one is
+        the regression itself. The harness has no canvas label pass and no root to hug, so it cannot see labels or the
+        frame; ``test_canvas_readability.Reissue`` runs the shipped pipeline and compares every stored field, because
+        a gate on boxes and wire alone passed a re-issue that re-rolled two labels (QA round 2).
+        """
+        layout = CL.get(name)
+        self.assertIsNotNone(layout, name)
+        assert layout is not None
+        if not (layout.edges and layout.crossings):
+            return
+        for board in corpus_names():
+            fixture = corpus(board)
+            with self.subTest(layout=name, board=board):
+                once, _stats = draw(board, fixture, layout=name)
+                for times in (1, 2):
+                    again, _stats = draw(board, dict(fixture, passes=list(fixture["passes"]) + [fixture["passes"][-1]] * times),
+                                         layout=name)
+                    self.assertEqual(again.nodes, once.nodes, "{}: re-issued {}x, a box moved".format(board, times))
+                    changed = sorted(str(e[5]) for e, f in zip(once.edges, again.edges) if e[2] != f[2] or e[3] != f[3])
+                    self.assertEqual(changed, [], "{}: re-issued {}x, these wires were drawn again".format(board, times))
 
     def check_layout_quality(self, name: str) -> None:
         """Two rules every layout keeps, corpus or not (canvas v2 layout clarity, 3.3).

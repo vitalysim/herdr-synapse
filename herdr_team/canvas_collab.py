@@ -2118,6 +2118,79 @@ def _aside_shift(record: Mapping[str, Any], elements: Mapping[str, Mapping[str, 
     return shift
 
 
+#: A proposal's label pill: its text size and height, drawn ``PILL_GAP`` above the proposal's outline.
+PILL_SIZE = 12
+PILL_H = 20
+PILL_GAP = 4
+#: The banner is screen-sized and visible down to this zoom. At that zoom its world reach is greatest; a one-time
+#: legacy redraw must preserve it there too, not merely at zoom 1. Shared with proposal_entry's actual LOD.
+PILL_LOD_MIN = 0.35
+#: How far a proposal's outline stands off the boxes it is drawn around.
+PROPOSAL_PAD = 6
+
+
+def _pill_text(record: Mapping[str, Any], stale: bool) -> str:
+    """The words on a proposal's label pill: its id, who suggests it and why."""
+    author = str(record.get("author") or "")
+    intent = " ".join(str(record.get("intent") or "").split())
+    if len(intent) > 48:
+        intent = intent[:47].rstrip() + "…"
+    return "{} · {} suggests: {}{}".format(record.get("id"), "the operator" if author == C.HUMAN else author, intent, " (outdated)" if stale else "")
+
+
+def proposal_reach(record: Mapping[str, Any], elements: Mapping[str, Mapping[str, Any]]) -> Optional[Box]:
+    """A conservative bound for an open proposal's ghost/outline, visible banner and dashed move/aside leaders.
+
+    For a layout decision that must not cover it (``canvas_blocks.arrange``: a one-time redraw of an old board grew its
+    frame over the banner of the owner's open proposal P-4). Read from the boxes the proposal names, as they stand and
+    as proposed, without drawing the ghost: the outline the page draws is these boxes grown by ``PROPOSAL_PAD``, and the
+    banner sits on the outline's top-left corner. Its screen-sized banner is bounded at the smallest visible zoom,
+    a conservative envelope, not exact ink. None for a decided proposal or one that names nothing on the board.
+    """
+    if record.get("status") != "open":
+        return None
+    boxes: List[Box] = []
+    leaders: List[Tuple[float, float]] = []
+    aside = _aside_shift(record, elements)
+    for change in record.get("changes") or []:
+        if not isinstance(change, dict):
+            continue
+        value = change.get("value") if isinstance(change.get("value"), dict) else None
+        current = elements.get(change.get("id")) if isinstance(change.get("id"), str) else None
+        if change.get("action") == "delete" and current is not None:
+            boxes.append(tuple(C.bounds(current)))  # type: ignore[arg-type]
+        elif value is not None:
+            x0, y0, x1, y1 = C.bounds(value)
+            boxes.append((x0 + aside, y0, x1 + aside, y1))  # drawn beside its host when it rewrites it in place
+            if change.get("action") == "update" and current is not None:
+                old, new = D.box_of(current), D.box_of(value)
+                if aside:
+                    leaders.append((old[2], (old[1] + old[3]) / 2))
+                elif (old[0], old[1]) != (new[0], new[1]) and value.get("type") not in ("arrow", "comment"):
+                    leaders.append(((old[0] + old[2]) / 2, (old[1] + old[3]) / 2))
+                # The other endpoint lies in the ghost's box. Keep the real old endpoint too: an inside member
+                # proposed far away can have its leader cross the newly grown frame while its banner never does.
+    if not boxes:
+        # A record read from a scene carries no changes: what it targets is where it is drawn, near enough.
+        for eid in list(record.get("targets") or []) + list(record.get("created") or []):
+            el = elements.get(eid) if isinstance(eid, str) else None
+            if el is not None:
+                boxes.append(tuple(C.bounds(el)))  # type: ignore[arg-type]
+    if not boxes:
+        return None
+    from herdr_team import canvas_text as _ctext
+
+    x0, y0 = min(b[0] for b in boxes) - PROPOSAL_PAD, min(b[1] for b in boxes) - PROPOSAL_PAD
+    x1, y1 = max(b[2] for b in boxes) + PROPOSAL_PAD, max(b[3] for b in boxes) + PROPOSAL_PAD
+    pill_w = D.r2(_ctext.measure(_pill_text(record, bool(outdated_of(record, elements))), "normal", PILL_SIZE, 500).width + 16)
+    # The display list rounds the screen anchor and outline too. One hundredth of a world unit encloses that
+    # rounding, instead of claiming a bound that is a fraction of a pixel narrower than the actual banner.
+    return (min([x0] + [p[0] for p in leaders]) - .01,
+            min([y0, D.r2(y0) - (PILL_H + PILL_GAP) / PILL_LOD_MIN] + [p[1] for p in leaders]) - .01,
+            max([x1, D.r2(x0) + pill_w / PILL_LOD_MIN] + [p[0] for p in leaders]) + .01,
+            max([y1] + [p[1] for p in leaders]) + .01)
+
+
 def proposal_entry(record: Mapping[str, Any], elements: Mapping[str, Mapping[str, Any]], env: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
     """One open proposal's ghost (4.6): the proposed elements' own primitives at half opacity, a dashed line for each
     move, a dashed box for each delete, an outline around it all and a label pill, in the author's chip colours."""
@@ -2161,8 +2234,8 @@ def proposal_entry(record: Mapping[str, Any], elements: Mapping[str, Mapping[str
                               "stroke": "tone.accent.stroke", "sw_px": 1, "dash": [6, 4], "op": 0.6})
     if not boxes:
         return None
-    x0, y0 = min(b[0] for b in boxes) - 6, min(b[1] for b in boxes) - 6
-    x1, y1 = max(b[2] for b in boxes) + 6, max(b[3] for b in boxes) + 6
+    x0, y0 = min(b[0] for b in boxes) - PROPOSAL_PAD, min(b[1] for b in boxes) - PROPOSAL_PAD
+    x1, y1 = max(b[2] for b in boxes) + PROPOSAL_PAD, max(b[3] for b in boxes) + PROPOSAL_PAD
     # The entry's bbox also holds where each moved element comes from (its line starts at the old centre).
     ends = [point for line in moves for point in line["points"]]
     bx0, by0 = min([x0] + [p[0] for p in ends]), min([y0] + [p[1] for p in ends])
@@ -2171,18 +2244,15 @@ def proposal_entry(record: Mapping[str, Any], elements: Mapping[str, Mapping[str
     chip = D.chip(author, dict(env))
     outline = {"k": "rect", "x": x0, "y": y0, "w": x1 - x0, "h": y1 - y0, "r": 6, "fill": None,
                "stroke": "tone.warning.stroke" if stale else "tone.accent.stroke", "sw_px": 1.5, "dash": [6, 4]}
-    intent = " ".join(str(record.get("intent") or "").split())
-    if len(intent) > 48:
-        intent = intent[:47].rstrip() + "…"
-    text = "{} · {} suggests: {}{}".format(record.get("id"), "the operator" if author == C.HUMAN else author, intent, " (outdated)" if stale else "")
-    size = 12
+    text = _pill_text(record, bool(stale))
+    size = PILL_SIZE
     from herdr_team import canvas_text as _ctext  # the label's width is measured like every other label
 
     width = _ctext.measure(text, "normal", size, 500).width
-    pill_w, pill_h = D.r2(width + 16), 20
-    pill = {"k": "group", "screen": [x0, y0], "lod": [0.35, None], "items": [
-        {"k": "rect", "x": 0, "y": -pill_h - 4, "w": pill_w, "h": pill_h, "r": 10, "fill": chip["bg"], "stroke": None},
-        D.text_prim([text], 8, -pill_h - 4 + 14 - _ctext.baseline(size, "normal", 500), size, {}, chip["fg"], "start", None, 500)]}
+    pill_w, pill_h = D.r2(width + 16), PILL_H
+    pill = {"k": "group", "screen": [x0, y0], "lod": [PILL_LOD_MIN, None], "items": [
+        {"k": "rect", "x": 0, "y": -pill_h - PILL_GAP, "w": pill_w, "h": pill_h, "r": 10, "fill": chip["bg"], "stroke": None},
+        D.text_prim([text], 8, -pill_h - PILL_GAP + 14 - _ctext.baseline(size, "normal", 500), size, {}, chip["fg"], "start", None, 500)]}
     record_view = {"author": author, "intent": str(record.get("intent") or ""), "reason": record.get("reason"),
                    "reasons": list(record.get("reasons") or []), "outdated": bool(stale), "targets": list(record.get("targets") or []),
                    "created": list(record.get("created") or []), "deleted": list(record.get("deleted") or []), "batch": record.get("batch"),

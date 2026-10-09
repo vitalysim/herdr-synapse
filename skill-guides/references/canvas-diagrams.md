@@ -41,6 +41,7 @@ sees it), `routes_tangled` (wire that wanders, doubles back, or is drawn along
 other wire), `labels_adrift` (a label reading as some other node's) and
 `graph_thin` (a drawing so long and thin its own text is too small to read).
 `look` prints `crossings`.
+Re-sending your own unchanged spec changes nothing.
 
 A long chain is drawn as lanes, not as a line: nine steps come out about 2:1
 instead of 16:1. Adding a step keeps the lanes; asking for it fresh picks them

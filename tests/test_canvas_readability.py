@@ -17,12 +17,16 @@ router; this module holds what only the whole pipeline can answer.
 from __future__ import annotations
 
 import copy
+import json
 import unittest
+
+import collab_support
 
 import layout_conformance as conformance
 import test_canvas
 from test_kind_graph import GraphRig
 
+from herdr_team import canvas_blocks as B
 from herdr_team import canvas_check as K
 from herdr_team import canvas_readability as RD
 from herdr_team.canvas_kinds import arrow as A
@@ -135,29 +139,34 @@ class KeepDecision(unittest.TestCase):
 class Repair(GraphRig):
     """What an author can do about a drawing that has gone stale, and what the op tells them."""
 
-    def test_re_issuing_the_drawing_now_repairs_it_and_then_settles(self):
-        """The trap the agent on the rejected board fell into: it re-issued its whole drawing and nothing happened.
+    def test_re_issuing_a_stale_drawing_repairs_it_once_and_then_changes_nothing(self):
+        """The trap the agent on the rejected board fell into, and the regression the fix for it brought in.
 
-        Re-issuing used to be byte for byte a no-op - the seeds held every box and legality held every stale route -
-        so the one repair an agent reaches for by itself did nothing at all. Now it cuts the stale wire, and after a
-        redraw or two it stops changing: it repairs and then it settles, which is what an author needs from it."""
+        The trap: re-issuing used to be byte for byte a no-op even over wire that had gone stale - the seeds held every
+        box and legality held every stale route - so the one repair an agent reaches for by itself did nothing. The
+        regression (layout findings N3): the quality test that fixed it also judged wire the pipeline had just drawn
+        against these very boxes, so a re-issue *after* the repair cut it again, worse, and only then settled. Both
+        are held here: stale wire is repaired by the first re-issue, and the drawing that repair leaves is final."""
         self.ok(copy.deepcopy(FLOW_FIRST))
         self.ok(copy.deepcopy(FLOW))
+        _tangle(self, "shortener")
         stale = _drawing(self, "shortener")
         self.ok(copy.deepcopy(FLOW))
         repaired = _drawing(self, "shortener")
         self.assertNotEqual(repaired, stale, "re-issuing the drawing repairs what had gone stale")
-        # And it settles. Not after one redraw: cutting a stale route can put it alongside a third, so the wire
-        # takes a few passes to come to rest. What matters is that it comes to rest rather than cycling.
-        settled = repaired
-        for _redraw in range(4):
+        for _redraw in range(2):
             self.ok(copy.deepcopy(FLOW))
-            now = _drawing(self, "shortener")
-            if now == settled:
-                break
-            settled = now
+            self.assertEqual(_drawing(self, "shortener"), repaired, "the repaired drawing is final: a re-issue changes nothing")
+
+    def test_a_board_drawn_before_the_fingerprint_is_judged_on_quality(self):
+        """A board on disk from before ``arranged`` existed carries none, so nothing on it is taken as settled: the
+        first incremental op judges its wire by quality, which is what repairs a board the old keep decision left."""
         self.ok(copy.deepcopy(FLOW))
-        self.assertEqual(_drawing(self, "shortener"), settled, "a redraw settles rather than cycling")
+        root = self.root("shortener")
+        self.assertIsInstance(root.get(B.ARRANGED), int, "an arrangement that routes leaves its fingerprint")
+        legacy = {k: v for k, v in root.items() if k != B.ARRANGED}
+        self.assertIsNone(B._settled_for(None, legacy, [], "structure", False))
+        self.assertIsNone(B._settled_for(None, root, [], "full", False), "relayout full never takes the wire as settled")
 
     def test_relayout_full_on_the_graph_op_recovers_the_fresh_drawing(self):
         """``graph {relayout: "full"}`` drops every seed and every stored route: the drawing one op would have made."""
@@ -273,18 +282,22 @@ class Checks(GraphRig):
                 self.assertGreaterEqual(threshold, ceiling, "{}: the check is tighter than the gate".format(metric))
 
     def _tangle(self, alias):
-        """Give every edge of the drawing the wire the old keep decision would have left on it."""
-        root = self.root(alias)
-        for el in self.members(alias):
-            if el.get("type") != "arrow" or not el.get("points"):
-                continue
-            points = [(float(p[0]), float(p[1])) for p in el["points"]]
-            a, b = points[0], points[-1]
-            detour = float(root["y"]) + float(root["h"]) + 40.0
-            self.ok({"op": "move", "id": el["id"], "intent": "the wire the old keep decision left",
-                     "points": [[a[0], a[1]], [a[0], detour], [(a[0] + b[0]) / 2.0, detour],
-                                [(a[0] + b[0]) / 2.0, a[1]], [b[0], a[1]], [b[0], b[1]]]},
-                    author=test_canvas.OPERATOR)
+        _tangle(self, alias)
+
+
+def _tangle(rig, alias):
+    """Give every edge of the drawing the wire the old keep decision would have left on it."""
+    root = rig.root(alias)
+    for el in rig.members(alias):
+        if el.get("type") != "arrow" or not el.get("points"):
+            continue
+        points = [(float(p[0]), float(p[1])) for p in el["points"]]
+        a, b = points[0], points[-1]
+        detour = float(root["y"]) + float(root["h"]) + 40.0
+        rig.ok({"op": "move", "id": el["id"], "intent": "the wire the old keep decision left",
+                "points": [[a[0], a[1]], [a[0], detour], [(a[0] + b[0]) / 2.0, detour],
+                           [(a[0] + b[0]) / 2.0, a[1]], [b[0], a[1]], [b[0], b[1]]]},
+               author=test_canvas.OPERATOR)
 
 
 class RealPipeline(GraphRig):
@@ -315,6 +328,185 @@ class RealPipeline(GraphRig):
                         self.assertGreaterEqual(found[metric], bound)
                     else:
                         self.assertLessEqual(found[metric], bound)
+
+
+class PeerRepair(collab_support.CollabRig):
+    """A host's unchanged graph remains settled after arranging a peer's contribution."""
+
+    def _drawn(self):
+        self.ok(dict(copy.deepcopy(FLOW), intent="the member's own graph"))
+        return [(e["id"], e.get("x"), e.get("y"), e.get("points")) for e in self.scene()["elements"]]
+
+    def test_a_host_who_tidied_a_peers_mark_reissues_as_a_no_op(self):
+        """The host right (A1) writes ``moved_by`` on a peer's mark after the arrangement that moved it, in the same op;
+        a fingerprint that read it never matched the drawing it was taken of, and on the owner's board the first
+        re-issue after the repair cut the wire again (crossings 2 -> 3, reversals 0 -> 2)."""
+        self._drawn()
+        proposal = self.apply([{"op": "patch", "id": "shortener", "add": {"nodes": [{"id": "limiter", "text": "Rate limiter"}],
+                                                                        "edges": ["api -> limiter: throttle"]},
+                                "intent": "one more"}], author=collab_support.PEER)
+        self.ok({"op": "accept", "id": proposal["proposed"][0]["proposal"], "intent": "yes"}, author=collab_support.LEAD)
+        self.ok({"op": "graph", "id": "shortener", "relayout": "full", "intent": "tidy my own graph"})
+        mark = next(e for e in self.scene()["elements"] if e.get("text") == "Rate limiter")
+        self.assertEqual(mark.get("moved_by"), collab_support.MEMBER.name, "the host tidied the peer's mark")
+        spec = dict(B.spec_of(self.scene()["elements"], self.by_alias("shortener")), op="graph", id="shortener",
+                    intent="the author re-sends its own spec")
+        once = _drawing(self, "shortener")
+        for times in (1, 2):
+            self.ok(copy.deepcopy(spec))
+            self.assertEqual(_drawing(self, "shortener"), once, "re-issued {}x".format(times))
+
+    def root(self, alias):
+        return self.by_alias(alias)
+
+    def members(self, alias):
+        rid = self.by_alias(alias)["id"]
+        return [e for e in self.scene()["elements"] if e.get("group") == rid]
+
+
+def _grid(gid, nodes, edges):
+    return {"op": "graph", "id": gid, "title": gid, "layout": "flow", "direction": "right", "route": "orthogonal",
+            "at": [0, 0], "intent": "a shape that broke re-issue", "edges": edges,
+            "nodes": [{"id": n, "text": t} for n, t in nodes]}
+
+
+#: The two boards outside the corpus the verifier of the clarity round named, as it measured them: forty steps with
+#: shortcuts and back edges (``mdetour_max`` 1.90 -> 2.48 on a re-issue), and a dense bipartite field with two sources
+#: and back edges (crossings 7 -> 10, wire on wire 2 -> 43).
+BIG40 = _grid("big40", [("n%d" % i, "Step %d" % i) for i in range(40)],
+              ["n%d -> n%d: s%d" % (i, i + 1, i) for i in range(39)] +
+              ["n%d -> n%d: skip" % (i, i + 5) for i in range(0, 34, 6)] +
+              ["n%d -> n%d: back" % (i + 8, i) for i in range(2, 31, 9)])
+ADVERSARIAL = _grid("adversarial", [("s1", "Source one"), ("s2", "Source two"), ("m1", "Middle one"),
+                                    ("m2", "Middle two"), ("m3", "Middle three"), ("m4", "Middle four"),
+                                    ("t1", "Target one"), ("t2", "Target two"), ("t3", "Target three"),
+                                    ("side", "Off to one side")],
+                    ["s1 -> m1: a", "s1 -> m3: b", "s1 -> m4: c", "s2 -> m1: d", "s2 -> m2: e", "s2 -> m4: f",
+                     "m1 -> t2: g", "m1 -> t3: h", "m2 -> t1: i", "m2 -> t3: j", "m3 -> t1: k", "m3 -> t2: l",
+                     "m4 -> t1: m", "m4 -> t3: n", "t3 -> s1: loop back", "t1 -> m2: retry",
+                     "side -> m2: aside", "m4 -> side: out"])
+
+
+def corpus_ops(board):
+    """A corpus board as the ``graph`` ops that would build it, pass by pass: what an agent actually sends.
+
+    The corpus fixtures hold sizes rather than words, so each node is named by its own id; the shape - ranks, fans,
+    bands, cycles, the two-batch history - is the fixture's, which is what re-issue idempotence depends on.
+    """
+    fixture = conformance.corpus(board)
+    ops = []
+    for members in fixture["passes"]:
+        op = {"op": "graph", "id": board.replace("-", "_"), "title": board, "layout": "flow",
+              "direction": fixture["direction"], "route": "orthogonal", "at": [0, 0], "intent": "corpus board",
+              "nodes": [dict({"id": n["id"], "text": n["id"]}, **({"in": n["group"]} if n.get("group") else {}))
+                        for n in members["nodes"]],
+              "edges": ["{} -> {}{}".format(e["a"], e["b"], ": " + e["name"] if e.get("name") else "")
+                        for e in members["edges"]]}
+        if members.get("groups"):
+            op["groups"] = [dict({"id": g["id"], "title": g.get("title") or g["id"]},
+                                 **({"parent": g["parent"]} if g.get("parent") else {})) for g in members["groups"]]
+        ops.append(op)
+    return ops
+
+
+class Reissue(GraphRig):
+    """Re-sending an unchanged ``graph`` op changes nothing, through the whole pipeline (layout findings N3/F11).
+
+    ``tests/layout_conformance.check_reissue`` holds the harness to it; this holds the code that ships, labels
+    settled by the canvas and boxes rounded as they are stored, which the harness cannot see - and which is where a
+    route drawn against a box at 632.07 met the same box stored at 632 on the next op.
+    """
+
+    def _reissued(self, label, ops):
+        rig = GraphRig("test_nothing")
+        rig.setUp()
+        self.addCleanup(rig.doCleanups)
+        for op in ops:
+            rig.ok(copy.deepcopy(op))
+        once = _board(rig)
+        for times in (1, 2):
+            rig.ok(dict(copy.deepcopy(ops[-1]), intent="the same op again"))
+            self.assertEqual(_changed(once, _board(rig)), [], "{}: re-issued {}x, these elements changed".format(label, times))
+
+    def _relaid(self, label, ops):
+        """``relayout:"full"`` is a fixed point - the second one changes nothing, the third neither - and the plain
+        re-issue after it changes nothing. Every stored field but bookkeeping is compared, the root's box and every
+        label spot included: on the adversarial board the whole block crept up 2 units per relayout, forever, and on
+        the banded board the re-issue after one grew the frame 20 units (QA round 2)."""
+        rig = GraphRig("test_nothing")
+        rig.setUp()
+        self.addCleanup(rig.doCleanups)
+        for op in ops:
+            rig.ok(copy.deepcopy(op))
+        alias = ops[-1]["id"]
+        rig.ok({"op": "graph", "id": alias, "relayout": "full", "intent": "lay it out again"})
+        once = _board(rig)
+        for times in (2, 3):
+            rig.ok({"op": "graph", "id": alias, "relayout": "full", "intent": "and again"})
+            self.assertEqual(_changed(once, _board(rig)), [], "{}: relayout full x{}, these elements changed".format(label, times))
+        rig.ok(dict(copy.deepcopy(ops[-1]), intent="the same op again"))
+        self.assertEqual(_changed(once, _board(rig)), [], "{}: re-issued after relayout full, these elements changed".format(label))
+
+    def test_relayout_full_is_a_fixed_point_on_every_corpus_board_and_the_named_ones(self):
+        boards = [(board, corpus_ops(board)) for board in conformance.corpus_names()]
+        boards += [("owner's flow", [FLOW]), ("owner's flow, two batches", [FLOW_FIRST, FLOW]), ("big40", [BIG40]),
+                   ("adversarial", [ADVERSARIAL])]
+        for label, ops in boards:
+            with self.subTest(board=label):
+                self._relaid(label, ops)
+
+    def test_every_corpus_board_reissues_as_a_no_op(self):
+        for board in conformance.corpus_names():
+            with self.subTest(board=board):
+                self._reissued(board, corpus_ops(board))
+
+    def test_a_board_the_operator_placed_boxes_in_reissues_as_a_no_op(self):
+        """The owner's own board: the operator had placed three boxes by hand and sized one. A layered layout seeded
+        with a drawing holding boxes off their ranks is not its own fixed point - on that board it moved "Redirect to
+        original URL" 35 units on every re-issue, so the wire was cut again every time and never settled - so a
+        settled block is put back exactly as it was left, not laid out again (``canvas_blocks._as_left``)."""
+        rig = GraphRig("test_nothing")
+        rig.setUp()
+        self.addCleanup(rig.doCleanups)
+        rig.ok(copy.deepcopy(FLOW))
+        for part, by in (("paste", [-200, -340]), ("store", [0, -260]), ("open", [-560, -100])):
+            el = rig.part("shortener", part)
+            rig.ok({"op": "move", "id": el["id"], "by": by, "intent": "the operator's place"}, author=test_canvas.OPERATOR)
+        store = rig.part("shortener", "store")
+        rig.ok({"op": "move", "id": store["id"], "w": 160, "h": 80, "intent": "the operator's size"}, author=test_canvas.OPERATOR)
+        rig.ok({"op": "graph", "id": "shortener", "relayout": "full", "intent": "the printed repair"})
+        spec = dict(rig.spec("shortener"), op="graph", id="shortener", intent="the agent re-sends its own spec")
+        self._reissued_spec(rig, spec)
+
+    def _reissued_spec(self, rig, spec):
+        once = _board(rig)
+        for times in (1, 2, 3):
+            rig.ok(copy.deepcopy(spec))
+            self.assertEqual(_changed(once, _board(rig)), [], "re-issued {}x, these elements changed".format(times))
+
+    def test_the_boards_the_verifier_named_reissue_as_a_no_op(self):
+        for label, ops in (("owner's flow", [FLOW]), ("owner's flow, two batches", [FLOW_FIRST, FLOW]),
+                           ("big40", [BIG40]), ("adversarial", [ADVERSARIAL])):
+            with self.subTest(board=label):
+                self._reissued(label, ops)
+
+
+#: What every op rewrites whether or not anything changed: the op's own bookkeeping, not the drawing.
+_BOOKKEEPING = {"seq", "updated_seq", "updated_at", "created_at", "batch", "intent", "client_id"}
+
+
+def _board(rig):
+    """Every element and every stored field but bookkeeping: what a re-issue that changes nothing must leave alone.
+
+    Not only boxes and polylines (``_drawing``): a re-issue that kept every box and every route still re-rolled two
+    label spots on the owner's flow (misattributed 0 -> 2) and grew the banded board's frame, and a gate that read
+    boxes and routes alone passed it (QA round 2)."""
+    return {el["id"]: json.dumps({k: v for k, v in el.items() if k not in _BOOKKEEPING}, sort_keys=True, default=str)
+            for el in rig.scene()["elements"]}
+
+
+def _changed(before, after):
+    return sorted(eid for eid in set(before) | set(after) if before.get(eid) != after.get(eid))
 
 
 def _drawing(rig, alias):

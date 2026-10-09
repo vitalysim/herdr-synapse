@@ -28,6 +28,7 @@ stays readable.
 from __future__ import annotations
 
 import difflib
+import hashlib
 import json
 import math
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
@@ -1175,12 +1176,363 @@ def _stretch(ctx: Any, root: Element, order: Sequence[str]) -> None:
                 ctx.update(el, **fitted)
 
 
+#: The root field that fingerprints the drawing a block's last arrangement left (layout findings N3): every member's
+#: box, route and words relative to the root, plus the root's own settings and title. An integer, because a string
+#: would be harvested as searchable words (``canvas_index`` walks strings only).
+ARRANGED = "arranged"
+#: What the fingerprint reads off each member, besides its box and route relative to the root. Three fields are
+#: deliberately out, because something writes them *after* the arrangement in the same op, so a fingerprint that read
+#: them would never match the drawing it was taken of: ``label_at`` and ``fit`` (the canvas settles every label
+#: again), and ``moved_by`` (the review gate writes it on the peer marks a host just tidied, A1).
+_ARRANGED_KEYS = ("id", "type", "part", "frame", "from", "to", "text", "w", "h")
+
+
+def arranged_digest(root: Mapping[str, Any], members: Sequence[Mapping[str, Any]], origin: Tuple[float, float]) -> int:
+    """The fingerprint of a block's drawing as stored: the same number exactly when nothing an arrangement reads changed.
+
+    Why it exists: a route kept or cut by quality (``canvas_readability.route_good``) is judged against absolute
+    thresholds, so the pipeline's own fresh drawing can fail them, and an ordinary re-issue of an unchanged ``graph``
+    op then cut wire the pipeline had drawn against these very boxes, in a different context, and made the picture
+    worse once (the owner's flow 3 -> 23 units of wire on wire; the adversarial board 7 -> 10 crossings). Whether a
+    stored route is the pipeline's own answer for the boxes it joins cannot be read off the route itself - the build
+    and the label pass rewrite arrows on every op, so no ``updated_seq`` says when a route was drawn - so the
+    arrangement leaves this behind instead, and a later arrangement that finds it unchanged knows there is nothing to
+    redraw. Coordinates are relative to the root so that moving the whole block, which shifts every member with it,
+    is not a change.
+    """
+    ox, oy = float(origin[0]), float(origin[1])
+    rows: List[Any] = [[root.get("text"), root.get("settings")]]
+    for el in sorted(members, key=lambda e: str(e.get("id"))):
+        pin = el.get("pin")
+        rows.append([el.get(key) for key in _ARRANGED_KEYS] + [
+            C._r2(float(el.get("x") or 0) - ox), C._r2(float(el.get("y") or 0) - oy),
+            [[C._r2(float(p[0]) - ox), C._r2(float(p[1]) - oy)] for p in el.get("points") or [] if isinstance(p, (list, tuple)) and len(p) >= 2],
+            pin.get("by") if isinstance(pin, dict) else None, (el.get("style") or {}).get("route")])
+    blob = json.dumps(rows, sort_keys=True, separators=(",", ":"), default=str)
+    return int(hashlib.sha256(blob.encode("utf-8")).hexdigest()[:13], 16)
+
+
+def _box_fields(el: Mapping[str, Any], box: Sequence[float]) -> Dict[str, Any]:
+    """The fields applying an arrangement's ``box`` to a member writes: its size, refitted where the kind measures its
+    words, and its corner rounded to whole units. One function for applying a box and for asking what applying it
+    would store, so ``_settled_for`` can never disagree with ``arrange`` about a box."""
+    x, y, w, h = (float(v) for v in box)
+    fields: Dict[str, Any] = {}
+    if (C._round(w), C._round(h)) != (el.get("w"), el.get("h")):
+        member_kind = kind_of(el)
+        if member_kind is not None and member_kind.measure is not None:
+            refit = C._fitted(dict(el), (w, h))
+            if refit:
+                refit["fit"]["min"] = list((el.get("fit") or {}).get("min") or refit["fit"]["min"])
+                fields.update(refit)
+        elif el.get("type") != "frame":
+            fields.update(w=max(1, C._round(w)), h=max(1, C._round(h)))
+    fields["x"], fields["y"] = C._round(x), C._round(y)
+    return fields
+
+
+def _settled_for(ctx: Any, root: Element, members: Sequence[Element], reason: str, pos: bool, stored: Any = None) -> Any:
+    """``env["settled"]``: given where an arrangement would put the boxes and inner frames, whether the block would
+    then be exactly as its last arrangement left it (``arranged_digest``), so the stored wire is still its own answer.
+
+    Asked of the arrangement's own output rather than of the members as the op left them, because the build refits
+    every box to its words before arranging and the arrangement grows a hub back to fit its wires: the members a
+    re-issue hands the arrangement are never the members it stored, while the boxes it puts back are.
+
+    ``stored`` stands in for the root's fingerprint when it has none (``_unstamped``: a board drawn before
+    fingerprints existed), so the same question is asked against the board as the op found it.
+    """
+    stored = root.get(ARRANGED) if stored is None else stored
+    if reason == "full" or isinstance(stored, bool) or not isinstance(stored, int):
+        return None
+
+    def settled(boxes: Mapping[str, Sequence[float]], frames: Mapping[str, Sequence[float]]) -> bool:
+        view: List[Dict[str, Any]] = []
+        for el in members:
+            now = dict(ctx.el(el["id"]) or el)
+            if el["id"] in boxes and not _held(ctx, now, pos):
+                now.update(_box_fields(now, boxes[el["id"]]))
+            if el["id"] in frames:
+                x, y, w, h = (C._round(v) for v in frames[el["id"]])
+                now.update(x=x, y=y, w=w, h=h)
+            view.append(now)
+        current = ctx.el(root["id"]) or root
+        return stored == arranged_digest(current, view, (float(current.get("x") or 0), float(current.get("y") or 0)))
+
+    return settled
+
+
+def _as_left(ctx: Any, members: Sequence[Element]) -> Optional[Dict[str, Tuple[float, float, float, float]]]:
+    """Every member's box as the board stood before this op, or None when this op made one of them.
+
+    What an arrangement that finds its block settled puts back. Not the boxes the layout proposes: a layered layout
+    seeded with a drawing the operator has placed boxes in by hand is not always its own fixed point (on the owner's
+    board it moved "Redirect to original URL" 35 units on every re-issue), and an unchanged spec re-sent must change
+    nothing, so a settled block is not laid out again at all.
+    """
+    out: Dict[str, Tuple[float, float, float, float]] = {}
+    for el in members:
+        old = ctx.state.elements.get(el["id"])
+        if old is None:
+            return None
+        out[el["id"]] = (float(old.get("x") or 0), float(old.get("y") or 0), float(old.get("w") or 1), float(old.get("h") or 1))
+    return out
+
+
+def _hold_corner(ctx: Any, root: Element, members: Sequence[Element], target: Dict[str, Any], reason: str, pos: bool) -> List[str]:
+    """A block laid out again from scratch stays where it stood: what its drawing puts above or left of its content
+    (wire the router takes round the top row) moves the drawing in, not the block out. The member ids it moved.
+
+    Without it ``relayout:"full"`` was not a fixed point (layout findings, QA round 2): the hug extended the frame up
+    by the 2 units a wire stood above the top row, the next full relayout laid the nodes out from the new, higher
+    content corner, the wire stood 2 above that, and the adversarial board crept up 2 units on every relayout,
+    forever. Only a block that already stood somewhere (a first drawing is placed by the hug, as always) and holds
+    none of its members still (an operator's placement is not moved to keep anybody's corner).
+    """
+    rid = root["id"]
+    if reason != "full" or ctx.state.elements.get(rid) is None or any(_held(ctx, el, pos) for el in members):
+        return []
+    dx = float(root.get("x") or 0) - float(target["x"])
+    dy = float(root.get("y") or 0) - float(target["y"])
+    if dx <= 0 and dy <= 0:
+        return []
+    dx, dy = max(0.0, dx), max(0.0, dy)
+    ids = C._descendants(ctx, [rid])  # each once: a group frame's nodes are its descendants and the block's members
+    for mid in ids:
+        el = ctx.el(mid)
+        if el is None:
+            continue
+        ctx.update(el, **C._translated(el, dx, dy, unbind=False))
+    target["x"], target["y"] = C._round(float(target["x"]) + dx), C._round(float(target["y"]) + dy)
+    return [mid for mid in ids if (ctx.el(mid) or {}).get("type") != "arrow"]
+
+
+def _keep_labels(ctx: Any, routes: Mapping[str, Any], kept: bool) -> None:
+    """Hold the labels of a block its arrangement found settled where they are: the canvas does not place them again.
+
+    Keeping the boxes and the wire was not enough for a re-issue to change nothing (layout findings N3, QA round 2):
+    the canvas's label pass, which runs after every op on every arrow the op touched, is not its own fixed point. On a
+    first drawing it places labels in creation order and a later label that finds no clear spot settles on the one
+    that covers least, overlapping an earlier one; run again, the earlier label now sees that pill and leaves for the
+    far end of its route (the owner's flow: "lookup" and "cached" left their arrows, misattributed 0 -> 2, and on the
+    banded board the frame grew 20 units to hug them). An arrangement that is settled wrote every arrow back exactly as
+    it was, so its labels are what an undo's are: written back as they were, which is the set the label pass already
+    leaves alone (``ctx.undo_restored``). Only an arrow whose stored route, label spot and words are unchanged is held,
+    and only by this op; a later arrangement of the same block in the same op that is not settled lets them go again.
+    """
+    restored = ctx.undo_restored
+    mine = getattr(ctx, "_labels_kept", None)
+    if not isinstance(mine, tuple) or mine[0] is not restored:
+        # ``begin`` gives every op a fresh set: the ids this function added belong to the op that owns that set.
+        mine = (restored, set())
+        ctx._labels_kept = mine
+    for aid in routes:
+        now, was = ctx.el(aid), ctx.state.elements.get(aid)
+        same = kept and now is not None and was is not None and all(
+            now.get(key) == was.get(key) for key in ("points", "label_at", "text", "from", "to"))
+        if same and aid not in restored:
+            restored.add(aid)
+            mine[1].add(aid)
+        elif not same and aid in mine[1]:
+            restored.discard(aid)
+            mine[1].discard(aid)
+
+
+def _unstamped(ctx: Any, root: Element, reason: str) -> Optional[int]:
+    """The fingerprint a block drawn before fingerprints existed would carry, taken of it as this op found it; None
+    for a block that has one, is new in this op, or is being drawn again from scratch or only hugged.
+
+    Why: every board on disk before layout findings N3 has no ``arranged`` field, so its first re-issue was not
+    recognised as settled and ran the quality cut that N3 is about - 10 of 17 boards drawn by ``d13e58c5`` changed on
+    that re-issue and 7 gained crossings, one a wire through a box. The board as stored is the last arrangement's
+    answer as far as anything can tell, so it is fingerprinted as it stands; an op that changed nothing an
+    arrangement reads then matches it exactly, and one that changed anything does not. Taken of the members before
+    this op (``ctx.state``), so a member the op removed or added is a difference rather than invisible.
+    """
+    if reason in ("full", "hug"):
+        return None
+    rid = root["id"]
+    was = ctx.state.elements.get(rid)
+    if was is None or isinstance(was.get(ARRANGED), int) or isinstance((ctx.el(rid) or root).get(ARRANGED), int):
+        return None
+    before = [el for el in ctx.state.elements.values() if el["id"] != rid and el.get("type") != "comment"
+              and (el.get("group") == rid or el.get("frame") == rid)]
+    if not any(el.get("type") == "arrow" and el.get("group") == rid for el in before):
+        # Only a block that routes its own wire is ever stamped; a stack or a table would be fingerprinted here on
+        # every arrangement, forever, for nothing.
+        return None
+    return arranged_digest(was, before, (float(was.get("x") or 0), float(was.get("y") or 0)))
+
+
+#: What ``_snapshot`` saves of an op's context: everything an arrangement and the label pass write to.
+_SNAPSHOT_LISTS = ("changed", "created", "warnings")
+_SNAPSHOT_DICTS = ("pending", "dirty", "aliases")
+
+
+def _snapshot(ctx: Any) -> Dict[str, Any]:
+    """What this op has written so far, cheaply: ``ctx.update`` copies an element on write, so a shallow copy of the
+    pending map is the whole drawing as it stands. ``_restore`` puts it back."""
+    kept = getattr(ctx, "_labels_kept", None)
+    return {"lists": {name: list(getattr(ctx, name)) for name in _SNAPSHOT_LISTS},
+            "dicts": {name: dict(getattr(ctx, name)) for name in _SNAPSHOT_DICTS},
+            "stats": {k: dict(v) for k, v in ctx.block_stats.items()}, "moved": {k: list(v) for k, v in ctx.block_moved.items()},
+            "restored": set(ctx.undo_restored), "labels_kept": set(kept[1]) if isinstance(kept, tuple) else None}
+
+
+def _restore(ctx: Any, snap: Mapping[str, Any]) -> None:
+    for name, value in snap["lists"].items():
+        getattr(ctx, name)[:] = value
+    for name, value in snap["dicts"].items():
+        target = getattr(ctx, name)
+        target.clear()
+        target.update(value)
+    ctx.block_stats.clear()
+    ctx.block_stats.update({k: dict(v) for k, v in snap["stats"].items()})
+    ctx.block_moved.clear()
+    ctx.block_moved.update({k: list(v) for k, v in snap["moved"].items()})
+    # The same set object: ``_keep_labels`` recognises the op's set by identity.
+    ctx.undo_restored.clear()
+    ctx.undo_restored.update(snap["restored"])
+    kept = getattr(ctx, "_labels_kept", None)
+    if isinstance(kept, tuple) and snap["labels_kept"] is not None:
+        kept[1].clear()
+        kept[1].update(snap["labels_kept"])
+
+
+def _block_now(ctx: Any, rid: str) -> Tuple[Optional[Element], List[Element]]:
+    return ctx.el(rid), [el for el in ctx.live() if el["id"] != rid and el.get("group") == rid]
+
+
 def arrange(ctx: Any, root: Element, reason: str) -> None:
+    """Run the root's ``arrange`` and apply it (``_arrange``); a board drawn before fingerprints is migrated first.
+
+    A board with no fingerprint (``_unstamped``) that this op left as it was keeps its drawing, unless drawing it
+    again the way it was drawn before fingerprints measures strictly better (the kind's ``judge``, said back through
+    ``env``: for a graph, fewer crossings, wires through boxes or misattributed labels and none of them more). The
+    redraw is tried for real - arranged, its labels placed by the canvas's own label pass - and rolled back when it
+    loses, because a redraw judged on estimated labels is the guess that made the owner's flow misattribute two. A
+    redraw that reads better but would grow the root over somebody else's marks or an open proposal (``_crowds``) is
+    refused too: nobody asked for it, and it must not cover what is not the block's. It is stamped either way, so the
+    second re-issue is the ordinary settled no-op, and the try runs once per board.
+    """
+    synth = _unstamped(ctx, root, reason)
+    if synth is None:
+        _arrange(ctx, root, reason)
+        return
+    rid = root["id"]
+    before = _snapshot(ctx)
+    env = _arrange(ctx, root, reason, stored=synth)
+    judge = env.get("judge") if env is not None else None
+    if env is None or env.get("kept") is not True or not callable(judge):
+        return  # the op changed the block (or it is too big to judge): the arrangement it got is the right one
+    kept_root, kept_members = _block_now(ctx, rid)
+    kept = _snapshot(ctx)
+    _restore(ctx, before)
+    _arrange(ctx, ctx.el(rid) or root, reason)
+    C._settle_labels(ctx)
+    new_root, new_members = _block_now(ctx, rid)
+    better = kept_root is not None and new_root is not None and judge(kept_root, kept_members, new_root, new_members)
+    crowded = _crowds(ctx, rid, kept_root, new_root) if better else []
+    if crowded:
+        _restore(ctx, kept)
+        ctx.warn("layout_note", "{}: drawn before this version; kept as it is, because drawing it again would grow it over "
+                                "{}".format(rid, ", ".join(crowded[:4])), [rid])
+        return
+    if better:
+        assert new_root is not None
+        # The labels were judged where the label pass just put them; the op's own pass leaves them there.
+        restored = ctx.undo_restored
+        mine = getattr(ctx, "_labels_kept", None)
+        if not isinstance(mine, tuple) or mine[0] is not restored:
+            mine = (restored, set())
+            ctx._labels_kept = mine
+        for el in new_members:
+            if el.get("type") == "arrow" and el["id"] not in restored:
+                restored.add(el["id"])
+                mine[1].add(el["id"])
+        if not isinstance(new_root.get(ARRANGED), int):
+            ctx.update(new_root, **{ARRANGED: arranged_digest(new_root, new_members, (float(new_root.get("x") or 0),
+                                                                                    float(new_root.get("y") or 0)))})
+        ctx.warn("layout_note", "{}: drawn before this version; drawn again because the new drawing reads better".format(
+            rid), [rid])
+        return
+    _restore(ctx, kept)
+
+
+#: How close to something that is not its own a block's root may grow on a one-time redraw (``_crowds``): the grid
+#: step, the spacing the canvas places marks at.
+REDRAW_CLEARANCE = float(C.GRID)
+
+
+def _block_ids(ctx: Any, rid: str) -> Set[str]:
+    """The root and everything inside it: members, and members of the frames among them, however deep."""
+    inside = {rid}
+    live = list(ctx.live())
+    grew = True
+    while grew:
+        grew = False
+        for el in live:
+            if el["id"] not in inside and (el.get("group") in inside or el.get("frame") in inside):
+                inside.add(el["id"])
+                grew = True
+    return inside
+
+
+def _area(a: Sequence[float], b: Sequence[float]) -> float:
+    return max(0.0, min(a[2], b[2]) - max(a[0], b[0])) * max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+
+
+def _new_cover(was: Sequence[float], now: Sequence[float], obstacle: Sequence[float]) -> bool:
+    """Does the root's added region touch this obstacle? Shrinkage elsewhere cannot cancel new coverage."""
+    shared = (max(was[0], now[0]), max(was[1], now[1]), min(was[2], now[2]), min(was[3], now[3]))
+    return _area(now, obstacle) > _area(shared, obstacle) + 1e-6
+
+
+def _crowds(ctx: Any, rid: str, kept_root: Optional[Element], new_root: Optional[Element]) -> List[str]:
+    """What the one-time redraw of an old board would grow its root over: marks that are not the block's, within
+    ``REDRAW_CLEARANCE``, and open proposal overlays, including their dashed leaders. Empty when it grows over nothing new.
+
+    ``graph.redraw_better`` judges the drawing inside the block and nothing outside it. On the owner's l6 board the
+    strictly better redraw (crossings 8 -> 6) grew the frame 120 units down, to 2 units above the operator's
+    "Operator note: expiry" card, and over the banner of the open proposal P-4 - a redraw nobody asked for, laid over
+    somebody else's work (layout findings, decision 3). The owner's rule: such a redraw is refused and the stored
+    drawing kept. Only what the redraw adds counts: a frame that already stood over a mark is not growing over it.
+    Bounds are conservative: an arrow's box may include empty space, but that is not permission to grow over it.
+    """
+    if kept_root is None or new_root is None:
+        return []
+    from herdr_team import canvas_collab
+
+    was, now = box_of(kept_root), box_of(new_root)
+    if _area(now, now) <= _area(was, now) + 1e-6:
+        return []  # the root does not reach anywhere it did not already cover
+    inside = _block_ids(ctx, rid)
+    pad = REDRAW_CLEARANCE
+    out: List[str] = []
+    for el in ctx.live():
+        if el["id"] in inside:
+            continue
+        x0, y0, x1, y1 = box_of(el)
+        near = (x0 - pad, y0 - pad, x1 + pad, y1 + pad)
+        if _new_cover(was, now, near):
+            out.append(str(el["id"]))
+    elements = {el["id"]: el for el in ctx.live()}
+    for record in canvas_collab.open_proposals(ctx.state):
+        reach = canvas_collab.proposal_reach(record, elements)
+        if reach is not None:
+            reach = (reach[0] - pad, reach[1] - pad, reach[2] + pad, reach[3] + pad)
+        if reach is not None and _new_cover(was, now, reach):
+            out.append("the overlay of proposal {}".format(record.get("id")))
+    return out
+
+
+def _arrange(ctx: Any, root: Element, reason: str, stored: Optional[int] = None) -> Optional[Dict[str, Any]]:
     """Run the root's ``arrange`` and apply it (1.5): member boxes (a resized member is refitted over its new size), routes,
-    inner frames, then the root's own box (it hugs its members unless the arrangement says where it goes)."""
+    inner frames, then the root's own box (it hugs its members unless the arrangement says where it goes). The ``env``
+    the kind answered through, or None when it has no arrangement."""
     kind = kind_of(root)
     if kind is None or kind.arrange is None:
-        return
+        return None
     rid = root["id"]
     layout = stack_of(root)
     # A positional block holds every pinned member where it is, which is right for every arrangement but the one the
@@ -1199,25 +1551,16 @@ def arrange(ctx: Any, root: Element, reason: str) -> None:
     env = {"members": members, "by_part": by_part(members, rid), "order": order, "tokens": _theme.tokens(), "prepared": None,
            "links": _links(ctx, order) if layout in ("row", "column") else [],
            "incremental": reason != "full", "reason": reason, "content": _zone.content_box(root) if root.get("type") == "frame" else box_of(root),
-           "children": children, "obstacles": [], "held": [el["id"] for el in members if _held(ctx, el, pos)]}
+           "children": children, "obstacles": [], "held": [el["id"] for el in members if _held(ctx, el, pos)],
+           "settled": _settled_for(ctx, ctx.el(rid) or root, members, reason, pos, stored), "as_left": _as_left(ctx, members)}
     result = kind.arrange(ctx.el(rid) or root, members, env)
     moved: List[str] = []
     for mid, box in sorted(result.boxes.items(), key=lambda item: C._id_number(item[0])):
         el = ctx.el(mid)
         if el is None or _held(ctx, el, pos):
             continue
-        x, y, w, h = (float(v) for v in box)
-        fields: Dict[str, Any] = {}
-        if (C._round(w), C._round(h)) != (el.get("w"), el.get("h")):
-            member_kind = kind_of(el)
-            if member_kind is not None and member_kind.measure is not None:
-                refit = C._fitted(el, (w, h))
-                if refit:
-                    refit["fit"]["min"] = list((el.get("fit") or {}).get("min") or refit["fit"]["min"])
-                    fields.update(refit)
-            elif el.get("type") != "frame":
-                fields.update(w=max(1, C._round(w)), h=max(1, C._round(h)))
-        dx, dy = C._round(x) - float(el.get("x") or 0), C._round(y) - float(el.get("y") or 0)
+        fields = _box_fields(el, box)
+        dx, dy = float(fields.pop("x")) - float(el.get("x") or 0), float(fields.pop("y")) - float(el.get("y") or 0)
         if fields:
             el = ctx.update(el, **fields)
         if dx or dy:
@@ -1232,6 +1575,11 @@ def arrange(ctx: Any, root: Element, reason: str) -> None:
         fields.update(C._geometry(points))
         if isinstance(route.get("label_at"), (list, tuple)) and len(route["label_at"]) == 2:
             fields["label_at"] = [C._r2(route["label_at"][0]), C._r2(route["label_at"][1])]
+        elif reason == "full" and arrow.get("label_at") is not None:
+            # Drawn again from scratch, a route the layout gave no label spot drops the one it had: the canvas places
+            # its label afresh from the new route. Kept, that spot was the one input a relayout carried over from
+            # the drawing before, so on the two-batch boards labels moved again on the second relayout (QA round 2).
+            fields["label_at"] = None
         if any(arrow.get(k) != v for k, v in fields.items()):
             ctx.update(arrow, **fields)
     for fid, box in result.frames.items():
@@ -1247,12 +1595,28 @@ def arrange(ctx: Any, root: Element, reason: str) -> None:
         target = {"x": x, "y": y, "w": max(1, w), "h": max(1, h)}
     else:
         target = hug(ctx, root, keep_corner=layout is not None)
+        moved += _hold_corner(ctx, root, members, target, reason, pos)
+        was = ctx.state.elements.get(rid)
+        if env.get("kept") is True and was is not None:
+            # Settled: the block keeps the box it had too. The hug counts the label pills, which the label pass
+            # placed after the hug that sized this frame, so hugging again grew a settled board once (the
+            # verifier's hiring board: 12 units up and 20 taller on its first re-issue, and its claim label jumped
+            # corner); nothing the frame holds has moved, so neither does the frame.
+            target = {"x": was.get("x"), "y": was.get("y"), "w": was.get("w"), "h": was.get("h")}
     counted = {}
     if root.get("type") == "frame":
         count = len([el for el in children_of(ctx, rid) if _flow(el)])
         if root.get("count") != count:
             counted["count"] = count
     extra = {k: v for k, v in dict(result.fields).items() if root.get(k) != v}
+    if result.routes or "kept" in env:
+        # ``kept`` is how a kind that routes its own edges answers: it is there even when every route was kept as
+        # still good and none came back, and such a block is stamped too, or it stays unstamped forever.
+        _keep_labels(ctx, result.routes, env.get("kept") is True)
+        # Only a block that routes its own edges keeps a fingerprint: it is the one whose redraw can re-roll wire.
+        digest = arranged_digest(root, [ctx.el(el["id"]) or el for el in members], (float(target["x"]), float(target["y"])))
+        if root.get(ARRANGED) != digest:
+            extra[ARRANGED] = digest
     if max(float(target["w"]), float(target["h"])) > C.MAX_BLOCK_SIZE and reason != "hug":
         # A layout that comes out bigger than a block may be (QA phase 2, F12 and R4: the limit is higher than one
         # element's, so a 200-node chain drawn to the right lays out).
@@ -1268,6 +1632,7 @@ def arrange(ctx: Any, root: Element, reason: str) -> None:
         ctx.warn("layout_note", "{}: {}".format(rid, note_text), [rid])
     ctx.block_stats.setdefault(rid, {}).update(dict(result.stats))
     ctx.block_moved.setdefault(rid, []).extend(m for m in moved if m not in ctx.block_moved.get(rid, []))
+    return env
 
 
 def _links(ctx: Any, order: Sequence[str]) -> List[Dict[str, Any]]:

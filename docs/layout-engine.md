@@ -82,6 +82,56 @@ team's manager. Re-supplying the whole spec is *not* the same thing: a spec re-i
 been working in drops the parts they renamed or re-adopted, and dropping an element the operator placed is refused —
 with a message that names this op.
 
+**Re-sending an unchanged spec changes nothing.** The keep decision judges a stored route by quality
+(`canvas_readability.route_good`), against absolute thresholds, so the pipeline's own fresh drawing can fail them —
+and a plain re-issue used to cut that wire and draw it again in a different context, worse, once (the owner's flow
+went from 3 to 23 units of wire on wire, the adversarial board from 7 crossings to 10), where `19f9f469` changed
+nothing. A route's own fields cannot say whether it was drawn against the boxes it joins now: the build and the label
+pass rewrite every arrow on every op. So an arrangement that routes its edges leaves a fingerprint on the root,
+`arranged` (`canvas_blocks.arranged_digest`): every member's box, route and words relative to the root, and the
+root's settings and title. When the next incremental arrangement would put every box back where it was and the
+fingerprint still matches, the stored wire *is* the pipeline's answer for these boxes and every route is kept as it
+is — no quality test, no shared-corridor cut. Anything that changes a box, a route, a word or a setting breaks the
+match and the quality path runs as before, so wire someone wrote by hand is still repaired by the next op.
+`relayout: "full"` never takes the wire as settled. The gate is `check_reissue` over the whole corpus in the harness
+and `Reissue` in `tests/test_canvas_readability.py` through the real pipeline, both by equality: "no worse" is how the
+regression was missed.
+
+**A board drawn before the fingerprint** (every board on disk before it existed) has none, and its first re-issue used to
+run the quality cut all the same: of 17 boards drawn by `d13e58c5`, 10 changed and 7 gained crossings, one a wire
+through "Counter". Such a board is fingerprinted as the op found it (`canvas_blocks._unstamped`), so an op that changed
+nothing an arrangement reads is settled against it exactly as a stamped board is. It then keeps its drawing unless the
+redraw the old pipeline would make reads **strictly better**: the redraw is arranged for real, its labels placed by
+the canvas's own label pass, both are measured, and it is taken only when crossings a reader sees, wires through a
+box and misattributed labels are none of them worse and one of them better, with no more than 20 units of extra wire
+on wire (`graph.redraw_better`); otherwise it is rolled back. A redraw that reads better is still rolled back when
+its root would grow into the clearance (one grid step) of anything that is not the block's, or over the overlay of an
+open proposal (`canvas_blocks._crowds`): nobody asked for it, and it must not cover someone else's work. The board is
+kept even if shrinkage elsewhere offsets the new overlap. This uses conservative element and proposal bounds,
+including arrows/comments and proposals about the block itself, with a grid step of clearance. A proposal banner is
+screen-sized: its envelope covers its smallest visible zoom (0.35), rather than assuming world-size text at zoom 1.
+The overlay bound includes the actual endpoints of its dashed move/aside leaders as well: an inside member proposed
+far away can have its leader cross the newly grown frame even when its ghost and banner are nowhere near it.
+The board is stamped either way, so the second re-issue is the ordinary no-op. On those 17 boards nothing changes. A settled board also keeps its
+own frame: hugging again counted label pills placed after the hug that sized it, and grew the frame once.
+
+Keeping the boxes and the wire is not the whole of it: the canvas's label pass runs after every op on every arrow the
+op touched, and it is not its own fixed point — a first drawing places labels in creation order, a later label that
+finds no clear spot takes the one that covers least, and run again the earlier label sees that pill and leaves for
+the far end of its route (on the owner's flow "lookup" and "cached" left their arrows). So a settled block's arrows
+are written back as they were and the label pass leaves them alone, as it does an undo's
+(`canvas_blocks._keep_labels`). `Reissue` compares every stored field but bookkeeping — label spots and the root's
+box included — because a gate on boxes and wire alone passed exactly that.
+
+**`relayout: "full"` is a fixed point too.** Two things carried over from the drawing before and kept it moving. The
+hug grew the frame up by the 2 units a wire stood above the top row, the next relayout laid the nodes out from that
+higher corner, and the adversarial board crept up 2 units per relayout without end: a block that already stood
+somewhere now keeps its corner, and what the drawing puts above or left of its content moves the drawing in
+(`canvas_blocks._hold_corner`; a first drawing, and a block holding an operator's placement, are hugged as always).
+And a route the layout gives no label spot kept its old one, the one input a relayout took from the drawing before:
+it now drops it and the label is placed afresh from the new route. `Reissue` holds three full relayouts and the
+re-issue after them, every field compared, on the corpus and on the boards the verifier named.
+
 A fresh layout also **spreads its lanes** until the drawing is a shape a view can fit (`layers._lane_scale`): nothing
 else bounded a drawing's shape, so a graph only ever grew along the flow and the page fitted the owner's own flow at
 51 %. The lane gap grows up to 3x the theme's, never shrinks, and the ranks are never closed up — a board's rank tops

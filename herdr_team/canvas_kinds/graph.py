@@ -432,8 +432,11 @@ def build(bctx: Any, spec: Dict[str, Any]) -> None:
         if old is None or (old.get("item") or {}).get("tone") != group.get("tone"):
             style = ctx.style({"tone": group["tone"]}, "frame") if group.get("tone") else ctx.default_style("frame")
         parent = frame_of.get(group.get("parent") or "", rid)
+        # The item stores a title only when it says more than the id, as ``spec`` reads it back: otherwise a redraw from
+        # the readback (``relayout:"full"``) and a re-issue of the op that spelled it out store two different items.
+        item = {key: value for key, value in group.items() if key != "title" or value != group["id"]}
         el = bctx.member(group["id"], "frame", text=group.get("title") or group["id"], style=style, frame=parent, minimum=(40.0, 40.0),
-                         item=dict(group))
+                         item=item)
         frame_of[group["id"]] = el["id"]
     for node in spec["nodes"]:
         kind = node.get("kind") or "box"
@@ -594,9 +597,38 @@ def arrange(root: Element, members: List[Element], env: Dict[str, Any]) -> Arran
         for part, (x0, y0, x1, y1) in found.items():
             frames[groups[part]["id"]] = (x0, y0, x1 - x0, y1 - y0)
             group_world[part] = (x0, y0, x1, y1)
+    # The block would be exactly as its last arrangement left it once these boxes are applied
+    # (``canvas_blocks.arranged_digest``): every stored route is the pipeline's own answer for these boxes, and drawing it again
+    # could only re-roll it. That is the plain re-issue of an unchanged spec, which must change nothing.
+    ask = env.get("settled")
+    settled = False
+    left = env.get("as_left") if incremental and callable(ask) else None
+    if left is not None and all(el["id"] in left for el in list(nodes.values()) + list(groups.values())):
+        # Exactly as the last arrangement left it? Then that is what goes back, boxes and all: the layout ran for its
+        # stats and notes, and its boxes are not applied (``canvas_blocks._as_left`` says why).
+        kept_boxes = {el["id"]: left[el["id"]] for el in nodes.values()}
+        kept_frames = {el["id"]: left[el["id"]] for el in groups.values() if el["id"] in frames}
+        if ask(kept_boxes, kept_frames):
+            settled = True
+            boxes, frames = kept_boxes, kept_frames
+            for part, el in nodes.items():
+                x, y, w, h = left[el["id"]]
+                world[part] = (x, y, x + w, y + h)
+            for part, el in groups.items():
+                if part in group_world:
+                    x, y, w, h = left[el["id"]]
+                    group_world[part] = (x, y, x + w, y + h)
+    settled = settled or bool(incremental and callable(ask) and ask(boxes, frames))
+    # Said back to ``canvas_blocks.arrange``: a settled block's labels are not placed again either (``_keep_labels``).
+    env["kept"] = settled
+    # And how to tell whether drawing a board from before fingerprints again would read better than keeping it.
+    env["judge"] = redraw_better
     routes, blocked, stale = route_edges(root, nodes, groups, edges, loose, world, group_world, result, settings, (ox, oy),
-                                         fresh_routes=not incremental)
-    notes = tuple(n for n in result.notes if not n.startswith("pin_ignored"))
+                                         fresh_routes=not incremental, settled=settled)
+    # A settled block keeps every stored route verbatim, so the layout's "wire_rerouted" is about wire nobody draws:
+    # the owner's l6 board said it on every re-issue while nothing on it moved, which tells an agent its drawing
+    # changed when it did not.
+    notes = tuple(n for n in result.notes if not n.startswith("pin_ignored") and not (settled and n.startswith("wire_rerouted")))
     if ROUTE_BUDGET_NOTE in blocked:
         notes += ("route_budget: routing ran out of its budget; the edges it did not reach are drawn straight (check names any that "
                   "cross a node)",)
@@ -708,7 +740,7 @@ def route_edges(root: Element, nodes: Mapping[str, Element], groups: Mapping[str
                 loose: Sequence[Element], world: Mapping[str, Tuple[float, float, float, float]],
                 group_world: Mapping[str, Tuple[float, float, float, float]], result: canvas_layouts.LayoutResult,
                 settings: Mapping[str, Any], origin: Tuple[float, float],
-                fresh_routes: bool = False) -> Tuple[Dict[str, Dict[str, Any]], List[str], List[str]]:
+                fresh_routes: bool = False, settled: bool = False) -> Tuple[Dict[str, Dict[str, Any]], List[str], List[str]]:
     """Every edge routed along the layout's hints and ports, around every node and every group holding neither end; and
     the edges that found no clear route (drawn straight).
 
@@ -716,6 +748,12 @@ def route_edges(root: Element, nodes: Mapping[str, Element], groups: Mapping[str
     ``patch {relayout:"full"}`` mean by "lay it out again from scratch". Otherwise a stored route is kept while it is
     both legal and still good (``canvas_readability.route_good``), and ``stale`` names the ones that were cut again
     so the op's answer can say what it changed.
+
+    ``settled`` says the block is exactly as the last arrangement left it, boxes and wire (``arrange`` decides): every
+    stored route is then kept as it is, with no quality test and no shared-corridor cut. Those two ask whether a route
+    drawn against *other* boxes has gone stale, and asking it of a route drawn against these boxes is how a plain
+    re-issue came to cut the pipeline's own wire and draw it again worse (layout findings N3: wire on wire 3 -> 23 on
+    the owner's flow, crossings 7 -> 10 on the adversarial board, where ``19f9f469`` changed nothing at all).
     """
     from herdr_team.canvas_kinds import arrow
 
@@ -731,6 +769,8 @@ def route_edges(root: Element, nodes: Mapping[str, Element], groups: Mapping[str
     requests = []
     ids = {}
     stale: List[str] = []
+    #: Arrow id -> its stored route, kept verbatim because the block is ``settled``.
+    unchanged: Dict[str, Dict[str, Any]] = {}
     #: Part -> ``(its router, its request, the stored polyline that was kept)``. Keeping is a per-route decision made
     #: before the batch exists, so a kept route can still end up sharing a corridor with one the batch drew next to
     #: it afterwards; ``_recut_shared`` below cuts those once the batch is finished.
@@ -746,6 +786,14 @@ def route_edges(root: Element, nodes: Mapping[str, Element], groups: Mapping[str
         inside = set(group_of.get(a, ())) | set(group_of.get(b, ()))
         obstacles += [(groups[g]["id"], box, "rect") for g, box in group_world.items() if g not in inside]
         obstacles += loose_obstacles
+        points = el.get("points") or []
+        if settled and not fresh_routes and len(points) >= 2:
+            ids[part] = el["id"]
+            out_kept = {"points": [[float(p[0]), float(p[1])] for p in points]}
+            if isinstance(el.get("label_at"), (list, tuple)) and len(el["label_at"]) == 2:
+                out_kept["label_at"] = [float(el["label_at"][0]), float(el["label_at"][1])]
+            unchanged[el["id"]] = out_kept
+            continue
         if route_name == "orthogonal" and a != b and not fresh_routes:
             # A route that still leaves one end, reaches the other, runs through nothing **and is still worth
             # looking at** stays as it is.
@@ -792,9 +840,10 @@ def route_edges(root: Element, nodes: Mapping[str, Element], groups: Mapping[str
             held[part] = (route_name, request, keep)
             continue
         requests.append((route_name, request))
-    out: Dict[str, Dict[str, Any]] = {}
+    out: Dict[str, Dict[str, Any]] = dict(unchanged)
     blocked: List[str] = []
-    kept = tuple(points for _name, _request, points in held.values())
+    kept = tuple(points for _name, _request, points in held.values()) + \
+        tuple(tuple((p[0], p[1]) for p in route["points"]) for route in unchanged.values())
     requests = [(route_name, replace(request, others=kept)) for route_name, request in requests]
     by_router: Dict[str, List[canvas_routers.RouteRequest]] = {}
     for route_name, request in requests:
@@ -1360,6 +1409,36 @@ def _fresh_drawn(el: Element, env: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         _FRESH.pop(next(iter(_FRESH)))
     _FRESH[key] = found
     return found
+
+
+#: The numbers a redraw of a board from before fingerprints must not make worse, and must make better at least one
+#: of, to replace what is on the board (``redraw_better``): each is something a reader gets wrong, not a matter of taste.
+REDRAW_HARD = ("crossings_seen", "edge_over_node", "label_misattributed")
+#: How much more wire drawn along other wire such a redraw may add while it wins on ``REDRAW_HARD``: the slack
+#: ``routes_tangled`` calls noise. Two wires drawn as one is the next thing a reader gets wrong.
+REDRAW_WIRE_SLACK = 20.0
+
+
+def redraw_better(kept_root: Element, kept: Sequence[Element], new_root: Element, new: Sequence[Element]) -> bool:
+    """Whether a graph drawn before fingerprints (``canvas_blocks._unstamped``) should take its redraw.
+
+    Strictly better or nothing: every ``REDRAW_HARD`` number no worse, at least one better, and no more than
+    ``REDRAW_WIRE_SLACK`` of extra wire on wire. Anything less keeps the board as it is, because that board is what
+    the owner has been looking at: the redraw run on its own made 7 of 17 old boards cross more (the owner's flow
+    0 -> 1 with two labels misattributed) and put "lookup" through "Counter" on the two-batch board, while on the
+    owner's l6 board as it stands it is a real repair (crossings 8 -> 6), which this keeps. A board too big for the
+    readability checks is too big to judge, and keeps its drawing.
+    """
+    nodes, _groups, edges, _loose = roles(kept_root, list(kept))
+    if not edges or not nodes or len(nodes) > CROSSINGS_MAX_NODES or len(edges) > READABILITY_MAX_EDGES:
+        return False
+    before = canvas_readability.measure(canvas_readability.from_block(kept_root, list(kept)))
+    after = canvas_readability.measure(canvas_readability.from_block(new_root, list(new)))
+    if any(float(after[k]) > float(before[k]) for k in REDRAW_HARD):
+        return False
+    if float(after["edge_on_edge_len"]) > float(before["edge_on_edge_len"]) + REDRAW_WIRE_SLACK:
+        return False
+    return any(float(after[k]) < float(before[k]) for k in REDRAW_HARD)
 
 
 def _relayout_fix(el: Element) -> Dict[str, Any]:
