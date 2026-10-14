@@ -1662,7 +1662,7 @@ class Daemon:
             last_ping_at=self.last_ping_at,
             started_at=self.started_at,
             identity_env_unset=_identity_env_unset() and not any(name in self.env for name in IDENTITY_ENV_VARS),
-            capabilities=capabilities.capability_map(self.atomic_idle_prompt),
+            capabilities=dict(capabilities.capability_map(self.atomic_idle_prompt), autonomous_staffing_v1=True),
         )
 
     def write_info(self, started: bool = False) -> DaemonInfo:
@@ -4011,7 +4011,7 @@ class Daemon:
         name = str(job.get("member") or "")
         action = str(job.get("action") or "")
         member = team.member(name)
-        if member is None or action not in ("compact", "clear", "model", "restart"):
+        if member is None or action not in ("compact", "clear", "model", "restart", "retire"):
             self.log("{}: control job for {!r} refused: unknown member or action".format(team.name, name))
             return
         record = self._board_record(team, job.get("seq"))
@@ -4024,12 +4024,38 @@ class Daemon:
         latest_doc = store.RosterStore(team.paths).load()
         latest_member = next((m for m in latest_doc.get("members", []) if m.get("name") == name), member)
         mode = _permissions.effective(latest_doc.get("config"), latest_member)
+        from herdr_team import staffing
+        try:
+            if action != "retire":
+                staffing.control_guard(latest_doc, latest_member, record or {}, control_doc,
+                                       starting=action == "restart" or (action == "clear" and latest_member.get("kind") == "opencode"))
+                if (record or {}).get("from") != "human" and (action == "restart" or (action == "clear" and latest_member.get("kind") == "opencode")):
+                    staffing.launch_context_guard(roster.Team.from_json(latest_doc), latest_member, self.env)
+        except HerdrTeamError as err:
+            self._append_system(team, "typed", "{} of {} refused: {}".format(action, name, err.code), ["human"], {"member": name})
+            return
         extra: Dict[str, Any] = {}
-        if action == "model":
+        if action == "retire":
+            current = roster.Team.from_json(latest_doc)
+            attempt = staffing.attempts(current).get(control_doc.get("request_id")) or {}
+            manager = current.manager()
+            by_manager = bool(manager and manager.status in ("active", "starting") and (record.get("from"), record.get("from_terminal"), record.get("from_gen")) == (manager.name, manager.terminal_id, manager.generation))
+            owned = latest_member.get("staffing") or {}
+            from herdr_team import work as staffing_work
+            busy_work = any(i.owner == name and i.status in staffing_work.ACTIVE + (staffing_work.STATUS_ASSIGNED,) for i in staffing_work.load(team.paths).values())
+            if (not owned or owned.get("request_id") != control_doc.get("request_id") or attempt.get("phase") != "retiring"
+                    or latest_member.get("manager") or busy_work or not (record.get("from") == "human" or by_manager)
+                    or (latest_member.get("terminal_id"), latest_member.get("generation")) != (control_doc.get("terminal_id"), control_doc.get("generation"))
+                    or control_doc.get("exit") != _models.exit_keystroke(latest_member.get("kind"))):
+                self._append_system(team, "typed", "retirement of {} refused: ownership/identity changed".format(name), ["human"], {"member": name})
+                return
+            lines = [control_doc["exit"]]
+            extra = {"request_id": control_doc["request_id"], "terminal_id": control_doc["terminal_id"], "generation": control_doc["generation"]}
+        elif action == "model":
             # The lines come from the record, which the origin check above vouched for.
             lines = [str(k).strip() for k in (control_doc.get("keystrokes") or []) if str(k).strip()]
             kind = str(member.get("kind") or "")
-            if kind == "opencode":
+            if kind == "opencode" or member.get("staffing"):
                 expected = _models.live_keystrokes(kind, control_doc.get("model"), control_doc.get("effort"))
                 if expected != lines:
                     lines = []
@@ -4093,7 +4119,7 @@ class Daemon:
                                                     profile=latest_member.get("profile") if isinstance(latest_member.get("profile"), str) else None),
                          "after": _models.post_start_keystrokes(kind, effort)}
         pending = Pending(first_ms=now, kind="control", lines=list(lines), force=True, seqs=[])
-        pending.control = dict({"action": action, "keystroke": lines[0], "keystrokes": list(lines), "requested_by": (record or {}).get("from"), "kind": member.get("kind")}, **extra)
+        pending.control = dict({"action": action, "keystroke": lines[0], "keystrokes": list(lines), "requested_by": (record or {}).get("from"), "kind": member.get("kind"), "source_seq": (record or {}).get("seq")}, **extra)
         team.pending[name] = pending
         self.log("{}: {} queued for {} ({})".format(team.name, action, name, "; ".join(repr(k) for k in lines)))
 
@@ -4149,6 +4175,30 @@ class Daemon:
 
             pi_previous_instance = (pi_support.read_snapshot(self.session, member) or {}).get("instance")
         action = str(control.get("action") or "")
+        if member.get("staffing") and action in ("model", "restart", "clear", "retire"):
+            from herdr_team import staffing
+            latest = store.RosterStore(team.paths).load()
+            row = next((m for m in latest.get("members", []) if m.get("name") == name), {})
+            record = self._board_record(team, control.get("source_seq")) or {}
+            manager = roster.Team.from_json(latest).manager()
+            if action == "retire":
+                owned = row.get("staffing") or {}
+                attempt = staffing.attempts(roster.Team.from_json(latest)).get(owned.get("request_id")) or {}
+                by_manager = bool(manager and manager.status in ("active", "starting") and (record.get("from"), record.get("from_terminal"), record.get("from_gen")) == (manager.name, manager.terminal_id, manager.generation))
+                from herdr_team import work as staffing_work
+                busy_work = any(i.owner == name and i.status in staffing_work.ACTIVE + (staffing_work.STATUS_ASSIGNED,) for i in staffing_work.load(team.paths).values())
+                if (attempt.get("phase") != "retiring" or row.get("terminal_id") != member.get("terminal_id") or row.get("generation") != member.get("generation")
+                        or busy_work or not (record.get("from") == "human" or by_manager)):
+                    self._finish_pending(team, name, pending, "typed", "retire refused: worker identity changed")
+                    return
+            else:
+                try:
+                    staffing.control_guard(latest, row, record, control, starting=action == "restart" or bool(control.get("fresh_restart")))
+                    if record.get("from") != "human" and (action == "restart" or control.get("fresh_restart")):
+                        staffing.launch_context_guard(roster.Team.from_json(latest), row, self.env)
+                except HerdrTeamError as err:
+                    self._finish_pending(team, name, pending, "typed", "control refused: " + err.code)
+                    return
         if action == "restart" or control.get("fresh_restart"):
             doc = store.RosterStore(team.paths).load()
             row = next((m for m in doc.get("members", []) if m.get("name") == name), {})
@@ -4230,6 +4280,7 @@ class Daemon:
             "model": control.get("model"), "effort": control.get("effort"),
             "setting": control.get("setting"), "kind": control.get("kind") or member.get("kind"),
             "brief_after": bool(control.get("brief_after")), "restarted": bool(control.get("restarted")),
+            "request_id": control.get("request_id"),
         }
         self.log("{}: typed {!r} into {} ({}); waiting for the effect".format(team.name, keystroke, name, pane_id))
         self._append_system(team, "typed", "{} typed into {}, asked by {}".format(keystroke, name, rt.control_pending["requested_by"]),
@@ -4240,13 +4291,14 @@ class Daemon:
                           "pane_id": pane_id, "model": control.get("model"), "effort": control.get("effort"),
                           "after": list(control.get("after") or []), "requested_by": rt.control_pending["requested_by"],
                           "session": control.get("session"), "permissions": control.get("permissions", "yolo"),
-                          "profile": control.get("profile")}
+                          "profile": control.get("profile"), "source_seq": control.get("source_seq")}
         elif action == "clear" and control.get("fresh_restart"):
             rt.restart = {"phase": "exiting", "since_ms": now, "action": "clear",
                           "argv": list(control.get("argv") or []), "kind": str(member.get("kind") or ""),
                           "pane_id": pane_id, "model": control.get("model"), "effort": control.get("effort"),
                           "after": list(control.get("after") or []), "requested_by": rt.control_pending["requested_by"],
-                          "session": member.get("session"), "permissions": control.get("permissions", "yolo")}
+                          "session": member.get("session"), "permissions": control.get("permissions", "yolo"),
+                          "source_seq": control.get("source_seq")}
         elif action == "model" and not control.get("model"):
             # Effort alone has no observable: the transcript records the model,
             # not the thinking budget. Typed is as far as this can be proven.
@@ -4450,6 +4502,11 @@ class Daemon:
                 with store.FileLock(team.paths.root / "restore.lock", timeout=0, code="permissions_busy"):
                     doc = store.RosterStore(team.paths).load()
                     row = next((m for m in doc.get("members", []) if m.get("name") == name), {})
+                    from herdr_team import staffing
+                    if state.get("requested_by") != "human":
+                        source = self._board_record(team, state.get("source_seq")) or {}
+                        staffing.control_guard(doc, row, source, state, starting=True)
+                        staffing.launch_context_guard(roster.Team.from_json(doc), row, self.env)
                     if _permissions.effective(doc.get("config"), row) != state.get("permissions", "yolo"):
                         self._restart_failed(team, name, rt, "permissions changed; resume the member with its saved setting", now)
                         return

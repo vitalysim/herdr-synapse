@@ -938,7 +938,7 @@ def read_key(stdscr: Any, tick_ms: Optional[int] = None) -> Optional[str]:
         return _read_escape(stdscr, tick_ms)
     control = {
         "\r": "ENTER", "\n": "ENTER", "\t": "TAB", "\x7f": "BACKSPACE", "\x08": "BACKSPACE", "\x03": "CTRL_C",
-        "\x01": "CTRL_A", "\x05": "CTRL_E", "\x0b": "CTRL_K", "\x15": "CTRL_U", "\x04": "CTRL_D", "\x0f": "CTRL_O",
+        "\x01": "CTRL_A", "\x05": "CTRL_E", "\x0b": "CTRL_K", "\x15": "CTRL_U", "\x04": "CTRL_D", "\x0f": "CTRL_O", "\x14": "CTRL_T",
     }
     if ch in control:
         return control[ch]

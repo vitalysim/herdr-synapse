@@ -2443,6 +2443,11 @@ class PickerModel:
     #: Creation-only choice follows terminal/new-row identity, never an editable name or list ordinal.
     leader_key: str = ""
     leader_index: int = 0
+    #: Opt-in creation envelope; omitted completely from normal manual requests.
+    autonomous: bool = False
+    staffing_providers: str = ""
+    staffing_max_workers: int = 4
+    staffing_acceptance: str = ""
     #: Agent members per existing team, for the target stage labels (filled by the picker runtime).
     existing_team_sizes: Dict[str, int] = field(default_factory=dict)
     #: Kinds the daemon may type into (``kinds.json``); None when unknown. The confirm screen warns about the rest.
@@ -2657,6 +2662,8 @@ def tree_member(member: Dict[str, Any], charter: Optional[Dict[str, Any]] = None
         "manager": bool(member.get("manager")),
         "model": member.get("model"),
         "effort": member.get("effort"),
+        "profile": member.get("profile"),
+        "cwd": member.get("cwd"),
         "swap": member.get("swap"),
         "agent_status": None,
     }
@@ -2955,8 +2962,12 @@ def create_spec(model: PickerModel) -> Dict[str, Any]:
                 "leader": model.mode == "create" and leader_row_key(row) == model.leader_key,
             }
         )
-    return {"team": model.team_name, "charter": model.charter or None, "rules": model.rules or None, "project": model.project or None,
+    spec = {"team": model.team_name, "charter": model.charter or None, "rules": model.rules or None, "project": model.project or None,
             "naming": "prefixed", "members": members, "mode": model.mode, "workspace": model.focused_workspace}
+    if model.mode == "create" and model.autonomous:
+        spec["staffing"] = {"providers": [v.strip() for v in model.staffing_providers.split(",") if v.strip()],
+                            "max_workers": model.staffing_max_workers, "acceptance": model.staffing_acceptance}
+    return spec
 
 
 def _set_input(model: PickerModel, text: str) -> None:
@@ -3077,6 +3088,8 @@ def picker_apply_key(model: PickerModel, key: str) -> Optional[Intent]:
         return _project_key(model, key)
     if model.stage == "leader":
         return _leader_key(model, key)
+    if model.stage in ("staff_pool", "staff_limit", "staff_acceptance"):
+        return _staffing_key(model, key)
     if model.stage == "team_folder":
         return _team_folder_key(model, key)
     if model.stage == "link_pick":
@@ -3090,6 +3103,17 @@ def picker_apply_key(model: PickerModel, key: str) -> Optional[Intent]:
     if model.stage == "new_profile":
         return _new_profile_key(model, key)
     if model.stage == "confirm":
+        if key in ("a", "A") and model.mode == "create":
+            if model.autonomous:
+                model.autonomous = False
+                model.status = "manual creation; all selected agents and settings kept"
+            elif len(selected_rows(model)) != 1 or not model.charter or not model.project:
+                model.error = "autonomous creation needs one selected leader, a task charter and a project directory; manual creation remains available"
+            else:
+                model.stage = "staff_pool"
+                _set_input(model, model.staffing_providers)
+                model.error = None
+            return None
         if key == "ENTER":
             if model.mode == "create" and not any(leader_row_key(r) == model.leader_key for r in selected_rows(model)):
                 model.stage = "leader"
@@ -3105,6 +3129,43 @@ def picker_apply_key(model: PickerModel, key: str) -> Optional[Intent]:
             _begin_member_field(model)
             model.error = None
         return None
+    return None
+
+
+def _staffing_key(model: PickerModel, key: str) -> Optional[Intent]:
+    if key == "ESC":
+        model.stage = "confirm"
+        model.error = None
+        return None
+    if key == "ENTER":
+        from herdr_team import staffing
+        from herdr_team.errors import HerdrTeamError
+        try:
+            if model.stage == "staff_pool":
+                choices = staffing.routes([v.strip() for v in model.input.split(",") if v.strip()])
+                model.staffing_providers = ",".join(choices)
+                model.stage = "staff_limit"
+                _set_input(model, str(model.staffing_max_workers))
+            elif model.stage == "staff_limit":
+                try:
+                    limit = int(model.input)
+                except ValueError:
+                    raise HerdrTeamError("usage", "enter a worker concurrency between 1 and 64", 2)
+                model.staffing_max_workers = staffing.max_workers(limit)
+                model.stage = "staff_acceptance"
+                _set_input(model, model.staffing_acceptance)
+            else:
+                if not model.input.strip() or len(model.input) > 1000:
+                    raise HerdrTeamError("usage", "completion evidence is required (at most 1000 characters)", 2)
+                model.staffing_acceptance = model.input.strip()
+                model.autonomous = True
+                model.stage = "confirm"
+                _set_input(model, "")
+            model.error = None
+        except HerdrTeamError as err:
+            model.error = err.message
+        return None
+    edit_key(_TextView(model), key)
     return None
 
 
@@ -4000,7 +4061,7 @@ def _members_key(model: PickerModel, key: str) -> Optional[Intent]:
     return None
 
 
-PICKER_TEXT_STAGES = ("name", "charter", "rules", "members", "rename", "goal", "model", "swap_model", "solo_name", "solo_mission")
+PICKER_TEXT_STAGES = ("name", "charter", "rules", "members", "rename", "goal", "model", "swap_model", "solo_name", "solo_mission", "staff_pool", "staff_limit", "staff_acceptance")
 
 #: The member action menu, in the order it is shown. ``{team}`` is filled in per member.
 ACTION_OPTIONS = (
@@ -4211,7 +4272,7 @@ def _model_key(model: PickerModel, key: str) -> Optional[Intent]:
         model.stage = "actions"
         model.error = None
         return None
-    if key == "ENTER":
+    if key in ("ENTER", "CTRL_T"):
         member = action_member(model)
         if member is None:
             model.stage = "select"
@@ -4226,6 +4287,15 @@ def _model_key(model: PickerModel, key: str) -> Optional[Intent]:
             _models.validate(member.get("kind"), *parsed)
         except _Err as err:
             model.error = err.message
+            return None
+        if key == "CTRL_T":
+            if not parsed[0] or member.get("kind") not in ("claude", "codex", "opencode") or not member.get("cwd"):
+                model.error = "choose an explicit Claude Code/Codex/OpenCode model and an existing working directory"
+                return None
+            model.pending_action = Intent("member_model_check", {"team": model.action_team, "member": str(member.get("name")),
+                                          "kind": member["kind"], "model": parsed[0], "effort": parsed[1], "profile": member.get("profile"),
+                                          "cwd": member["cwd"], "terminal_id": member.get("terminal_id")})
+            model.status = "Check one model? This may consume quota or incur charges. No workload tools. [y/N]"
             return None
         return Intent("member_model", {"team": model.action_team, "member": str(member.get("name")), "setting": text, "terminal_id": member.get("terminal_id")})
     edit_key(_TextView(model), key)
@@ -4546,6 +4616,7 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
     elif model.stage == "model":
         lines.append("Model and effort for {}: <model>[@<effort>], e.g. opus@medium, gpt-5.6-luna@high, @xhigh (Esc goes back)".format(model.action_member))
         lines.append("Enter records it and announces it; Claude and OpenCode effort can switch live; other changes apply at resume")
+        lines.append("Ctrl-T checks one selected model (asks first; may spend quota; does not change this member)")
         lines.append("setting:")
         lines.append(INPUT_PROMPT + model.input)
         has_input = True
@@ -4673,6 +4744,18 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
         lines.append(prompt + ":")
         lines.append(INPUT_PROMPT + model.input)
         has_input = True
+    elif model.stage in ("staff_pool", "staff_limit", "staff_acceptance"):
+        lines.append("Optional autonomous staffing — the operator keeps all manual controls")
+        if model.stage == "staff_pool":
+            lines.append("Approved providers, comma-separated (available HARNESS --readiness shows native IDs)")
+            lines.append("Examples: claude:firstParty,codex:openai,opencode:anthropic")
+        elif model.stage == "staff_limit":
+            lines.append("Concurrent autonomous workers, excluding the leader (default four)")
+            lines.append("No total-start cap, expiry, spending cap or native internal-subagent cap")
+        else:
+            lines.append("Completion evidence for the team's task (required)")
+        lines.append(INPUT_PROMPT + model.input)
+        has_input = True
     elif model.stage == "confirm":
         if model.mode == "add":
             count = len(selected_rows(model))
@@ -4684,6 +4767,10 @@ def picker_lines(model: PickerModel, width: int = 70, height: int = 24) -> List[
             lines.append("rules: {}".format(headline(model.rules, 60) if model.rules else "(none, set later with knowledge set)"))
             chosen = next((r for r in selected_rows(model) if leader_row_key(r) == model.leader_key), None)
             lines.append("leader: {} — existing manager permissions, not operator".format(chosen.member_name if chosen else "missing; choose again"))
+            if model.autonomous:
+                lines.append("autonomous: {} workers; {}; inherited launch policy (A disables)".format(model.staffing_max_workers, model.staffing_providers))
+            else:
+                lines.append("manual creation (unchanged); A offers optional autonomous staffing for a manager-only start")
         kind_width = max([10] + [len(new_label(r)) for r in selected_rows(model) if r.spawn])
         for row in selected_rows(model):
             lines.append("  {:<8} {:<{kw}} {:<14} {}{}{}".format("new" if row.spawn else row.pane_id, new_label(row) if row.spawn else (row.kind or "?"),

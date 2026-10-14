@@ -10,7 +10,9 @@ addressed to ``all`` with the new text, and nudges every member only with
 ``--urgent`` (the record's ``urgent`` flag is what the daemon reads).
 
 Role briefs: one sentence or a short paragraph per member, delivered in
-that member's briefing (first 300 chars) and by ``me``. Also human only.
+that member's briefing (first 300 chars) and by ``me``. Changes retain the
+operator gate. Initial staffing Missions are manager-assigned work, never
+operator Rules or an operator-authority grant.
 
 ``charter_seq_acked`` per member is recorded by ``ack`` (``ack_charter``)
 and read by ``who`` to show ``charter: stale``.
@@ -20,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -546,7 +549,20 @@ def initialize_instructions(layout: Layout, team: str, author: Author, member_na
     stored = _doc.to_text(sections)
     ensure_team_dirs(team_paths)
     target = team_paths.instructions(member.name)
-    store.atomic_write(target, stored.encode("utf-8"))
+    if member.staffing:
+        # Layout can take time: an earlier absence check must never authorize
+        # replacing a document that arrived meanwhile. Fail closed without links.
+        with tempfile.TemporaryDirectory(prefix=".staffing-mission-", dir=os.fspath(target.parent)) as temporary:
+            staged = Path(temporary) / "mission.md"
+            store.atomic_write(staged, stored.encode("utf-8"))
+            try:
+                os.link(os.fspath(staged), os.fspath(target))
+            except FileExistsError:
+                raise HerdrTeamError("worker_instructions_exist", "worker Mission path became occupied; it is not adopted or overwritten", EXIT_REFUSED) from None
+            except OSError:
+                raise HerdrTeamError("worker_instructions_publish_failed", "cannot safely publish a new worker Mission without replacement", EXIT_REFUSED) from None
+    else:
+        store.atomic_write(target, stored.encode("utf-8"))
     revision = _bump_member_counter(team_paths, member.name, "instructions_seq")
     audit(layout, team, "instructions_initialized", author, {"member": member.name, "chars": len(stored), "instructions_seq": revision})
     return {"team": team, "member": member.name, "chars": len(stored), "path": os.fspath(target), "record_seq": None, "instructions_seq": revision}

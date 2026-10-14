@@ -317,6 +317,11 @@ def _team_setup_args(spec: Dict[str, Any]) -> List[str]:
         args += ["--rules", str(spec["rules"])]
     if spec.get("project"):
         args += ["--project", str(spec["project"])]
+    staffing = spec.get("staffing")
+    if isinstance(staffing, dict):
+        args += ["--autonomous", "--max-workers", str(staffing["max_workers"]), "--acceptance", str(staffing["acceptance"])]
+        for provider in staffing["providers"]:
+            args += ["--allow-provider", str(provider)]
     return args
 
 
@@ -554,7 +559,7 @@ def run(layout: Layout, api: Any, env: Dict[str, str], actions: bool = True) -> 
 
 
 #: Member actions the tree can run while the popup stays open.
-ACTION_INTENTS = ("agent_focus", "agent_watch", "whiteboard_steps", "member_rename", "member_goal", "member_send_goal", "member_remove", "member_focus", "member_resume", "member_manager", "member_model", "team_folder_set", "team_board_open", "team_dissolve", "team_link")
+ACTION_INTENTS = ("agent_focus", "agent_watch", "whiteboard_steps", "member_rename", "member_goal", "member_send_goal", "member_remove", "member_focus", "member_resume", "member_manager", "member_model", "member_model_check", "team_folder_set", "team_board_open", "team_dissolve", "team_link")
 #: ``remove`` and ``rename`` do several socket round trips plus a lock wait; the console's 20 s is too
 #: tight for them, and a timeout kills the CLI mid-change (M8 review).
 ACTION_TIMEOUT_S = 45.0
@@ -571,6 +576,7 @@ ACTION_LABELS = {
     "member_resume": "looking up the session of {member}",
     "member_manager": "making {member} the team manager",
     "member_model": "setting the model for {member}",
+    "member_model_check": "checking one model for {member} (may consume quota)",
     "team_folder_set": "setting the folder for {team}",
     "team_dissolve": "dissolving {team}",
     "team_link": "connecting {team}",
@@ -609,6 +615,12 @@ def action_args(intent: Any) -> List[str]:
         return ["--team", team, "manager", "--clear"] if args.get("clear") else ["--team", team, "manager", member]
     if intent.kind == "member_model":
         return ["--team", team, "model", member, str(args.get("setting") or "")]
+    if intent.kind == "member_model_check":
+        argv = ["--team", team, "model-check", str(args["kind"]), "--model", str(args["model"]), "--cwd", str(args["cwd"]), "--yes"]
+        for field in ("profile", "effort"):
+            if args.get(field):
+                argv += ["--" + field, str(args[field])]
+        return argv
     return ["--team", team, "focus", member]
 
 
@@ -682,6 +694,8 @@ def action_success_status(intent: Any, out: Any) -> str:
         setting = (out or {}).get("setting") if isinstance(out, dict) else args.get("setting")
         apply = (out or {}).get("apply") if isinstance(out, dict) else None
         return "{} runs {} {}".format(member, setting, {"live": "once the notifier types it (it is idle first)", "restart": "after the notifier restarts it", "next": "from its next resume"}.get(str(apply), "(recorded)"))
+    if intent.kind == "member_model_check":
+        return "model check: {} (requested {}; observed {})".format((out or {}).get("status", "unknown"), args.get("model"), (out or {}).get("observed_model") or "unconfirmed")
     if intent.kind == "member_manager":
         if args.get("clear"):
             return "{} is no longer the team manager; the team was told".format(member)
@@ -786,7 +800,7 @@ def execute_action(intent: Any, model: PickerModel, api: Any, layout: Optional[L
         model.error = "{} changed while this was open; press r to refresh".format(intent.args.get("member"))
         model.stage = "select"
         return True
-    rc, out, err = run_cli(action_args(intent), env, timeout=ACTION_TIMEOUT_S)
+    rc, out, err = run_cli(action_args(intent), env, timeout=95.0 if intent.kind == "member_model_check" else ACTION_TIMEOUT_S)
     if err:
         model.error = action_failure_status(intent, err)
         if intent.kind not in ("member_rename", "member_goal", "team_folder_set"):

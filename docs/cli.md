@@ -8,6 +8,126 @@ change and say why in the commit message.
 For the expandable command inventory and every GUI shortcut, see the
 [command and shortcut reference](reference.md).
 
+## Optional autonomous staffing
+
+Manual creation and human configuration are unchanged. The following mode is
+opt-in, disabled by default, and does not enroll existing teams. The human remains
+the operator; selecting a manager or enabling staffing grants no broad operator
+delegation. Other manually supported harnesses remain supported.
+
+```sh
+herdr-synapse available codex --readiness --cwd /path/to/project
+herdr-synapse create task-team --new --spawn lead:codex \
+  --leader role:lead --brief 'lead=Research, plan, staff and verify the task.' \
+  --project /path/to/project --charter 'Implement the requested change.' \
+  --autonomous --allow-provider codex:openai --max-workers 4 \
+  --acceptance 'Tests and an evidence-backed review pass.'
+```
+
+Provider IDs are native: inspect `available HARNESS --readiness`, rather than
+copying the example's provider blindly. Creation requires a current notifier
+advertising `autonomous_staffing_v1`, one selected manager (Claude Code, Codex or
+OpenCode), a task charter, a project/knowledge location and completion evidence.
+The policy and required Mission are saved before briefing. Workers use that
+project directory and inherit the existing team launch policy, including YOLO.
+Use compatible Synapse CLIs and the capability-advertising notifier for an
+enrolled team; older writers are not supported for its new ownership records.
+
+In the creation wizard, keep the normal manual confirmation or press **A** at
+confirmation for a manager-only autonomous start. The optional flow asks for
+approved provider IDs, concurrency and completion evidence. A disables it again
+without removing any manual member settings. The four-worker default applies
+only to autonomous workers, not to the human's manual options.
+
+`staff status|add|retire|pause|resume|configure` operates on the selected team.
+
+- `status` is read-only: enabled, paused, approved providers, max/used capacity,
+  and durable attempts. It does not launch, discover native models or repair state.
+- `add ROLE claude|codex|opencode --model ID --mission TEXT --acceptance TEXT
+  --request-id ID [--name NAME] [--profile NAME] [--effort VALUE] [--work-id W-N]`
+  reserves capacity atomically, starts a new owned member, assigns work and then
+  briefs them. The verified current manager or operator may use it; workers cannot
+  inherit staffing authority or create recursive teams. Existing agents are not adopted.
+  Mission publication never replaces an occupied path, including a file arriving
+  during layout; unsupported atomic publication fails closed before agent launch.
+- Request IDs are idempotent. Changing a used ID's payload is refused. Uncertain
+  allocation/startup retains the reservation and reports `ambiguous`; it is never
+  blindly replayed. The recorded pane and terminal allow inspection/reconciliation.
+- `retire MEMBER` queues a fenced, idle-gated exit of an owned worker with no
+  active work. It keeps the pane, conversations, history and artifacts. `retiring`
+  consumes capacity until the exact terminal is observed stopped at the next add.
+- `pause` freezes new launches, not ongoing work. Only the operator may undo an
+  operator pause; a manager may pause/resume their own staffing pause.
+- `configure [--allow-provider HARNESS:PROVIDER ...] [--max-workers N]` is
+  operator-only. A changed executable/provider/account/configuration context
+  requires renewed pool approval. Removing a provider prevents further managed
+  agent-requested launches/changes on that route, but does not kill ongoing work.
+  Local routing inputs are hashed again at launch submission, not during idle
+  polling. This is not a fresh entitlement or quota guarantee for every future turn.
+- `add ... --work-id W-N --fallback-for MEMBER --reason TEXT` permits one
+  manager-chosen in-pool fallback for a settled failed work attempt. It records
+  the earlier owner and reason. Quota failures are refused instead of respawned.
+  Further retries for that attempt use the operator's existing manual controls.
+
+Staffing is cooperative orchestration, not an OS sandbox. In particular, YOLO
+agents can run shell as the same user. Four concurrent autonomous workers is not
+a limit on native CLI subagents, model calls, money, total starts or elapsed time.
+There is no default total-start cap or expiry. Human model/profile changes,
+restore, resume, swap and manual creation retain their existing authority and
+behavior; the new pool restrictions apply to enrolled agents' staffing paths.
+Knowledge-file edits still require the existing explicit operator confirmation.
+
+### Native inventory and explicit model checks
+
+`available [HARNESS] --readiness [--profile NAME] [--refresh] --cwd DIR` keeps the
+existing JSON fields and adds an `inventory` object for Claude Code, Codex and
+OpenCode. It separates catalog entries, reported authentication, quota and
+inference evidence. Metadata is cached for five minutes, scoped to executable,
+version, working directory, native configuration and opaque account context.
+Unknown/unsupported metadata is not an empty verified list. Failed refreshes
+can retain a labeled `stale_catalog`, not eligible fresh evidence. Discovery is
+on demand, never inside per-pane rendering/polling, and generates no inference.
+
+Codex uses metadata-only app-server initialization, effective config, paginated
+`model/list` and `account/read` with `refreshToken:false`. Claude uses version-gated
+initialization metadata without a user prompt or custom agent activation. OpenCode
+uses native v2 `models --standalone` and JSON auth metadata when advertised, or an
+owned authenticated loopback helper's `/provider` and `/config/providers` on
+older implementations. The v2 CLI owns its private helper and never queries the
+shared background service. Unsupported protocols fall back to partial/unknown
+CLI catalog readiness; an unauthenticated HTTP helper is refused. Only allowlisted
+model/provider/capability fields and opaque hashes are exported. Credentials,
+account emails, raw configuration and native diagnostics stay private. No SDK
+dependency, model gateway, provider login migration or native installation update
+is added.
+
+`model-check HARNESS --model ID [--profile NAME] [--effort VALUE] --cwd DIR --yes`
+is operator-only: consent to one isolated request which may consume subscription
+quota or incur charges. Checks are serialized, use a fresh scratch workspace and
+nonce response, and have a sixty-second inference deadline. They do not alter
+existing workers or saved settings. In the member model-selection UI, **Ctrl-T**
+offers the same action with a quota/cost confirmation; Enter still records the
+member's model normally.
+
+The current safe-check adapter supports Claude Code 2.1.299+ without a custom
+profile or project-scoped settings, disabling workload tools, hooks, MCP, skills
+and persistence. Scratch initialization must confirm the same native account/
+provider context before sending a user turn. Codex,
+OpenCode and custom-profile checks currently return `verification_unsupported`
+without launching inference: their implemented adapters do not yet establish the
+required no-tools guarantee. Read-only sandboxing is not substituted for it.
+Unsupported checks remain explicitly unverified and do not block ordinary manual use.
+
+Native completion plus the nonce response is required: startup, a zero exit code
+or an assistant's model claim alone is insufficient. JSON distinguishes
+`requested_model`, `observed_model`, `verified`, `model_unconfirmed`,
+`fallback_response`, `model_denied`, `authentication_failed`, `quota_exhausted`,
+`timeout`, `request_failed`, and `verification_unsupported`. A fallback never
+verifies the requested model. Access evidence expires after thirty minutes and
+is invalidated by account/route changes; unknown account context cannot reuse
+positive verification across discovery runs. This proves access for a request,
+not coding quality or tool correctness, and is not a spending cap.
+
 ## Pi integration
 
 Pi 0.85.1 uses the existing team commands with kind `pi`. Setup requires Herdr's Pi state integration, `skill install`, `hooks install pi`, and session-local `kinds trust pi`. Existing Pi processes need `/reload` after extension installation. Pi's Synapse extension is telemetry-only: prompt/stop hooks remain Claude-only, and Pi delivery stays `nudge`.

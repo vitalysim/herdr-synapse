@@ -418,6 +418,8 @@ class Member:
     profile: Optional[str] = None
     #: Next-launch override; None inherits the team default, which defaults to YOLO.
     permissions: Optional[str] = None
+    #: Optional ownership link; manual members never get autonomous staffing restrictions.
+    staffing: Optional[Dict[str, Any]] = None
     previous_names: List[Dict[str, Any]] = field(default_factory=list)
     #: Durable create-and-replace operation; completed records retain recovery information.
     swap: Optional[Dict[str, Any]] = None
@@ -467,6 +469,8 @@ class Member:
             obj["profile"] = self.profile
         if self.permissions is not None:
             obj["permissions"] = self.permissions
+        if self.staffing:
+            obj["staffing"] = dict(self.staffing)
         if self.previous_names:
             obj["previous_names"] = [dict(p) for p in self.previous_names]
         if self.swap:
@@ -518,6 +522,7 @@ class Member:
             effort=str(obj["effort"]) if isinstance(obj.get("effort"), str) and obj.get("effort") else None,
             profile=str(obj["profile"]) if isinstance(obj.get("profile"), str) and obj.get("profile") else None,
             permissions=obj.get("permissions"),
+            staffing=dict(obj["staffing"]) if isinstance(obj.get("staffing"), dict) else None,
             previous_names=[dict(p) for p in previous if isinstance(p, dict)],
             swap=obj.get("swap") if isinstance(obj.get("swap"), dict) else None,
             agent_history=[dict(p) for p in obj.get("agent_history", []) if isinstance(p, dict)],
@@ -1956,6 +1961,11 @@ class Roster:
             if any(m is not member and m.name == new_name and m.status != "left" for m in team.members):
                 raise HerdrTeamError("name_taken", "{!r} is already a member of team {!r}".format(new_name, team.team), EXIT_REFUSED, {"name": new_name})
             apply_adoption(member, new_name)
+            if member.staffing:
+                from herdr_team import staffing
+                attempt = staffing.attempts(team).get(member.staffing.get("request_id"))
+                if isinstance(attempt, dict):
+                    attempt["name"] = member.name
             adopted.append(member)
 
         self.update(mutate)

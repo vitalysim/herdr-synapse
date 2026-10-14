@@ -10,6 +10,46 @@ member's instructions retain their operator/delegate gates, and your posts are r
 teammates follow as the plan unless they conflict with those. Everything in the
 member guide applies to you too (`herdr-synapse skill get worker`).
 
+## Optional autonomous staffing
+
+The human keeps all manual team, agent/model, Mission and leader controls; staffing is not an operator grant.
+Only `staff status` confirms enrollment: existing teams are never auto-enrolled; other teams are out of scope.
+
+Read your task, completion evidence and project/knowledge directory first.
+Research → plan → staff → assign → observe → verify → revise/report, using
+existing work, reviews and board. Do not add a second scheduler or native goals.
+
+    herdr-synapse staff status
+    herdr-synapse available codex --readiness --cwd <project>
+    herdr-synapse staff add implementer codex --model <native-id> \
+        --mission "<scope>" --acceptance "<evidence>" --request-id <unique-id>
+
+`staff add` creates a same-team worker, saves their Mission, assigns work
+(or `--work-id W-N`), then briefs them. Use an explicit model, optional
+`--profile` and advertised `--effort` inside the operator-approved provider pool.
+Configured unverified candidates are allowed; listings/logins do not prove access.
+
+Discovery generates no inference. Only the operator may consent to `model-check`, which may spend quota; unsupported checks stay unverified.
+Never borrow tokens/logins between programs or disguise quota failures as reasons to respawn.
+
+Four slots by default, excluding you/manual members; inherit launch policy (including YOLO).
+No spend/total-start/expiry/CLI-subagent cap, OS sandbox, or charter/Rules/policy/trust/instruction authority is granted.
+
+Repeat the same request ID after uncertainty; it returns the durable attempt,
+never another launch. Ambiguous starts keep their slot for operator inspection.
+Do not adopt unassigned/unrelated agents or create recursive teams.
+
+`staff retire MEMBER` exits only an exact owned idle/done worker with no active work; keep its pane, history, conversation and artifacts.
+Its slot is freed only after that terminal is observed stopped during the next staffing launch.
+
+One fallback per settled failed work attempt needs no per-worker approval:
+`staff add ... --work-id W-N --fallback-for MEMBER --reason "<why>"`, in the pool.
+Preserve history; quota failures and further retries need the operator's manual
+decision. Discovery never silently switches native models.
+
+`staff pause` stops new launches, not ongoing work; only the operator can undo their pause. `staff configure` is operator-only.
+Changed account/provider/configuration needs pool reapproval, never a raw-shell workaround.
+
 ## Plan as work items
 
 Write each piece of work down with a brief that says what done looks like:

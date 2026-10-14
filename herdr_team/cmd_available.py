@@ -165,6 +165,9 @@ def _add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--provider", metavar="NAME", help="only models from this provider (OpenCode, Pi)")
     parser.add_argument("--search", metavar="TEXT", help="only models whose name contains TEXT")
     parser.add_argument("--all", action="store_true", help="also harnesses that are not installed, hidden models, and every model of a named harness")
+    parser.add_argument("--readiness", action="store_true", help="native, metadata-only provider/model readiness; no inference or access guarantee")
+    parser.add_argument("--profile", help="profile context for --readiness with one harness")
+    parser.add_argument("--refresh", action="store_true", help="refresh native readiness instead of its five-minute cache")
 
 
 def _run(args: argparse.Namespace) -> int:
@@ -182,6 +185,24 @@ def _run(args: argparse.Namespace) -> int:
     trusted = _trusted(args)
     running = running_unassigned(args) if not args.harness else None
     payload: Dict[str, Any] = {"cwd": cwd, "harnesses": [h.to_json() for h in catalog]}
+    if getattr(args, "readiness", False):
+        from herdr_team import model_inventory, model_checks, store
+        if getattr(args, "profile", None) and not args.harness:
+            raise UsageError("--profile needs one harness")
+        evidence = store.read_json(layout_for(args).session.root / "model-checks.json", default={})
+        for row in payload["harnesses"]:
+            if row["kind"] not in model_inventory.KINDS:
+                continue
+            inventory = model_inventory.discover(row["kind"], cwd, env, getattr(args, "profile", None), getattr(args, "refresh", False))
+            inventory["models"] = [m for m in inventory["models"] if
+                                   (args.all or not m.get("hidden")) and
+                                   (not args.provider or str(m.get("provider", "")).lower() == args.provider.lower()) and
+                                   (not args.search or args.search.lower() in m["id"].lower())]
+            for model in inventory["models"]:
+                key = model_checks.evidence_key(row["kind"], inventory.get("profile"), model["id"], None)
+                checked = evidence.get(key) if isinstance(evidence, dict) else None
+                model["inference"] = model_inventory.evidence_state(checked, inventory) if isinstance(checked, dict) else "unverified"
+            row["inventory"] = inventory
     if not args.harness:
         payload["running"] = running
     detail_rows: List[H.ModelInfo] = []
@@ -198,7 +219,18 @@ def _run(args: argparse.Namespace) -> int:
             h = catalog[0]
             if not h.installed:
                 return "{} is not installed here ({} is not on PATH)".format(h.kind, h.executable)
-            return "\n".join(_detail_lines(h, detail_rows, shown, trusted))
+            lines = _detail_lines(h, detail_rows, shown, trusted)
+            inventory = payload["harnesses"][0].get("inventory")
+            if inventory:
+                lines += ["", "Native readiness: {} (listed is not verified)".format(inventory["source"])]
+                lines += ["  {}  auth: {}".format(p["id"], p["authentication"]) for p in inventory["providers"]]
+                rows = inventory["models"] if args.all else inventory["models"][:DETAIL_MODELS]
+                lines += ["  {}  inference: {}".format(m["id"], m["inference"]) for m in rows]
+                if len(rows) < len(inventory["models"]):
+                    lines.append("  more native models: --all, --provider or --search")
+                if inventory.get("error"):
+                    lines.append("  readiness unknown: " + inventory["error"])
+            return "\n".join(lines)
         lines: List[str] = []
         lines.append("Running agents in no team (add with: create <team> --member <pane>:<role>)")
         if running is None:

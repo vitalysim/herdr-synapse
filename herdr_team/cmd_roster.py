@@ -548,6 +548,7 @@ def _spawn_member(layout: Layout, api: Any, team: _roster.Team, team_paths: Team
         brief=_roster._sanitize_brief(brief) if brief else None, managed=True, status="starting", generation=1, delivery="nudge",
         verified_kind=_roster._kind_verified(layout, kind), joined_at=_roster.now_iso(), last_seen_at=None,
         model=leaf.get("model"), effort=leaf.get("effort"), permissions=leaf.get("permissions"), profile=leaf.get("profile"),
+        staffing=leaf.get("staffing"),
     )
     saved, _prev = roster.add_member(member, steal=args.steal, socket=os.fspath(layout.socket))
     team.members = saved.members
@@ -572,6 +573,9 @@ def _spawn_member(layout: Layout, api: Any, team: _roster.Team, team_paths: Team
     except (OSError, HerdrTeamError) as err:
         warn(args, "{}: native naming unavailable: {}".format(name, err))
     try:
+        from herdr_team import staffing
+        staffing.launch_guard(roster.load(), member, starting=True)
+        staffing.launch_context_guard(roster.load(), member, env)
         started = _start_agent(api, name, kind, pane_id, args=launch_args)
         started_terminal = started.get("terminal_id")
         if started_terminal and started_terminal != member.terminal_id:
@@ -687,6 +691,10 @@ def _add_create_arguments(parser: argparse.ArgumentParser) -> None:
                         help="a member's model and effort (by --spawn role), or the team default for a kind (claude=opus@medium, codex=gpt-5.6-luna@high)")
     parser.add_argument("--template", metavar="NAME", help="start from a team template (herdr-synapse template list): charter, rules, roles, missions and settings; your own flags win")
     parser.add_argument("--unlisted", action="store_true", help="accept a profile or model the harness does not list here (see: herdr-synapse available)")
+    parser.add_argument("--autonomous", action="store_true", help="opt-in manager-only start with bounded same-team staffing; manual creation is unchanged")
+    parser.add_argument("--allow-provider", action="append", default=[], metavar="HARNESS:PROVIDER", help="operator-approved autonomous provider pool (repeatable)")
+    parser.add_argument("--max-workers", type=int, help="autonomous worker concurrency (default four; no total-start cap or expiry)")
+    parser.add_argument("--acceptance", help="completion evidence for the autonomous team's task")
     parser.add_argument("--inherit", metavar="TEAM|PATH",
                         help="adopt that team's rules, facts and canvas into the new team once it is up (the operator; the same as "
                              "herdr-synapse knowledge import). Implies --canvas.")
@@ -727,6 +735,8 @@ def _run_create(args: argparse.Namespace) -> int:
     env = env_of(args)
     team_name = _paths.validate_team_name(args.team_pos)
     author = _create_author(args, layout, api, team_name)
+    from herdr_team import staffing
+    staffing.direct_create_guard(layout, author)
     creation_audit_team = team_name if layout.team(team_name).team_json.is_file() else None
     explicit_briefs = _parse_brief_args(args.brief)
     explicit_instructions = _parse_brief_args(args.instructions, flag="--instructions")
@@ -904,6 +914,32 @@ def _run_create(args: argparse.Namespace) -> int:
         selector = "role:" + template.settings["manager"]
     candidates = planned + [(m.name, m.role) for m in shell.members if not m.is_human and m.status != "left"]
     args._leader_name = leadership.resolve(selector, candidates, required=fresh)
+    args._staffing_policy = None
+    if getattr(args, "autonomous", False):
+        staffing.operator(author)
+        if not fresh or len(planned) != 1 or planned[0][0] != args._leader_name:
+            raise UsageError("--autonomous starts a fresh manager-only team; existing/manual teams are unchanged")
+        if not project_dir or not charter_body or not getattr(args, "acceptance", None):
+            raise UsageError("--autonomous needs --project, --charter (task) and --acceptance")
+        if len(args.acceptance) > 1000 or not args.acceptance.strip():
+            raise UsageError("--acceptance must contain completion evidence (at most 1000 characters)")
+        leader_kind = spawn[0]["kind"] if spawn else (specs[0].resolved.kind if specs and specs[0].resolved else None)
+        if leader_kind not in staffing.I.KINDS:
+            raise UsageError("autonomous v1 leaders use Claude Code, Codex or OpenCode; other agents remain available for manual teams")
+        for leaf in spawn:
+            leaf["cwd"] = os.fspath(project_dir)
+            leaf["profile"] = _harnesses.check_profile(leaf["kind"], leaf.get("profile"), leaf["cwd"], env, unlisted=args.unlisted)
+            _harnesses.check_model(leaf["kind"], leaf.get("launch_model"), leaf.get("launch_effort"), leaf["cwd"], env, unlisted=args.unlisted)
+        daemon_info = _store.read_json(layout.session.daemon_json, default={})
+        if notifier_state(layout.session) != "alive" or (daemon_info.get("capabilities") or {}).get(staffing.CAPABILITY) is not True:
+            raise HerdrTeamError("staffing_capability_unavailable", "start a compatible notifier advertising autonomous_staffing_v1 before autonomous creation", EXIT_REFUSED)
+        maximum = staffing.max_workers(args.max_workers if args.max_workers is not None else staffing.DEFAULT_MAX_WORKERS)
+        approved = staffing.approve(args.allow_provider, os.fspath(project_dir), env)
+        args._staffing_policy = {"version": 1, "enabled": True, "paused": False, "max_workers": maximum,
+                                 "approved": approved, "cwd": os.fspath(project_dir), "task": charter_body,
+                                 "acceptance": args.acceptance, "knowledge_dir": os.fspath(_workdir.team_root(os.fspath(project_dir), team_name)), "attempts": {}}
+    elif getattr(args, "allow_provider", None) or getattr(args, "max_workers", None) is not None or getattr(args, "acceptance", None):
+        raise UsageError("--allow-provider/--max-workers/--acceptance need --autonomous; manual creation needs no staffing policy")
     if args._leader_name:
         _human_only(layout, team_name if not fresh else None, author, "create --manager")
     for spec in specs:
@@ -930,6 +966,8 @@ def _run_create(args: argparse.Namespace) -> int:
         audit(layout, team_name, "operator_action", author, {"action": "create", "resolved": author.name, "via": author.via})
     if fresh:
         team = _roster.update_team(team_paths, lambda doc: doc.config.update(document_sync="auto", permissions=args.permissions or "yolo"))
+        if args._staffing_policy:
+            team = _roster.update_team(team_paths, lambda doc: doc.config.update(staffing=args._staffing_policy))
     if getattr(args, "canvas", False):
         # Before any member starts, so those Synapse launches get the canvas tools and every briefing says so.
         from herdr_team import features as _features
@@ -1418,6 +1456,10 @@ def _run_resume(args: argparse.Namespace) -> int:
     plan = resume_plan(team_name, member, doc.config, mcp=_features.mcp_spec(layout, layout.team(team_name)))
     if args.print_only:
         return emit(args, plan, plan["command"] + ("  # in " + plan["cwd"] if plan["cwd"] else ""))
+    from herdr_team import staffing
+    if not author.trusted_human:
+        staffing.launch_guard(doc, member, starting=True)
+        staffing.launch_context_guard(doc, member, env)
     pane_id = env.get("HERDR_PANE_ID") or ""
     if not pane_id:
         raise HerdrTeamError("outside_herdr", "resume runs inside a Herdr pane so the harness can report its session for it; use --print to see the command", EXIT_REFUSED, {"command": plan["command"]})

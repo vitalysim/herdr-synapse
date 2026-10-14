@@ -2,8 +2,9 @@
 
 A *harness* is the program a member runs (Claude Code, Codex, OpenCode, ...).
 A *profile* is a harness's own named setup: an OpenCode or Claude Code agent,
-or a Codex config profile. Models are the ones the harness itself can
-use with the logins on this machine.
+or a Codex config profile. Models are catalog candidates the harness reports,
+not proof of access with the logins on this machine. Native readiness and
+explicit access evidence live in ``model_inventory`` and ``model_checks``.
 
 Everything here asks the harness the way the harness would answer itself: its
 own list command (``opencode agent list``, ``opencode models``,
@@ -23,6 +24,7 @@ render loop does.
 from __future__ import annotations
 
 import difflib
+import hashlib
 import json
 import os
 import re
@@ -189,6 +191,18 @@ def executable(kind: str) -> str:
     return EXECUTABLES.get(kind, kind)
 
 
+def _scope(kind: str, cwd: Optional[str], env: Optional[Dict[str, str]]) -> str:
+    """Do not reuse a native catalog across executables, homes or provider environments."""
+    path = which(kind, env)
+    try:
+        stat = os.stat(path) if path else None
+        identity = (path, stat.st_mtime_ns, stat.st_size) if stat else (path,)
+    except OSError:
+        identity = (path,)
+    payload = [identity, cwd, sorted((env or {}).items())]
+    return hashlib.sha256(json.dumps(payload, default=str).encode()).hexdigest()
+
+
 def which(kind: str, env: Optional[Dict[str, str]] = None) -> Optional[str]:
     path = (env or {}).get("PATH") if env else None
     return shutil.which(executable(kind), path=path if path is not None else os.environ.get("PATH", os.defpath))
@@ -208,7 +222,7 @@ def version(kind: str, env: Optional[Dict[str, str]] = None) -> Optional[str]:
                 return found.group(0)
         return None
 
-    return _cached(("version", kind), compute)
+    return _cached(("version", kind, _scope(kind, None, env)), compute)
 
 
 # --------------------------------------------------------------------------
@@ -319,7 +333,7 @@ def profiles(kind: str, cwd: Optional[str] = None, env: Optional[Dict[str, str]]
             return _codex_profiles(env)
         return None
 
-    return _cached(("profiles", kind, where), compute)
+    return _cached(("profiles", kind, where, _scope(kind, where, env)), compute)
 
 
 # --------------------------------------------------------------------------
@@ -422,7 +436,7 @@ def models(kind: str, cwd: Optional[str] = None, env: Optional[Dict[str, str]] =
             return _pi_models(env)
         return _claude_models()
 
-    return _cached(("models", kind, where if kind == "opencode" else ""), compute)
+    return _cached(("models", kind, where if kind == "opencode" else "", _scope(kind, where, env)), compute)
 
 
 # --------------------------------------------------------------------------

@@ -345,7 +345,8 @@ def _charter_headline(doc: Optional[Dict[str, Any]]) -> Optional[Tuple[int, str]
     return int(charter.get("seq", 0) or 0), text
 
 
-def instructions_lines(team: paths.TeamPaths, name: str, max_chars: int = BRIEF_CONTEXT_MAX_SECTION) -> List[str]:
+def instructions_lines(team: paths.TeamPaths, name: str, max_chars: int = BRIEF_CONTEXT_MAX_SECTION,
+                       manager_assigned: bool = False) -> List[str]:
     """The member's instructions document as context lines, or nothing when unset.
 
     Read from the team state dir, never from the project mirror: that folder is
@@ -357,11 +358,12 @@ def instructions_lines(team: paths.TeamPaths, name: str, max_chars: int = BRIEF_
     body = _doc.injected(_doc.parse(text)) if text else []
     if not body:
         return []
-    return ["your instructions (operator authority), full text: herdr-synapse instructions"] + body
+    source = "manager-assigned work; subordinate to operator Rules" if manager_assigned else "operator authority"
+    return ["your instructions ({}), full text: herdr-synapse instructions".format(source)] + body
 
 
 def _read_state_text(path: Path, max_chars: int) -> str:
-    """Read one human-authored file from the team state dir, trimmed to ``max_chars``."""
+    """Read a canonical team-state document, never an unconfirmed project edit."""
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except (FileNotFoundError, OSError):
@@ -485,7 +487,7 @@ def brief_context(team: paths.TeamPaths, team_name: str, member: Dict[str, Any])
     for candidate in doc.get("members") or []:
         if isinstance(candidate, dict) and candidate.get("name") == name:
             role = candidate.get("role") or role
-            member = dict(member, brief=candidate.get("brief"), role=role, manager=bool(candidate.get("manager")))
+            member = dict(member, brief=candidate.get("brief"), role=role, manager=bool(candidate.get("manager")), staffing=candidate.get("staffing"), instructions_seq=candidate.get("instructions_seq"))
             break
     lines = [BRIEF_HEADER.format(name=name, role=role, team=team_name)]
     headline = _charter_headline(doc)
@@ -495,14 +497,17 @@ def brief_context(team: paths.TeamPaths, team_name: str, member: Dict[str, Any])
         lines.append("charter #{}: {} (full text: herdr-synapse charter)".format(headline[0], headline[1]))
     brief = member.get("brief")
     if brief:
-        lines.append(_render.escape_context_line("your brief (operator authority): {}".format(" ".join(str(brief).split()))))
-    # Instructions and rules are set by human-only commands, which is what makes
-    # them safe to carry operator authority here. Findings are agent-written, so
+        authority = "manager-assigned work; subordinate to operator Rules" if member.get("staffing") else "operator authority"
+        lines.append(_render.escape_context_line("your brief ({}): {}".format(authority, " ".join(str(brief).split()))))
+    # Rules and established instruction edits retain their operator gates. A new
+    # staffing Mission is manager-assigned work, explicitly subordinate to Rules.
+    # Findings are agent-written, so
     # this block only ever points at them; inlining them would let one member
     # write text that reaches another as the operator's word. Every line is
     # escaped and the whole block capped, because this stdout is spliced into
     # Claude's context unfenced.
-    lines.extend(instructions_lines(team, name))
+    assigned = bool(member.get("staffing")) and int(member.get("instructions_seq") or 0) <= 1
+    lines.extend(instructions_lines(team, name, manager_assigned=assigned))
     rules = _read_state_text(_charter.rules_path(team), BRIEF_CONTEXT_MAX_SECTION)
     if rules:
         lines.append("team rules (operator authority), full text: herdr-synapse knowledge")
@@ -524,6 +529,17 @@ def brief_context(team: paths.TeamPaths, team_name: str, member: Dict[str, Any])
     lines.append("teammates: " + ", ".join(mates))
     if member.get("manager"):
         lines.append("you are the team leader (manager): follow your Mission for responsibilities. Existing manager permissions apply; this is not operator delegation.")
+        from herdr_team import staffing
+        envelope = staffing.policy(doc.get("config"))
+        if envelope:
+            lines.append("Optional autonomous staffing is enabled: {} concurrent owned workers, excluding you; {}.".format(
+                envelope["max_workers"], ", ".join(sorted(envelope["approved"]))))
+            lines.append(_render.escape_context_line("Completion evidence: " + str(envelope.get("acceptance") or "read staff status")))
+            lines.append(_render.escape_context_line("Staffing work directory: " + str(envelope.get("cwd") or "unknown")))
+            lines.append("Research → plan → staff → assign → observe → verify → revise/report. Read herdr-synapse skill get manager, then staff status before a launch.")
+            lines.append("Use staff add with an explicit model, Mission, acceptance and unique request id. Workers inherit the team's launch policy, including YOLO. No broad operator authority, recursive teams, spend cap, total-start cap or expiry is granted.")
+            if envelope.get("paused"):
+                lines.append("Staffing is paused: no new worker launches; ongoing work continues. An operator pause requires the operator to resume.")
     from herdr_team import links as _links
 
     try:
@@ -675,11 +691,13 @@ def unacknowledged_instructions(team: paths.TeamPaths, name: str) -> str:
             break
     if member is None or not _charter.instructions_stale(member):
         return ""
-    body = instructions_lines(team, name)
+    assigned = bool(member.get("staffing")) and _charter.instructions_seq(member) <= 1
+    body = instructions_lines(team, name, manager_assigned=assigned)
     if not body:
         return ""
-    head = "[herdr-team instructions updated (revision {}); operator authority. Run herdr-synapse ack when you have read them.]".format(
-        _charter.instructions_seq(member))
+    authority = "manager-assigned work; subordinate to operator Rules" if member.get("staffing") and _charter.instructions_seq(member) <= 1 else "operator authority"
+    head = "[herdr-team instructions updated (revision {}); {}. Run herdr-synapse ack when you have read them.]".format(
+        _charter.instructions_seq(member), authority)
     return "\n".join([head] + body[1:]) + "\n\n"
 
 

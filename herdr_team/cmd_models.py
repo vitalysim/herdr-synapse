@@ -244,6 +244,14 @@ def _run_model(args: argparse.Namespace) -> int:
     _harnesses.check_model(kind, model, effort, member.get("cwd") if isinstance(member.get("cwd"), str) else None,
                            dict(getattr(args, "env", None) or {}), unlisted=args.unlisted)
     apply = args.apply or ("live" if kind == "claude" or (kind == "opencode" and model is None and effort is not None) else "next")
+    from herdr_team import staffing
+    chosen = None
+    staffing_team = _roster.Team.from_json(doc)
+    if member.get("staffing") and staffing.policy(staffing_team.config) and not author.trusted_human:
+        old_model, old_effort = _models.effective_setting(doc.get("config"), member)
+        chosen = staffing.selection(staffing_team, kind, model or old_model, effort or old_effort,
+                                    member.get("profile"), member.get("cwd"), dict(args.env))
+        staffing.selection_guard(staffing_team, member, chosen, author)
     if apply == "live" and _models.live_keystrokes(kind, model, effort) is None:
         raise HerdrTeamError("model_apply_unsupported", "{} cannot apply that setting as an exact live command; use --apply restart or --apply next".format(kind), EXIT_REFUSED, {"kind": kind, "apply": apply})
     check_write_session(args, layout, team_name)
@@ -262,6 +270,8 @@ def _run_model(args: argparse.Namespace) -> int:
         row = t.find(name)
         if row is None:
             raise HerdrTeamError("member_not_found", "{!r} is not in team {!r}".format(name, team_name), EXIT_REFUSED, {"name": name})
+        if chosen is not None:
+            staffing.remember_selection(t, row, chosen, author)
         if model is not None:
             row.model = model
         if effort is not None:
@@ -366,6 +376,12 @@ def _run_profile(args: argparse.Namespace) -> int:
     check_write_session(args, layout, team_name)
     mode = _permissions.effective(doc.get("config"), member)
     model, effort = _models.effective_setting(doc.get("config"), member)
+    from herdr_team import staffing
+    chosen = None
+    staffing_team = _roster.Team.from_json(doc)
+    if member.get("staffing") and staffing.policy(staffing_team.config) and not author.trusted_human:
+        chosen = staffing.selection(staffing_team, kind, model, effort, profile, cwd, dict(args.env))
+        staffing.selection_guard(staffing_team, member, chosen, author)
     control: Optional[Dict[str, Any]] = None
     if restart:
         # Planned before anything is written: no notifier to carry it out, or no
@@ -378,6 +394,8 @@ def _run_profile(args: argparse.Namespace) -> int:
         if row is None:
             raise HerdrTeamError("member_not_found", "{!r} is not in team {!r}".format(name, team_name), EXIT_REFUSED, {"name": name})
         row.profile = profile
+        if chosen is not None:
+            staffing.remember_selection(t, row, chosen, author)
 
     _roster.update_team(team, mutate)
     _identity.audit(layout, team_name, "profile_set", author, {"member": name, "profile": profile, "apply": args.apply or "next", "by": who})
