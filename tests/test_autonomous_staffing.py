@@ -264,6 +264,21 @@ class NotifierFences(ControlRig):
 
 
 class Selection(unittest.TestCase):
+    def test_native_tool_context_selects_approved_model_but_real_credentials_refuse(self):
+        with TempState() as ts, mock.patch.object(I.H, "which", return_value="/fake/claude"), mock.patch.object(I.H, "version", return_value="2.1.299"), mock.patch.object(I, "_claude", return_value={
+                "providers": [{"id": "firstParty", "authentication": "credentials_reported"}],
+                "models": [{"id": "haiku", "provider": "firstParty"}], "account_context": "same-account", "native_context": "same-native"}):
+            I._cache.clear()
+            approved = S.approve(["claude:firstParty"], str(ts.home), ts.env)
+            team = enroll(ts)
+            team.config["staffing"]["approved"] = approved
+            native = dict(ts.env, CLAUDE_CODE_MESSAGING_TOKEN="native-process-messaging")
+            chosen = S.selection(team, "claude", "haiku", None, None, str(ts.home), native)
+            self.assertEqual(chosen["context"], approved["claude:firstParty"]["context"])
+            with self.assertRaises(HerdrTeamError) as caught:
+                S.selection(team, "claude", "haiku", None, None, str(ts.home), dict(native, CLAUDE_CODE_OAUTH_TOKEN="changed-login"))
+            self.assertEqual(caught.exception.code, "provider_context_changed")
+
     def test_provider_pool_accepts_configured_unverified_candidates(self):
         with TempState() as ts, mock.patch.object(I, "discover", return_value=inventory()):
             team = enroll(ts)
@@ -476,7 +491,7 @@ class CommandIntegration(unittest.TestCase):
             S.reserve(ts.team, manager(), "r1", "alpha-dev", "dev", CHOSEN, "Mission", "Tests", None)
             def owned(team):
                 team.find("alpha-worker").staffing = {"request_id": "r1"}
-                team.config["staffing"]["attempts"]["r1"].update(name="alpha-worker", phase="retiring", pane_id="w2:p2", terminal_id="term_w1")
+                team.config["staffing"]["attempts"]["r1"].update(name="alpha-worker", phase="retiring", pane_id="w2:p2", terminal_id="term_w1", generation=1)
             roster.update_team(ts.team, owned)
             api = live_api()
             api.set_response("pane.get", {"pane": {"terminal_id": "foreign", "agent": None}})
@@ -485,11 +500,128 @@ class CommandIntegration(unittest.TestCase):
             api.set_response("pane.get", {"pane": {"terminal_id": "term_w1", "agent": "claude"}})
             cmd_staff.reconcile(ts.team, api)
             self.assertEqual(S.capacity(roster.load_team(ts.team)), 1)
-            api.set_response("pane.get", {"pane": {"terminal_id": "term_w1", "agent": None}})
-            api.set_response("pane.process_info", {"process_info": {"shell_pid": 1, "foreground_processes": []}})
-            cmd_staff.reconcile(ts.team, api)
+            api.set_response("pane.get", {"pane": {"pane_id": "w2:p2", "terminal_id": "term_w1", "agent": None}})
+            api.set_response("pane.process_info", {"process_info": {"pane_id": "w2:p2", "shell_pid": 100, "foreground_process_group_id": 100, "foreground_processes": [{"pid": 100}]}})
+            with mock.patch.object(identity, "ps_table", return_value={100: 1}):
+                cmd_staff.reconcile(ts.team, api)
             self.assertEqual(S.capacity(roster.load_team(ts.team)), 0)
             self.assertTrue(roster.load_team(ts.team).find("alpha-worker"))
+
+
+class RetirementEvidence(unittest.TestCase):
+    def retiring(self, ts):
+        enroll(ts, maximum=1)
+        S.reserve(ts.team, manager(), "r1", "alpha-dev", "dev", CHOSEN, "Mission", "Tests", None)
+        def attach(team):
+            member = team.find("alpha-worker")
+            member.staffing = {"request_id": "r1"}
+            team.config["staffing"]["attempts"]["r1"].update(name=member.name, phase="retiring", pane_id=member.pane_id, terminal_id=member.terminal_id, generation=member.generation)
+        roster.update_team(ts.team, attach)
+        api = live_api()
+        api.set_response("pane.get", {"pane": fake_pane("w2:p2", "term_w1", "claude", status="unknown")})
+        api.set_response("agent.get", {"agent": fake_agent("w2:p2", "term_w1", "claude", "alpha-worker", status="unknown")})
+        api.set_response("pane.process_info", {"process_info": {"pane_id": "w2:p2", "shell_pid": 100, "foreground_process_group_id": 100, "foreground_processes": [{"pid": 100}]}})
+        return api
+
+    def test_retained_kind_with_unknown_status_and_only_shell_releases_one_slot(self):
+        with TempState() as ts, mock.patch.object(identity, "ps_table", return_value={100: 1}):
+            api = self.retiring(ts)
+            cmd_staff.reconcile(ts.team, api)
+            team = roster.load_team(ts.team)
+            self.assertEqual(S.capacity(team), 0)
+            self.assertEqual(team.find("alpha-worker").status, "unbound")
+            self.assertEqual(S.attempts(team)["r1"]["history"][-1]["phase"], "retired")
+            S.reserve(ts.team, manager(), "r2", "alpha-next", "next", CHOSEN, "Next", "Tests", None)
+            self.assertEqual(S.capacity(roster.load_team(ts.team)), 1)
+
+    def test_older_agent_info_without_optional_launch_flag_still_needs_stop_proof(self):
+        with TempState() as ts, mock.patch.object(identity, "ps_table", return_value={100: 1}):
+            api = self.retiring(ts)
+            api.responses["agent.get"]["agent"].pop("launch_pending")
+            cmd_staff.reconcile(ts.team, api)
+            self.assertEqual(S.capacity(roster.load_team(ts.team)), 0)
+
+    def test_stopped_removed_worker_releases_slot_without_reactivating_its_claim(self):
+        with TempState() as ts, mock.patch.object(identity, "ps_table", return_value={100: 1}):
+            api = self.retiring(ts)
+            roster.update_team(ts.team, lambda team: setattr(team.find("alpha-worker"), "status", "left"))
+            api.responses["agent.get"]["agent"]["name"] = None
+            cmd_staff.reconcile(ts.team, api)
+            team = roster.load_team(ts.team)
+            self.assertEqual(S.capacity(team), 0)
+            self.assertEqual(team.find("alpha-worker").status, "left")
+
+    def test_empty_or_ambiguous_process_evidence_never_releases_capacity(self):
+        base = {"pane_id": "w2:p2", "shell_pid": 100, "foreground_process_group_id": 100, "foreground_processes": [{"pid": 100}]}
+        cases = [None, {}, dict(base, foreground_processes=[]), dict(base, shell_pid=True),
+                 dict(base, shell_pid=0), dict(base, foreground_process_group_id=None),
+                 dict(base, foreground_process_group_id=101), dict(base, pane_id="foreign"),
+                 dict(base, foreground_processes=[{}]), dict(base, foreground_processes=[None]),
+                 dict(base, foreground_processes=[{"pid": 100.0}]),
+                 dict(base, foreground_processes=[{"pid": 101}]), dict(base, foreground_processes=[{"pid": 100}, {"pid": 101}])]
+        for info in cases:
+            with self.subTest(info=info), TempState() as ts, mock.patch.object(identity, "ps_table", return_value={100: 1}):
+                api = self.retiring(ts)
+                # Even a cleared display hint cannot substitute for positive stop evidence.
+                api.set_response("pane.get", {"pane": fake_pane("w2:p2", "term_w1", None)})
+                api.set_response("pane.process_info", {"process_info": info})
+                cmd_staff.reconcile(ts.team, api)
+                self.assertEqual(S.capacity(roster.load_team(ts.team)), 1)
+
+    def test_background_child_or_unavailable_local_shell_retains_capacity(self):
+        for table in (None, {101: 1}, {100: 1, 101: 100}, {100: 1, 101: 100, 102: 101}):
+            with self.subTest(table=table), TempState() as ts, mock.patch.object(identity, "ps_table", return_value=table):
+                cmd_staff.reconcile(ts.team, self.retiring(ts))
+                self.assertEqual(S.capacity(roster.load_team(ts.team)), 1)
+
+    def test_live_or_foreign_agent_hints_cannot_be_retired_as_a_stale_kind(self):
+        for changes in ({"agent_status": "idle"}, {"agent_status": "working"}, {"agent_status": "blocked"}, {"agent": "codex"}):
+            with self.subTest(changes=changes), TempState() as ts, mock.patch.object(identity, "ps_table", return_value={100: 1}):
+                api = self.retiring(ts)
+                api.set_response("pane.get", {"pane": fake_pane("w2:p2", "term_w1", "claude", status="unknown", **changes)})
+                cmd_staff.reconcile(ts.team, api)
+                self.assertEqual(S.capacity(roster.load_team(ts.team)), 1)
+        for changes in ({"launch_pending": True}, {"name": "foreign"}, {"terminal_id": "foreign"}, {"agent_status": "working"}):
+            with self.subTest(changes=changes), TempState() as ts, mock.patch.object(identity, "ps_table", return_value={100: 1}):
+                api = self.retiring(ts)
+                row = fake_agent("w2:p2", "term_w1", "claude", "alpha-worker", status="unknown")
+                row.update(changes)
+                api.set_response("agent.get", {"agent": row})
+                cmd_staff.reconcile(ts.team, api)
+                self.assertEqual(S.capacity(roster.load_team(ts.team)), 1)
+
+    def test_identity_change_during_stop_probe_cannot_free_a_rebound_worker(self):
+        with TempState() as ts, mock.patch.object(identity, "ps_table", return_value={100: 1}):
+            api = self.retiring(ts)
+            api.set_response("pane.get", {"pane": fake_pane("w2:p2", "term_w1", None)})
+            info = copy.deepcopy(api.responses["pane.process_info"])
+            def rebind(_params):
+                roster.update_team(ts.team, lambda team: setattr(team.find("alpha-worker"), "generation", 2))
+                return info
+            api.set_response("pane.process_info", rebind)
+            cmd_staff.reconcile(ts.team, api)
+            team = roster.load_team(ts.team)
+            self.assertEqual(S.capacity(team), 1)
+            self.assertEqual(team.find("alpha-worker").status, "active")
+
+    def test_reservation_or_member_change_during_probe_preserves_capacity(self):
+        for target, key, value in (("member", "terminal_id", "foreign"), ("member", "kind", "codex"),
+                                   ("member", "pane_id", "foreign"), ("member", "status", "left"),
+                                   ("attempt", "generation", 2), ("attempt", "phase", "active"), ("attempt", "pane_id", "foreign")):
+            with self.subTest(target=target, key=key), TempState() as ts, mock.patch.object(identity, "ps_table", return_value={100: 1}):
+                api = self.retiring(ts)
+                info = copy.deepcopy(api.responses["pane.process_info"])
+                def changed(_params):
+                    def change(team):
+                        if target == "member":
+                            setattr(team.find("alpha-worker"), key, value)
+                        else:
+                            S.attempts(team)["r1"][key] = value
+                    roster.update_team(ts.team, change)
+                    return info
+                api.set_response("pane.process_info", changed)
+                cmd_staff.reconcile(ts.team, api)
+                self.assertEqual(S.capacity(roster.load_team(ts.team)), 1)
 
 
 if __name__ == "__main__":

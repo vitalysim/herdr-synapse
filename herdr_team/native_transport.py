@@ -28,11 +28,18 @@ def _stop_owned(proc: subprocess.Popen) -> None:
             os.killpg(proc.pid, sig)
         except ProcessLookupError:
             pass
-        except PermissionError:
+        except PermissionError as denied:
             # Darwin can report EPERM for an already-exited, unreaped group.
             # Reap it, but never suppress denied cleanup of a still-live parent.
             if proc.poll() is None:
-                raise
+                # Exit notification and waitpid can race on Darwin. Observe our
+                # child's settled exit, rather than treating one poll as final.
+                try:
+                    proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    raise denied from None
+                if proc.poll() is None:
+                    raise
     proc.poll()
     send(signal.SIGTERM)
     try:

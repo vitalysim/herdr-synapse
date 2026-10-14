@@ -130,6 +130,23 @@ class Inventory(unittest.TestCase):
             moved = dict(ts.env, CODEX_THREAD_ID="new-thread", CLAUDECODE="1", CLAUDE_CODE_SESSION_ID="other", PATH="/temporary/aliases")
             self.assertEqual(before, I.fingerprint("codex", str(ts.home), moved, None, "1"))
 
+    def test_native_messaging_token_is_process_local_not_provider_access(self):
+        with TempState() as ts:
+            for kind in I.KINDS:
+                before = I.fingerprint(kind, str(ts.home), ts.env, None, "1")
+                for value in ("first-process", "next-process"):
+                    with self.subTest(kind=kind, value=value):
+                        native_tool = dict(ts.env, CLAUDE_CODE_MESSAGING_TOKEN=value)
+                        self.assertEqual(before, I.fingerprint(kind, str(ts.home), native_tool, None, "1"))
+
+    def test_messaging_exception_does_not_weaken_credentials_or_routing(self):
+        with TempState() as ts:
+            before = I.fingerprint("claude", str(ts.home), ts.env, None, "1")
+            for key in ("CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_USE_BEDROCK", "CUSTOM_PROVIDER_TOKEN"):
+                with self.subTest(key=key):
+                    changed = dict(ts.env, CLAUDE_CODE_MESSAGING_TOKEN="local-process", **{key: "changed-provider-context"})
+                    self.assertNotEqual(before, I.fingerprint("claude", str(ts.home), changed, None, "1"))
+
     def test_v2_opencode_uses_only_private_metadata_commands_and_filters_catalog_only_providers(self):
         auth = [{"id": "p", "connections": [{"id": "opaque", "label": "private account"}]}]
         with mock.patch.object(H, "RUN", return_value=(0, "--standalone")), mock.patch.object(I, "metadata_command", side_effect=["p/m1\nq/catalog-only\n", json.dumps(auth)]) as run:

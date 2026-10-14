@@ -78,7 +78,9 @@ def fingerprint(kind: str, cwd: str, env: Dict[str, str], path: Optional[str], v
     # credentials, not those launch identities, so the approved pool is usable by a manager.
     prefixes = ("OPENAI_", "ANTHROPIC_", "AWS_", "AZURE_", "GOOGLE_", "GCLOUD_", "VERTEX_", "BEDROCK_", "OPENROUTER_", "DEEPINFRA_", "GEMINI_", "CLAUDE_CODE_USE_", "OPENCODE_")
     exact = {"HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "CODEX_HOME", "CLAUDE_CONFIG_DIR", "CLAUDE_CODE_OAUTH_TOKEN", "CODEX_API_KEY"}
-    transient = {"OPENCODE_SESSION_ID", "OPENCODE_PID", "OPENCODE_SERVER_PASSWORD", "OPENCODE_SERVER_USERNAME"}
+    # Claude adds this IPC value to native tool children. It is not the OAuth
+    # token or provider routing; hashing it makes an unchanged approved pool unusable.
+    transient = {"CLAUDE_CODE_MESSAGING_TOKEN", "OPENCODE_SESSION_ID", "OPENCODE_PID", "OPENCODE_SERVER_PASSWORD", "OPENCODE_SERVER_USERNAME"}
     relevant_env = {k: v for k, v in env.items() if k not in transient and
                     (k in exact or k.startswith(prefixes) or k.endswith(("_API_KEY", "_TOKEN", "_BASE_URL", "_ENDPOINT")))}
     return opaque([kind, str(here), version, executable, hashes, relevant_env])

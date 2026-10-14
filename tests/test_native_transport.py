@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import os
+import subprocess
 import sys
 import tempfile
 import time
@@ -44,6 +45,23 @@ class Lines(unittest.TestCase):
 
 
 class CommandBounds(unittest.TestCase):
+    def test_permission_error_before_exit_status_settles_reaps_only_owned_group(self):
+        proc = mock.Mock(pid=12345)
+        proc.poll.side_effect = [None, None, 0, 0]
+        proc.wait.return_value = 0
+        with mock.patch("herdr_team.native_transport.os.killpg", side_effect=PermissionError) as kill:
+            _stop_owned(proc)
+        self.assertEqual([call.args[0] for call in kill.call_args_list], [12345, 12345])
+        proc.wait.assert_called()
+
+    def test_permission_error_with_still_live_parent_is_not_suppressed(self):
+        proc = mock.Mock(pid=12345)
+        proc.poll.return_value = None
+        proc.wait.side_effect = subprocess.TimeoutExpired("owned-child", 2)
+        with mock.patch("herdr_team.native_transport.os.killpg", side_effect=PermissionError):
+            with self.assertRaises(PermissionError):
+                _stop_owned(proc)
+
     def test_metadata_command_bounds_output_before_buffering_everything(self):
         with tempfile.TemporaryDirectory() as cwd:
             self.assertEqual(metadata_command([sys.executable, "-c", 'print("metadata")'], cwd, dict(os.environ), time.monotonic() + 10), "metadata\n")

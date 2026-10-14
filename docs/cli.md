@@ -56,6 +56,10 @@ only to autonomous workers, not to the human's manual options.
 - `retire MEMBER` queues a fenced, idle-gated exit of an owned worker with no
   active work. It keeps the pane, conversations, history and artifacts. `retiring`
   consumes capacity until the exact terminal is observed stopped at the next add.
+  A retained unknown agent label is not itself a running worker: release needs a
+  positive shell-only foreground probe, no local shell children, and unchanged
+  ownership/generation. Empty/unavailable probes, pending launches and background
+  children retain the slot; phase and member binding settle in one roster write.
 - `pause` freezes new launches, not ongoing work. Only the operator may undo an
   operator pause; a manager may pause/resume their own staffing pause.
 - `configure [--allow-provider HARNESS:PROVIDER ...] [--max-workers N]` is
@@ -64,6 +68,8 @@ only to autonomous workers, not to the human's manual options.
   agent-requested launches/changes on that route, but does not kill ongoing work.
   Local routing inputs are hashed again at launch submission, not during idle
   polling. This is not a fresh entitlement or quota guarantee for every future turn.
+  Native process-local messaging tokens are excluded from that fingerprint;
+  provider credentials (including Claude OAuth), routing and configuration are not.
 - `add ... --work-id W-N --fallback-for MEMBER --reason TEXT` permits one
   manager-chosen in-pool fallback for a settled failed work attempt. It records
   the earlier owner and reason. Quota failures are refused instead of respawned.

@@ -6,7 +6,7 @@ import copy
 import os
 from typing import Any, Dict, List
 
-from herdr_team import charter, model_inventory as I, roster, staffing as S, store, work
+from herdr_team import charter, identity, model_inventory as I, roster, staffing as S, store, work
 from herdr_team.cli import Command, add_global_arguments, emit
 from herdr_team.cmd_board import _open_team, audit, board_append, build_record, enqueue_job, require_daemon
 from herdr_team.errors import EXIT_REFUSED, HerdrTeamError, UsageError
@@ -37,6 +37,26 @@ def _arguments(parser: argparse.ArgumentParser) -> None:
             child.add_argument("member")
 
 
+def _shell_is_alone(info: Any, pane_id: str) -> bool:
+    """Positive local stop evidence: neither an empty probe nor a background agent."""
+    if not isinstance(pane_id, str) or not pane_id or not isinstance(info, dict) or info.get("pane_id") != pane_id:
+        return False
+    shell = info.get("shell_pid")
+    group = info.get("foreground_process_group_id")
+    processes = info.get("foreground_processes")
+    if (not isinstance(shell, int) or isinstance(shell, bool) or shell <= 1
+            or not isinstance(group, int) or isinstance(group, bool) or group != shell
+            or not isinstance(processes, list) or len(processes) != 1
+            or not isinstance(processes[0], dict)
+            or not isinstance(processes[0].get("pid"), int) or isinstance(processes[0].get("pid"), bool)
+            or processes[0]["pid"] != shell):
+        return False
+    # Only an explicit staffing command gets this process snapshot, never an idle
+    # notifier/render path. A live background child still consumes its worker slot.
+    table = identity.ps_table()
+    return table is not None and shell in table and shell not in table.values()
+
+
 def reconcile(paths: Any, api: Any) -> None:
     """Reconcile on explicit commands only; uncertainty retains capacity and history."""
     team = roster.load_team(paths)
@@ -53,22 +73,47 @@ def reconcile(paths: Any, api: Any) -> None:
         if not isinstance(pane, dict) or pane.get("terminal_id") != terminal:
             continue
         member = next((m for m in team.members if (m.staffing or {}).get("request_id") == request_id), None)
-        if attempt["phase"] == "retiring" and not pane.get("agent"):
-            if not member or member.terminal_id != terminal or member.generation != attempt.get("generation", member.generation):
+        if attempt["phase"] == "retiring":
+            if (not member or member.name != attempt.get("name") or member.terminal_id != terminal
+                    or member.generation != attempt.get("generation")):
                 continue
+            if pane.get("agent"):
+                # Herdr may retain the kind after native exit. Idle/working hints
+                # are not stop evidence, nor is a new/pending agent on that terminal.
+                if pane.get("agent") != member.kind or pane.get("agent_status") != "unknown":
+                    continue
+                try:
+                    agent = api.request("agent.get", {"target": pane_id}).get("agent")
+                except HerdrTeamError:
+                    continue
+                if (not isinstance(agent, dict) or agent.get("terminal_id") != terminal
+                        or agent.get("name") not in (None, member.name)
+                        or agent.get("agent") != member.kind or agent.get("agent_status") != "unknown"
+                        # Older AgentInfo omits this optional field. Positive
+                        # shell/process evidence is still required on those servers.
+                        or agent.get("launch_pending", False) is not False):
+                    continue
             try:
                 info = api.request("pane.process_info", {"pane_id": pane_id}).get("process_info")
             except HerdrTeamError:
                 continue
-            processes = info.get("foreground_processes") if isinstance(info, dict) else None
-            if not isinstance(processes, list) or any(not isinstance(p, dict) or p.get("pid") != info.get("shell_pid") for p in processes):
+            if not _shell_is_alone(info, pane.get("pane_id")):
                 continue
             # Stopped, not merely idle: preserve the row, session, pane and all artifacts.
-            S.phase(paths, request_id, "retired")
             def retired(doc: roster.Team) -> None:
                 row = doc.find(member.name)
-                if row and row.terminal_id == terminal and (row.staffing or {}).get("request_id") == request_id:
-                    row.status = "unbound"
+                record = S.attempts(doc).get(request_id)
+                if (row and row.terminal_id == terminal and row.generation == member.generation
+                        and row.pane_id == member.pane_id and row.kind == member.kind and row.status == member.status
+                        and (row.staffing or {}).get("request_id") == request_id
+                        and record and record.get("phase") == "retiring"
+                        and all(record.get(key) == attempt.get(key) for key in ("name", "pane_id", "terminal_id", "generation"))):
+                    # Phase/capacity and member binding settle in one roster write;
+                    # a concurrent rebind must not free a still-owned reservation.
+                    record["history"].append({"phase": "retired", "at": roster.now_iso()})
+                    record["phase"] = "retired"
+                    if row.status != "left":
+                        row.status = "unbound"
             roster.update_team(paths, retired)
         elif member and pane.get("agent") == member.kind:
             try:
