@@ -15,6 +15,9 @@ opt-in, disabled by default, and does not enroll existing teams. The human remai
 the operator; selecting a manager or enabling staffing grants no broad operator
 delegation. Other manually supported harnesses remain supported.
 
+For an end-to-end task, an explicit recruiting Mission and the manager's worker
+commands, see [Let the leader recruit the team as needed](autonomous-staffing.md).
+
 ```sh
 herdr-synapse available codex --readiness --cwd /path/to/project
 herdr-synapse create task-team --new --spawn lead:codex \

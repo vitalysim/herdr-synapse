@@ -15,9 +15,12 @@ member guide applies to you too (`herdr-synapse skill get worker`).
 The human keeps all manual team, agent/model, Mission and leader controls; staffing is not an operator grant.
 Only `staff status` confirms enrollment: existing teams are never auto-enrolled; other teams are out of scope.
 
-Read your task, completion evidence and project/knowledge directory first.
-Research → plan → staff → assign → observe → verify → revise/report, using
-existing work, reviews and board. Do not add a second scheduler or native goals.
+When enrolled and your Mission asks you to staff, build the needed team yourself:
+read the task, completion evidence and project/knowledge directory; research first.
+Plan roles, choose native models in the approved pool, and `staff add` only the
+workers needed now. Do not wait for the human to enumerate workers or fill every slot.
+Assign → observe → verify → revise/report through existing work, reviews and board.
+No recursive teams, second scheduler or native goals; outside-pool needs go to the operator.
 
     herdr-synapse staff status
     herdr-synapse available codex --readiness --cwd <project>
@@ -28,24 +31,21 @@ existing work, reviews and board. Do not add a second scheduler or native goals.
 (or `--work-id W-N`), then briefs them. Use an explicit model, optional
 `--profile` and advertised `--effort` inside the operator-approved provider pool.
 Configured unverified candidates are allowed; listings/logins do not prove access.
-
 Discovery generates no inference. Only the operator may consent to `model-check`, which may spend quota; unsupported checks stay unverified.
 Never borrow tokens/logins between programs or disguise quota failures as reasons to respawn.
 
 Four slots by default, excluding you/manual members; inherit launch policy (including YOLO).
 No spend/total-start/expiry/CLI-subagent cap, OS sandbox, or charter/Rules/policy/trust/instruction authority is granted.
 
-Repeat the same request ID after uncertainty; it returns the durable attempt,
-never another launch. Ambiguous starts keep their slot for operator inspection.
-Do not adopt unassigned/unrelated agents or create recursive teams.
+Repeat the same request ID after uncertainty: it returns the durable attempt, never another launch.
+Ambiguous starts keep their slot for operator inspection; never adopt unrelated agents.
 
 `staff retire MEMBER` exits only an exact owned idle/done worker with no active work; keep its pane, history, conversation and artifacts.
 Its slot is freed only after that terminal is observed stopped during the next staffing launch.
 
 One fallback per settled failed work attempt needs no per-worker approval:
 `staff add ... --work-id W-N --fallback-for MEMBER --reason "<why>"`, in the pool.
-Preserve history; quota failures and further retries need the operator's manual
-decision. Discovery never silently switches native models.
+Preserve history; quota failures and further retries need the operator's manual decision. Discovery never silently switches native models.
 
 `staff pause` stops new launches, not ongoing work; only the operator can undo their pause. `staff configure` is operator-only.
 Changed account/provider/configuration needs pool reapproval, never a raw-shell workaround.

@@ -581,6 +581,45 @@ whiteboard page.
 The [complete command and shortcut reference](docs/reference.md) lists every
 CLI parameter, plugin action, console command, and key used inside each view.
 
+### Let the leader recruit the team as needed
+
+Manual team creation above stays available. With Synapse 0.23.0+, you can instead
+start just one leader and let it research the task, choose the roles and native
+models it needs, and recruit workers into that same team. You choose the task,
+project/knowledge location, completion evidence, provider pool and concurrency.
+
+Run this as the operator in a Herdr shell after updating Synapse and its notifier.
+Replace the project path with an existing trusted checkout; inspect the native
+inventory first and use `codex:openai` only if it is reported on your machine:
+
+```bash
+project_dir=/absolute/path/to/your/project
+herdr-synapse available codex --readiness --cwd "$project_dir"
+herdr-synapse create task-team --new --spawn lead:codex \
+    --leader role:lead --project "$project_dir" --permissions native \
+    --charter 'Add a CSV export to the existing reports page without changing existing report behavior.' \
+    --brief 'lead=Research the task and knowledge first. Plan the work, choose needed roles and native models, and create same-team workers with staff add as needed within the approved pool. Assign clear Missions and acceptance evidence, verify results, and report completion or blockers. Do not wait for me to enumerate workers.' \
+    --autonomous --allow-provider codex:openai --max-workers 4 \
+    --acceptance 'CSV export works, existing reports are unchanged, tests pass, and review evidence is recorded.'
+```
+
+The leader gets that Mission before its first briefing and uses
+`herdr-synapse skill get manager` for the staffing workflow. The team starts with
+the leader only; four is a worker ceiling, not a target. The project holds the
+team's generated knowledge, member instructions and artifacts under
+`.herdr-synapse/task-team/`; existing foreign or edited documents are not adopted
+silently. `--permissions native` keeps native agent settings instead of the
+default YOLO launch policy; it is not an extra sandbox.
+
+You can still select agents/models yourself, add members manually, or pause new
+automatic launches with `herdr-synapse --team task-team staff pause`. Discovery
+does not run inference; a catalog or login is not proof that every model is
+accessible. Worker launches do consume your native quota or billing, and the
+worker ceiling is not a spending cap.
+
+See the [complete operator-and-manager example](docs/autonomous-staffing.md),
+including actual `staff add` commands, verification, retirement and model-check limits.
+
 ## What you can build a team from
 
 Four words, each with one meaning:
