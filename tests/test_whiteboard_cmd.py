@@ -431,9 +431,9 @@ class KeysManifestSetupTests(unittest.TestCase):
         self.assertEqual(cmd_whiteboard.POPUP_ENTRYPOINT, "whiteboard")
         from herdr_team import VERSION, SKILL_VERSION
 
-        self.assertEqual(VERSION, "0.22.1")
+        self.assertEqual(VERSION, "0.23.0")
         self.assertEqual(SKILL_VERSION, 13)
-        self.assertIn('version = "0.22.1"', text)
+        self.assertIn('version = "0.23.0"', text)
 
     def test_the_page_carries_the_same_version(self):
         """Every version file of canvas-v2-phase6.md 4 in one assertion: a bump that forgets the page (or forgets to

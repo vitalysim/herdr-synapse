@@ -1,5 +1,65 @@
 # Changelog
 
+## 0.23.0 (2026-10-15)
+
+Start with a task and one leader; let the leader research, plan and recruit the
+workers it needs. Autonomous staffing is opt-in, and every existing manual team,
+agent, model, Mission and leader control stays available.
+
+### Highlights
+
+- **Task-driven, same-team staffing.** Create a fresh leader-only team with
+  `--autonomous`, a task charter, project/knowledge directory, completion evidence
+  and an operator-approved native provider pool. The manager can recruit workers
+  with explicit roles, native models, Missions and acceptance evidence. Four
+  concurrent autonomous workers is the default ceiling, excluding the manager
+  and manual members; it is not a target. The README and
+  [operator-and-manager walkthrough](docs/autonomous-staffing.md) show the full flow.
+- **Durable launches and conservative retirement.** `staff add` reserves capacity
+  before layout, records an idempotent request, publishes the Mission without
+  overwriting an occupied path, and assigns work before briefing. Uncertain
+  starts keep their slot. `staff retire` exits only the exact owned idle/done
+  worker with no active work; pane, conversation, artifacts and history remain.
+  A replacement releases capacity only after positive stop evidence, including
+  when Herdr retains an old agent-kind label. Manual removal stays removed.
+- **Native model readiness, not a model gateway.** `available --readiness`
+  discovers Claude Code, Codex and OpenCode metadata on demand, separating
+  catalog entries, authentication, quota and inference evidence. Account and
+  provider context remain private and are rechecked before managed launches.
+  Process-local Claude messaging tokens do not invalidate an unchanged approved
+  pool; real credentials, executable, routing and configuration changes still do.
+- **Human oversight stays intact.** The operator can configure the pool/worker
+  ceiling or pause new launches without stopping ongoing work. Managers cannot
+  undo an operator pause, grant operator authority, adopt unrelated workers or
+  recursively create teams. One recorded in-pool fallback is available for a
+  settled failed work attempt; quota failures and further retries need the human.
+- **Explicit, consented access checks.** `model-check ... --yes`, also offered
+  through the model picker's Ctrl-T confirmation, makes one isolated native
+  inference request. The current safe adapter supports Claude Code 2.1.299+
+  without custom profiles or project-scoped settings. Codex/OpenCode checks
+  return `verification_unsupported` without inference; their metadata discovery,
+  ordinary model selection and worker launches remain available.
+
+### Upgrading and limits
+
+- Update the plugin and notifier together: `herdr-synapse update --ref v0.23.0`
+  for a GitHub-managed install. For a local link, update that checkout first and
+  run `herdr-synapse update`. Skill v13 is unchanged; role guides are served by
+  the updated CLI. No Herdr server or existing agent restart is required.
+- Existing teams remain manual and are not enrolled automatically. New autonomous
+  teams require a notifier advertising `autonomous_staffing_v1`; use compatible
+  Synapse CLIs for their new ownership records. Do not mix older writers into an
+  enrolled team.
+- Native worker runs may consume quota or incur charges. Metadata and login
+  reports are not entitlement guarantees; checks do not guarantee future quota.
+  The worker ceiling is not a spending, total-start, elapsed-time or native
+  subagent limit, and there is no default expiry.
+- Staffing is cooperative orchestration, not an OS sandbox. Workers inherit the
+  team's launch policy, including YOLO unless `--permissions native` is chosen.
+  Existing file-edit confirmation and never-overwrite protections stay in force.
+  Previously documented filesystem check-to-replace limits are not changed by
+  this release.
+
 ## 0.22.1 (2026-10-09)
 
 A new canvas. The whiteboard is now drawn by Synapse's own renderer instead of Excalidraw, and text always fits: every label is measured with the same bundled fonts on the server, on the page and in the agent's picture, and its box grows to hold it. Agents no longer place boxes by coordinates; they name components (cards, tables, kanbans, timelines, flow graphs, mind maps, sequences) and how they relate, and the canvas sizes, places and routes them. Charts are drawn from data files, and 3D scenes are described by how objects sit against each other. The operator leads: what an agent would change on their work, a peer's work or a frozen area arrives as a proposal they accept or reject. The classic Excalidraw canvas stays one click away in this release. And what a team learns and draws now stays in your project folder, so dissolving a team no longer throws it away: one command gives the whole record - the rules, the facts and the canvas - to the next team.
